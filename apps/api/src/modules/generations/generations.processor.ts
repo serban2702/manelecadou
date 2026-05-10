@@ -1,0 +1,146 @@
+import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Job } from 'bullmq';
+
+import { Generation } from './generation.entity';
+import { GENERATIONS_QUEUE } from './generations.service';
+import { SunoProvider } from '../suno/suno.types';
+import { LyricsService } from '../lyrics/lyrics.module';
+import { GuestSession } from '../guest-sessions/guest-session.entity';
+import { User } from '../users/user.entity';
+import { MailerService } from '../../mailer/mailer.module';
+import { generationReadyTemplate } from '../../mailer/templates/templates';
+import { SitesService } from '../sites/sites.service';
+
+@Processor(GENERATIONS_QUEUE)
+export class GenerationsProcessor extends WorkerHost {
+  private readonly logger = new Logger('GenerationsProcessor');
+
+  constructor(
+    @InjectRepository(Generation) private readonly repo: Repository<Generation>,
+    @InjectRepository(GuestSession) private readonly guests: Repository<GuestSession>,
+    @InjectRepository(User) private readonly users: Repository<User>,
+    private readonly suno: SunoProvider,
+    private readonly lyricsSvc: LyricsService,
+    private readonly mailer: MailerService,
+    private readonly config: ConfigService,
+    private readonly sites: SitesService,
+  ) {
+    super();
+  }
+
+  async process(job: Job<{ generationId: string }>): Promise<void> {
+    const { generationId } = job.data;
+    const gen = await this.repo.findOne({ where: { id: generationId } });
+    if (!gen) {
+      this.logger.warn(`generation ${generationId} not found`);
+      return;
+    }
+
+    // Încărcăm site-ul comenzii (per-brand prompt + locale lyrics).
+    const site = gen.siteId ? await this.sites.findById(gen.siteId) : null;
+    const lyricsLocale = site?.suno?.lyricsLocale ?? site?.locale ?? gen.locale ?? 'ro';
+
+    try {
+      // Step 1: write lyrics (or use custom)
+      gen.status = 'writing_lyrics';
+      await this.repo.save(gen);
+
+      const lyricsBase = {
+        style: gen.style,
+        occasion: gen.occasion,
+        recipientName: gen.recipientName,
+        message: gen.message,
+        dedication: gen.dedication ?? undefined,
+        tipAmount: gen.tipAmount,
+        voiceArtist: gen.voiceArtist,
+        customLyrics: gen.customLyrics ?? undefined,
+        locale: lyricsLocale,
+        // Override-uri per site pentru OpenAI writer + critic. Când site-ul are
+        // limbă proprie (BG/RS/TR/etc.) și are setate aceste prompts în admin,
+        // OpenAI primește vocabular nativ (chalga, turbofolk, arabesk) în loc
+        // de cel manelist românesc.
+        writerSystemPrompt: site?.suno?.writerSystemPrompt,
+        criticSystemPrompt: site?.suno?.criticSystemPrompt,
+      };
+
+      const draft = await this.lyricsSvc.writeDraft(lyricsBase);
+      gen.lyricsDraft = draft;
+      gen.status = 'checking_lyrics';
+      await this.repo.save(gen);
+
+      // Step 2: critic refines
+      const refined = await this.lyricsSvc.refineDraft(lyricsBase, draft);
+      gen.lyrics = refined;
+      gen.status = 'generating_audio';
+      await this.repo.save(gen);
+
+      // Step 3: audio
+      const result = await this.suno.generate({
+        type: gen.type,
+        durationSec: gen.durationSec,
+        style: gen.style,
+        occasion: gen.occasion,
+        recipientName: gen.recipientName,
+        message: gen.message,
+        dedication: gen.dedication ?? undefined,
+        voiceArtist: gen.voiceArtist,
+        lyrics: refined,
+        generationId: gen.id,
+        site: site ?? undefined,
+      });
+
+      gen.tracks = result.tracks;
+      gen.audioUrl = result.tracks[0]?.audioUrl ?? null;
+      gen.bonusAudioUrl = result.tracks[1]?.audioUrl ?? null;
+      gen.coverUrl = result.tracks[0]?.coverUrl ?? null;
+      gen.providerJobId = result.providerJobId;
+      gen.status = 'succeeded';
+      gen.completedAt = new Date();
+      await this.repo.save(gen);
+      this.logger.log(`generation ${gen.id} succeeded with ${result.tracks.length} tracks`);
+
+      await this.notifyOwner(gen);
+    } catch (err) {
+      gen.status = 'failed';
+      gen.error = err instanceof Error ? err.message : String(err);
+      gen.completedAt = new Date();
+      await this.repo.save(gen);
+      this.logger.error(`generation ${gen.id} failed: ${gen.error}`);
+    }
+  }
+
+  private async notifyOwner(gen: Generation): Promise<void> {
+    let email: string | null = null;
+    if (gen.ownerUserId) {
+      const u = await this.users.findOne({ where: { id: gen.ownerUserId } });
+      email = u?.email ?? null;
+    } else if (gen.ownerGuestId) {
+      const g = await this.guests.findOne({ where: { id: gen.ownerGuestId } });
+      email = g?.email ?? null;
+    }
+    if (!email) return;
+
+    const appUrl = this.config.get<string>('APP_URL') ?? 'http://localhost:1500';
+    const link = `${appUrl}/m/${gen.id}`;
+
+    // Folosim locale-ul site-ului dacă există (mail-ul e în limba brand-ului).
+    const site = gen.siteId ? await this.sites.findById(gen.siteId) : null;
+    const tpl = generationReadyTemplate({
+      recipientName: gen.recipientName,
+      type: gen.type,
+      link,
+      audioUrl: gen.audioUrl,
+      locale: site?.locale ?? gen.locale ?? 'ro',
+    });
+    await this.mailer.send({
+      to: email,
+      subject: tpl.subject,
+      html: tpl.html,
+      text: tpl.text,
+    });
+  }
+}

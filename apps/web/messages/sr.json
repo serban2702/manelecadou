@@ -1,0 +1,331 @@
+{
+  "common": {
+    "currency": "RSD",
+    "priceMain": "2.999",
+    "priceMainStrike": "3.499",
+    "ctaMakeManea": "🎤 Napravi pesmu — 2.999 RSD",
+    "ctaMakeManeaShort": "Napravi pesmu",
+    "ctaListen": "Slušaj primere",
+    "loading": "Učitavanje…",
+    "close": "Zatvori",
+    "save": "Sačuvaj",
+    "cancel": "Otkaži",
+    "back": "Nazad",
+    "next": "Dalje",
+    "send": "Pošalji",
+    "share": "Podeli",
+    "copy": "Kopiraj",
+    "copied": "Kopirano!"
+  },
+  "urgency": "OGRANIČENA PONUDA — Prva pesma sa novim nalogom: <b>2.999 RSD</b> (umesto 3.499)",
+  "nav": {
+    "asculta": "Slušaj",
+    "studio": "Napravi pesmu",
+    "top": "Top",
+    "cadou": "Poklon",
+    "intra": "Prijava",
+    "cont": "Moj nalog"
+  },
+  "header": {
+    "brand": "Manele Cadou",
+    "subBrand": "★ AI Studio ★"
+  },
+  "hero": {
+    "flag": "⭐ #1 AI GENERATOR PESAMA NA BALKANU",
+    "titleA": "Napravi mu pesmu sa",
+    "titleHl": "njegovim imenom",
+    "titleB": "za 90 sekundi",
+    "sub": "Brate, pokloni mu pesmu. Biraš stil, povod, glas — dobijaš profi pesmu na mejl.",
+    "trustReviews": "<b>4.9/5</b> · 12.483 recenzija",
+    "trustCount": "<b>50.000+</b> pesama",
+    "trustSpeed": "Isporuka <b>~90 sek</b>"
+  },
+  "price": {
+    "badge": "⚡ Samo danas",
+    "save": "-17%",
+    "newAccount": "novi nalog"
+  },
+  "quickListen": {
+    "title": "🎧 Slušaj sad",
+    "more": "{count} demo snimaka"
+  },
+  "cookie": {
+    "title": "Brate, kolačići",
+    "body": "Koristimo kolačiće za tvoju sesiju, prijavu, plaćanja (Stripe), analitiku i personalizovane reklame. Svi su neophodni za potpuno funkcionisanje sajta. Detalji na stranici <a>Kolačići</a>.",
+    "accept": "Razumem, nastavi 👑"
+  },
+  "footer": {
+    "tagline": "AI generator pesama. Izmišljeni, parodijski glasovi. Ne predstavljaju prave izvođače. 🛡️ Jednokratno plaćanje, bez pretplate.",
+    "links": {
+      "termeni": "Uslovi",
+      "confidentialitate": "Privatnost",
+      "cookies": "Kolačići",
+      "contact": "Kontakt",
+      "faq": "FAQ"
+    },
+    "badges": {
+      "ssl": "🔒 SSL zaštićeno",
+      "pay": "💳 Stripe · Visa · MC · Apple Pay",
+      "warranty": "🛡️ Garancija 30 dana",
+      "server": "🇪🇺 EU server"
+    },
+    "company": "© 2026 Manele Cadou SRL · CUI 4123456 · J40/1234/2024"
+  },
+  "ticker": {
+    "items": [
+      "🎤 12.483 pesme napravljeno do sada",
+      "🔥 Pesma \"Za šefa Kostela\" — 12.4K slušanja",
+      "⚡ Promo kod FRATE10 — još 2h 47min",
+      "🎁 Preko 4.500 poklon kodova ovog meseca",
+      "👑 Top izvođač ove nedelje: Adi Šampanj",
+      "⭐ 4.9/5 — 12.483 stvarne recenzije"
+    ]
+  },
+  "smecher": {
+    "tag": "🎯 Igra — traje 30 sek",
+    "title": "Koliko si frajer?",
+    "labels": {
+      "low": "ZELENAŠ",
+      "mid": "PROVODADŽIJA",
+      "high": "KRALJ"
+    },
+    "verdictLabel": "Presuda",
+    "share": "📤 Podeli rezultat",
+    "shareText": "Ja sam {label} {emoji} ({pct}/100) na testu frajerstva sa manelecadou.ro 🎤",
+    "shareCopied": "Rezultat kopiran! Zalepi na WhatsApp / TikTok.",
+    "ctaMake": "🎤 Napravi pesmu za {label}",
+    "verdicts": {
+      "boschetar": {
+        "label": "ZELENAŠ",
+        "emoji": "😬",
+        "tip": "Ne odustaj! Počni sa pesmom za čašu."
+      },
+      "amator": {
+        "label": "AMATER",
+        "emoji": "🎵",
+        "tip": "Obećavaš. Još par pesama i si u vrhu."
+      },
+      "petrecaret": {
+        "label": "PROVODADŽIJA",
+        "emoji": "🍷",
+        "tip": "Ti puštaš muziku. Dokaži pesmom za čašu."
+      },
+      "baron": {
+        "label": "BARON SVADBI",
+        "emoji": "👔",
+        "tip": "Ti zoveš orkestar. Zaslužuješ raskošnu pesmu."
+      },
+      "rege": {
+        "label": "KRALJ 👑",
+        "emoji": "👑",
+        "tip": "Legenda. Treba ti pesma sa trubama, obavezno."
+      }
+    },
+    "questions": [
+      {
+        "q": "Koliko pesama si pustio na svadbi/krštenju?",
+        "opts": [
+          "0",
+          "1-3 pesme",
+          "5-10 pesama",
+          "Celu noć"
+        ]
+      },
+      {
+        "q": "Voziš Mercedes do mora?",
+        "opts": [
+          "Pešice",
+          "Vozom",
+          "BMW-om",
+          "Zlatni Mercedes"
+        ]
+      },
+      {
+        "q": "Kakav si kum?",
+        "opts": [
+          "Nijednom",
+          "Jednom-dvaput",
+          "Kum 3-5 puta",
+          "Zlatni kum"
+        ]
+      },
+      {
+        "q": "Koliko tezgi mesečno sa muzičarima?",
+        "opts": [
+          "Sedim kući",
+          "1-2",
+          "3-5",
+          "Svaki vikend"
+        ]
+      },
+      {
+        "q": "Na svadbi: daješ ili dobijaš pare?",
+        "opts": [
+          "Samo dobijam",
+          "Ravnomerno",
+          "Dam nešto",
+          "Dam šakom"
+        ]
+      }
+    ]
+  },
+  "styles": {
+    "clasic": {
+      "nm": "Klasična za čašu",
+      "ds": "Harmonika, tradicionalno"
+    },
+    "modern": {
+      "nm": "Moderna",
+      "ds": "Trap-pesma, jak bit"
+    },
+    "oriental": {
+      "nm": "Orijentalna",
+      "ds": "Darbuka, melizmi"
+    },
+    "trompeta": {
+      "nm": "Sa trubom",
+      "ds": "Truba, orkestar"
+    },
+    "romantica": {
+      "nm": "Tužbalica",
+      "ds": "Za slomljena srca"
+    },
+    "comerciala": {
+      "nm": "Komercijalna",
+      "ds": "Klupska, sezonska"
+    },
+    "opulenta": {
+      "nm": "Raskošna",
+      "ds": "Pare teku, totalni luksuz"
+    },
+    "iubire": {
+      "nm": "Ljubavna",
+      "ds": "Čista romantika"
+    },
+    "tallava": {
+      "nm": "Tallava",
+      "ds": "Balkanski ritam, BG/MK"
+    },
+    "kuchek": {
+      "nm": "Kučko (Kuchek)",
+      "ds": "Bugarski romski ritam"
+    },
+    "trapanele": {
+      "nm": "Trap-pesma",
+      "ds": "Trap × balkan, hard"
+    },
+    "pahar": {
+      "nm": "Za čašu",
+      "ds": "Žurka, dobro raspoloženje"
+    }
+  },
+  "occasions": {
+    "zi": "Rođendan",
+    "nunta": "Svadba",
+    "botez": "Krštenje",
+    "cumatrie": "Kumstvo",
+    "cuplu": "Godišnjica",
+    "sef": "Za šefa",
+    "dragoste": "Izjava ljubavi",
+    "roast": "Šala za druga",
+    "nas": "Kum",
+    "inmorm": "Sahrana",
+    "motiv": "Motivaciona",
+    "altul": "Drugi povod"
+  },
+  "voices": {
+    "florinel": {
+      "nm": "Florinel de Aur",
+      "tg": "Topao glas, klasika"
+    },
+    "adi": {
+      "nm": "Adi Šampanj",
+      "tg": "Moderan, klupski"
+    },
+    "ticu": {
+      "nm": "Žiku Dijamant",
+      "tg": "Trap, mlad"
+    },
+    "mariana": {
+      "nm": "Marijana Ruža",
+      "tg": "Ženski glas"
+    },
+    "nicu": {
+      "nm": "Niku Mercedes",
+      "tg": "Orijentalni, plačan"
+    },
+    "gigi": {
+      "nm": "Điđi Keš",
+      "tg": "Komercijalni, veseo"
+    }
+  },
+  "home": {
+    "giftRibbon": "🎁 Ponuda 1+1 GRATIS — dobijaš 2 pesme po ceni jedne",
+    "subLead": "Brate, pokloni pesmu. Biraš stil, povod, glas — dobijaš 2 profi verzije na mejl.",
+    "pay": "🛡️ Jednokratno plaćanje, bez pretplate",
+    "warranty": "Garancija 30 dana.",
+    "trust": {
+      "reviews": "<b>4.9/5</b> · 12.483 recenzija",
+      "count": "<b>50.000+</b> napravljenih pesama",
+      "speed": "Isporuka <b>~90 sek</b>",
+      "versions": "<b>2 verzije</b> uključene"
+    },
+    "side": {
+      "offer": "Ponuda",
+      "giftSomeone": "🎁 Poklon za nekoga"
+    },
+    "top": {
+      "badge": "★ Top sedmice",
+      "title": "Šta sluša Balkan",
+      "sub": "Najslušanije AI pesme u poslednjih 7 dana."
+    },
+    "testi": {
+      "badge": "★★★★★ 4.9 / 12.483 recenzija",
+      "title": "Šta kažu braća"
+    },
+    "listen": {
+      "badge": "🎧 Besplatan demo",
+      "title": "Slušaj sada",
+      "sub": "6 primera — pritisni ▶ na bilo koji.",
+      "viewAll": "Vidi sve pesme →"
+    }
+  },
+  "generator": {
+    "steps": [
+      "Stil",
+      "Povod",
+      "Detalji",
+      "Poklon",
+      "Demo",
+      "Otključaj"
+    ],
+    "step1Title": "1. Kakvu pesmu?",
+    "step1Sub": "Pritisni ▶ da čuješ kako zvuči svaki stil.",
+    "stepPattern": "Korak {current} od {total}"
+  },
+  "giftMini": {
+    "title": "Kupuješ kod, daješ ga nekome",
+    "body": "Ti plaćaš. On dobija kod preko SMS / mejla i sam podesi pesmu.",
+    "cta": "Kupi poklon kod — 2.999 RSD"
+  },
+  "metadata": {
+    "title": "Manele Cadou — Napravi mu pesmu sa imenom za 90 sekundi",
+    "description": "AI generator personalizovanih balkanskih pesama. Biraš stil, povod, glas — dobijaš 2 verzije na mejl. 1+1 GRATIS, jednokratno plaćanje.",
+    "ogTitle": "Manele Cadou — Napravi mu pesmu sa imenom za 90 sekundi",
+    "ogDescription": "AI generator pesama. 2 profi verzije na mejl. 1+1 GRATIS."
+  },
+  "studio": {
+    "heroFlag": "🎤 AI studio · 6 jednostavnih koraka",
+    "title": "Napravi svoju pesmu sad",
+    "leadPart1": "Besplatan demo (30s × 2 verzije) odmah nakon slanja. Plaćaš samo ako želiš punu verziju.",
+    "giftBadge": "🎁 1+1 BESPLATNO",
+    "noSubBadge": "🛡️ Jednokratno plaćanje, bez pretplate.",
+    "sideOfferTitle": "Ponuda",
+    "sideGiftTitle": "🎁 Poklon za nekog",
+    "whyTryTitle": "Zašto probati?",
+    "whyBullet1": "🎯 Tekst pisan sa AI, proveren drugim AI-jem",
+    "whyBullet2": "🎤 2 audio verzije, biraš najbolju",
+    "whyBullet3": "📧 Stiže na mejl za <2 minuta",
+    "whyBullet4": "💰 Demo besplatno — plaćaš samo ako želiš celo"
+  }
+}

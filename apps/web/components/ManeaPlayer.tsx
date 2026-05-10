@@ -1,0 +1,234 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import { Ic } from './icons';
+
+interface Props {
+  audioUrl: string;
+  title?: string;
+  subtitle?: string;
+  compact?: boolean;
+  /** Dacă e setat, redarea se oprește la atâtea secunde (preview pentru demo neplătit). */
+  maxDurationSec?: number;
+}
+
+export function ManeaPlayer({ audioUrl, title, subtitle, compact = false, maxDurationSec }: Props) {
+  const previewLimited = typeof maxDurationSec === 'number' && maxDurationSec > 0;
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const wsRef = useRef<any>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let ws: any = null;
+    (async () => {
+      try {
+        const WaveSurferModule = await import('wavesurfer.js');
+        if (cancelled || !containerRef.current) return;
+        ws = WaveSurferModule.default.create({
+          container: containerRef.current,
+          waveColor: 'rgba(241,200,77,0.35)',
+          progressColor: '#f1c84d',
+          cursorColor: '#ffe28a',
+          height: compact ? 32 : 48,
+          barWidth: 2,
+          barGap: 1.5,
+          barRadius: 1,
+          normalize: true,
+          url: audioUrl,
+        });
+        wsRef.current = ws;
+        ws.on('ready', () => {
+          setDuration(ws.getDuration());
+          setLoaded(true);
+        });
+        ws.on('audioprocess', () => {
+          const t = ws.getCurrentTime();
+          setCurrentTime(t);
+          if (previewLimited && t >= (maxDurationSec as number)) {
+            try {
+              ws.pause();
+              ws.seekTo(0);
+            } catch {}
+          }
+        });
+        ws.on('seeking', () => {
+          const t = ws.getCurrentTime();
+          setCurrentTime(t);
+          if (previewLimited && t > (maxDurationSec as number)) {
+            try {
+              ws.seekTo((maxDurationSec as number) / Math.max(ws.getDuration(), 1));
+              ws.pause();
+            } catch {}
+          }
+        });
+        ws.on('play', () => setIsPlaying(true));
+        ws.on('pause', () => setIsPlaying(false));
+        ws.on('finish', () => setIsPlaying(false));
+        ws.on('error', (err: Error) => setError(err.message));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Eroare');
+      }
+    })();
+    return () => {
+      cancelled = true;
+      try {
+        ws?.destroy();
+      } catch {}
+    };
+  }, [audioUrl, compact]);
+
+  function toggle() {
+    wsRef.current?.playPause();
+  }
+
+  // Fallback: dacă wavesurfer eșuează (de regulă din cauza CORS-ului),
+  // afișăm un audio nativ stilizat — user-ul tot poate asculta.
+  if (error) {
+    return (
+      <div
+        style={{
+          padding: compact ? '8px 10px' : '12px 14px',
+          background: 'rgba(241,200,77,0.04)',
+          border: '1px solid rgba(241,200,77,0.2)',
+          borderRadius: 10,
+        }}
+      >
+        {(title || subtitle) && !compact && (
+          <div style={{ marginBottom: 6 }}>
+            {title && <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gold-2)' }}>{title}</div>}
+            {subtitle && <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.55)' }}>{subtitle}</div>}
+          </div>
+        )}
+        <audio
+          controls
+          src={audioUrl}
+          style={{ width: '100%', height: compact ? 32 : 40 }}
+          onTimeUpdate={(e) => {
+            if (!previewLimited) return;
+            const el = e.currentTarget;
+            if (el.currentTime >= (maxDurationSec as number)) {
+              el.pause();
+              el.currentTime = 0;
+            }
+          }}
+        />
+        {previewLimited && (
+          <div style={{ marginTop: 4, fontSize: 10, color: '#f1c84d' }}>
+            🔒 Previzualizare {maxDurationSec}s — deblochează piesa pentru audiția completă.
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        gap: compact ? 8 : 12,
+        alignItems: 'center',
+        padding: compact ? '8px 10px' : '12px 14px',
+        background: 'rgba(241,200,77,0.04)',
+        border: '1px solid rgba(241,200,77,0.2)',
+        borderRadius: 10,
+      }}
+    >
+      <button
+        type="button"
+        onClick={toggle}
+        disabled={!loaded}
+        aria-label={isPlaying ? 'Pause' : 'Play'}
+        style={{
+          width: compact ? 36 : 44,
+          height: compact ? 36 : 44,
+          flexShrink: 0,
+          borderRadius: '50%',
+          background: 'linear-gradient(180deg,#fff5cc 0%,#ffe28a 30%,#f1c84d 60%,#b07c1e 100%)',
+          color: '#2a1a04',
+          border: 'none',
+          cursor: loaded ? 'pointer' : 'wait',
+          display: 'grid',
+          placeItems: 'center',
+          boxShadow: '0 4px 12px rgba(241,200,77,0.3)',
+          opacity: loaded ? 1 : 0.5,
+          transition: 'transform 0.1s',
+        }}
+        onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.95)')}
+        onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+      >
+        {isPlaying ? <Ic.Pause s={compact ? 14 : 16} /> : <Ic.Play s={compact ? 14 : 16} />}
+      </button>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {(title || subtitle) && !compact && (
+          <div style={{ marginBottom: 4 }}>
+            {title && (
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: 'var(--gold-2)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {title}
+              </div>
+            )}
+            {subtitle && (
+              <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.55)' }}>{subtitle}</div>
+            )}
+          </div>
+        )}
+        <div ref={containerRef} style={{ width: '100%', minWidth: 0 }} />
+        {!error && loaded && (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              fontSize: 10,
+              color: 'rgba(255,245,220,0.5)',
+              marginTop: 2,
+              fontFamily: 'ui-monospace, monospace',
+            }}
+          >
+            <span>{fmt(currentTime)}</span>
+            <span>
+              {previewLimited
+                ? `🔒 ${fmt(maxDurationSec as number)} preview`
+                : fmt(duration)}
+            </span>
+          </div>
+        )}
+      </div>
+      {!previewLimited && (
+        <a
+          href={audioUrl}
+          download
+          title="Descarcă MP3"
+          style={{
+            color: 'rgba(255,245,220,0.6)',
+            padding: 6,
+            borderRadius: 6,
+            textDecoration: 'none',
+            flexShrink: 0,
+          }}
+        >
+          <Ic.Download s={16} />
+        </a>
+      )}
+    </div>
+  );
+}
+
+function fmt(s: number): string {
+  if (!Number.isFinite(s) || s < 0) return '0:00';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, '0')}`;
+}

@@ -1,0 +1,136 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-manelecadou}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-manelecadou}
+      POSTGRES_DB: ${POSTGRES_DB:-manelecadou}
+    ports:
+      - "1502:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-manelecadou}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "1503:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  adminer:
+    image: adminer:4
+    restart: unless-stopped
+    ports:
+      - "1504:8080"
+    depends_on:
+      - postgres
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    ports:
+      - "1501:3000"
+    environment:
+      NODE_ENV: development
+      API_PORT: 3000
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-manelecadou}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-manelecadou}
+      POSTGRES_DB: ${POSTGRES_DB:-manelecadou}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      APP_URL: ${APP_URL:-http://localhost:1500}
+      ADMIN_URL: ${ADMIN_URL:-http://localhost:1505}
+      API_URL: ${API_URL:-http://localhost:1501}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      JWT_SECRET: ${JWT_SECRET:-change_me_in_production}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      MAGIC_LINK_TTL_MIN: ${MAGIC_LINK_TTL_MIN:-15}
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-smtp}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@manelecadou.ro}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      MAILGUN_API_KEY: ${MAILGUN_API_KEY:-}
+      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN:-}
+      MAILGUN_REGION: ${MAILGUN_REGION:-us}
+      MAILGUN_API_URL: ${MAILGUN_API_URL:-}
+      MAILGUN_FROM_EMAIL: ${MAILGUN_FROM_EMAIL:-}
+      MAILGUN_WEBHOOK_SIGNING_KEY: ${MAILGUN_WEBHOOK_SIGNING_KEY:-}
+      SUNO_PROVIDER: ${SUNO_PROVIDER:-mock}
+      SUNO_API_BASE_URL: ${SUNO_API_BASE_URL:-https://api.sunoapi.org}
+      SUNO_API_KEY: ${SUNO_API_KEY:-}
+      SUNO_MODEL: ${SUNO_MODEL:-V4_5}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_FULL_RON: ${STRIPE_PRICE_FULL_RON:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_AUTOREPLY_MODEL: ${OPENAI_AUTOREPLY_MODEL:-}
+      MAIL_CRED_KEY: ${MAIL_CRED_KEY:-}
+      MAIL_ATTACH_DIR: ${MAIL_ATTACH_DIR:-/tmp/manelecadou-mail-attach}
+      MAIL_POLL_INTERVAL_MS: ${MAIL_POLL_INTERVAL_MS:-60000}
+      GA4_MEASUREMENT_ID: ${NEXT_PUBLIC_GA_ID:-}
+      GA4_API_SECRET: ${GA4_API_SECRET:-}
+      META_PIXEL_ID: ${NEXT_PUBLIC_META_PIXEL_ID:-}
+      META_CAPI_TOKEN: ${META_CAPI_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      # Bind mount-uri pentru hot-reload via nest --watch, indiferent dacă rulezi
+      # `docker compose up` sau `docker compose watch`. Anonim volume pe node_modules
+      # ca să nu suprascrie pachetele instalate în imagine cu cele de pe host.
+      - ./apps/api/src:/app/src
+      - ./apps/api/tsconfig.json:/app/tsconfig.json
+      - ./apps/api/tsconfig.build.json:/app/tsconfig.build.json
+      - ./apps/api/nest-cli.json:/app/nest-cli.json
+      - api_uploads:/app/uploads
+      - api_backups:/app/backups
+      - /app/node_modules
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/api/src
+          target: /app/src
+        - action: sync
+          path: ./apps/api/tsconfig.json
+          target: /app/tsconfig.json
+        - action: sync
+          path: ./apps/api/tsconfig.build.json
+          target: /app/tsconfig.build.json
+        - action: sync
+          path: ./apps/api/nest-cli.json
+          target: /app/nest-cli.json
+        - action: rebuild
+          path: ./apps/api/package.json
+        - action: rebuild
+          path: ./apps/api/pnpm-lock.yaml
+
+volumes:
+  pgdata:
+  redisdata:
+  api_uploads:
+  api_backups:

@@ -1,0 +1,143 @@
+'use client';
+
+import * as React from 'react';
+import { format, subDays, startOfDay, endOfDay, startOfMonth } from 'date-fns';
+import { ro } from 'date-fns/locale';
+import { CalendarRange } from 'lucide-react';
+import type { DateRange } from 'react-day-picker';
+import { Button } from './button';
+import { Calendar } from './calendar';
+import { Popover, PopoverContent, PopoverTrigger } from './popover';
+import { Separator } from './separator';
+import { cn } from '@/lib/cn';
+
+export interface DateRangeValue {
+  from: Date;
+  to: Date;
+}
+
+interface Preset {
+  key: string;
+  label: string;
+  range: () => DateRangeValue;
+}
+
+const PRESETS: Preset[] = [
+  { key: 'today', label: 'Azi', range: () => ({ from: startOfDay(new Date()), to: endOfDay(new Date()) }) },
+  {
+    key: 'yesterday',
+    label: 'Ieri',
+    range: () => ({ from: startOfDay(subDays(new Date(), 1)), to: endOfDay(subDays(new Date(), 1)) }),
+  },
+  {
+    key: '7d',
+    label: 'Ultimele 7 zile',
+    range: () => ({ from: startOfDay(subDays(new Date(), 6)), to: endOfDay(new Date()) }),
+  },
+  {
+    key: '14d',
+    label: 'Ultimele 14 zile',
+    range: () => ({ from: startOfDay(subDays(new Date(), 13)), to: endOfDay(new Date()) }),
+  },
+  {
+    key: '30d',
+    label: 'Ultimele 30 zile',
+    range: () => ({ from: startOfDay(subDays(new Date(), 29)), to: endOfDay(new Date()) }),
+  },
+  {
+    key: 'mtd',
+    label: 'Luna curentă',
+    range: () => ({ from: startOfMonth(new Date()), to: endOfDay(new Date()) }),
+  },
+  {
+    key: '90d',
+    label: 'Ultimele 90 zile',
+    range: () => ({ from: startOfDay(subDays(new Date(), 89)), to: endOfDay(new Date()) }),
+  },
+];
+
+interface DateRangePickerProps {
+  value: DateRangeValue;
+  onChange: (range: DateRangeValue) => void;
+  className?: string;
+}
+
+export function DateRangePicker({ value, onChange, className }: DateRangePickerProps) {
+  const [open, setOpen] = React.useState(false);
+  const [draft, setDraft] = React.useState<DateRange | undefined>({ from: value.from, to: value.to });
+
+  React.useEffect(() => {
+    setDraft({ from: value.from, to: value.to });
+  }, [value.from, value.to]);
+
+  function applyPreset(p: Preset) {
+    const r = p.range();
+    setDraft({ from: r.from, to: r.to });
+    onChange(r);
+    setOpen(false);
+  }
+
+  function applyDraft() {
+    if (draft?.from && draft?.to) {
+      onChange({ from: startOfDay(draft.from), to: endOfDay(draft.to) });
+      setOpen(false);
+    }
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className={cn('justify-start text-left font-normal h-9', className)}>
+          <CalendarRange className="h-4 w-4 opacity-70" />
+          <span>
+            {format(value.from, 'd MMM', { locale: ro })} – {format(value.to, 'd MMM yyyy', { locale: ro })}
+          </span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="end">
+        <div className="flex">
+          <div className="border-r border-border p-2 flex flex-col gap-1 min-w-[160px]">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground px-2 pt-1 pb-1">
+              Presets
+            </div>
+            {PRESETS.map((p) => (
+              <button
+                key={p.key}
+                onClick={() => applyPreset(p)}
+                className="text-left text-sm px-2 py-1.5 rounded-md hover:bg-secondary transition"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div>
+            <Calendar
+              mode="range"
+              numberOfMonths={2}
+              selected={draft}
+              onSelect={setDraft}
+              defaultMonth={value.from}
+              autoFocus
+            />
+            <Separator />
+            <div className="flex items-center justify-between p-2">
+              <div className="text-xs text-muted-foreground">
+                {draft?.from && draft?.to
+                  ? `${format(draft.from, 'd MMM', { locale: ro })} – ${format(draft.to, 'd MMM yyyy', { locale: ro })}`
+                  : 'Selectează un interval'}
+              </div>
+              <div className="flex gap-1">
+                <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+                  Anulează
+                </Button>
+                <Button size="sm" onClick={applyDraft} disabled={!draft?.from || !draft?.to}>
+                  Aplică
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}

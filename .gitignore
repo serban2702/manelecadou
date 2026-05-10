@@ -1,0 +1,15 @@
+node_modules/
+.next/
+dist/
+build/
+.env
+.env.local
+.env.*.local
+apps/api/uploads/
+apps/api/dist/
+apps/web/.next/
+apps/admin/.next/
+.DS_Store
+*.log
+backup_*.sql.gz
+.claude/settings.local.json

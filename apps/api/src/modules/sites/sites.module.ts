@@ -1,0 +1,37 @@
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { JwtModule } from '@nestjs/jwt';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { Site } from './site.entity';
+import { SitesService } from './sites.service';
+import { AdminSitesController, AdminSiteSamplesController, CaddyAskController, PublicSiteController } from './sites.controller';
+import { SiteContextMiddleware } from './site-context.middleware';
+import { SiteSamplesService } from './site-samples.service';
+import { SunoModule } from '../suno/suno.module';
+import { LyricsModule } from '../lyrics/lyrics.module';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([Site]),
+    SunoModule,
+    LyricsModule,
+    // JwtModule local cu același secret ca AuthModule — middleware-ul are nevoie să
+    // decodeze JWT-ul ÎNAINTE de guards (pentru anti-abuz pe siteId per-user).
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        secret: config.get<string>('JWT_SECRET'),
+      }),
+    }),
+  ],
+  providers: [SitesService, SiteSamplesService],
+  controllers: [PublicSiteController, AdminSitesController, AdminSiteSamplesController, CaddyAskController],
+  exports: [SitesService, TypeOrmModule],
+})
+export class SitesModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // Aplicăm middleware-ul pe toate rutele — atașează req.site + req.siteId
+    consumer.apply(SiteContextMiddleware).forRoutes('*');
+  }
+}

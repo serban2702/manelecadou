@@ -1,0 +1,331 @@
+{
+  "common": {
+    "currency": "lei",
+    "priceMain": "24,99",
+    "priceMainStrike": "29,99",
+    "ctaMakeManea": "🎤 Fă o manea — 24,99 lei",
+    "ctaMakeManeaShort": "Fă o manea",
+    "ctaListen": "Ascultă exemple",
+    "loading": "Se încarcă…",
+    "close": "Închide",
+    "save": "Salvează",
+    "cancel": "Renunță",
+    "back": "Înapoi",
+    "next": "Continuă",
+    "send": "Trimite",
+    "share": "Distribuie",
+    "copy": "Copiază",
+    "copied": "Copiat!"
+  },
+  "urgency": "OFERTĂ LIMITATĂ — Prima manea cu cont nou: <b>24,99 lei</b> (în loc de 29,99)",
+  "nav": {
+    "asculta": "Ascultă",
+    "studio": "Fă o manea",
+    "top": "Top",
+    "cadou": "Cadou",
+    "intra": "Intră",
+    "cont": "Contul meu"
+  },
+  "header": {
+    "brand": "Manele Cadou",
+    "subBrand": "★ Studio AI ★"
+  },
+  "hero": {
+    "flag": "⭐ #1 GENERATOR DE MANELE AI ÎN ROMÂNIA",
+    "titleA": "Fă-i o manea cu",
+    "titleHl": "numele lui",
+    "titleB": "în 90 de secunde",
+    "sub": "Bă fine, fă-i cadou o manea. Alegi stilul, ocazia, vocea — primești manea profi pe email.",
+    "trustReviews": "<b>4.9/5</b> · 12.483 review",
+    "trustCount": "<b>50.000+</b> manele",
+    "trustSpeed": "Livrare <b>~90 sec</b>"
+  },
+  "price": {
+    "badge": "⚡ Doar azi",
+    "save": "-17%",
+    "newAccount": "cont nou"
+  },
+  "quickListen": {
+    "title": "🎧 Ascultă acum",
+    "more": "{count} demo-uri"
+  },
+  "cookie": {
+    "title": "Bă fine, cookie-uri",
+    "body": "Folosim cookie-uri pentru sesiunea ta, autentificare, plăți (Stripe), analytics și reclame personalizate. Toate sunt necesare pentru funcționarea completă a site-ului. Detalii pe pagina <a>Cookies</a>.",
+    "accept": "Am înțeles, continuă 👑"
+  },
+  "footer": {
+    "tagline": "Generator de manele cu AI. Voci fictive, parodice. Nu reprezintă artiști reali. 🛡️ Plată unică, fără abonament.",
+    "links": {
+      "termeni": "Termeni",
+      "confidentialitate": "Confidențialitate",
+      "cookies": "Cookies",
+      "contact": "Contact",
+      "faq": "FAQ"
+    },
+    "badges": {
+      "ssl": "🔒 SSL securizat",
+      "pay": "💳 Stripe · Visa · MC · Apple Pay",
+      "warranty": "🛡️ Garanție 30 zile",
+      "server": "🇪🇺 Server EU"
+    },
+    "company": "© 2026 Manele Cadou SRL · CUI 4123456 · J40/1234/2024"
+  },
+  "ticker": {
+    "items": [
+      "🎤 12.483 manele generate până acum",
+      "🔥 Maneaua \"Pentru Costel șeful\" — 12.4K play-uri",
+      "⚡ Cod ofertă FRATE10 — încă 2h 47min",
+      "🎁 Peste 4.500 coduri cadou trimise luna asta",
+      "👑 Top artist săptămâna asta: Adi Șampanie",
+      "⭐ 4.9/5 — 12.483 review-uri reale"
+    ]
+  },
+  "smecher": {
+    "tag": "🎯 Joc — durează 30 sec",
+    "title": "Cât de șmecher ești?",
+    "labels": {
+      "low": "BOSCHETAR",
+      "mid": "PETRECĂREȚ",
+      "high": "REGE"
+    },
+    "verdictLabel": "Verdict",
+    "share": "📤 Share rezultat",
+    "shareText": "Sunt {label} {emoji} ({pct}/100) la testul de șmecherie de pe manelecadou.ro 🎤",
+    "shareCopied": "Rezultat copiat! Lipește-l pe WhatsApp / TikTok.",
+    "ctaMake": "🎤 Fă-ți maneaua de {label}",
+    "verdicts": {
+      "boschetar": {
+        "label": "BOSCHETAR",
+        "emoji": "😬",
+        "tip": "Nu te lăsa! Începe cu o manea de pahar."
+      },
+      "amator": {
+        "label": "AMATOR",
+        "emoji": "🎵",
+        "tip": "Promițător. Mai bagă câteva manele și ești în top."
+      },
+      "petrecaret": {
+        "label": "PETRECĂREȚ",
+        "emoji": "🍷",
+        "tip": "Tu pui muzica. Demonstrează cu manea de pahar."
+      },
+      "baron": {
+        "label": "BARON DE NUNȚI",
+        "emoji": "👔",
+        "tip": "Tu chemi banda. Merită o manea de opulență."
+      },
+      "rege": {
+        "label": "REGE 👑",
+        "emoji": "👑",
+        "tip": "Legendă. Ai nevoie de manea cu trompetă, neapărat."
+      }
+    },
+    "questions": [
+      {
+        "q": "Câte manele ai pus la nuntă/botez?",
+        "opts": [
+          "0",
+          "1-3 piese",
+          "5-10 piese",
+          "Toată noaptea"
+        ]
+      },
+      {
+        "q": "Mergi cu Mercedes la Mamaia?",
+        "opts": [
+          "Pe jos",
+          "Cu trenul",
+          "Cu BMW",
+          "Mercedes auriu"
+        ]
+      },
+      {
+        "q": "Cum ești la fini/nași?",
+        "opts": [
+          "Niciun fin",
+          "Un fin/doi",
+          "Nas la 3-5",
+          "Nas de aur"
+        ]
+      },
+      {
+        "q": "Câte petreceri pe lună cu lăutari?",
+        "opts": [
+          "Stau acasă",
+          "1-2",
+          "3-5",
+          "În fiecare weekend"
+        ]
+      },
+      {
+        "q": "La nunți: dai sau primești banii?",
+        "opts": [
+          "Doar primesc",
+          "Echilibrat",
+          "Dau ceva",
+          "Dau cu pumnul"
+        ]
+      }
+    ]
+  },
+  "styles": {
+    "clasic": {
+      "nm": "Clasică de pahar",
+      "ds": "Acordeon, lăutărească"
+    },
+    "modern": {
+      "nm": "Modernă",
+      "ds": "Trap-manea, beat tare"
+    },
+    "oriental": {
+      "nm": "Orientală",
+      "ds": "Darbuka, melisme"
+    },
+    "trompeta": {
+      "nm": "Cu trompetă",
+      "ds": "Banda de fanfare"
+    },
+    "romantica": {
+      "nm": "De jale",
+      "ds": "Pentru inimi frânte"
+    },
+    "comerciala": {
+      "nm": "Comercială",
+      "ds": "De club, de sezon"
+    },
+    "opulenta": {
+      "nm": "De opulență",
+      "ds": "Banii curg, lux total"
+    },
+    "iubire": {
+      "nm": "De iubire",
+      "ds": "Romantic pur, dulce"
+    },
+    "tallava": {
+      "nm": "Tallava",
+      "ds": "Ritm balcanic, BG/MK"
+    },
+    "kuchek": {
+      "nm": "Kuchek",
+      "ds": "Ritm rom bulgăresc"
+    },
+    "trapanele": {
+      "nm": "Trapanele",
+      "ds": "Trap × manea, hard"
+    },
+    "pahar": {
+      "nm": "De pahar",
+      "ds": "Petrecere, voie bună"
+    }
+  },
+  "occasions": {
+    "zi": "Zi naștere",
+    "nunta": "Nuntă",
+    "botez": "Botez",
+    "cumatrie": "Cumătrie",
+    "cuplu": "Aniv. cuplu",
+    "sef": "Pentru șef",
+    "dragoste": "Declarație",
+    "roast": "Roast prieten",
+    "nas": "Naș / fin",
+    "inmorm": "Înmormântare",
+    "motiv": "Motivațională",
+    "altul": "Altă ocazie"
+  },
+  "voices": {
+    "florinel": {
+      "nm": "Florinel de Aur",
+      "tg": "Voce caldă, clasic"
+    },
+    "adi": {
+      "nm": "Adi Șampanie",
+      "tg": "Modern, club"
+    },
+    "ticu": {
+      "nm": "Țicu Diamante",
+      "tg": "Trap-manea, tânăr"
+    },
+    "mariana": {
+      "nm": "Mariana Trandafir",
+      "tg": "Voce feminină"
+    },
+    "nicu": {
+      "nm": "Nicu Mercedes",
+      "tg": "Orientală, plâns"
+    },
+    "gigi": {
+      "nm": "Gigi Cash",
+      "tg": "Comercial, voios"
+    }
+  },
+  "home": {
+    "giftRibbon": "🎁 Oferta 1+1 GRATIS — primești 2 manele la prețul de una",
+    "subLead": "Bă fine, fă-i cadou o manea. Alegi stilul, ocazia, vocea — primești 2 versiuni profi pe email.",
+    "pay": "🛡️ Plată unică, fără abonament",
+    "warranty": "Garanție 30 zile.",
+    "trust": {
+      "reviews": "<b>4.9/5</b> · 12.483 review-uri",
+      "count": "<b>50.000+</b> manele generate",
+      "speed": "Livrare <b>~90 sec</b>",
+      "versions": "<b>2 versiuni</b> incluse"
+    },
+    "side": {
+      "offer": "Ofertă",
+      "giftSomeone": "🎁 Cadou pentru cineva"
+    },
+    "top": {
+      "badge": "★ Top săptămână",
+      "title": "Ce a băgat țara",
+      "sub": "Cele mai ascultate manele AI din ultimele 7 zile."
+    },
+    "testi": {
+      "badge": "★★★★★ 4.9 / 12.483 review-uri",
+      "title": "Ce zic frații"
+    },
+    "listen": {
+      "badge": "🎧 Demo gratis",
+      "title": "Ascultă acum",
+      "sub": "6 exemple — apasă ▶ pe oricare.",
+      "viewAll": "Vezi toate manelele →"
+    }
+  },
+  "generator": {
+    "steps": [
+      "Stil",
+      "Ocazie",
+      "Detalii",
+      "Cadou",
+      "Demo",
+      "Deblochează"
+    ],
+    "step1Title": "1. Ce fel de manea?",
+    "step1Sub": "Apasă pe ▶ să asculți cum sună fiecare stil.",
+    "stepPattern": "Pas {current} din {total}"
+  },
+  "giftMini": {
+    "title": "Cumperi cod, îl dai cuiva",
+    "body": "Plătești tu. Primește el un cod prin SMS / email și își configurează maneaua singur.",
+    "cta": "Cumpără cod cadou — 24,99 lei"
+  },
+  "metadata": {
+    "title": "Manele Cadou — Fă-i o manea cu numele lui în 90 de secunde",
+    "description": "Generator de manele AI personalizate. Alegi stilul, ocazia, vocea — primești 2 versiuni pe email. 1+1 GRATIS, plată unică.",
+    "ogTitle": "Manele Cadou — Fă-i o manea cu numele lui în 90 de secunde",
+    "ogDescription": "Generator de manele AI. 2 versiuni profi pe email. 1+1 GRATIS."
+  },
+  "studio": {
+    "heroFlag": "🎤 Studio AI · 6 pași simpli",
+    "title": "Fă-ți maneaua ta acum",
+    "leadPart1": "Demo gratuit (30s × 2 versiuni) imediat după trimitere. Plătești doar dacă vrei varianta completă.",
+    "giftBadge": "🎁 1+1 GRATIS",
+    "noSubBadge": "🛡️ Plată unică, fără abonament.",
+    "sideOfferTitle": "Ofertă",
+    "sideGiftTitle": "🎁 Cadou pentru cineva",
+    "whyTryTitle": "De ce să încerci?",
+    "whyBullet1": "🎯 Versuri scrise cu AI, verificate de un al doilea AI",
+    "whyBullet2": "🎤 2 versiuni audio, alegi pe cea mai tare",
+    "whyBullet3": "📧 Livrate pe email în <2 minute",
+    "whyBullet4": "💰 Demo gratis — plătești doar dacă vrei tot"
+  }
+}

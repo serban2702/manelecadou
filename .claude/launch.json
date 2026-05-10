@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "admin",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "manelecadou-admin", "exec", "next", "dev"],
+      "port": 1505,
+      "autoPort": true
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "manelecadou-web", "exec", "next", "dev"],
+      "port": 1500,
+      "autoPort": true
+    }
+  ]
+}
