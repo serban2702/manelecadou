@@ -50,8 +50,8 @@ type NavItem = {
 const NAV: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, scope: 'both' },
   { href: '/analytics', label: 'Analytics', icon: BarChart3, scope: 'both' },
-  { href: '/chat', label: 'Chat', icon: MessageSquare, scope: 'per-site' },
-  { href: '/inbox', label: 'Inbox', icon: Inbox, scope: 'per-site' },
+  { href: '/chat', label: 'Chat', icon: MessageSquare, scope: 'both' },
+  { href: '/inbox', label: 'Inbox', icon: Inbox, scope: 'both' },
   { href: '/inbox/knowledge', label: 'Knowledge', icon: BookOpen, scope: 'per-site' },
   { href: '/generations', label: 'Generations', icon: Music2, scope: 'both' },
   { href: '/suno', label: 'Suno credits', icon: Coins, scope: 'global' },
@@ -120,12 +120,11 @@ function DashboardShell({ children }: { children: ReactNode }) {
     window.addEventListener('mc:site-changed', onChange);
     return () => window.removeEventListener('mc:site-changed', onChange);
   }, []);
-  const siteScopedEnabled = authed === true && selectedSite !== ALL_SITES;
-
+  // Chat & Inbox sunt acum cross-tenant — badge-urile se actualizează în orice scope.
   const { data: chatList } = useAsync(
     () => ChatApi.list(),
     [authed, selectedSite],
-    { enabled: siteScopedEnabled, refetchInterval: 5000 },
+    { enabled: authed === true, refetchInterval: 5000 },
   );
   const unreadTotal = (chatList ?? []).reduce((s, c) => s + (c.unreadByAdmin || 0), 0);
 
@@ -139,7 +138,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
   const { data: mailUnread } = useAsync(
     () => MailApi.unreadTotal(),
     [authed, selectedSite],
-    { enabled: siteScopedEnabled, refetchInterval: 15_000 },
+    { enabled: authed === true, refetchInterval: 15_000 },
   );
   const mailUnreadCount = mailUnread?.unread ?? 0;
 

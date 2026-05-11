@@ -14,6 +14,9 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/cn';
 import { useSitesMap } from '@/lib/hooks/use-sites-map';
+import { SiteBadge } from '@/components/site-badge';
+import { AssistantPanel } from '@/components/ai-assistant/AssistantPanel';
+import { TranslationToggle } from '@/components/inbox/TranslationToggle';
 
 export default function AdminChatPage() {
   const { isAllSelected } = useSitesMap();
@@ -113,27 +116,11 @@ export default function AdminChatPage() {
   const conversationLabel = (c: { email: string | null; userId: string | null; guestId: string | null }) =>
     c.email ?? (c.userId ? `user:${c.userId.slice(0, 8)}` : `guest:${c.guestId?.slice(0, 8)}`);
 
-  if (isAllSelected) {
-    return (
-      <div>
-        <PageHeader
-          title="Chat"
-          description="Conversații live cu utilizatorii · presence prin WebSocket"
-        />
-        <Empty
-          icon={<MessageCircle className="h-5 w-5" />}
-          title="Selectează un site din selectorul de sus"
-          description="Modul cross-site nu e disponibil în chat — alege un site activ pentru a vedea conversațiile."
-        />
-      </div>
-    );
-  }
-
   return (
     <div>
       <PageHeader
         title="Chat"
-        description="Conversații live cu utilizatorii · presence prin WebSocket"
+        description={isAllSelected ? 'Conversații cross-tenant · selectează o conversație ca să vezi pe ce site e' : 'Conversații live cu utilizatorii · presence prin WebSocket'}
         actions={
           <Badge variant={wsConnected ? 'success' : 'muted'} className="gap-1.5">
             {wsConnected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
@@ -183,6 +170,11 @@ export default function AdminChatPage() {
                         </Badge>
                       )}
                     </div>
+                    {/* Site badge — vizibil mereu (păstrăm orientarea cross-tenant chiar și
+                        când selectorul e pe un site, ca să nu te confunzi când scimbi). */}
+                    <div className="mt-1">
+                      <SiteBadge siteId={c.siteId} />
+                    </div>
                     <div className="text-xs text-muted-foreground mt-1 flex items-center justify-between gap-2">
                       <span className={c.online ? 'text-success font-medium' : ''}>
                         {c.online
@@ -207,7 +199,7 @@ export default function AdminChatPage() {
           </div>
         </aside>
 
-        <section className="flex-1 bg-card border border-border rounded-xl flex flex-col overflow-hidden">
+        <section className="flex-1 min-w-0 bg-card border border-border rounded-xl flex flex-col overflow-hidden">
           {!active ? (
             <div className="m-auto">
               <Empty
@@ -226,6 +218,7 @@ export default function AdminChatPage() {
                   <div className="text-sm font-semibold flex items-center gap-2">
                     <PresenceDot online={thread.conversation.online} />
                     {conversationLabel(thread.conversation)}
+                    <SiteBadge siteId={thread.conversation.siteId} />
                   </div>
                   <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
                     {thread.conversation.userId ? (
@@ -252,33 +245,17 @@ export default function AdminChatPage() {
                 {thread.messages.length === 0 && (
                   <div className="m-auto text-muted-foreground text-sm">Mesaj nul.</div>
                 )}
-                {thread.messages.map((m) => {
-                  const fromAdmin = m.authorRole === 'admin';
-                  return (
-                    <div
-                      key={m.id}
-                      className={cn(
-                        'max-w-[75%] px-3 py-2 rounded-lg text-sm whitespace-pre-wrap',
-                        fromAdmin
-                          ? 'self-end bg-primary/15 text-foreground border border-primary/30'
-                          : 'self-start bg-secondary border border-border',
-                      )}
-                    >
-                      <div className="text-[10px] uppercase tracking-wider opacity-60 mb-1 flex items-center gap-1">
-                        {fromAdmin ? <Crown className="h-3 w-3" /> : <User className="h-3 w-3" />}
-                        {fromAdmin ? 'Admin' : 'User'} ·{' '}
-                        {format(new Date(m.createdAt), 'HH:mm', { locale: ro })}
-                      </div>
-                      {m.body}
-                    </div>
-                  );
-                })}
+                {thread.messages.map((m) => (
+                  <ChatBubble key={m.id} m={m} />
+                ))}
               </div>
 
               <div className="p-3 border-t border-border bg-background/40 flex gap-2">
                 <Textarea
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
+                  /* Notă: backend-ul auto-traduce RO → limba clientului la trimitere
+                     (vezi ChatService.sendAsAdmin). Adminul scrie mereu în RO. */
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                       e.preventDefault();
@@ -297,7 +274,47 @@ export default function AdminChatPage() {
             </>
           )}
         </section>
+
+        <AssistantPanel
+          contextKind="chat"
+          refId={active}
+          detectedLang={thread?.messages?.find((m) => m.authorRole === 'user')?.detectedLang}
+          onInsertDraft={(text) => setDraft(text)}
+        />
       </div>
+    </div>
+  );
+}
+
+function ChatBubble({ m }: { m: import('@/lib/types').AdminChatMessage }) {
+  const fromAdmin = m.authorRole === 'admin';
+  const [mode, setMode] = useState<'original' | 'ro'>('original');
+  // Pentru mesaje user în altă limbă: "ro" arată traducerea în RO (m.bodyRo).
+  // Pentru mesaje admin (auto-traduse): "ro" arată originalul scris de admin (stocat în bodyRo).
+  const display = mode === 'ro' && m.bodyRo ? m.bodyRo : m.body;
+  const hasTranslation = !!m.bodyRo && m.detectedLang && m.detectedLang !== 'ro';
+  return (
+    <div
+      className={cn(
+        'max-w-[75%] px-3 py-2 rounded-lg text-sm whitespace-pre-wrap',
+        fromAdmin
+          ? 'self-end bg-primary/15 text-foreground border border-primary/30'
+          : 'self-start bg-secondary border border-border',
+      )}
+    >
+      <div className="text-[10px] uppercase tracking-wider opacity-60 mb-1 flex items-center gap-1 flex-wrap">
+        {fromAdmin ? <Crown className="h-3 w-3" /> : <User className="h-3 w-3" />}
+        {fromAdmin ? 'Admin' : 'User'} · {format(new Date(m.createdAt), 'HH:mm', { locale: ro })}
+        {hasTranslation && (
+          <TranslationToggle
+            detectedLang={m.detectedLang}
+            hasRoTranslation={true}
+            consensus={m.translationConsensus}
+            onChange={setMode}
+          />
+        )}
+      </div>
+      {display}
     </div>
   );
 }

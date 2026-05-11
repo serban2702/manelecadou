@@ -10,11 +10,15 @@ import { ChatController, AdminChatController } from './chat.controller';
 import { ChatGateway } from './chat.gateway';
 import { AuthModule } from '../auth/auth.module';
 import { AdminGuard } from '../../common/admin.guard';
+import { OpenAiModule } from '../../openai/openai.module';
+import { KbModule } from '../kb/kb.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Conversation, ChatMessage, GuestSession, User, AnalyticsSession]),
     AuthModule,
+    OpenAiModule,
+    KbModule,
   ],
   providers: [ChatService, ChatGateway, AdminGuard],
   exports: [ChatService, ChatGateway],

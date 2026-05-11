@@ -107,6 +107,7 @@ export class MailService {
 
   async updateAccount(id: string, patch: Partial<MailAccountInput>): Promise<MailAccount> {
     const acc = await this.getAccount(id);
+    if (patch.siteId !== undefined) acc.siteId = patch.siteId;
     if (patch.label != null) acc.label = patch.label;
     if (patch.email != null) acc.email = patch.email;
     if (patch.fromName !== undefined) acc.fromName = patch.fromName;

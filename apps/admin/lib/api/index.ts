@@ -8,3 +8,4 @@ export * from './analytics.api';
 export * from './suno.api';
 export * from './sites.api';
 export * from './database.api';
+export * from './ai-assistant.api';

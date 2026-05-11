@@ -8,6 +8,7 @@ import { MailAccount } from './entities/mail-account.entity';
 import { MailFolder, MailFolderRole } from './entities/mail-folder.entity';
 import { MailMessage } from './entities/mail-message.entity';
 import { MailGateway } from './mail.gateway';
+import { TranslationService } from '../../openai/translation.service';
 
 export const AI_REPLY_QUEUE = 'ai-reply';
 export const IMAP_SYNC_QUEUE = 'imap-sync';
@@ -20,6 +21,7 @@ export class MailSyncService {
     private readonly mail: MailService,
     private readonly imap: ImapService,
     private readonly gateway: MailGateway,
+    private readonly translation: TranslationService,
     @InjectQueue(AI_REPLY_QUEUE) private readonly aiQueue: Queue,
   ) {}
 
@@ -75,6 +77,9 @@ export class MailSyncService {
           // Only enqueue AI for inbound, non-AI messages.
           if (created.direction === 'in') {
             await this.aiQueue.add('suggest', { messageId: created.id }, { removeOnComplete: 100, removeOnFail: 50 });
+            // Auto-translate inbound non-RO → RO. Fire-and-forget: nu blocăm sync-ul
+            // dacă traducerea durează / cade (mesajul e oricum vizibil în original).
+            void this.translateInboundAsync(created.id);
           }
           this.gateway.emitNewMessage(acc.id, created.id);
           if (BigInt(m.uid) > BigInt(f.lastUid)) f.lastUid = m.uid;
@@ -136,5 +141,30 @@ export class MailSyncService {
       }
     }
     return saved;
+  }
+
+  /**
+   * Rulează pipeline-ul de traducere multi-agent peste un mesaj inbound.
+   * Salvează rezultatul (text RO + scor consens) sau lasă câmpurile null dacă mesajul
+   * e deja în RO. Erorile sunt log-uite (mesajul rămâne vizibil în original).
+   */
+  private async translateInboundAsync(messageId: string): Promise<void> {
+    try {
+      const msg = await this.mail.messages.findOne({ where: { id: messageId } });
+      if (!msg) return;
+      const source = (msg.bodyText ?? msg.snippet ?? '').trim();
+      if (!source) return;
+      const result = await this.translation.translateToRo(source);
+      const detected = result?.sourceLang ?? 'ro';
+      msg.detectedLang = detected;
+      if (result) {
+        msg.bodyTextRo = result.final;
+        msg.translationConsensus = result.consensus;
+      }
+      await this.mail.messages.save(msg);
+      this.gateway.emitNewMessage(msg.accountId, msg.id);
+    } catch (e) {
+      this.logger.warn(`translate inbound mail ${messageId} failed: ${(e as Error).message}`);
+    }
   }
 }

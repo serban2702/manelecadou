@@ -30,6 +30,7 @@ import { MailModule } from './modules/mail/mail.module';
 import { KbModule } from './modules/kb/kb.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { SitesModule } from './modules/sites/sites.module';
+import { AiAssistantModule } from './modules/ai-assistant/ai-assistant.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { SitesModule } from './modules/sites/sites.module';
     SettingsModule,
     KbModule,
     MailModule,
+    AiAssistantModule,
     SeederModule,
   ],
   providers: [

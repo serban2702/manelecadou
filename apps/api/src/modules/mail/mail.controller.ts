@@ -26,8 +26,12 @@ import { ImapService } from './imap.service';
 import { MailSendService } from './mail-send.service';
 import { MailSyncService, IMAP_SYNC_QUEUE } from './mail-sync.service';
 import { KbService } from '../kb/kb.service';
+import { TranslationService } from '../../openai/translation.service';
 
 class AccountDto implements MailAccountInput {
+  // Obligatoriu: fiecare cont IMAP trebuie să aparțină unui site (centralizare cross-tenant
+  // în „Toate site-urile" + KB/auto-reply scoped corect pe tenant).
+  @IsString() siteId!: string;
   @IsString() @MaxLength(120) label!: string;
   @IsEmail() email!: string;
   @IsOptional() @IsString() @MaxLength(200) fromName?: string;
@@ -51,6 +55,7 @@ class AccountDto implements MailAccountInput {
 }
 
 class AccountPatchDto {
+  @IsOptional() @IsString() siteId?: string;
   @IsOptional() @IsString() @MaxLength(120) label?: string;
   @IsOptional() @IsEmail() email?: string;
   @IsOptional() @IsString() fromName?: string;
@@ -75,6 +80,18 @@ class ReplyDto {
   @IsOptional() to?: string[];
   @IsOptional() cc?: string[];
   @IsOptional() @IsString() subject?: string;
+  /**
+   * Forțează limba țintă a traducerii. Dacă lipsește, sistemul folosește
+   * `detectedLang` al mesajului original. 'ro' = nicio traducere (livrăm așa cum a scris adminul).
+   */
+  @IsOptional() @IsString() targetLang?: string;
+  /** Skip explicit pe traducere chiar dacă originalul e în altă limbă. */
+  @IsOptional() skipTranslation?: boolean;
+}
+
+class TranslateOutDto {
+  @IsString() @MinLength(1) text!: string;
+  @IsString() @MinLength(2) targetLang!: string;
 }
 
 class FlagsDto {
@@ -91,6 +108,7 @@ export class MailController {
     private readonly send: MailSendService,
     private readonly sync: MailSyncService,
     private readonly kb: KbService,
+    private readonly translation: TranslationService,
     @InjectQueue(IMAP_SYNC_QUEUE) private readonly syncQueue: Queue,
   ) {}
 
@@ -101,11 +119,16 @@ export class MailController {
   }
 
   @Post('accounts')
-  async createAccount(@Body() dto: AccountDto, @CurrentSiteId() siteId: string | null) {
+  async createAccount(@Body() dto: AccountDto) {
     if (!dto.imapPass || !dto.smtpPass) {
       throw new BadRequestException('IMAP pass și SMTP pass sunt obligatorii');
     }
-    const acc = await this.mail.createAccount({ ...dto, siteId });
+    if (!dto.siteId) {
+      throw new BadRequestException('Selectează un site pentru contul de email');
+    }
+    // siteId vine din body (form-ul cere explicit), NU din header — adminul poate
+    // crea conturi pentru orice site din modul „Toate".
+    const acc = await this.mail.createAccount({ ...dto, siteId: dto.siteId });
     return this.mail.toSafe(acc);
   }
 
@@ -206,13 +229,62 @@ export class MailController {
 
   @Post('messages/:id/reply')
   async reply(@Param('id') id: string, @Body() dto: ReplyDto) {
-    return this.send.sendReply({
+    let htmlBody = dto.html;
+    let translationMeta: { sent: string; original: string; consensus: number; targetLang: string } | null = null;
+
+    if (!dto.skipTranslation) {
+      // Determină limba țintă: explicit din DTO sau auto din mesajul original.
+      const original = await this.mail.messages.findOne({ where: { id } });
+      const target = (dto.targetLang ?? original?.detectedLang ?? 'ro').toLowerCase();
+      if (target && target !== 'ro') {
+        const result = await this.translation.translateFromRo(htmlBody, target);
+        if (result) {
+          translationMeta = { sent: result.final, original: htmlBody, consensus: result.consensus, targetLang: target };
+          htmlBody = result.final;
+        }
+      }
+    }
+
+    const sent = await this.send.sendReply({
       inReplyToId: id,
-      htmlBody: dto.html,
+      htmlBody,
       to: dto.to,
       cc: dto.cc,
       subject: dto.subject,
     });
+    return { ...sent, translation: translationMeta };
+  }
+
+  /**
+   * Traducere outbound on-demand (fără trimitere) — folosit de panoul AI Assistant
+   * ca să arate adminului cum va arăta mesajul în limba țintă înainte să apese „Trimite".
+   */
+  @Post('translate-out')
+  async translateOut(@Body() dto: TranslateOutDto) {
+    const r = await this.translation.translateFromRo(dto.text, dto.targetLang);
+    if (!r) return { translation: dto.text, consensus: 1, candidates: [dto.text, dto.text], divergences: [], targetLang: dto.targetLang };
+    return {
+      translation: r.final,
+      consensus: r.consensus,
+      candidates: r.candidates,
+      divergences: r.divergences,
+      targetLang: r.targetLang,
+    };
+  }
+
+  /** Re-rulează traducerea inbound peste un mesaj existent (manual). */
+  @Post('messages/:id/translate')
+  async retranslate(@Param('id') id: string) {
+    const msg = await this.mail.messages.findOne({ where: { id } });
+    if (!msg) throw new NotFoundException();
+    const source = (msg.bodyText ?? msg.snippet ?? '').trim();
+    if (!source) return { ok: false, reason: 'empty' };
+    const r = await this.translation.translateToRo(source);
+    msg.detectedLang = r?.sourceLang ?? 'ro';
+    msg.bodyTextRo = r?.final ?? null;
+    msg.translationConsensus = r?.consensus ?? null;
+    await this.mail.messages.save(msg);
+    return { ok: true, detectedLang: msg.detectedLang, bodyTextRo: msg.bodyTextRo, consensus: msg.translationConsensus };
   }
 
   @Post('messages/:id/archive')

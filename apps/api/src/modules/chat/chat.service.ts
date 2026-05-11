@@ -13,6 +13,7 @@ import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { User } from '../users/user.entity';
 import { AnalyticsSession } from '../analytics/analytics-session.entity';
 import { ChatGateway } from './chat.gateway';
+import { TranslationService } from '../../openai/translation.service';
 
 /** Pragul în secunde sub care o sesiune e considerată "online". */
 const ONLINE_WINDOW_SEC = 120;
@@ -38,6 +39,7 @@ export class ChatService {
     @InjectRepository(AnalyticsSession) private readonly analyticsSessions: Repository<AnalyticsSession>,
     @Inject(forwardRef(() => ChatGateway))
     private readonly gateway: ChatGateway,
+    private readonly translation: TranslationService,
   ) {}
 
   /**
@@ -120,6 +122,7 @@ export class ChatService {
     const conversation = await this.getOrCreateMine(ctx);
     const msg = this.msg.create({
       conversationId: conversation.id,
+      siteId: ctx.siteId ?? null,
       authorRole: 'user',
       authorId: ctx.userId,
       body: body.trim(),
@@ -129,7 +132,46 @@ export class ChatService {
     conversation.unreadByAdmin += 1;
     await this.conv.save(conversation);
     this.gateway.emitMessage({ message: saved, conversation });
+    // Auto-translate inbound non-RO → RO (background, nu blocăm răspunsul către user).
+    void this.translateMessageAsync(saved.id);
     return saved;
+  }
+
+  /** Aplică pipeline-ul multi-agent peste un mesaj de chat și salvează `bodyRo`. */
+  private async translateMessageAsync(messageId: string): Promise<void> {
+    try {
+      const m = await this.msg.findOne({ where: { id: messageId } });
+      if (!m) return;
+      const r = await this.translation.translateToRo(m.body);
+      m.detectedLang = r?.sourceLang ?? 'ro';
+      if (r) {
+        m.bodyRo = r.final;
+        m.translationConsensus = r.consensus;
+      }
+      await this.msg.save(m);
+    } catch {
+      // log silent — mesajul e oricum vizibil în original.
+    }
+  }
+
+  /**
+   * Traduce textul scris de admin (în RO) în limba detectată a conversației
+   * (deduce din ultimul mesaj inbound non-RO). Folosit pe trimitere admin → user.
+   * Întoarce { final, sourceLang } sau null dacă nu e cazul.
+   */
+  async translateAdminOutbound(conversationId: string, text: string, forceTargetLang?: string): Promise<{ final: string; targetLang: string; consensus: number } | null> {
+    let target = (forceTargetLang ?? '').toLowerCase();
+    if (!target) {
+      const lastInbound = await this.msg.findOne({
+        where: { conversationId, authorRole: 'user' },
+        order: { createdAt: 'DESC' },
+      });
+      target = (lastInbound?.detectedLang ?? 'ro').toLowerCase();
+    }
+    if (!target || target === 'ro') return null;
+    const r = await this.translation.translateFromRo(text, target);
+    if (!r) return null;
+    return { final: r.final, targetLang: target, consensus: r.consensus };
   }
 
   // ============ ADMIN ============
@@ -147,13 +189,11 @@ export class ChatService {
    * inbox — forțăm un site activ. Adminul comută între site-uri prin selector.
    */
   async listAllConversations(siteId: string | null): Promise<ConversationWithPresence[]> {
-    if (!siteId) {
-      throw new ForbiddenException(
-        'Selectează un site activ pentru chat — modul cross-site nu e disponibil aici.',
-      );
-    }
+    // Listing-ul e cross-tenant când nu ai un site activ — UI-ul afișează badge-ul
+    // siteId per conversație ca să distingi vizual. Acțiunile write rămân scoped la conversație
+    // (ex: reply ia siteId din entitate, nu din header).
     const all = await this.conv.find({
-      where: { siteId },
+      where: siteId ? { siteId } : {},
       order: { lastMessageAt: 'DESC', updatedAt: 'DESC' },
       take: 200,
     });
@@ -245,13 +285,31 @@ export class ChatService {
     await this.conv.update({ id: conversationId }, { unreadByAdmin: 0 });
   }
 
-  async sendAsAdmin(conversationId: string, adminUserId: string, body: string): Promise<ChatMessage> {
+  async sendAsAdmin(conversationId: string, adminUserId: string, body: string, opts?: { forceTargetLang?: string; skipTranslation?: boolean }): Promise<ChatMessage & { translation?: { original: string; targetLang: string; consensus: number } | null }> {
     const conv = await this.getConversation(conversationId);
+    const trimmed = body.trim();
+
+    // Auto-translate RO → limba clientului (dacă există un mesaj inbound non-RO).
+    let finalBody = trimmed;
+    let translationMeta: { original: string; targetLang: string; consensus: number } | null = null;
+    if (!opts?.skipTranslation) {
+      const r = await this.translateAdminOutbound(conversationId, trimmed, opts?.forceTargetLang);
+      if (r) {
+        translationMeta = { original: trimmed, targetLang: r.targetLang, consensus: r.consensus };
+        finalBody = r.final;
+      }
+    }
+
     const msg = this.msg.create({
       conversationId: conv.id,
+      siteId: conv.siteId ?? null,
       authorRole: 'admin',
       authorId: adminUserId,
-      body: body.trim(),
+      body: finalBody,
+      // Stocăm originalul RO ca „bodyRo" inversat: pentru mesajele admin, bodyRo = ce a scris adminul în română.
+      bodyRo: translationMeta ? translationMeta.original : null,
+      detectedLang: translationMeta?.targetLang ?? 'ro',
+      translationConsensus: translationMeta?.consensus ?? null,
     });
     const saved = await this.msg.save(msg);
     conv.lastMessageAt = saved.createdAt;
@@ -259,6 +317,6 @@ export class ChatService {
     conv.unreadByAdmin = 0;
     await this.conv.save(conv);
     this.gateway.emitMessage({ message: saved, conversation: conv });
-    return saved;
+    return Object.assign(saved, { translation: translationMeta });
   }
 }

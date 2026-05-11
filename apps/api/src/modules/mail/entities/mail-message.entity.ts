@@ -121,6 +121,23 @@ export class MailMessage {
   @Column({ type: 'timestamptz', nullable: true })
   receivedAt!: Date | null;
 
+  // ====== Traducere multi-agent (RO ↔ alte limbi) ======
+  /** ISO 639-1 detectat (ex: 'ro', 'en', 'bg', 'el'). Null = nedetectat încă. */
+  @Column({ type: 'varchar', length: 8, nullable: true })
+  detectedLang!: string | null;
+
+  /** Traducerea finală în RO (după consens între agenți). Doar dacă detectedLang !== 'ro'. */
+  @Column({ type: 'text', nullable: true })
+  bodyTextRo!: string | null;
+
+  /** Versiunea HTML tradusă, dacă originalul e HTML. */
+  @Column({ type: 'text', nullable: true })
+  bodyHtmlRo!: string | null;
+
+  /** Scor consens 0..1 între cei doi traducători (low = revizuiește manual). */
+  @Column({ type: 'float', nullable: true })
+  translationConsensus!: number | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 }

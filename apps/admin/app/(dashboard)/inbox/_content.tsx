@@ -18,16 +18,18 @@ import { useToast } from '@/components/ui/use-toast';
 import { HtmlBody } from '@/components/inbox/HtmlBody';
 import { ReplyComposer } from '@/components/inbox/ReplyComposer';
 import { SuggestionBanner } from '@/components/inbox/SuggestionBanner';
-import { useSitesMap } from '@/lib/hooks/use-sites-map';
+import { SiteBadge } from '@/components/site-badge';
+import { AssistantPanel } from '@/components/ai-assistant/AssistantPanel';
+import { TranslationToggle } from '@/components/inbox/TranslationToggle';
 
 export default function InboxPage() {
   const { toast } = useToast();
-  const { isAllSelected } = useSitesMap();
   const [activeAccountId, setActiveAccountId] = useState<string | 'all' | null>(null);
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [composerHtml, setComposerHtml] = useState<string>('');
   const [view, setView] = useState<'inbox' | 'archive'>('inbox');
+  const [bodyMode, setBodyMode] = useState<'original' | 'ro'>('original');
 
   const { data: accounts, refetch: refetchAccounts } = useAsync(
     () => MailApi.accounts(),
@@ -134,18 +136,6 @@ export default function InboxPage() {
     }
   }
 
-  if (isAllSelected) {
-    return (
-      <div>
-        <Empty
-          icon={<InboxIcon className="h-5 w-5" />}
-          title="Selectează un site din selectorul de sus"
-          description="Conturile de mail sunt scoped per site — alege un site activ pentru a vedea inbox-ul."
-        />
-      </div>
-    );
-  }
-
   if (!accounts) {
     return (
       <div className="flex gap-4">
@@ -204,6 +194,7 @@ export default function InboxPage() {
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-xs font-medium">{a.label}</div>
                   <div className="truncate text-[10px] text-muted-foreground">{a.email}</div>
+                  <div className="mt-0.5"><SiteBadge siteId={a.siteId} /></div>
                 </div>
                 {a.lastError && <span className="h-2 w-2 rounded-full bg-destructive shrink-0" />}
               </button>
@@ -261,6 +252,7 @@ export default function InboxPage() {
                 <div className="min-w-0 flex-1">
                   <div className="text-base font-semibold truncate flex items-center gap-2">
                     {detail.message.subject || '(fără subiect)'}
+                    <SiteBadge siteId={detail.message.siteId} />
                     {detail.message.archived && <Badge variant="outline" className="gap-1 text-xs"><Archive className="h-3 w-3" /> Arhivat</Badge>}
                   </div>
                   <div className="text-xs text-muted-foreground truncate">
@@ -302,6 +294,13 @@ export default function InboxPage() {
                         <span className="text-muted-foreground"> · {m.sentAt ? formatDistanceToNowStrict(new Date(m.sentAt), { locale: ro, addSuffix: true }) : ''}</span>
                       </div>
                       <div className="flex items-center gap-1">
+                        <TranslationToggle
+                          detectedLang={m.detectedLang}
+                          hasRoTranslation={!!m.bodyTextRo || !!m.bodyHtmlRo}
+                          consensus={m.translationConsensus}
+                          initial={bodyMode}
+                          onChange={setBodyMode}
+                        />
                         {m.aiGenerated && <Badge variant="secondary" className="gap-1 text-primary"><Sparkles className="h-3 w-3" /> AI</Badge>}
                         {m.direction === 'out' && <Badge variant="outline" className="text-xs">Trimis</Badge>}
                         {m.attachmentCount > 0 && (
@@ -312,7 +311,11 @@ export default function InboxPage() {
                       </div>
                     </header>
                     <div className="px-3 py-2">
-                      <HtmlBody html={m.bodyHtml} text={m.bodyText} />
+                      {bodyMode === 'ro' && (m.bodyTextRo || m.bodyHtmlRo) ? (
+                        <HtmlBody html={m.bodyHtmlRo} text={m.bodyTextRo} />
+                      ) : (
+                        <HtmlBody html={m.bodyHtml} text={m.bodyText} />
+                      )}
                     </div>
                     {m.id === detail.message.id && m.attachmentsPurged && (
                       <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
@@ -355,9 +358,26 @@ export default function InboxPage() {
             </div>
           )}
         </section>
+
+        {/* Pane 4: AI Assistant — vizibil mereu, contextual pe mesajul activ */}
+        <AssistantPanel
+          contextKind="mail"
+          refId={detail?.message?.id ?? null}
+          detectedLang={detail?.message?.detectedLang}
+          onInsertDraft={(text) => setComposerHtml(toHtmlIfPlain(text))}
+        />
       </div>
     </div>
   );
+}
+
+/** Acceptă text simplu și-l înfășoară în <p> ca să meargă în composer-ul HTML. */
+function toHtmlIfPlain(s: string): string {
+  if (/<\w+/.test(s)) return s;
+  return s
+    .split(/\n{2,}/)
+    .map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+    .join('\n');
 }
 
 function MessageRow({ m, active, accountLabel, onClick }: { m: MailMessageRow; active: boolean; accountLabel?: string; onClick: () => void }) {
@@ -385,7 +405,10 @@ function MessageRow({ m, active, accountLabel, onClick }: { m: MailMessageRow; a
         {m.attachmentCount > 0 && <Paperclip className="h-2.5 w-2.5" />}
         <span className="truncate">{m.snippet}</span>
       </div>
-      {accountLabel && <div className="text-[10px] text-muted-foreground mt-0.5">{accountLabel}</div>}
+      <div className="flex items-center gap-1.5 mt-0.5">
+        <SiteBadge siteId={m.siteId} />
+        {accountLabel && <span className="text-[10px] text-muted-foreground truncate">{accountLabel}</span>}
+      </div>
     </button>
   );
 }

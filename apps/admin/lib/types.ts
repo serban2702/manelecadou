@@ -50,6 +50,7 @@ export interface AdminGeneration {
 
 export interface AdminChatConversation {
   id: string;
+  siteId: string | null;
   userId: string | null;
   guestId: string | null;
   email: string | null;
@@ -71,6 +72,9 @@ export interface AdminChatMessage {
   authorId: string | null;
   body: string;
   createdAt: string;
+  detectedLang: string | null;
+  bodyRo: string | null;
+  translationConsensus: number | null;
 }
 
 export interface AdminPromoCode {
@@ -121,6 +125,7 @@ export interface AdminGiftCode {
 // ====== Mail Hub ======
 export interface MailAccountSafe {
   id: string;
+  siteId: string | null;
   label: string;
   email: string;
   fromName: string | null;
@@ -145,6 +150,7 @@ export interface MailAccountSafe {
 }
 
 export interface MailAccountInputDto {
+  siteId: string | null;
   label: string;
   email: string;
   fromName?: string | null;
@@ -185,6 +191,7 @@ export interface MailAddrLite { address: string; name?: string }
 
 export interface MailMessageRow {
   id: string;
+  siteId: string | null;
   accountId: string;
   folderId: string | null;
   uid: string | null;
@@ -213,6 +220,10 @@ export interface MailMessageRow {
   sentAt: string | null;
   receivedAt: string | null;
   createdAt: string;
+  detectedLang: string | null;
+  bodyTextRo: string | null;
+  bodyHtmlRo: string | null;
+  translationConsensus: number | null;
 }
 
 export interface MailAttachmentRow {

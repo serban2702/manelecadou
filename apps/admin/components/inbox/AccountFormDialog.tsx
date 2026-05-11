@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
+import { useSitesMap } from '@/lib/hooks/use-sites-map';
+import { getSelectedSiteId, ALL_SITES } from '@/lib/api/sites.api';
 
 interface Props {
   open: boolean;
@@ -19,6 +21,7 @@ interface Props {
 }
 
 const blank: MailAccountInputDto = {
+  siteId: '',
   label: '',
   email: '',
   fromName: '',
@@ -40,6 +43,8 @@ const blank: MailAccountInputDto = {
 
 export function AccountFormDialog({ open, initial, onClose, onSaved }: Props) {
   const { toast } = useToast();
+  const { byId: sitesById } = useSitesMap();
+  const sites = Array.from(sitesById.values());
   const [form, setForm] = useState<MailAccountInputDto>(blank);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -50,6 +55,7 @@ export function AccountFormDialog({ open, initial, onClose, onSaved }: Props) {
       setTestResult(null);
       if (initial) {
         setForm({
+          siteId: initial.siteId ?? '',
           label: initial.label,
           email: initial.email,
           fromName: initial.fromName ?? '',
@@ -69,7 +75,10 @@ export function AccountFormDialog({ open, initial, onClose, onSaved }: Props) {
           syncEnabled: initial.syncEnabled,
         });
       } else {
-        setForm(blank);
+        // Pre-populează cu site-ul curent (dacă selectorul e pe un site, e cel
+        // mai probabil scenariu); rămâne gol în mod „Toate" — userul trebuie să aleagă.
+        const sel = getSelectedSiteId();
+        setForm({ ...blank, siteId: sel === ALL_SITES ? '' : sel });
       }
     }
   }, [open, initial]);
@@ -109,6 +118,11 @@ export function AccountFormDialog({ open, initial, onClose, onSaved }: Props) {
         if (!form.smtpPass) delete patch.smtpPass;
         await MailApi.accountUpdate(initial.id, patch);
       } else {
+        if (!form.siteId) {
+          toast({ variant: 'destructive', title: 'Site-ul e obligatoriu', description: 'Alege site-ul căruia îi aparține contul de email.' });
+          setSaving(false);
+          return;
+        }
         if (!form.imapPass || !form.smtpPass) {
           toast({ variant: 'destructive', title: 'Parolele lipsesc' });
           setSaving(false);
@@ -133,6 +147,21 @@ export function AccountFormDialog({ open, initial, onClose, onSaved }: Props) {
           <DialogTitle>{initial ? 'Editează cont email' : 'Adaugă cont email'}</DialogTitle>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto pr-2">
+          <div className="col-span-2">
+            <Label className="text-xs text-muted-foreground">Site (obligatoriu)</Label>
+            <select
+              value={form.siteId ?? ''}
+              onChange={(e) => update('siteId', e.target.value)}
+              className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
+            >
+              <option value="">— Alege site —</option>
+              {sites.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.domain})
+                </option>
+              ))}
+            </select>
+          </div>
           <Field label="Etichetă" value={form.label} onChange={(v) => update('label', v)} placeholder="Ex: Suport principal" />
           <Field label="Adresă email" value={form.email} onChange={(v) => update('email', v)} placeholder="contact@manelecadou.ro" />
           <Field label="Nume afișat (From)" value={form.fromName ?? ''} onChange={(v) => update('fromName', v)} placeholder="Manele Cadou — Suport" className="col-span-2" />
