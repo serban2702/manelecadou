@@ -273,6 +273,73 @@ export class GenerationsService {
     });
   }
 
+  /**
+   * Creează o generation type='full' în starea „pending payment" — fără să o
+   * pună la coadă. Folosit de flow-ul „pay-first" (site.demoEnabled=false):
+   * userul completează formularul, vede prețul, plătește, ABIA APOI se
+   * generează maneaua. Diferența față de create(type='full'):
+   *   - Nu necesită paymentId în input (paymentul se creează după).
+   *   - Nu se enqueueează (status rămâne 'pending').
+   *   - paidUnlocked=false (devine true după webhook).
+   */
+  async createPendingForPayment(
+    dto: Omit<CreateGenerationDto, 'type' | 'paymentId'>,
+    ctx: { userId: string | null; guestId: string | null; siteId?: string | null },
+  ): Promise<Generation> {
+    if (!ctx.userId && !ctx.guestId) {
+      throw new ForbiddenException('Missing guest session');
+    }
+    if (!ctx.userId && ctx.guestId) {
+      const guest = await this.dataSource
+        .getRepository(GuestSession)
+        .findOne({ where: { id: ctx.guestId } });
+      if (!guest) throw new NotFoundException('Guest session not found');
+      if (!guest.email) throw new ForbiddenException('email_required');
+    }
+    const gen = this.repo.create({
+      ownerUserId: ctx.userId,
+      ownerGuestId: ctx.userId ? null : ctx.guestId,
+      type: 'full',
+      status: 'pending',
+      durationSec: 90,
+      style: dto.style,
+      occasion: dto.occasion,
+      recipientName: dto.recipientName,
+      message: dto.message,
+      dedication: dto.dedication ?? null,
+      voiceArtist: dto.voiceArtist,
+      customLyrics: dto.customLyrics ?? null,
+      tipAmount: dto.tipAmount ?? 0,
+      premium: dto.premium ?? false,
+      paymentId: null,
+      paidUnlocked: false,
+      locale: dto.locale ?? 'ro',
+      siteId: ctx.siteId ?? null,
+    });
+    return this.repo.save(gen);
+  }
+
+  /**
+   * Marchează o generation ca plătită + o pune la coadă. Apelat din webhook-ul
+   * Stripe după ce un payment direct (fără demo) a fost confirmat. Idempotent —
+   * dacă e deja queued/running, întoarce starea curentă.
+   */
+  async markPaidAndQueue(generationId: string, paymentId: string): Promise<Generation | null> {
+    const gen = await this.repo.findOne({ where: { id: generationId } });
+    if (!gen) return null;
+    if (gen.status !== 'pending') return gen; // deja pornită
+    gen.paidUnlocked = true;
+    gen.paymentId = paymentId;
+    gen.status = 'queued';
+    const saved = await this.repo.save(gen);
+    await this.queue.add(
+      'generate',
+      { generationId: saved.id },
+      { removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
+    );
+    return saved;
+  }
+
   async unlockWithPayment(
     generationId: string,
     paymentId: string,

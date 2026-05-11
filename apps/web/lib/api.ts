@@ -285,6 +285,32 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  /** Pay-first checkout — folosit când site.demoEnabled=false. Userul plătește
+   *  înainte de generare; webhook-ul Stripe pornește generation după paid. */
+  createDirectCheckoutSession: (input: {
+    generation: {
+      style: string;
+      occasion: string;
+      recipientName: string;
+      message: string;
+      dedication?: string;
+      voiceArtist: string;
+      customLyrics?: string;
+      locale?: string;
+      tipAmount?: number;
+      premium?: boolean;
+    };
+    tipAmount?: number;
+    premium?: boolean;
+    promoCode?: string;
+  }) =>
+    request<{ url: string; paymentId: string; generationId: string }>(
+      '/payments/checkout-direct',
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+    ),
 
   reportClientError: (input: { message: string; stack?: string; path?: string; level?: 'error' | 'warn' | 'info' }) =>
     request<{ ok: boolean }>('/errors/client', {

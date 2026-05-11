@@ -7,7 +7,8 @@ import { useTranslations } from 'next-intl';
 import { Ic } from './icons';
 import { Wave } from './sections';
 import { ManeaPlayer } from './ManeaPlayer';
-import { OCC, STYLES, VOICES } from '@/lib/seed-data';
+import { OCC, STYLES, VOICES, type StyleOption } from '@/lib/seed-data';
+import type { SiteOccasionEntry, SiteStyleEntry, SiteVoiceEntry } from '@/lib/site-shared';
 import { suggestMessage } from '@/lib/message-suggest';
 import {
   api,
@@ -46,6 +47,7 @@ const EMPTY: Data = {
 };
 
 const STEP_NAMES_FALLBACK = ['Stil', 'Ocazie', 'Detalii', 'Cadou', 'Demo', 'Deblochează'];
+const STEP_NAMES_PAYFIRST_FALLBACK = ['Stil', 'Ocazie', 'Detalii', 'Cadou', 'Plătește'];
 
 // Cache global pentru mostrele audio (voice/style) — evită refetch-urile.
 // `null` înseamnă "am cerut, nu există mostră publică pentru această voce/stil".
@@ -184,14 +186,30 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   );
   useSamplePreview(playing, handleSampleAutoStop);
 
+  const site = useSite();
+  const demoEnabled = site.demoEnabled !== false;
+  const totalSteps = demoEnabled ? 6 : 5;
+  const effectiveStyles = useMemo<StyleOption[]>(
+    () => (site.styles?.length ? siteStylesToOptions(site.styles, site.locale) : STYLES),
+    [site.styles, site.locale],
+  );
+  const effectiveOccasions = useMemo(
+    () => (site.occasions?.length ? siteOccasionsToOptions(site.occasions, site.locale) : OCC),
+    [site.occasions, site.locale],
+  );
+  const effectiveVoices = useMemo(
+    () => (site.voices?.length ? siteVoicesToOptions(site.voices, site.locale) : VOICES),
+    [site.voices, site.locale],
+  );
+
   // Pre-fill din query params (ex: din șmecher calculator)
   useEffect(() => {
     const qStyle = search.get('style');
     const qOcc = search.get('occ');
-    if (qStyle && STYLES.find((s) => s.id === qStyle)) {
+    if (qStyle && effectiveStyles.find((s) => s.id === qStyle)) {
       setData((d) => ({ ...d, style: qStyle }));
     }
-    if (qOcc && OCC.find((o) => o.id === qOcc)) {
+    if (qOcc && effectiveOccasions.find((o) => o.id === qOcc)) {
       setData((d) => ({ ...d, occ: qOcc }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -229,8 +247,15 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     if (i === 1) return !!data.occ;
     if (i === 2) return !!data.name && !!data.msg && !!data.voice;
     if (i === 3) return maxVisited > 3; // optional, considerat făcut doar după ce-l treci
-    if (i === 4) return !!generationId;
-    if (i === 5) return !!poll?.paidUnlocked;
+    if (demoEnabled) {
+      if (i === 4) return !!generationId;
+      if (i === 5) return !!poll?.paidUnlocked;
+    } else {
+      // Pay-first: ultimul pas e step 4 (Plătește). „Done" = userul a inițiat
+      // checkout-ul Stripe (redirect-ul s-a întâmplat deja, deci nu mai vedem
+      // efectiv UI după). Marcăm done când există generationId (creat la pay).
+      if (i === 4) return !!generationId;
+    }
     return false;
   };
 
@@ -245,7 +270,8 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     if (canJumpTo(target)) setStep(target);
   };
 
-  const next = () => setStep((s) => Math.min(5, s + 1));
+  const lastStep = totalSteps - 1;
+  const next = () => setStep((s) => Math.min(lastStep, s + 1));
   const prev = () => setStep((s) => Math.max(0, s - 1));
 
   const reset = () => {
@@ -263,8 +289,9 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     (step === 1 && !!data.occ) ||
     (step === 2 && !!data.name && !!data.msg && !!data.voice) ||
     step === 3 ||
-    (step === 4 && !!poll?.paidUnlocked) ||
-    step === 5;
+    (demoEnabled && step === 4 && !!poll?.paidUnlocked) ||
+    (demoEnabled && step === 5) ||
+    (!demoEnabled && step === 4);
 
   async function submitDemo() {
     if (!session.email) {
@@ -327,28 +354,95 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     }
   }
 
-  // Auto-advance step 4 → 5 când demo e creat
-  useEffect(() => {
-    if (generationId && step !== 4 && step !== 5) setStep(4);
-  }, [generationId]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** Pay-first checkout: site.demoEnabled=false. Trimite tot formularul la
+   *  API, care creează generation pending + payment + Stripe Checkout într-o
+   *  singură cerere. Redirect direct la Stripe.  */
+  async function startDirectCheckout() {
+    if (!session.email) {
+      const candidate = emailDraft.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
+        setError('Introdu un email valid ca să-ți trimitem maneaua.');
+        return;
+      }
+      try {
+        await api.setGuestEmail(candidate);
+        await session.refresh();
+      } catch {
+        setError('Nu am putut salva email-ul. Încearcă din nou.');
+        return;
+      }
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const { url, generationId: gid } = await api.createDirectCheckoutSession({
+        generation: {
+          style: data.style,
+          occasion: data.occ,
+          recipientName: data.name,
+          message: data.msg,
+          dedication: data.dedic || undefined,
+          voiceArtist: data.voice,
+          customLyrics: data.customLyrics || undefined,
+          tipAmount: data.tipAmount || 0,
+          premium: data.premium,
+        },
+        tipAmount: data.tipAmount || 0,
+        premium: data.premium,
+        promoCode: promoApplied?.code,
+      });
+      setGenerationId(gid);
+      window.location.href = url;
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.status === 503
+          ? 'Plățile nu sunt încă activate.'
+          : 'Nu s-a putut deschide plata. Încearcă din nou.',
+      );
+      setSubmitting(false);
+    }
+  }
 
-  // Auto-advance to step 5 after success and not yet paid
+  // Auto-advance step 4 → 5 când demo e creat (doar în flow demo)
   useEffect(() => {
+    if (!demoEnabled) return;
+    if (generationId && step !== 4 && step !== 5) setStep(4);
+  }, [generationId, demoEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-advance to step 5 after success and not yet paid (doar în flow demo)
+  useEffect(() => {
+    if (!demoEnabled) return;
     if (poll?.status === 'succeeded' && !poll.paidUnlocked && step === 4) {
       const t = setTimeout(() => setStep(5), 800);
       return () => clearTimeout(t);
     }
-  }, [poll?.status, poll?.paidUnlocked, step]);
+  }, [poll?.status, poll?.paidUnlocked, step, demoEnabled]);
 
   return (
     <div className="gen" id="generator">
-      <Stepper step={step} stepDone={stepDone} canJumpTo={canJumpTo} onJump={goto} />
+      <Stepper
+        step={step}
+        stepDone={stepDone}
+        canJumpTo={canJumpTo}
+        onJump={goto}
+        totalSteps={totalSteps}
+      />
       <div className="gen-body">
-        {step === 0 && <StyleStep data={data} upd={upd} playing={playing} onPlay={onPlay} />}
-        {step === 1 && <OccStep data={data} upd={upd} />}
-        {step === 2 && <DetailsStep data={data} upd={upd} playing={playing} onPlay={onPlay} />}
+        {step === 0 && (
+          <StyleStep data={data} upd={upd} playing={playing} onPlay={onPlay} styles={effectiveStyles} />
+        )}
+        {step === 1 && <OccStep data={data} upd={upd} occasions={effectiveOccasions} />}
+        {step === 2 && (
+          <DetailsStep
+            data={data}
+            upd={upd}
+            playing={playing}
+            onPlay={onPlay}
+            voices={effectiveVoices}
+          />
+        )}
         {step === 3 && <DedicStep data={data} upd={upd} />}
-        {step === 4 && (
+        {step === 4 && demoEnabled && (
           <DemoStep
             data={data}
             email={session.email}
@@ -361,7 +455,26 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
             error={error}
           />
         )}
-        {step === 5 && (
+        {step === 4 && !demoEnabled && (
+          <PayFirstStep
+            data={data}
+            email={session.email}
+            emailDraft={emailDraft}
+            onEmailChange={setEmailDraft}
+            updTip={(v) => upd('tipAmount', v)}
+            updPremium={(v) => upd('premium', v)}
+            onPay={startDirectCheckout}
+            submitting={submitting}
+            error={error}
+            promoCode={promoCode}
+            setPromoCode={setPromoCode}
+            promoApplied={promoApplied}
+            setPromoApplied={setPromoApplied}
+            promoError={promoError}
+            setPromoError={setPromoError}
+          />
+        )}
+        {step === 5 && demoEnabled && (
           <UnlockStep
             generation={poll ?? null}
             data={data}
@@ -382,10 +495,10 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
         )}
       </div>
       <div className="gen-foot">
-        {step > 0 && step < 5 && !generationId && (
+        {step > 0 && step < lastStep && !generationId && (
           <button className="btn btn-ghost btn-sm" onClick={prev}>← {tCommon('back')}</button>
         )}
-        <div className="progress">{tGen('stepPattern', { current: step + 1, total: 6 })}</div>
+        <div className="progress">{tGen('stepPattern', { current: step + 1, total: totalSteps })}</div>
         {step < 4 && (
           <button
             className="btn btn-gold btn-sm"
@@ -408,17 +521,22 @@ function Stepper({
   stepDone,
   canJumpTo,
   onJump,
+  totalSteps,
 }: {
   step: number;
   stepDone: (i: number) => boolean;
   canJumpTo: (i: number) => boolean;
   onJump: (i: number) => void;
+  totalSteps: number;
 }) {
   const tg = useTranslations('generator');
   const stepNamesRaw = tg.raw('steps') as string[] | undefined;
-  const stepNames = Array.isArray(stepNamesRaw) && stepNamesRaw.length === STEP_NAMES_FALLBACK.length
+  // Acceptăm doar dacă i18n returnează exact numărul corect de etichete.
+  // Altfel folosim fallback hardcoded — diferit pentru flow demo vs pay-first.
+  const fallback = totalSteps === 5 ? STEP_NAMES_PAYFIRST_FALLBACK : STEP_NAMES_FALLBACK;
+  const stepNames = Array.isArray(stepNamesRaw) && stepNamesRaw.length === totalSteps
     ? stepNamesRaw
-    : STEP_NAMES_FALLBACK;
+    : fallback;
   return (
     <div
       style={{
@@ -632,7 +750,7 @@ function humanizeGenError(err: string | null | undefined): string {
 }
 
 // ============ STEP 1 ============
-function StyleStep({ data, upd, playing, onPlay }: any) {
+function StyleStep({ data, upd, playing, onPlay, styles }: any & { styles: StyleOption[] }) {
   const tg = useTranslations('generator');
   const tStyles = useTranslations('styles');
   return (
@@ -640,10 +758,12 @@ function StyleStep({ data, upd, playing, onPlay }: any) {
       <h3>{tg('step1Title')}</h3>
       <p className="ld">{tg('step1Sub')}</p>
       <div className="style-list">
-        {STYLES.map((s, idx) => {
+        {(styles as StyleOption[]).map((s, idx) => {
           const isP = playing === `style-${s.id}`;
           let nm = s.nm;
           let ds = s.ds;
+          // Folosim i18n din next-intl doar pentru cheile din seed-data; pentru
+          // stiluri custom (per-site) traducerile sunt deja inline în obiect.
           try { nm = tStyles(`${s.id}.nm`); } catch { /* fallback */ }
           try { ds = tStyles(`${s.id}.ds`); } catch { /* fallback */ }
           return (
@@ -670,14 +790,14 @@ function StyleStep({ data, upd, playing, onPlay }: any) {
 }
 
 // ============ STEP 2 ============
-function OccStep({ data, upd }: any) {
+function OccStep({ data, upd, occasions }: any & { occasions: Array<{ id: string; em: string; nm: string }> }) {
   const tOcc = useTranslations('occasions');
   return (
     <>
       <h3>2. Pentru ce ocazie?</h3>
       <p className="ld">Alege una. Adaptăm versurile.</p>
       <div className="occ-list">
-        {OCC.map((o) => {
+        {occasions.map((o: { id: string; em: string; nm: string }) => {
           let nm = o.nm;
           try { nm = tOcc(o.id); } catch { /* fallback */ }
           return (
@@ -692,8 +812,45 @@ function OccStep({ data, upd }: any) {
   );
 }
 
+// ── Helpers: site config → seed-data shape ────────────────────────────────
+function siteStylesToOptions(
+  list: SiteStyleEntry[],
+  locale: string,
+): StyleOption[] {
+  return list.map((s) => ({
+    id: s.id,
+    em: s.em || '🎵',
+    nm: s.i18n?.[locale]?.nm || s.nm,
+    ds: s.i18n?.[locale]?.ds || s.ds,
+    heat: s.i18n?.[locale]?.heat || s.heat,
+  }));
+}
+
+function siteOccasionsToOptions(
+  list: SiteOccasionEntry[],
+  locale: string,
+): Array<{ id: string; em: string; nm: string }> {
+  return list.map((o) => ({
+    id: o.id,
+    em: o.em || '✨',
+    nm: o.i18n?.[locale]?.nm || o.nm,
+  }));
+}
+
+function siteVoicesToOptions(
+  list: SiteVoiceEntry[],
+  locale: string,
+): Array<{ id: string; nm: string; tg: string; av: string }> {
+  return list.map((v) => ({
+    id: v.id,
+    nm: v.i18n?.[locale]?.nm || v.nm,
+    tg: v.i18n?.[locale]?.tg || v.tg,
+    av: v.av,
+  }));
+}
+
 // ============ STEP 3 — Detalii + Voce + Versuri ============
-function DetailsStep({ data, upd, playing, onPlay }: any) {
+function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Array<{ id: string; nm: string; tg: string; av: string }> }) {
   const [showLyricsEditor, setShowLyricsEditor] = useState(!!data.customLyrics);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
@@ -811,7 +968,7 @@ function DetailsStep({ data, upd, playing, onPlay }: any) {
 
       <h3 style={{ marginTop: 22 }}>🎤 Care artist îți cântă?</h3>
       <div className="voice-list">
-        {VOICES.map((v, idx) => {
+        {(voices as Array<{ id: string; nm: string; tg: string; av: string }>).map((v, idx) => {
           const isP = playing === `voice-${v.id}`;
           return (
             <div key={v.id} role="button" tabIndex={0} className={`voice-pick ${data.voice === v.id ? 'on' : ''}`} onClick={() => upd('voice', v.id)}>
@@ -1020,6 +1177,172 @@ function DemoStep({
   }
 
   return <GenerationLive generation={generation} recent={recent ?? []} />;
+}
+
+// ============ STEP 5 ALT — PAY-FIRST (site.demoEnabled=false) ============
+function PayFirstStep({
+  data,
+  email,
+  emailDraft,
+  onEmailChange,
+  updTip,
+  updPremium,
+  onPay,
+  submitting,
+  error,
+  promoCode,
+  setPromoCode,
+  promoApplied,
+  setPromoApplied,
+  promoError,
+  setPromoError,
+}: {
+  data: Data;
+  email: string | null;
+  emailDraft: string;
+  onEmailChange: (v: string) => void;
+  updTip: (v: number) => void;
+  updPremium: (v: boolean) => void;
+  onPay: () => void;
+  submitting: boolean;
+  error: string | null;
+  promoCode: string;
+  setPromoCode: (v: string) => void;
+  promoApplied: { code: string; discountCents: number } | null;
+  setPromoApplied: (v: { code: string; discountCents: number } | null) => void;
+  promoError: string | null;
+  setPromoError: (v: string | null) => void;
+}) {
+  const site = useSite();
+  const { data: quote } = useQuery({
+    queryKey: ['quote', data.tipAmount, data.premium],
+    queryFn: () => api.priceQuote(data.tipAmount || 0, !!data.premium),
+  });
+  const fmt = (cents: number) => formatPrice(site, cents);
+  const finalTotal = Math.max(0, (quote?.total ?? site.basePriceCents) - (promoApplied?.discountCents ?? 0));
+
+  return (
+    <>
+      <h3>5. Plătește pentru a genera maneaua</h3>
+      <p className="ld">
+        Maneaua ta (90s × 2 versiuni) se generează ÎN MOMENTUL în care plata e confirmată.
+        Trimitem rezultatul pe email și-l vezi și aici după ~3 minute.
+      </p>
+
+      {!email && (
+        <div className="field" style={{ marginTop: 14 }}>
+          <label>📧 Email-ul tău (obligatoriu)</label>
+          <input
+            type="email"
+            placeholder="tu@email.ro"
+            value={emailDraft}
+            onChange={(e) => onEmailChange(e.target.value)}
+            required
+          />
+        </div>
+      )}
+      {email && (
+        <div style={{ marginTop: 8, fontSize: 13, color: 'var(--gold-2)' }}>
+          ✓ Trimitem maneaua la <b>{email}</b>
+        </div>
+      )}
+
+      <div style={{
+        marginTop: 14, padding: 14, borderRadius: 10,
+        background: 'linear-gradient(135deg, rgba(90,13,24,0.4), rgba(40,12,18,0.4))',
+        border: '1px solid var(--gold)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+          <span>Manea completă (90s × 2)</span>
+          <span>{fmt(quote?.base ?? site.basePriceCents)}</span>
+        </div>
+        {(quote?.tipSurcharge ?? 0) > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
+            <span>Suprataxă dedicație {data.tipAmount} {site.currency}</span>
+            <span>+{fmt(quote?.tipSurcharge ?? 0)}</span>
+          </div>
+        )}
+        {promoApplied && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4, color: 'var(--green)' }}>
+            <span>Promo: <code>{promoApplied.code}</code></span>
+            <span>−{fmt(promoApplied.discountCents)}</span>
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
+          <span style={{ fontWeight: 800 }}>Total</span>
+          <span className="gold-text" style={{ fontWeight: 900, fontSize: 22 }}>{fmt(finalTotal)}</span>
+        </div>
+      </div>
+
+      {/* Promo */}
+      <div style={{ marginTop: 12 }}>
+        {!promoApplied ? (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              type="text"
+              placeholder="Cod promo?"
+              value={promoCode}
+              onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoError(null); }}
+              style={{
+                flex: 1, padding: '10px 12px',
+                background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)', borderRadius: 8,
+                color: 'var(--cream)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
+                letterSpacing: '0.05em',
+              }}
+            />
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={!promoCode.trim()}
+              onClick={async () => {
+                setPromoError(null);
+                try {
+                  const r = await api.validatePromo(promoCode.trim(), email ?? undefined, quote?.total ?? site.basePriceCents);
+                  if (r.ok && r.appliedDiscountCents) {
+                    setPromoApplied({ code: promoCode.trim(), discountCents: r.appliedDiscountCents });
+                  } else {
+                    setPromoError(translatePromoError(r.reason));
+                  }
+                } catch {
+                  setPromoError('Eroare validare. Încearcă din nou.');
+                }
+              }}
+            >
+              Aplică
+            </button>
+          </div>
+        ) : (
+          <div style={{
+            padding: 10, borderRadius: 8,
+            background: 'rgba(62,224,126,0.08)', border: '1px solid rgba(62,224,126,0.4)',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}>
+            <span style={{ fontSize: 13, color: 'var(--green)' }}>
+              ✓ Promo <code>{promoApplied.code}</code> — discount {fmt(promoApplied.discountCents)}
+            </span>
+            <button
+              onClick={() => { setPromoApplied(null); setPromoCode(''); }}
+              style={{ background: 'transparent', border: 'none', color: 'rgba(255,245,220,0.5)', cursor: 'pointer', fontSize: 14 }}
+            >✕</button>
+          </div>
+        )}
+        {promoError && <div style={{ fontSize: 12, color: 'var(--rose)', marginTop: 6 }}>{promoError}</div>}
+      </div>
+
+      {error && <ErrorBox text={error} />}
+
+      <button
+        className="btn btn-gold btn-lg btn-block"
+        onClick={onPay}
+        disabled={submitting}
+        style={{ marginTop: 14 }}
+        data-hint="true"
+        data-hint-label="Plătește acum"
+      >
+        {submitting ? 'Se deschide plata...' : `💳 Plătește ${fmt(finalTotal)} și generează`}
+      </button>
+    </>
+  );
 }
 
 const STATUS_LABEL: Record<GenStatus, { label: string; pct: number }> = {

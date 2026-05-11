@@ -41,6 +41,36 @@ class CheckoutDto {
   promoCode?: string;
 }
 
+class DirectCheckoutDto {
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000_000)
+  tipAmount?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  premium?: boolean;
+
+  @IsOptional()
+  promoCode?: string;
+
+  // Câmpurile generation — validare minimă (DTO-ul de pe createGeneration are
+  // class-validator decorators dar îl primim ca obiect plain pentru flexibilitate).
+  generation!: {
+    style: string;
+    occasion: string;
+    recipientName: string;
+    message: string;
+    dedication?: string;
+    voiceArtist: string;
+    customLyrics?: string;
+    locale?: string;
+    tipAmount?: number;
+    premium?: boolean;
+  };
+}
+
 @Controller('payments')
 export class PaymentsController {
   constructor(private readonly svc: PaymentsService) {}
@@ -82,6 +112,31 @@ export class PaymentsController {
       generationId: body.generationId,
       tipAmount: body.tipAmount ?? 0,
       premium: body.premium ?? false,
+      promoCode: body.promoCode,
+      email: user?.email,
+      site,
+    });
+  }
+
+  /**
+   * Checkout pentru flow „pay-first" (site.demoEnabled=false). Creează o
+   * generation pending + payment + Stripe Checkout într-o singură cerere.
+   * Pe webhook payment success, generation se marchează paid + queueează.
+   */
+  @UseGuards(OptionalJwtAuthGuard)
+  @Post('checkout-direct')
+  async createDirect(
+    @Body() body: DirectCheckoutDto,
+    @CurrentUser() user: AuthedRequestUser | null,
+    @CurrentGuestId() guestId: string | null,
+    @CurrentSite() site: Site,
+  ) {
+    return this.svc.createDirectCheckoutSession({
+      userId: user?.id ?? null,
+      guestId: user ? null : guestId,
+      generation: body.generation,
+      tipAmount: body.tipAmount ?? body.generation.tipAmount ?? 0,
+      premium: body.premium ?? body.generation.premium ?? false,
       promoCode: body.promoCode,
       email: user?.email,
       site,

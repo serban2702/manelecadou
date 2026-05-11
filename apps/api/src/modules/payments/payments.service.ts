@@ -19,6 +19,8 @@ import { GiftTier, TIER_PRICES_RON } from '../gift-codes/gift-code.entity';
 import { Site } from '../sites/site.entity';
 import { SitesService } from '../sites/sites.service';
 import { SettingsService } from '../settings/settings.service';
+import { GenerationsService } from '../generations/generations.service';
+import { CreateGenerationDto } from '../generations/dto/create-generation.dto';
 
 interface CheckoutInput {
   userId: string | null;
@@ -46,6 +48,8 @@ export class PaymentsService {
     private readonly giftCodes: GiftCodesService,
     private readonly sites: SitesService,
     private readonly settings: SettingsService,
+    @Inject(forwardRef(() => GenerationsService))
+    private readonly generations: GenerationsService,
   ) {}
 
   /** Returnează instanța Stripe, re-instanțiată dacă cheia s-a schimbat în admin. */
@@ -179,6 +183,55 @@ export class PaymentsService {
     return this.repo.findOne({ where: { id } });
   }
 
+  /**
+   * Checkout direct (pay-first): site.demoEnabled=false. Creează:
+   *   - o Generation type='full' în status='pending' (NU se queueează încă);
+   *   - un Payment 'pending';
+   *   - un Stripe Checkout Session legat de payment.
+   * Pe webhook payment success, GenerationsService.markPaidAndQueue() pornește
+   * efectiv generarea + queueing-ul.
+   */
+  async createDirectCheckoutSession(input: {
+    userId: string | null;
+    guestId: string | null;
+    generation: Omit<CreateGenerationDto, 'type' | 'paymentId'>;
+    tipAmount?: number;
+    premium?: boolean;
+    promoCode?: string;
+    email?: string;
+    site: Site;
+  }): Promise<{ url: string; paymentId: string; generationId: string }> {
+    const stripe = await this.getStripe();
+    if (!stripe) throw new ServiceUnavailableException('Stripe not configured');
+    const site = input.site;
+
+    const gen = await this.generations.createPendingForPayment(
+      {
+        ...input.generation,
+        tipAmount: input.tipAmount ?? input.generation.tipAmount ?? 0,
+        premium: input.premium ?? input.generation.premium ?? false,
+      },
+      {
+        userId: input.userId,
+        guestId: input.guestId,
+        siteId: site.id,
+      },
+    );
+
+    const checkout = await this.createCheckoutSession({
+      userId: input.userId,
+      guestId: input.guestId,
+      generationId: gen.id,
+      tipAmount: input.tipAmount ?? 0,
+      premium: input.premium ?? false,
+      promoCode: input.promoCode,
+      email: input.email,
+      site,
+    });
+
+    return { ...checkout, generationId: gen.id };
+  }
+
   /** Construiește URL-ul de bază pentru success/cancel (folosit și de Stripe Checkout). */
   private siteAppUrl(site: Site): string {
     // În dev (localhost domain), respectă APP_URL din env. Altfel, https://<domain>.
@@ -300,6 +353,13 @@ export class PaymentsService {
 
       const isPaid = session.payment_status === 'paid';
       const update: Partial<Payment> = { status: isPaid ? 'paid' : 'failed' };
+      if (!isPaid) {
+        // payment_status poate fi 'unpaid' sau 'no_payment_required'.
+        // În cazul rar în care checkout completează fără plată reușită, captăm
+        // un motiv generic; detalii reale vin în payment_intent.payment_failed.
+        update.failureReason = `Checkout completed with status="${session.payment_status}"`;
+        update.failureCode = session.payment_status ?? 'unknown';
+      }
 
       // Recuperăm exchange_rate din balance_transaction (pentru rapoarte RON
       // pe site-uri cu valută diferită).
@@ -333,6 +393,19 @@ export class PaymentsService {
 
       await this.repo.update({ id: paymentId }, update);
 
+      // Flow pay-first (site.demoEnabled=false): generation a fost creată în
+      // status='pending', acum o queueăm efectiv.
+      if (isPaid && session.metadata?.generationId) {
+        try {
+          await this.generations.markPaidAndQueue(
+            session.metadata.generationId,
+            paymentId,
+          );
+        } catch (err) {
+          this.logger.error(`markPaidAndQueue failed: ${(err as Error).message}`);
+        }
+      }
+
       if (isPaid && session.metadata?.promoCodeId) {
         const applied = Number(session.metadata.appliedDiscountCents ?? '0') || 0;
         if (applied > 0) {
@@ -358,5 +431,93 @@ export class PaymentsService {
         });
       }
     }
+
+    // Capturăm motivul real al eșecului plății — Stripe trimite acest event
+    // pentru carduri respinse, fonduri insuficiente, 3DS eșuat, etc.
+    if (event.type === 'payment_intent.payment_failed') {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      await this.recordPaymentFailureFromIntent(pi);
+    }
+
+    // Plăți async (SEPA, ACH, etc.) care eșuează după ce checkout-ul a închis.
+    if (event.type === 'checkout.session.async_payment_failed') {
+      const session = event.data.object as Stripe.Checkout.Session;
+      const paymentId = session.metadata?.paymentId;
+      if (paymentId) {
+        const reason = session.payment_intent
+          ? await this.fetchIntentFailureReason(
+              typeof session.payment_intent === 'string'
+                ? session.payment_intent
+                : session.payment_intent.id,
+            )
+          : { reason: 'Plata async a eșuat (motivul nu e disponibil)', code: 'async_failed' };
+        await this.repo.update(
+          { id: paymentId },
+          { status: 'failed', failureReason: reason.reason, failureCode: reason.code },
+        );
+      }
+    }
   }
+
+  /**
+   * Localizează payment-ul nostru după payment_intent id (stocat de Stripe
+   * Checkout în PaymentIntent dar nu direct pe Payment în sistem). Folosim
+   * metadata sau Session lookup pentru a-l găsi.
+   */
+  private async recordPaymentFailureFromIntent(pi: Stripe.PaymentIntent): Promise<void> {
+    const stripe = await this.getStripe();
+    if (!stripe) return;
+    // Stripe pune `metadata.paymentId` în PaymentIntent doar dacă l-am pus noi
+    // direct. În flow-ul nostru via Checkout, metadata e pe Session, nu pe PI.
+    // Așa că facem lookup invers: căutăm Session-ul asociat acestui PI.
+    let paymentId = (pi.metadata as Record<string, string> | null)?.paymentId;
+    if (!paymentId) {
+      try {
+        const sessions = await stripe.checkout.sessions.list({
+          payment_intent: pi.id,
+          limit: 1,
+        });
+        const session = sessions.data[0];
+        paymentId = session?.metadata?.paymentId;
+      } catch (err) {
+        this.logger.warn(`session lookup by PI failed: ${(err as Error).message}`);
+      }
+    }
+    if (!paymentId) return;
+
+    const reason = extractIntentFailureReason(pi);
+    await this.repo.update(
+      { id: paymentId },
+      { status: 'failed', failureReason: reason.reason, failureCode: reason.code },
+    );
+  }
+
+  private async fetchIntentFailureReason(
+    intentId: string,
+  ): Promise<{ reason: string; code: string }> {
+    const stripe = await this.getStripe();
+    if (!stripe) return { reason: 'Stripe indisponibil', code: 'stripe_unavailable' };
+    try {
+      const pi = await stripe.paymentIntents.retrieve(intentId);
+      return extractIntentFailureReason(pi);
+    } catch (err) {
+      return {
+        reason: `Nu am putut citi PaymentIntent: ${(err as Error).message}`,
+        code: 'intent_fetch_failed',
+      };
+    }
+  }
+}
+
+function extractIntentFailureReason(pi: Stripe.PaymentIntent): { reason: string; code: string } {
+  const err = pi.last_payment_error;
+  if (err) {
+    const code = err.decline_code || err.code || err.type || 'unknown';
+    const msg = err.message || `${err.type ?? 'Stripe'} error`;
+    return { reason: msg, code };
+  }
+  return {
+    reason: `PaymentIntent status="${pi.status}" fără last_payment_error`,
+    code: pi.status,
+  };
 }

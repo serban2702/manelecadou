@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
 
@@ -22,7 +22,7 @@ import { SitesModule } from '../sites/sites.module';
     BullModule.registerQueue({ name: GENERATIONS_QUEUE }),
     SunoModule,
     AuthModule,
-    PaymentsModule,
+    forwardRef(() => PaymentsModule),
     MailerModule,
     LyricsModule,
     GiftCodesModule,

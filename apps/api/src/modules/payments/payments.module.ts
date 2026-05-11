@@ -9,6 +9,7 @@ import { AuthModule } from '../auth/auth.module';
 import { PromoModule } from '../promo/promo.module';
 import { GiftCodesModule } from '../gift-codes/gift-codes.module';
 import { SitesModule } from '../sites/sites.module';
+import { GenerationsModule } from '../generations/generations.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { SitesModule } from '../sites/sites.module';
     PromoModule,
     forwardRef(() => GiftCodesModule),
     SitesModule,
+    forwardRef(() => GenerationsModule),
   ],
   providers: [PaymentsService],
   controllers: [PaymentsController],
