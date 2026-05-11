@@ -77,9 +77,11 @@ export class SiteSamplesService {
   }
 
   validateKey(kind: SampleKind, key: string): void {
-    const list = kind === 'style' ? SAMPLE_STYLES : SAMPLE_VOICES;
-    if (!(list as readonly string[]).includes(key)) {
-      throw new BadRequestException(`${kind} key invalid: ${key}`);
+    // Acceptăm orice slug rezonabil (lowercase letters/numbers/dash). Cheile
+    // efective sunt definite per-site în site.styles/voices, plus listele
+    // default (SAMPLE_STYLES/SAMPLE_VOICES) pentru compatibilitate.
+    if (!key || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(key)) {
+      throw new BadRequestException(`${kind} key invalid: "${key}" (lowercase a-z, 0-9, dash, max 32)`);
     }
   }
 
@@ -135,15 +137,17 @@ export class SiteSamplesService {
   }
 
   /**
-   * Returnează lista mostrelor lipsă pentru un site (toate stilurile + vocile
-   * pentru care nu există încă o intrare în site.suno.styleSamples/voiceSamples).
+   * Returnează lista mostrelor lipsă pentru un site. Folosește cheile din
+   * site.styles/voices dacă există, altfel default-urile (SAMPLE_STYLES/VOICES).
    */
   listMissing(site: Site): Array<{ kind: SampleKind; key: string }> {
     const missing: Array<{ kind: SampleKind; key: string }> = [];
-    for (const k of SAMPLE_STYLES) {
+    const styleKeys = site.styles?.length ? site.styles.map((s) => s.id) : (SAMPLE_STYLES as readonly string[]);
+    const voiceKeys = site.voices?.length ? site.voices.map((v) => v.id) : (SAMPLE_VOICES as readonly string[]);
+    for (const k of styleKeys) {
       if (!readSample(site.suno, 'style', k)) missing.push({ kind: 'style', key: k });
     }
-    for (const k of SAMPLE_VOICES) {
+    for (const k of voiceKeys) {
       if (!readSample(site.suno, 'voice', k)) missing.push({ kind: 'voice', key: k });
     }
     return missing;
@@ -162,10 +166,12 @@ export class SiteSamplesService {
     const site = await this.sites.findById(siteId);
     if (!site) throw new NotFoundException('Site negăsit');
 
+    const styleKeys = site.styles?.length ? site.styles.map((s) => s.id) : (SAMPLE_STYLES as readonly string[]);
+    const voiceKeys = site.voices?.length ? site.voices.map((v) => v.id) : (SAMPLE_VOICES as readonly string[]);
     const targets: Array<{ kind: SampleKind; key: string }> = regenerate
       ? [
-          ...SAMPLE_STYLES.map((k) => ({ kind: 'style' as const, key: k })),
-          ...SAMPLE_VOICES.map((k) => ({ kind: 'voice' as const, key: k })),
+          ...styleKeys.map((k) => ({ kind: 'style' as const, key: k })),
+          ...voiceKeys.map((k) => ({ kind: 'voice' as const, key: k })),
         ]
       : this.listMissing(site);
 
@@ -204,30 +210,42 @@ export class SiteSamplesService {
     // Lyrics — override > demo locale-aware. Pentru locale fără demo dedicate, cădem pe RO.
     const lyrics = overrides?.lyrics?.trim() || buildDemoLyrics(site.locale);
 
-    // Voice — override > default per kind. Pentru style: 'adi' (sau ce e setat în voiceMap).
-    const voiceKey = overrides?.voice ?? (kind === 'voice' ? key : 'adi');
-    const voiceArtist = site.suno?.voiceMap?.[voiceKey] ?? voiceKey;
+    // Voice mapping: site.voices[].sunoVoice > suno.voiceMap > id-ul cheii.
+    // Pentru style sample, vocea default e 'adi' (sau prima din site.voices).
+    const fallbackVoice = site.voices?.[0]?.id ?? 'adi';
+    const voiceKey = overrides?.voice ?? (kind === 'voice' ? key : fallbackVoice);
+    const voiceFromConfig = site.voices?.find((v) => v.id === voiceKey)?.sunoVoice;
+    const voiceArtist = voiceFromConfig ?? site.suno?.voiceMap?.[voiceKey] ?? voiceKey;
 
-    // Style prompt — dacă userul a dat override custom, îl injectăm temporar
-    // în site.suno.stylePromptMap înainte de a trimite (provider citește de acolo).
-    let effectiveSite = site;
-    if (overrides?.customStylePrompt && kind === 'style') {
-      effectiveSite = {
-        ...site,
-        suno: {
-          ...(site.suno ?? {}),
-          stylePromptMap: {
-            ...(site.suno?.stylePromptMap ?? {}),
-            [key]: overrides.customStylePrompt,
-          },
-        },
-      } as Site;
+    // Style prompt: prefer override din form > site.styles[].sunoPrompt > suno.stylePromptMap.
+    // Suprasciem temporar site.suno.stylePromptMap[key] ca provider-ul Suno
+    // să-l citească de acolo (nu schimbăm nimic în DB).
+    let effectivePrompt = site.suno?.stylePromptMap?.[key];
+    if (kind === 'style') {
+      const styleConfig = site.styles?.find((s) => s.id === key);
+      if (styleConfig?.sunoPrompt) effectivePrompt = styleConfig.sunoPrompt;
     }
+    if (overrides?.customStylePrompt && kind === 'style') {
+      effectivePrompt = overrides.customStylePrompt;
+    }
+    const effectiveSite = effectivePrompt
+      ? ({
+          ...site,
+          suno: {
+            ...(site.suno ?? {}),
+            stylePromptMap: {
+              ...(site.suno?.stylePromptMap ?? {}),
+              [key]: effectivePrompt,
+            },
+          },
+        } as Site)
+      : site;
 
+    const fallbackStyle = site.styles?.[0]?.id ?? 'clasic';
     const base: SunoGenerateInput = {
       type: 'demo',
       durationSec: 20,
-      style: kind === 'style' ? key : 'clasic',
+      style: kind === 'style' ? key : fallbackStyle,
       occasion: 'altul',
       recipientName: overrides?.recipientName?.trim() || 'Demo',
       message: 'demo sample',

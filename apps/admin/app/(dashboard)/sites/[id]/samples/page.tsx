@@ -12,7 +12,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 
-// Etichetele se aliniază cu apps/web/lib/seed-data.ts.
+// Etichete default (folosite când site-ul nu are site.styles/voices configurate).
 const STYLE_LABELS: Record<string, string> = {
   clasic: 'Clasică de pahar', modern: 'Modernă', oriental: 'Orientală',
   trompeta: 'Cu trompetă', romantica: 'De jale', comerciala: 'Comercială',
@@ -24,6 +24,16 @@ const VOICE_LABELS: Record<string, string> = {
   florinel: 'Florinel de Aur', adi: 'Adi Șampanie', ticu: 'Țicu Diamante',
   mariana: 'Mariana Trandafir', nicu: 'Nicu Mercedes', gigi: 'Gigi Cash',
 };
+
+function resolveStyleLabel(site: SiteDto | null, key: string): string {
+  const fromSite = site?.styles?.find((s) => s.id === key)?.nm;
+  return fromSite || STYLE_LABELS[key] || key;
+}
+
+function resolveVoiceLabel(site: SiteDto | null, key: string): string {
+  const fromSite = site?.voices?.find((v) => v.id === key)?.nm;
+  return fromSite || VOICE_LABELS[key] || key;
+}
 
 const COST_PER_SAMPLE = 10; // credite Suno aproximative
 
@@ -190,7 +200,10 @@ export default function SiteSamplesPage() {
             </CardContent>
           </Card>
 
-          <SectionHeader icon={<Music2 className="h-4 w-4" />} title="Stiluri (12)" />
+          <SectionHeader
+            icon={<Music2 className="h-4 w-4" />}
+            title={`Stiluri (${data.styles.length})`}
+          />
           <div className="grid gap-2 mb-6">
             {data.styles.map((s) => (
               <SampleRow
@@ -199,14 +212,17 @@ export default function SiteSamplesPage() {
                 siteId={siteId}
                 kind="style"
                 row={s}
-                label={STYLE_LABELS[s.key] ?? s.key}
+                label={resolveStyleLabel(site, s.key)}
                 busy={busyKey === `style-${s.key}`}
                 onRegen={(regenerate, overrides) => regenerateOne('style', s.key, regenerate, overrides)}
               />
             ))}
           </div>
 
-          <SectionHeader icon={<Mic2 className="h-4 w-4" />} title="Voci (6)" />
+          <SectionHeader
+            icon={<Mic2 className="h-4 w-4" />}
+            title={`Voci (${data.voices.length})`}
+          />
           <div className="grid gap-2">
             {data.voices.map((v) => (
               <SampleRow
@@ -215,7 +231,7 @@ export default function SiteSamplesPage() {
                 siteId={siteId}
                 kind="voice"
                 row={v}
-                label={VOICE_LABELS[v.key] ?? v.key}
+                label={resolveVoiceLabel(site, v.key)}
                 busy={busyKey === `voice-${v.key}`}
                 onRegen={(regenerate, overrides) => regenerateOne('voice', v.key, regenerate, overrides)}
               />
@@ -252,7 +268,7 @@ function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }
 
 type Overrides = { voice?: string; lyrics?: string; customStylePrompt?: string; recipientName?: string };
 
-const VOICE_KEYS = ['adi', 'florinel', 'ticu', 'mariana', 'nicu', 'gigi'] as const;
+const DEFAULT_VOICE_KEYS = ['adi', 'florinel', 'ticu', 'mariana', 'nicu', 'gigi'] as const;
 
 function SampleRow({
   site,
@@ -279,9 +295,14 @@ function SampleRow({
 
   // Panel "Personalizează" — închis by default, expandabil per rând.
   const [open, setOpen] = useState(false);
+  const voiceKeys = site?.voices?.length
+    ? site.voices.map((v) => v.id)
+    : (DEFAULT_VOICE_KEYS as readonly string[]);
   const defaultSunoPrompt =
-    kind === 'style' ? site?.suno?.stylePromptMap?.[row.key] ?? '' : '';
-  const defaultVoice = kind === 'voice' ? row.key : 'adi';
+    kind === 'style'
+      ? site?.styles?.find((s) => s.id === row.key)?.sunoPrompt ?? site?.suno?.stylePromptMap?.[row.key] ?? ''
+      : '';
+  const defaultVoice = kind === 'voice' ? row.key : (voiceKeys[0] ?? 'adi');
 
   const [recipient, setRecipient] = useState('Demo');
   const [voice, setVoice] = useState(defaultVoice);
@@ -451,11 +472,15 @@ function SampleRow({
                   onChange={(e) => setVoice(e.target.value)}
                   className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm"
                 >
-                  {VOICE_KEYS.map((v) => (
-                    <option key={v} value={v}>
-                      {v} {site?.suno?.voiceMap?.[v] ? `→ ${site.suno.voiceMap[v]}` : ''}
-                    </option>
-                  ))}
+                  {voiceKeys.map((v) => {
+                    const cfg = site?.voices?.find((sv) => sv.id === v);
+                    const target = cfg?.sunoVoice ?? site?.suno?.voiceMap?.[v];
+                    return (
+                      <option key={v} value={v}>
+                        {v}{target ? ` → ${target}` : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             </div>
