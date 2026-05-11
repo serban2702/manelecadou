@@ -1,12 +1,20 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle, Crown, Loader2 } from 'lucide-react';
 import { AuthApi, AdminApi, setAdminToken } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 
 export default function VerifyPage() {
+  return (
+    <Suspense fallback={null}>
+      <VerifyPageInner />
+    </Suspense>
+  );
+}
+
+function VerifyPageInner() {
   const params = useSearchParams();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
