@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import { Cinzel, Manrope } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages, getTranslations } from 'next-intl/server';
@@ -153,7 +154,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 {children}
                 <CursorHint />
                 <Analytics />
-                <Tracker />
+                <Suspense fallback={null}>
+                  <Tracker />
+                </Suspense>
                 <CookieConsent />
                 <ClientErrorReporter />
               </Providers>
