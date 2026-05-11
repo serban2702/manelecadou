@@ -31,7 +31,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-production}
       API_PORT: 3000
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
