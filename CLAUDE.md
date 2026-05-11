@@ -164,7 +164,7 @@ www.manelecadou.ro       /*                          → web:1500
 - **External**: `STRIPE_*`, `OPENAI_*`, `SUNO_*`, `MAILGUN_*`, `SMTP_*`, `NEXT_PUBLIC_GA_ID`, `NEXT_PUBLIC_META_PIXEL_ID`
 - **Runtime**: `NODE_ENV=production`, `ADMIN_EMAILS=serban2702@gmail.com` (comma-separated)
 
-Pentru schema sync forțat (vezi §6.2), poți seta temporar `NODE_ENV=development` în `.env` (compose face `${NODE_ENV:-production}`).
+`docker-compose.prod.yml` are `NODE_ENV: ${NODE_ENV:-production}` (overridable din `.env`) și `DB_SYNCHRONIZE` controlabil similar. Vezi §6.2 pentru workflow schema changes.
 
 `NEXT_PUBLIC_API_URL` e setat la `""` (gol) prin build args în Dockerfile → web/admin fac fetch relativ (`${NEXT_PUBLIC_API_URL}/api/...` → `/api/...` same-origin). `API_INTERNAL_URL=http://api:3000` e folosit doar pentru SSR/middleware/sitemap (intern Docker).
 
@@ -192,28 +192,64 @@ make deploy-admin   # doar admin
 4. `docker compose -f docker-compose.prod.yml up -d --force-recreate <target>`
 5. `sleep 8` + curl health pe cele 3 domenii
 
-### 6.2 Schema DB changes (TypeORM entity changes)
+### 6.2 Schema DB changes (TypeORM `synchronize: true` în prod)
 
-TypeORM e configurat cu `synchronize: NODE_ENV !== 'production'`. **Pe prod, schema NU se modifică automat la deploy.** Pentru orice modificare de entity:
+**Decizie 2026-05-11**: `synchronize` e ON pe prod. La fiecare boot al API-ului, TypeORM aliniază schema cu entitățile (`CREATE TABLE`, `ADD COLUMN`, etc.). Plasa de siguranță e backup-ul automat pre-deploy din `deploy.sh` (`/backups/predeploy_<TS>.sql.gz`).
 
-**Opțiunea A (recomandată)** — ALTER manual înainte de deploy:
+Vezi `apps/api/src/database/database.module.ts`:
+```typescript
+synchronize: config.get<string>('DB_SYNCHRONIZE') !== 'false',  // default ON
+```
+
+**Workflow normal pentru schema change:**
+1. Modifici `@Entity` (adaugi câmpuri / index-uri).
+2. `git commit && make deploy-api`.
+3. `deploy.sh` face automat `pg_dump | gzip > /backups/predeploy_*.sql.gz` ÎNAINTE de build.
+4. La boot api, TypeORM execută `ADD COLUMN` etc.
+5. Health check verifică că api răspunde.
+6. Dacă ceva merge prost: `gunzip -c /backups/predeploy_<TS>.sql.gz | docker exec -i manele-postgres-1 psql -U manelecadou manelecadou`.
+
+**Setări pentru a opri temporar synchronize** (ex. fereastră de migrare manuală):
 ```bash
+ssh VPSIonos 'echo "DB_SYNCHRONIZE=false" >> /home/manele/.env && docker compose -f /home/manele/docker-compose.prod.yml restart api'
+```
+
+#### ⚠️ Operații care DROP date (verifică INTOTDEAUNA înainte de deploy)
+
+TypeORM `synchronize` poate șterge date dacă modifici entitățile în feluri care îi cer să recreeze. **Reguli stricte**:
+
+| Operație în entity                              | Ce face synchronize         | Verdict                  |
+|-------------------------------------------------|------------------------------|--------------------------|
+| Adaugi `@Column` nou (cu default sau nullable)  | `ADD COLUMN`                 | ✅ Safe                  |
+| Adaugi `@Index` nou                             | `CREATE INDEX`               | ✅ Safe                  |
+| Adaugi `@Entity` nou                            | `CREATE TABLE`               | ✅ Safe                  |
+| Ștergi `@Column` din entity                     | `DROP COLUMN` (pierzi date!) | ❌ Migrate manual        |
+| Schimbi tipul `@Column` (varchar→int etc.)      | `DROP+ADD` (pierzi date!)    | ❌ Migrate manual        |
+| Redenumești `@Column` (`name`→`fullName`)       | `DROP old + ADD new` (pierzi!)| ❌ Migrate manual       |
+| Schimbi `nullable: true` → `false` cu null-uri  | `ALTER` care eșuează cu data | ⚠️ Backfill data întâi   |
+| Schimbi `default` pe coloană                    | `ALTER DEFAULT`              | ⚠️ Nu afectează rândurile existente |
+| Adaugi `unique: true` pe coloană cu duplicate   | `CREATE UNIQUE` eșuează      | ⚠️ Curăță duplicate întâi |
+
+**Pentru orice ❌ sau ⚠️**: opresc synchronize temporar, fă migrarea manuală pe SQL, apoi pornește înapoi:
+```bash
+# 1. ALTER manual pe Postgres prod
 ssh VPSIonos 'docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -c "
-ALTER TABLE <table> ADD COLUMN IF NOT EXISTS \"<col>\" <type> ...;
+  ALTER TABLE users RENAME COLUMN \"name\" TO \"fullName\";
 "'
-# apoi
+# 2. Modifică entity să reflecte starea nouă
+# 3. Deploy normal — synchronize vede schema deja aliniată și nu face nimic
 make deploy-api
 ```
 
-**Opțiunea B** — sync via NODE_ENV temporar (doar pentru schimbări simple, fără data loss risk):
+**Înainte de fiecare `make deploy-api` cu schema change**, run dry-run:
 ```bash
-ssh VPSIonos 'cd /home/manele && sed -i "s/^NODE_ENV=production$/NODE_ENV=development/" .env'
-make deploy-api
-# verifică schema apoi:
-ssh VPSIonos 'cd /home/manele && sed -i "s/^NODE_ENV=development$/NODE_ENV=production/" .env && docker compose -f docker-compose.prod.yml restart api'
+# vezi ce SQL ar genera typeorm fără să-l execute
+ssh VPSIonos 'cd /home/manele && DB_SYNCHRONIZE=false docker compose -f docker-compose.prod.yml exec api node -e "
+  const { DataSource } = require(\"typeorm\");
+  // ...
+"'
 ```
-
-**Niciodată** nu schimba tipul unei coloane via sync — face DROP+CREATE și pierzi date. Pentru asta, scrie migration SQL manual.
+(Pattern detaliat — adăugăm helper script când va fi necesar.)
 
 ### 6.3 Rollback DB
 
@@ -331,15 +367,14 @@ Global prefix `api` cu exclude pentru `/health`. Toate rutele controllerelor sun
 ## 10. Gotchas / Lecții
 
 1. **Cloudflare proxy** trebuie OFF pentru toate domeniile site-urilor. Altfel `on_demand_tls` eșuează silently.
-2. **Boot inițial DB** — la primul start din zero, schema NU se creează (NODE_ENV=production). Set `NODE_ENV=development` în `.env`, restart API, schimbă înapoi. Se face o singură dată.
+2. **TypeORM `synchronize: true` în prod** — schema se aliniază automat la deploy. Backup automat înainte. **NU adăuga schimbări care DROP date** fără migrare manuală întâi (vezi §6.2, tabelul de operații).
 3. **Caddy 2.10+** — `on_demand_tls.interval` și `burst` au fost eliminate. Folosește doar `ask` endpoint.
 4. **Build prod Next.js 15** — useSearchParams() fără Suspense rupe prerender-ul pe `/404`, `/login/verify`, etc. Vezi §9.1.
-5. **TypeORM synchronize gated pe NODE_ENV** — vezi §6.2 pentru cum migrezi schema în prod.
-6. **`docker-compose.prod.yml` are `NODE_ENV: ${NODE_ENV:-production}`** ca să poți override-ui temporar din `.env`.
-7. **Magic link pe admin host** — verifică `auth.controller.ts` pasează `Host` header către service și `auth.service.ts` `computeLoginBaseUrl()` decide între `ADMIN_URL` și `site.domain`.
-8. **Stripe = un singur cont** pentru toate site-urile. Webhook unic la `https://manelecadou.ro/api/payments/webhook`. `STRIPE_WEBHOOK_SECRET` global. Site-ul curent se ia din `metadata.siteId` în webhook.
-9. **Suno + OpenAI** sunt per-site prin `site.suno` (basePrompt, stylePromptMap, writerSystemPrompt, lyricsLocale, voiceMap, styleSamples, voiceSamples). Setabil din admin.
-10. **Volume Docker** — `caddy_data` conține TLS certs Let's Encrypt. Backup-uiește-l periodic. `pg_data` are toate datele. `api_uploads` are fișierele upload-uite (logo-uri, samples audio).
+5. **Magic link pe admin host** — verifică `auth.controller.ts` pasează `Host` header către service și `auth.service.ts` `computeLoginBaseUrl()` decide între `ADMIN_URL` și `site.domain`.
+6. **Stripe = un singur cont** pentru toate site-urile. Webhook unic la `https://manelecadou.ro/api/payments/webhook`. `STRIPE_WEBHOOK_SECRET` global. Site-ul curent se ia din `metadata.siteId` în webhook.
+7. **Suno + OpenAI** sunt per-site prin `site.suno` (basePrompt, stylePromptMap, writerSystemPrompt, lyricsLocale, voiceMap, styleSamples, voiceSamples). Setabil din admin.
+8. **Volume Docker** — `caddy_data` conține TLS certs Let's Encrypt. Backup-uiește-l periodic. `pg_data` are toate datele. `api_uploads` are fișierele upload-uite (logo-uri, samples audio).
+9. **`deploy.sh` e pe VPS, nu în repo** — `/home/manele/deploy.sh` (chmod +x). Nu se update-uiește prin `git pull`. Pentru modificări, edit-uiește-l direct via SSH.
 
 ---
 

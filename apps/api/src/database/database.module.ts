@@ -31,7 +31,15 @@ import { Site } from '../modules/sites/site.entity';
         password: config.get<string>('POSTGRES_PASSWORD'),
         database: config.get<string>('POSTGRES_DB'),
         entities: [User, GuestSession, MagicLink, Generation, Payment, Conversation, ChatMessage, PromoCode, PromoRedemption, GiftCode, RouletteSpin, ErrorLog, AnalyticsEvent, AnalyticsSession, SunoLog, SunoCreditPurchase, Site],
-        synchronize: config.get<string>('NODE_ENV') !== 'production',
+        // synchronize: TypeORM aliniază schema cu entitățile la fiecare boot.
+        // În prod e ON intenționat (decizie 2026-05-11): schimbările de schema
+        // se fac doar prin modificare de @Entity + deploy normal. Backup auto
+        // înainte de deploy via deploy.sh (predeploy_*.sql.gz în /backups).
+        // ⚠️ ATENȚIE la operații care DROP date (rename column, schimbare tip,
+        // ștergere câmp). Vezi CLAUDE.md §6.2 pentru reguli.
+        // Set DB_SYNCHRONIZE=false în .env pentru a-l dezactiva temporar
+        // (ex. în fereastra de pre-prod migration manuală).
+        synchronize: config.get<string>('DB_SYNCHRONIZE') !== 'false',
         autoLoadEntities: true,
         logging: ['error', 'warn'],
       }),
