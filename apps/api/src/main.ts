@@ -9,6 +9,12 @@ import { SitesService } from './modules/sites/sites.service';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
 
+  // API-ul stă în spatele Caddy → respectă X-Forwarded-For ca `req.ip` să fie
+  // IP-ul real al vizitatorului. Fără asta, ThrottlerGuard pune toți utilizatorii
+  // în același bucket (IP-ul containerului Caddy din rețeaua Docker) → 429-uri
+  // generalizate. `1` = 1 hop de proxy (Caddy), suficient pentru setup-ul curent.
+  app.set('trust proxy', 1);
+
   // Servește mostrele audio (și orice alt asset uploadat) sub /uploads/.
   // Pe API URL-ul absolut → ex. https://api.manelecadou.ro/uploads/site-samples/<slug>/style-modern.mp3
   const uploadsDir = process.env.UPLOADS_DIR ?? join(process.cwd(), 'uploads');
