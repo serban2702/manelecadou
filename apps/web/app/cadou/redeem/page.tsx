@@ -1,12 +1,20 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { SiteShell } from '@/components/SiteShell';
 import { api } from '@/lib/api';
 
 export default function RedeemPage() {
+  return (
+    <Suspense fallback={null}>
+      <RedeemPageInner />
+    </Suspense>
+  );
+}
+
+function RedeemPageInner() {
   const search = useSearchParams();
   const [code, setCode] = useState('');
   const [validating, setValidating] = useState(false);

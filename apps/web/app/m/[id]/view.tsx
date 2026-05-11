@@ -1,13 +1,21 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { api, ApiError, type GenerationDto } from '@/lib/api';
 import { ManeaPlayer } from '@/components/ManeaPlayer';
 import { STYLES, VOICES, OCC } from '@/lib/seed-data';
 
 export default function ShareGenerationView() {
+  return (
+    <Suspense fallback={null}>
+      <ShareGenerationViewInner />
+    </Suspense>
+  );
+}
+
+function ShareGenerationViewInner() {
   const params = useParams<{ id: string }>();
   const search = useSearchParams();
   const [g, setG] = useState<GenerationDto | null>(null);

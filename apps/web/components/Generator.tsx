@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
@@ -159,7 +159,15 @@ function useSamplePreview(
   }, [playing, onAutoStop, site.styleSamples, site.voiceSamples]);
 }
 
-export function Generator({ playing, onPlay }: { playing: string | null; onPlay: (id: string) => void }) {
+export function Generator(props: { playing: string | null; onPlay: (id: string) => void }) {
+  return (
+    <Suspense fallback={null}>
+      <GeneratorInner {...props} />
+    </Suspense>
+  );
+}
+
+function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (id: string) => void }) {
   const session = useSession();
   const search = useSearchParams();
   const tCommon = useTranslations('common');

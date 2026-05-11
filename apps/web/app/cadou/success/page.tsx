@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef } from 'react';
+import { Suspense, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { SiteShell } from '@/components/SiteShell';
 import { track } from '@/lib/tracker';
@@ -9,6 +9,14 @@ import { track } from '@/lib/tracker';
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
 
 export default function GiftSuccessPage() {
+  return (
+    <Suspense fallback={null}>
+      <GiftSuccessPageInner />
+    </Suspense>
+  );
+}
+
+function GiftSuccessPageInner() {
   const params = useSearchParams();
   const fired = useRef(false);
 
