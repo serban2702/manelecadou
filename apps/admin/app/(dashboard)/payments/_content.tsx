@@ -74,7 +74,17 @@ export default function PaymentsPage() {
                   {(p.amount / 100).toFixed(2)} {p.currency}
                 </TableCell>
                 <TableCell>
-                  <Badge variant={STATUS_VARIANT[p.status] ?? 'muted'}>{p.status}</Badge>
+                  <div className="flex flex-col gap-0.5">
+                    <Badge variant={STATUS_VARIANT[p.status] ?? 'muted'}>{p.status}</Badge>
+                    {p.status === 'failed' && (p.failureReason || p.failureCode) && (
+                      <span
+                        className="text-[10px] text-rose-300/80 line-clamp-1 max-w-[260px]"
+                        title={`${p.failureCode ?? ''}${p.failureCode && p.failureReason ? ' — ' : ''}${p.failureReason ?? ''}`}
+                      >
+                        {p.failureCode ? `${p.failureCode}: ` : ''}{p.failureReason ?? '—'}
+                      </span>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {p.userId
@@ -129,6 +139,19 @@ function PaymentDetailDrawer({ id, onClose }: { id: string; onClose: () => void 
                 <Kv k="Curs" v={data.payment.exchangeRateToRon} />
               )}
               <Kv k="Status" v={<Badge variant={STATUS_VARIANT[data.payment.status] ?? 'muted'}>{data.payment.status}</Badge>} />
+              {data.payment.status === 'failed' && (data.payment.failureReason || data.payment.failureCode) && (
+                <>
+                  {data.payment.failureCode && (
+                    <Kv k="Cod eșec" v={<code className="text-rose-300">{data.payment.failureCode}</code>} />
+                  )}
+                  {data.payment.failureReason && (
+                    <div className="border-b border-white/5 py-1 text-xs">
+                      <div className="text-muted-foreground mb-1">Motiv eșec</div>
+                      <div className="text-rose-200 whitespace-pre-wrap">{data.payment.failureReason}</div>
+                    </div>
+                  )}
+                </>
+              )}
               <Kv k="Provider" v={data.payment.provider} />
               <Kv k="Stripe session" v={data.payment.providerSessionId ?? '—'} mono />
               <Kv k="Creat" v={format(new Date(data.payment.createdAt), "d MMM yyyy HH:mm", { locale: ro })} />

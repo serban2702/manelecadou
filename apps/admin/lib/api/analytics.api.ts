@@ -180,6 +180,8 @@ export interface PaymentDetail {
     providerSessionId: string | null;
     amountRonCents: number | null;
     exchangeRateToRon: string | null;
+    failureReason: string | null;
+    failureCode: string | null;
     createdAt: string;
     updatedAt: string;
   };

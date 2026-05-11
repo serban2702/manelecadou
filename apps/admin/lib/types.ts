@@ -103,6 +103,10 @@ export interface AdminPayment {
   guestId: string | null;
   createdAt: string;
   siteId?: string | null;
+  /** Motiv detaliat când status='failed' (extras din Stripe). */
+  failureReason?: string | null;
+  /** Cod scurt (decline_code, error code). */
+  failureCode?: string | null;
 }
 
 export interface AdminError {

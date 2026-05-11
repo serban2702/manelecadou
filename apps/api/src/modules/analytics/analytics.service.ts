@@ -878,6 +878,8 @@ export class AnalyticsService {
         providerSessionId: p.providerSessionId,
         amountRonCents: (p as unknown as { amountRonCents?: number | null }).amountRonCents ?? null,
         exchangeRateToRon: (p as unknown as { exchangeRateToRon?: string | null }).exchangeRateToRon ?? null,
+        failureReason: (p as unknown as { failureReason?: string | null }).failureReason ?? null,
+        failureCode: (p as unknown as { failureCode?: string | null }).failureCode ?? null,
         createdAt: p.createdAt,
         updatedAt: p.updatedAt,
       },

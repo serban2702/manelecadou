@@ -49,6 +49,15 @@ export class Payment {
   @Column({ type: 'integer', nullable: true })
   amountRonCents!: number | null;
 
+  /** Motiv detaliat când status='failed' (extras din Stripe). Ex:
+   *  "Your card was declined. Reason: insufficient_funds". */
+  @Column({ type: 'text', nullable: true })
+  failureReason!: string | null;
+
+  /** Cod scurt din Stripe (decline_code, error code, etc.) — util pentru filtrări. */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  failureCode!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 
