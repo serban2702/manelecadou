@@ -1,7 +1,7 @@
 VPS=VPSIonos
 REMOTE=/home/manele
 
-.PHONY: deploy deploy-api deploy-web deploy-admin ssh logs logs-api logs-web logs-admin logs-caddy backup rollback restart status
+.PHONY: deploy deploy-api deploy-web deploy-admin ssh logs logs-api logs-web logs-admin logs-caddy logs-file logs-429 backup rollback restart status
 
 deploy:
 	@echo "→ git push + remote deploy (full)"
@@ -37,6 +37,14 @@ logs-admin:
 
 logs-caddy:
 	@ssh $(VPS) "cd $(REMOTE) && docker compose -f docker-compose.prod.yml logs -f --tail=50 caddy"
+
+# Tail live al access-log-ului pino (toate request-urile, JSON lines).
+logs-file:
+	@ssh $(VPS) "docker exec -it manele-api-1 sh -c 'tail -f /app/logs/access.log'"
+
+# Doar liniile 429 din ultimele 24h, agregate pe path (cele mai frecvente sus).
+logs-429:
+	@ssh $(VPS) "docker exec manele-api-1 sh -c \"cat /app/logs/access.log* 2>/dev/null | grep -E '\\\"status\\\":429|throttler-reject' | awk -F'\\\"path\\\":\\\"' '{print \\\$$2}' | awk -F'\\\"' '{print \\\$$1}' | sort | uniq -c | sort -rn | head -30\""
 
 status:
 	@ssh $(VPS) "cd $(REMOTE) && docker compose -f docker-compose.prod.yml ps"

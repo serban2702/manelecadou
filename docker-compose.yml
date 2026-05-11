@@ -94,6 +94,7 @@ services:
       GA4_API_SECRET: ${GA4_API_SECRET:-}
       META_PIXEL_ID: ${NEXT_PUBLIC_META_PIXEL_ID:-}
       META_CAPI_TOKEN: ${META_CAPI_TOKEN:-}
+      LOGS_DIR: /app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,6 +110,7 @@ services:
       - ./apps/api/nest-cli.json:/app/nest-cli.json
       - api_uploads:/app/uploads
       - api_backups:/app/backups
+      - api_logs:/app/logs
       - /app/node_modules
     develop:
       watch:
@@ -134,3 +136,4 @@ volumes:
   redisdata:
   api_uploads:
   api_backups:
+  api_logs:

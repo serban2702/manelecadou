@@ -6,6 +6,7 @@ build/
 .env.local
 .env.*.local
 apps/api/uploads/
+apps/api/logs/
 apps/api/dist/
 apps/web/.next/
 apps/admin/.next/

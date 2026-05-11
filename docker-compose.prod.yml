@@ -82,10 +82,12 @@ services:
       META_PIXEL_ID: ${NEXT_PUBLIC_META_PIXEL_ID:-}
       META_CAPI_TOKEN: ${META_CAPI_TOKEN:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
+      LOGS_DIR: /app/logs
     volumes:
       - api_uploads:/app/uploads
       - api_backups:/app/backups
       - api_mail_attach:/app/mail-attach
+      - api_logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -155,3 +157,4 @@ volumes:
   api_uploads:
   api_backups:
   api_mail_attach:
+  api_logs:
