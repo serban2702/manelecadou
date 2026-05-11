@@ -90,6 +90,40 @@ export interface SiteSampleEntry {
   sunoTaskId?: string;
 }
 
+/**
+ * Stil muzical configurabil per-site. `id` = cheia stabilă folosită în URL-uri
+ * și mostre audio (nu se schimbă după ce e setată). Restul câmpurilor sunt
+ * pentru afișare + integrarea cu Suno/OpenAI.
+ */
+export interface SiteStyleEntry {
+  id: string;
+  em: string; // emoji / icon (ex. "🎻")
+  nm: string; // nume default (folosit dacă nu e i18n.nm pe locale-ul curent)
+  ds: string; // descriere default
+  heat?: string; // badge opțional ("🔥 #1", "🔥 hot", "🔥 new", etc.)
+  /** Override traduceri per locale. Cheia = locale ("ro", "bg", ...). */
+  i18n?: Record<string, { nm?: string; ds?: string; heat?: string }>;
+  /** Override prompt Suno pentru acest stil (se pune în suno.stylePromptMap). */
+  sunoPrompt?: string;
+}
+
+export interface SiteVoiceEntry {
+  id: string;
+  nm: string;
+  tg: string; // tagline scurt
+  av: string; // inițiale avatar (2 caractere)
+  i18n?: Record<string, { nm?: string; tg?: string }>;
+  /** Override voice mapping pentru Suno (cheia ajunge în suno.voiceMap). */
+  sunoVoice?: string;
+}
+
+export interface SiteOccasionEntry {
+  id: string;
+  em: string;
+  nm: string;
+  i18n?: Record<string, { nm?: string }>;
+}
+
 @Entity({ name: 'sites' })
 export class Site {
   @PrimaryGeneratedColumn('uuid')
@@ -162,6 +196,45 @@ export class Site {
 
   @Column({ type: 'boolean', default: false })
   hiddenMode!: boolean; // dacă true, Caddy/Next.js închid conexiunea cu 444 (ERR_EMPTY_RESPONSE)
+
+  /**
+   * Lista de IP-uri (exact-match) scutite de maintenanceMode și hiddenMode.
+   * Suportă IPv4, IPv6, sau prefix wildcard simplu (ex. "192.168.*"). Pentru
+   * fiecare request, dacă IP-ul clientului e în listă, modurile sunt sărite.
+   */
+  @Column({ type: 'jsonb', default: () => `'[]'::jsonb` })
+  ipWhitelist!: string[];
+
+  /**
+   * Dacă false, fluxul de generare cere plată ÎNAINTE de a genera. Userul
+   * completează formularul, plătește, iar maneaua se generează direct ca
+   * versiune completă (90s × 2). Dacă true (default), generăm un demo
+   * gratuit de 30s și abia apoi cerem plata pentru a debloca versiunea
+   * completă.
+   */
+  @Column({ type: 'boolean', default: true })
+  demoEnabled!: boolean;
+
+  /**
+   * Stiluri muzicale disponibile pe acest site (carduri din /studio).
+   * Dacă goală, web folosește lista hardcoded din `seed-data.ts` (12 stiluri RO).
+   */
+  @Column({ type: 'jsonb', default: () => `'[]'::jsonb` })
+  styles!: SiteStyleEntry[];
+
+  /**
+   * Voci/artiști disponibili pe acest site. Dacă goală, fallback la VOICES
+   * din `seed-data.ts`.
+   */
+  @Column({ type: 'jsonb', default: () => `'[]'::jsonb` })
+  voices!: SiteVoiceEntry[];
+
+  /**
+   * Ocazii (zile naștere, nuntă, etc.) afișate la step 2. Dacă goală, fallback
+   * la OCC din `seed-data.ts`.
+   */
+  @Column({ type: 'jsonb', default: () => `'[]'::jsonb` })
+  occasions!: SiteOccasionEntry[];
 
   /**
    * Mesaj custom pentru pagina de mentenanță, JSON cu cheie = locale.

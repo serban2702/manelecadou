@@ -44,12 +44,68 @@ export interface SiteConfig {
   maintenanceMode: boolean;
   hiddenMode?: boolean;
   maintenanceMessage?: Record<string, string>;
+  /** Lista IP-uri scutite de maintenance + hidden mode (exact match sau wildcard "*"). */
+  ipWhitelist?: string[];
+  /** IP-ul detectat al request-ului curent (setat de API la /public/site). */
+  clientIp?: string | null;
+  /** Dacă false, fluxul cere plată ÎNAINTE de generare (skip demo gratuit 30s). */
+  demoEnabled?: boolean;
+  /** Configurație stiluri/voci/ocazii per site. Dacă goale, fallback la seed-data. */
+  styles?: SiteStyleEntry[];
+  voices?: SiteVoiceEntry[];
+  occasions?: SiteOccasionEntry[];
   /**
    * Mostre audio (URL public) per stil/voce — folosite de butoanele ► din /studio.
    * Cheia = id-ul stilului ('clasic', 'modern', ...) sau al vocii ('adi', 'florinel', ...).
    */
   styleSamples?: Record<string, SiteSampleEntry>;
   voiceSamples?: Record<string, SiteSampleEntry>;
+}
+
+export interface SiteStyleEntry {
+  id: string;
+  em: string;
+  nm: string;
+  ds: string;
+  heat?: string;
+  i18n?: Record<string, { nm?: string; ds?: string; heat?: string }>;
+  sunoPrompt?: string;
+}
+
+export interface SiteVoiceEntry {
+  id: string;
+  nm: string;
+  tg: string;
+  av: string;
+  i18n?: Record<string, { nm?: string; tg?: string }>;
+  sunoVoice?: string;
+}
+
+export interface SiteOccasionEntry {
+  id: string;
+  em: string;
+  nm: string;
+  i18n?: Record<string, { nm?: string }>;
+}
+
+/**
+ * Verifică dacă un IP e în lista whitelist. Suportă exact-match și prefix
+ * wildcard simplu ("192.168.*" matches "192.168.1.5"). Returnează `false`
+ * pentru valori nule sau listă goală.
+ */
+export function isIpWhitelisted(clientIp: string | null | undefined, whitelist: string[] | undefined): boolean {
+  if (!clientIp || !whitelist || whitelist.length === 0) return false;
+  const ip = clientIp.trim();
+  for (const raw of whitelist) {
+    const entry = (raw ?? '').trim();
+    if (!entry) continue;
+    if (entry === ip) return true;
+    if (entry.endsWith('*')) {
+      const prefix = entry.slice(0, -1);
+      if (ip.startsWith(prefix)) return true;
+    }
+  }
+  return false;
 }
 
 export interface SiteSampleEntry {

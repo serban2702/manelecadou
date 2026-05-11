@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import { Cinzel, Manrope } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages, getTranslations } from 'next-intl/server';
+import { headers } from 'next/headers';
 import { Providers } from '@/lib/providers';
 import { CursorHint } from '@/components/CursorHint';
 import { Analytics } from '@/components/Analytics';
@@ -12,6 +13,7 @@ import { ClientErrorReporter } from '@/components/ClientErrorReporter';
 import { MaintenancePage } from '@/components/MaintenancePage';
 import { LOCALE_META, isLocale } from '@/i18n/locales';
 import { getSiteConfig, siteSupportEmail, siteUrl as siteUrlOf } from '@/lib/site-config';
+import { isIpWhitelisted } from '@/lib/site-shared';
 import { SiteProvider } from '@/lib/site-context';
 import './globals.css';
 
@@ -19,6 +21,16 @@ const cinzel = Cinzel({ subsets: ['latin'], weight: ['700', '900'], variable: '-
 const manrope = Manrope({ subsets: ['latin'], weight: ['400', '500', '600', '700', '800'], variable: '--font-manrope', display: 'swap' });
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:1500';
+
+/** Extrage IP-ul clientului din headers pentru a-l compara cu site.ipWhitelist. */
+async function isClientIpWhitelisted(whitelist: string[] | undefined): Promise<boolean> {
+  if (!whitelist?.length) return false;
+  const h = await headers();
+  const xff = h.get('x-forwarded-for');
+  const real = h.get('x-real-ip');
+  const ip = (xff?.split(',')[0]?.trim()) || real?.trim() || null;
+  return isIpWhitelisted(ip, whitelist);
+}
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('metadata');
@@ -143,7 +155,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         />
       </head>
       <body>
-        {site.maintenanceMode ? (
+        {site.maintenanceMode && !(await isClientIpWhitelisted(site.ipWhitelist)) ? (
           <MaintenancePage site={site} locale={effectiveLocale} />
         ) : (
           <NextIntlClientProvider locale={effectiveLocale} messages={messages}>

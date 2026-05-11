@@ -13,10 +13,10 @@ export class PublicSiteController {
   @Get()
   current(@Req() req: Request) {
     if (!req.site) throw new NotFoundException('Site neconfigurat');
-    return this.serialize(req.site, /* publicOnly */ true);
+    return this.serialize(req.site, /* publicOnly */ true, req);
   }
 
-  private serialize(site: Site, publicOnly: boolean) {
+  private serialize(site: Site, publicOnly: boolean, req: Request) {
     return {
       id: site.id,
       slug: site.slug,
@@ -36,9 +36,17 @@ export class PublicSiteController {
       maintenanceMode: site.maintenanceMode,
       hiddenMode: site.hiddenMode,
       maintenanceMessage: site.maintenanceMessage ?? {},
+      ipWhitelist: site.ipWhitelist ?? [],
+      demoEnabled: site.demoEnabled ?? true,
+      styles: site.styles ?? [],
+      voices: site.voices ?? [],
+      occasions: site.occasions ?? [],
       // Mostrele audio (URL public) — citite de /studio pentru carduri-le ►.
       styleSamples: site.suno?.styleSamples ?? {},
       voiceSamples: site.suno?.voiceSamples ?? {},
+      // IP-ul clientului — extras din x-forwarded-for / x-real-ip / req.ip
+      // pentru ca middleware-ul web să-l poată compara cu ipWhitelist.
+      clientIp: extractClientIp(req),
       ...(publicOnly ? {} : {
         adminEmails: site.adminEmails,
         fromEmail: site.fromEmail,
@@ -50,6 +58,18 @@ export class PublicSiteController {
       }),
     };
   }
+}
+
+function extractClientIp(req: Request): string | null {
+  const xff = req.headers['x-forwarded-for'];
+  if (xff) {
+    const list = Array.isArray(xff) ? xff[0] : xff;
+    const first = list.split(',')[0]?.trim();
+    if (first) return first;
+  }
+  const real = req.headers['x-real-ip'];
+  if (typeof real === 'string' && real) return real.trim();
+  return req.ip ?? null;
 }
 
 // Admin: CRUD complet pe site-uri
@@ -118,6 +138,11 @@ export class AdminSitesController {
       maintenanceMode: s.maintenanceMode,
       hiddenMode: s.hiddenMode,
       maintenanceMessage: s.maintenanceMessage ?? {},
+      ipWhitelist: s.ipWhitelist ?? [],
+      demoEnabled: s.demoEnabled ?? true,
+      styles: s.styles ?? [],
+      voices: s.voices ?? [],
+      occasions: s.occasions ?? [],
       notes: s.notes,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
@@ -134,19 +159,23 @@ export class AdminSiteSamplesController {
     private readonly samples: SiteSamplesService,
   ) {}
 
-  /** Listează toate mostrele (12 stiluri + 6 voci) cu status: present / generating / missing. */
+  /** Listează toate mostrele cu status: present / generating / missing.
+   *  Cheile sunt derivate din site.styles/voices dacă există, altfel din
+   *  listele default (SAMPLE_STYLES / SAMPLE_VOICES). */
   @Get()
   async list(@Param('id') id: string) {
     const site = await this.sites.findById(id);
     if (!site) throw new NotFoundException('Site negăsit');
     const styleSamples = site.suno?.styleSamples ?? {};
     const voiceSamples = site.suno?.voiceSamples ?? {};
-    const styles = SAMPLE_STYLES.map((key) => ({
+    const styleKeys = (site.styles?.length ? site.styles.map((s) => s.id) : SAMPLE_STYLES) as readonly string[];
+    const voiceKeys = (site.voices?.length ? site.voices.map((v) => v.id) : SAMPLE_VOICES) as readonly string[];
+    const styles = styleKeys.map((key) => ({
       key,
       entry: styleSamples[key] ?? null,
       generating: this.samples.isGenerating(id, 'style', key),
     }));
-    const voices = SAMPLE_VOICES.map((key) => ({
+    const voices = voiceKeys.map((key) => ({
       key,
       entry: voiceSamples[key] ?? null,
       generating: this.samples.isGenerating(id, 'voice', key),

@@ -35,9 +35,45 @@ export interface SiteDto {
   maintenanceMode: boolean;
   hiddenMode: boolean;
   maintenanceMessage: Record<string, string>;
+  /** Lista IP-uri scutite de mentenanță / hidden (exact match sau prefix "192.168.*"). */
+  ipWhitelist: string[];
+  /** Toggle: dacă false, plata se face ÎNAINTE de generare (skip demo gratuit 30s). */
+  demoEnabled: boolean;
+  /** Categorii / stiluri muzicale per site (carduri /studio). */
+  styles: SiteStyleEntry[];
+  /** Voci / artiști per site. */
+  voices: SiteVoiceEntry[];
+  /** Ocazii (zile naștere, nuntă, etc.) per site. */
+  occasions: SiteOccasionEntry[];
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SiteStyleEntry {
+  id: string;
+  em: string;
+  nm: string;
+  ds: string;
+  heat?: string;
+  i18n?: Record<string, { nm?: string; ds?: string; heat?: string }>;
+  sunoPrompt?: string;
+}
+
+export interface SiteVoiceEntry {
+  id: string;
+  nm: string;
+  tg: string;
+  av: string;
+  i18n?: Record<string, { nm?: string; tg?: string }>;
+  sunoVoice?: string;
+}
+
+export interface SiteOccasionEntry {
+  id: string;
+  em: string;
+  nm: string;
+  i18n?: Record<string, { nm?: string }>;
 }
 
 export interface SampleEntryDto {
