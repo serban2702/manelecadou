@@ -1,0 +1,157 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_PORT: 3000
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      APP_URL: ${APP_URL}
+      ADMIN_URL: ${ADMIN_URL}
+      API_URL: ${API_URL}
+      DEFAULT_SITE_DOMAIN: ${DEFAULT_SITE_DOMAIN}
+      ADMIN_EMAILS: ${ADMIN_EMAILS}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      MAGIC_LINK_TTL_MIN: ${MAGIC_LINK_TTL_MIN:-15}
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY}
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-mailgun}
+      MAIL_FROM: ${MAIL_FROM}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      MAILGUN_API_KEY: ${MAILGUN_API_KEY:-}
+      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN:-}
+      MAILGUN_REGION: ${MAILGUN_REGION:-us}
+      MAILGUN_API_URL: ${MAILGUN_API_URL:-}
+      MAILGUN_FROM_EMAIL: ${MAILGUN_FROM_EMAIL:-}
+      MAILGUN_WEBHOOK_SIGNING_KEY: ${MAILGUN_WEBHOOK_SIGNING_KEY:-}
+      SUNO_PROVIDER: ${SUNO_PROVIDER:-real}
+      SUNO_API_BASE_URL: ${SUNO_API_BASE_URL:-https://api.sunoapi.org}
+      SUNO_API_KEY: ${SUNO_API_KEY:-}
+      SUNO_MODEL: ${SUNO_MODEL:-V4_5}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      STRIPE_PRICE_FULL_RON: ${STRIPE_PRICE_FULL_RON:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_AUTOREPLY_MODEL: ${OPENAI_AUTOREPLY_MODEL:-}
+      MAIL_CRED_KEY: ${MAIL_CRED_KEY:-}
+      MAIL_ATTACH_DIR: /app/mail-attach
+      MAIL_POLL_INTERVAL_MS: ${MAIL_POLL_INTERVAL_MS:-60000}
+      GA4_MEASUREMENT_ID: ${NEXT_PUBLIC_GA_ID:-}
+      GA4_API_SECRET: ${GA4_API_SECRET:-}
+      META_PIXEL_ID: ${NEXT_PUBLIC_META_PIXEL_ID:-}
+      META_CAPI_TOKEN: ${META_CAPI_TOKEN:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    volumes:
+      - api_uploads:/app/uploads
+      - api_backups:/app/backups
+      - api_mail_attach:/app/mail-attach
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ""
+        NEXT_PUBLIC_GA_ID: ${NEXT_PUBLIC_GA_ID:-}
+        NEXT_PUBLIC_META_PIXEL_ID: ${NEXT_PUBLIC_META_PIXEL_ID:-}
+        NEXT_PUBLIC_TIKTOK_PIXEL_ID: ${NEXT_PUBLIC_TIKTOK_PIXEL_ID:-}
+        NEXT_PUBLIC_DEFAULT_LOCALE: ${NEXT_PUBLIC_DEFAULT_LOCALE:-ro}
+        NEXT_PUBLIC_SHOW_LANG_SWITCHER: ${NEXT_PUBLIC_SHOW_LANG_SWITCHER:-false}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # Server-side calls (SSR, sitemap) hit API direct prin rețeaua Docker
+      API_INTERNAL_URL: http://api:3000
+    depends_on:
+      api:
+        condition: service_healthy
+
+  admin:
+    build:
+      context: ./apps/admin
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ""
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_INTERNAL_URL: http://api:3000
+    depends_on:
+      api:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - web
+      - admin
+
+volumes:
+  pg_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
+  api_uploads:
+  api_backups:
+  api_mail_attach:
