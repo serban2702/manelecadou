@@ -45,6 +45,7 @@ const Suno            = dynamic(() => import('../suno/_content'),            { s
 const Analytics       = dynamic(() => import('../analytics/_content'),       { ssr: false, loading: Loading });
 const DatabaseAdmin   = dynamic(() => import('../database/_content'),        { ssr: false, loading: Loading });
 const Sites           = dynamic(() => import('../sites/_content'),           { ssr: false, loading: Loading });
+const SiteConfig      = dynamic(() => import('../site/_content'),            { ssr: false, loading: Loading });
 
 const ROUTES: Record<string, ComponentType> = {
   '/':                   Dashboard,
@@ -64,6 +65,7 @@ const ROUTES: Record<string, ComponentType> = {
   '/analytics':          Analytics,
   '/database':           DatabaseAdmin,
   '/sites':              Sites,
+  '/site':               SiteConfig,
 };
 
 export default function CatchAll() {

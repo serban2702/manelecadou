@@ -25,6 +25,24 @@ export interface SiteDto {
     stylePromptMap?: Record<string, string>;
     voiceMap?: Record<string, string>;
     lyricsLocale?: string;
+    writerSystemPrompt?: string;
+    criticSystemPrompt?: string;
+  };
+  social?: {
+    instagram?: string;
+    facebook?: string;
+    tiktok?: string;
+    youtube?: string;
+    whatsapp?: string;
+    phone?: string;
+  };
+  companyInfo?: {
+    legalName?: string;
+    cui?: string;
+    regCom?: string;
+    address?: string;
+    iban?: string;
+    ownerName?: string;
   };
   fromEmail: string | null;
   supportEmail: string | null;

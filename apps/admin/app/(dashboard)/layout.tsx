@@ -61,7 +61,8 @@ const NAV: NavItem[] = [
   { href: '/promo', label: 'Promo', icon: Tag, scope: 'both' },
   { href: '/gift-codes', label: 'Gift codes', icon: Gift, scope: 'per-site' },
   { href: '/errors', label: 'Errors', icon: AlertTriangle, scope: 'both' },
-  { href: '/sites', label: 'Sites', icon: Globe, scope: 'global' },
+  { href: '/sites', label: 'Toate site-urile', icon: Globe, scope: 'both' },
+  { href: '/site', label: 'Acest site', icon: Globe, scope: 'per-site' },
   { href: '/database', label: 'Database', icon: Database, scope: 'global' },
   { href: '/settings', label: 'Settings', icon: SettingsIcon, scope: 'global' },
 ];
