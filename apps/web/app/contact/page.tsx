@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { SiteShell } from '@/components/SiteShell';
 import { useSite } from '@/lib/site-context';
-import { siteSupportEmail } from '@/lib/site-config';
+import { siteSupportEmail } from '@/lib/site-shared';
 
 export default function ContactPage() {
   const site = useSite();
