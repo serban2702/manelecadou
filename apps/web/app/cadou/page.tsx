@@ -7,7 +7,7 @@ import { Ic } from '@/components/icons';
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/providers';
 import { useSite } from '@/lib/site-context';
-import { formatPrice } from '@/lib/site-config';
+import { formatPrice } from '@/lib/site-shared';
 
 // Tier-urile: numele și descrierea sunt globale; prețurile vin din site (RON: 24.99/69/199; alte
 // valute: scalate proporțional din site.giftPriceCents — vezi PaymentsService.tierPriceForSite).
