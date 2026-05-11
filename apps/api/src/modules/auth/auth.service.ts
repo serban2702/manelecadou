@@ -39,6 +39,7 @@ export class AuthService {
     guestId: string | null,
     locale: string | undefined,
     siteId: string | null,
+    requestHost: string | null = null,
   ) {
     const normalizedEmail = email.toLowerCase().trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
@@ -62,8 +63,10 @@ export class AuthService {
 
     // Construim link-ul către domeniul site-ului curent (nu APP_URL global) — magic
     // link-ul trebuie consumat pe același site pe care a fost emis.
+    // Excepție: dacă request-ul vine de pe Host-ul admin (admin.<domain>),
+    // link-ul trebuie să întoarcă userul în admin app, nu pe site-ul public.
     const site = siteId ? await this.sites.findById(siteId) : null;
-    const baseUrl = this.siteAppUrl(site?.domain);
+    const baseUrl = this.computeLoginBaseUrl(site?.domain, requestHost);
     const link = `${baseUrl}/login/verify?token=${token}`;
 
     // DEV ONLY — log link-ul în consolă ca să poți testa local fără email real
@@ -174,6 +177,28 @@ export class AuthService {
       return this.config.get<string>('APP_URL') ?? `http://${domain ?? 'localhost:1500'}`;
     }
     return `https://${domain}`;
+  }
+
+  /**
+   * Decide base URL pentru magic link.
+   * Dacă request-ul vine de pe admin host (ex. admin.manelecadou.ro) → ADMIN_URL.
+   * Altfel → URL-ul site-ului curent (pentru site-uri multi-tenant).
+   */
+  private computeLoginBaseUrl(
+    siteDomain: string | undefined,
+    requestHost: string | null,
+  ): string {
+    const adminUrl = this.config.get<string>('ADMIN_URL');
+    if (adminUrl && requestHost) {
+      try {
+        const adminHost = new URL(adminUrl).host.toLowerCase();
+        const reqHost = requestHost.split(':')[0].toLowerCase();
+        if (reqHost === adminHost) return adminUrl;
+      } catch {
+        // ignore — fallback la site URL
+      }
+    }
+    return this.siteAppUrl(siteDomain);
   }
 
   async submitGdprRequest(

@@ -32,9 +32,17 @@ export class AuthController {
     @Body() body: RequestMagicLinkDto,
     @Headers('x-guest-id') guestId: string | undefined,
     @Headers('x-locale') locale: string | undefined,
+    @Headers('host') host: string | undefined,
+    @Headers('x-forwarded-host') forwardedHost: string | undefined,
     @CurrentSiteId() siteId: string | null,
   ) {
-    return this.auth.requestMagicLink(body.email, guestId ?? null, locale, siteId);
+    return this.auth.requestMagicLink(
+      body.email,
+      guestId ?? null,
+      locale,
+      siteId,
+      forwardedHost || host || null,
+    );
   }
 
   @Get('magic-link/consume')
