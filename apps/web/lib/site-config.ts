@@ -32,6 +32,8 @@ export const getSiteConfig = cache(async (): Promise<SiteConfig> => {
     supportEmail: null,
     active: true,
     maintenanceMode: false,
+    hiddenMode: false,
+    maintenanceMessage: {},
   };
 
   try {

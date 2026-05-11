@@ -42,6 +42,8 @@ export interface SiteConfig {
   supportEmail?: string | null;
   active: boolean;
   maintenanceMode: boolean;
+  hiddenMode?: boolean;
+  maintenanceMessage?: Record<string, string>;
   /**
    * Mostre audio (URL public) per stil/voce — folosite de butoanele ► din /studio.
    * Cheia = id-ul stilului ('clasic', 'modern', ...) sau al vocii ('adi', 'florinel', ...).

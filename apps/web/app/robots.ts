@@ -10,8 +10,8 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
   const site = await getSiteConfig();
   const baseUrl = buildSiteUrl(site);
 
-  // Site dezactivat sau în mentenanță → blocăm indexarea complet
-  if (!site.active || site.maintenanceMode) {
+  // Site dezactivat, în mentenanță sau hidden → blocăm indexarea complet
+  if (!site.active || site.maintenanceMode || site.hiddenMode) {
     return {
       rules: [{ userAgent: '*', disallow: '/' }],
       host: baseUrl,

@@ -33,6 +33,8 @@ export interface SiteDto {
   isDefault: boolean;
   sslEnabled: boolean;
   maintenanceMode: boolean;
+  hiddenMode: boolean;
+  maintenanceMessage: Record<string, string>;
   notes: string | null;
   createdAt: string;
   updatedAt: string;

@@ -34,6 +34,8 @@ export class PublicSiteController {
       supportEmail: site.supportEmail,
       active: site.active,
       maintenanceMode: site.maintenanceMode,
+      hiddenMode: site.hiddenMode,
+      maintenanceMessage: site.maintenanceMessage ?? {},
       // Mostrele audio (URL public) — citite de /studio pentru carduri-le ►.
       styleSamples: site.suno?.styleSamples ?? {},
       voiceSamples: site.suno?.voiceSamples ?? {},
@@ -114,6 +116,8 @@ export class AdminSitesController {
       isDefault: s.isDefault,
       sslEnabled: s.sslEnabled,
       maintenanceMode: s.maintenanceMode,
+      hiddenMode: s.hiddenMode,
+      maintenanceMessage: s.maintenanceMessage ?? {},
       notes: s.notes,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,

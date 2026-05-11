@@ -160,6 +160,17 @@ export class Site {
   @Column({ type: 'boolean', default: false })
   maintenanceMode!: boolean;
 
+  @Column({ type: 'boolean', default: false })
+  hiddenMode!: boolean; // dacă true, Caddy/Next.js închid conexiunea cu 444 (ERR_EMPTY_RESPONSE)
+
+  /**
+   * Mesaj custom pentru pagina de mentenanță, JSON cu cheie = locale.
+   * Ex: { ro: "Revenim curând.", en: "Back soon." }
+   * Dacă lipsește pentru locale-ul curent, web app cade pe site.locale, apoi pe text default i18n.
+   */
+  @Column({ type: 'jsonb', default: () => `'{}'::jsonb` })
+  maintenanceMessage!: Record<string, string>;
+
   @Column({ type: 'text', nullable: true })
   notes!: string | null; // note interne admin
 

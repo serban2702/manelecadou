@@ -40,6 +40,8 @@ const EMPTY_FORM: Partial<SiteDto> = {
   isDefault: false,
   sslEnabled: true,
   maintenanceMode: false,
+  hiddenMode: false,
+  maintenanceMessage: {},
   notes: '',
 };
 
@@ -375,8 +377,50 @@ export default function SitesPage() {
               <Toggle label="Activ" value={form.active ?? true} onChange={(v) => setForm({ ...form, active: v })} />
               <Toggle label="Default fallback" value={form.isDefault ?? false} onChange={(v) => setForm({ ...form, isDefault: v })} />
               <Toggle label="SSL enabled (Caddy emite cert)" value={form.sslEnabled ?? true} onChange={(v) => setForm({ ...form, sslEnabled: v })} />
-              <Toggle label="Mentenanță (web returnează 503)" value={form.maintenanceMode ?? false} onChange={(v) => setForm({ ...form, maintenanceMode: v })} />
+              <Toggle
+                label="Mentenanță (pagină brandită + spinner)"
+                value={form.maintenanceMode ?? false}
+                onChange={(v) => setForm({ ...form, maintenanceMode: v })}
+              />
+              <Toggle
+                label="Hidden (empty response — pare domeniu fără server)"
+                value={form.hiddenMode ?? false}
+                onChange={(v) => setForm({ ...form, hiddenMode: v })}
+              />
+              {form.hiddenMode && (
+                <p style={{ fontSize: 12, color: '#a78bfa', margin: '4px 0 0 0' }}>
+                  ⚠️ În acest mod, browserul afișează „This site can&apos;t be reached" — folosește când nu vrei
+                  ca cineva să știe ce pregătești pe domeniu. Are precedență față de mentenanță.
+                </p>
+              )}
             </Section>
+
+            {form.maintenanceMode && !form.hiddenMode && (
+              <Section title="Mesaj mentenanță per locale (opțional)">
+                <p style={{ fontSize: 12, color: '#888', margin: '0 0 8px 0' }}>
+                  Format: prima linie = titlu, restul = subtitlu. Dacă lipsește un locale,
+                  cade pe locale-ul site-ului ({form.locale ?? 'ro'}), apoi pe text default.
+                </p>
+                {['ro', 'bg', 'sr', 'tr', 'el', 'hr', 'sl', 'bs', 'en'].map((loc) => (
+                  <Field key={loc} label={loc.toUpperCase()}>
+                    <Textarea
+                      value={(form.maintenanceMessage ?? {})[loc] ?? ''}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          maintenanceMessage: {
+                            ...(form.maintenanceMessage ?? {}),
+                            [loc]: e.target.value,
+                          },
+                        })
+                      }
+                      rows={2}
+                      placeholder={loc === 'ro' ? 'Lucrăm la ceva tare.\nRevenim foarte curând.' : ''}
+                    />
+                  </Field>
+                ))}
+              </Section>
+            )}
 
             <Section title="Note interne">
               <Textarea

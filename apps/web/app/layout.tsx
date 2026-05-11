@@ -9,6 +9,7 @@ import { Analytics } from '@/components/Analytics';
 import { Tracker } from '@/components/Tracker';
 import { CookieConsent } from '@/components/CookieConsent';
 import { ClientErrorReporter } from '@/components/ClientErrorReporter';
+import { MaintenancePage } from '@/components/MaintenancePage';
 import { LOCALE_META, isLocale } from '@/i18n/locales';
 import { getSiteConfig, siteSupportEmail, siteUrl as siteUrlOf } from '@/lib/site-config';
 import { SiteProvider } from '@/lib/site-context';
@@ -143,10 +144,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body>
         {site.maintenanceMode ? (
-          <div style={{ padding: '4rem 2rem', textAlign: 'center', color: '#fff' }}>
-            <h1>{site.name}</h1>
-            <p>Site în mentenanță. Revino în câteva minute.</p>
-          </div>
+          <MaintenancePage site={site} locale={effectiveLocale} />
         ) : (
           <NextIntlClientProvider locale={effectiveLocale} messages={messages}>
             <SiteProvider value={site}>
