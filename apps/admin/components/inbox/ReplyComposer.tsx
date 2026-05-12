@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
@@ -12,32 +12,49 @@ interface Props {
   to: string[];
   subject: string;
   initialHtml?: string;
+  /** HTML cu citatul mesajului original (attribution + blockquote), atașat sub draft. */
+  quotedHtml?: string;
   aiSuggestionHtml?: string | null;
   onSend: (html: string) => Promise<void>;
 }
 
-export function ReplyComposer({ to, subject, initialHtml, aiSuggestionHtml, onSend }: Props) {
+const REPLY_BODY_PLACEHOLDER = '<p></p><p></p>';
+
+function composeInitial(initialHtml: string | undefined, quotedHtml: string | undefined): string {
+  const body = initialHtml && initialHtml.trim() ? initialHtml : REPLY_BODY_PLACEHOLDER;
+  return quotedHtml ? `${body}${quotedHtml}` : body;
+}
+
+export function ReplyComposer({ to, subject, initialHtml, quotedHtml, aiSuggestionHtml, onSend }: Props) {
   const [sending, setSending] = useState(false);
 
   const editor = useEditor({
     extensions: [StarterKit, Link.configure({ openOnClick: false, HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' } })],
-    content: initialHtml ?? '<p></p>',
+    content: composeInitial(initialHtml, quotedHtml),
     editorProps: {
       attributes: {
-        class: 'prose prose-sm dark:prose-invert max-w-none min-h-[180px] focus:outline-none px-3 py-2',
+        class: 'prose prose-sm dark:prose-invert max-w-none min-h-[220px] focus:outline-none px-3 py-2',
       },
     },
   });
 
+  // Trackuim ultima valoare a initialHtml ca să distingem un draft nou
+  // (venit din AssistantPanel / sugestie AI prin composerHtml) de un re-render
+  // banal. La schimbare reală, înlocuim conținutul dar păstrăm citatul.
+  const lastInitialRef = useRef<string | undefined>(initialHtml);
   useEffect(() => {
-    if (initialHtml && editor && editor.isEmpty) {
-      editor.commands.setContent(initialHtml);
+    if (!editor) return;
+    if (initialHtml !== lastInitialRef.current) {
+      lastInitialRef.current = initialHtml;
+      if (initialHtml) {
+        editor.commands.setContent(composeInitial(initialHtml, quotedHtml));
+      }
     }
-  }, [initialHtml, editor]);
+  }, [initialHtml, quotedHtml, editor]);
 
   function applyAi() {
     if (!aiSuggestionHtml || !editor) return;
-    editor.commands.setContent(aiSuggestionHtml);
+    editor.commands.setContent(composeInitial(aiSuggestionHtml, quotedHtml));
   }
 
   async function handleSend() {

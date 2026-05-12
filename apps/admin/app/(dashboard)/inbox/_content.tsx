@@ -2,8 +2,9 @@
 
 import { SpaLink as Link } from '@/lib/spa-router';
 import { useEffect, useMemo, useState } from 'react';
-import { formatDistanceToNowStrict } from 'date-fns';
+import { formatDistanceToNowStrict, format } from 'date-fns';
 import { ro } from 'date-fns/locale';
+import DOMPurify from 'dompurify';
 import { Archive, ArchiveRestore, Inbox as InboxIcon, Mail, Paperclip, Settings2, Sparkles, Trash2, Wifi, WifiOff } from 'lucide-react';
 import { MailApi, type MailMessageRow } from '@/lib/api';
 import { useAsync } from '@/lib/hooks/use-async';
@@ -367,9 +368,11 @@ export default function InboxPage() {
               {detail.message.direction === 'in' && (
                 <div className="border-t border-border p-3">
                   <ReplyComposer
+                    key={detail.message.id}
                     to={[detail.message.fromAddr ?? '']}
                     subject={replySubject(detail.message.subject)}
                     initialHtml={composerHtml || undefined}
+                    quotedHtml={buildQuotedReply(detail.message)}
                     aiSuggestionHtml={detail.suggestion?.htmlReply ?? null}
                     onSend={handleSend}
                   />
@@ -442,4 +445,57 @@ function prettySize(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Construiește citatul mesajului original în composer (format Gmail-style):
+ * attribution + <blockquote> cu textul/html-ul curățat al mesajului.
+ */
+function buildQuotedReply(m: MailMessageRow): string {
+  if (typeof window === 'undefined') return '';
+  const when = m.sentAt ?? m.receivedAt ?? m.createdAt;
+  const dateStr = when
+    ? format(new Date(when), "d MMM yyyy 'la' HH:mm", { locale: ro })
+    : '';
+  const who = m.fromName
+    ? `${escapeHtml(m.fromName)} &lt;${escapeHtml(m.fromAddr ?? '')}&gt;`
+    : escapeHtml(m.fromAddr ?? 'expeditor necunoscut');
+  const attribution = `Pe ${escapeHtml(dateStr)}, ${who} a scris:`;
+
+  let bodyInner: string;
+  if (m.bodyHtml && m.bodyHtml.trim()) {
+    bodyInner = DOMPurify.sanitize(m.bodyHtml, {
+      WHOLE_DOCUMENT: false,
+      ALLOW_DATA_ATTR: false,
+      FORBID_TAGS: ['style', 'script', 'iframe', 'form', 'object', 'embed', 'meta', 'link'],
+      FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
+    }) as string;
+    // Blochează imaginile externe (rămân doar inline cid:/data:).
+    bodyInner = bodyInner.replace(/<img\b[^>]*?\bsrc\s*=\s*"([^"]*)"/gi, (full, src) => {
+      if (/^cid:/i.test(src) || /^data:/i.test(src)) return full;
+      return full.replace(src, '');
+    });
+  } else if (m.bodyText && m.bodyText.trim()) {
+    bodyInner = escapeHtml(m.bodyText).replace(/\n/g, '<br>');
+  } else {
+    bodyInner = `<em>${escapeHtml(m.snippet || '')}</em>`;
+  }
+
+  return (
+    `<p></p>` +
+    `<div class="mail-quote">` +
+    `<p style="color:#6b7280;font-size:12px;margin:0 0 4px;">${attribution}</p>` +
+    `<blockquote style="margin:0 0 0 .8ex;border-left:2px solid #d1d5db;padding-left:1ex;color:#6b7280;">` +
+    bodyInner +
+    `</blockquote>` +
+    `</div>`
+  );
 }
