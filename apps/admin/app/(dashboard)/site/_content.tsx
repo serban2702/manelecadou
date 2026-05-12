@@ -1278,7 +1278,7 @@ function CategoryRow({
                     </Field>
                   </div>
                   <div className="sm:col-span-2">
-                    <Field label="Hint AI default pentru versuri (pre-completează „Hint AI" la mostre)">
+                    <Field label={'Hint AI default pentru versuri (pre-completează „Hint AI" la mostre)'}>
                       <Textarea
                         value={(entry as SiteStyleEntry).lyricsHint ?? ''}
                         onChange={(e) => onChange({ lyricsHint: e.target.value })}
