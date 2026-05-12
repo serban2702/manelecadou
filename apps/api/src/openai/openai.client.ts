@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 import { SettingsService } from '../modules/settings/settings.service';
+import { buildChatParams } from './openai-params.helper';
 
 @Injectable()
 export class OpenAiClient {
@@ -30,16 +31,18 @@ export class OpenAiClient {
     const defaultModel = await this.settings.get('OPENAI_MODEL');
     const model = opts.model ?? (autoModel || defaultModel || 'gpt-4o-mini');
     const client = await this.ensure();
-    const res = await client.chat.completions.create({
-      model,
-      temperature: opts.temperature ?? 0.2,
-      max_tokens: opts.maxTokens ?? 800,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: opts.system },
-        { role: 'user', content: opts.user },
-      ],
-    });
+    const res = await client.chat.completions.create(
+      buildChatParams({
+        model,
+        temperature: opts.temperature ?? 0.2,
+        maxTokens: opts.maxTokens ?? 800,
+        responseFormat: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: opts.system },
+          { role: 'user', content: opts.user },
+        ],
+      }),
+    );
     const raw = res.choices[0]?.message?.content ?? '{}';
     let data: T;
     try {

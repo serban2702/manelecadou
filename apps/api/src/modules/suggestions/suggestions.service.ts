@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SettingsService } from '../settings/settings.service';
+import { buildChatParams } from '../../openai/openai-params.helper';
 import { SuggestMessageDto } from './dto/suggest-message.dto';
 
 const LOCALE_NAME: Record<string, string> = {
@@ -43,15 +44,17 @@ export class SuggestionsService {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model,
-        temperature: 0.9,
-        max_tokens: 220,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-      }),
+      body: JSON.stringify(
+        buildChatParams({
+          model,
+          temperature: 0.9,
+          maxTokens: 220,
+          messages: [
+            { role: 'system', content: system },
+            { role: 'user', content: user },
+          ],
+        }),
+      ),
     });
     if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
     const json = (await res.json()) as { choices: Array<{ message: { content: string } }> };
