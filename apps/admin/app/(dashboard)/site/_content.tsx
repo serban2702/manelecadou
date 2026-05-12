@@ -705,12 +705,35 @@ function CategoriesTab({
   // ca fallback). NU scriem în DB până când userul nu editează / salvează,
   // așa că `sites.styles/voices/occasions` rămân `[]` în DB pentru site-urile
   // ne-customizate (nu poluăm zona Database admin).
+  //
+  // Backfill: pentru site-urile care AU deja stiluri persistate dar fără
+  // `sunoPrompt`/`lyricsHint` (versiune veche a seed-ului), completez aceste
+  // câmpuri din seed când id-ul se potrivește. Nu suprascriu valori existente.
   const seededForSiteRef = useRef<string | null>(null);
   useEffect(() => {
     if (seededForSiteRef.current === siteId) return;
     seededForSiteRef.current = siteId;
     const patch: Partial<SiteDto> = {};
-    if (!form.styles?.length) patch.styles = SEED_STYLES;
+    if (!form.styles?.length) {
+      patch.styles = SEED_STYLES;
+    } else {
+      const seedById = new Map(SEED_STYLES.map((s) => [s.id, s]));
+      let mutated = false;
+      const merged = form.styles.map((s) => {
+        const seed = seedById.get(s.id);
+        if (!seed) return s;
+        const missingSuno = !s.sunoPrompt && !!seed.sunoPrompt;
+        const missingHint = !s.lyricsHint && !!seed.lyricsHint;
+        if (!missingSuno && !missingHint) return s;
+        mutated = true;
+        return {
+          ...s,
+          sunoPrompt: s.sunoPrompt || seed.sunoPrompt,
+          lyricsHint: s.lyricsHint || seed.lyricsHint,
+        };
+      });
+      if (mutated) patch.styles = merged;
+    }
     if (!form.voices?.length) patch.voices = SEED_VOICES;
     if (!form.occasions?.length) patch.occasions = SEED_OCCASIONS;
     if (Object.keys(patch).length > 0) {
