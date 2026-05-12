@@ -14,7 +14,26 @@ import { ErrorsService } from './errors.service';
  *
  * NOTE: throttle 429, validation 400, auth 401/403 sunt log-uite ca `warn`
  * (uneori util în debugging dar nu sunt erori critice).
+ *
+ * Zgomot exclus din persistare ca să nu sufoce tab-ul /errors:
+ *  - 404 pe `/api/internal/caddy/ask` (by design — Caddy întreabă pentru
+ *    on-demand TLS și 404 = „nu acest domeniu, nu emite cert");
+ *  - 404 pe path-uri tipice de scanner (`.env`, `wp-`, `phpmyadmin`, etc.);
+ *  - 401 cu mesaje standard din fluxul de auth (Missing/Invalid/Used token) —
+ *    apar oricând userul are sesiunea expirată sau token-ul de magic link deja
+ *    consumat; nu sunt erori reale.
  */
+const SCANNER_PATH_RE =
+  /(\.env|\.git|\.bak|\.sql|\.aws|\.aspx|\.asp|\.action|wp-|wordpress|phpmyadmin|\/admin\.|jenkins|cgi-bin|\/(config|credentials|secrets)\.(json|yml|yaml)|\/owa\/)/i;
+const AUTH_NOISE_MSG_RE = /^(Missing token|Invalid token|Token already used|jwt expired|jwt malformed)$/i;
+
+function shouldSkipPersist(path: string, status: number, message: string): boolean {
+  if (status === 404 && path === '/api/internal/caddy/ask') return true;
+  if (status === 404 && SCANNER_PATH_RE.test(path)) return true;
+  if (status === 401 && AUTH_NOISE_MSG_RE.test(message)) return true;
+  return false;
+}
+
 @Catch()
 export class GlobalErrorsFilter implements ExceptionFilter {
   private readonly logger = new Logger('GlobalErrorsFilter');
@@ -37,13 +56,15 @@ export class GlobalErrorsFilter implements ExceptionFilter {
     const stack = (exception as Error)?.stack;
 
     const level: 'error' | 'warn' = status >= 500 || !isHttp ? 'error' : 'warn';
+    const messageStr = typeof message === 'string' ? message : JSON.stringify(message).slice(0, 200);
+    const skipPersist = shouldSkipPersist(req.path, status, messageStr);
 
     // Persistă în DB (fire-and-forget — nu blocăm response-ul)
-    this.errors
+    if (!skipPersist) this.errors
       .log({
         level,
         source: 'api',
-        message: typeof message === 'string' ? message : JSON.stringify(message).slice(0, 200),
+        message: messageStr,
         stack,
         path: req.path,
         method: req.method,

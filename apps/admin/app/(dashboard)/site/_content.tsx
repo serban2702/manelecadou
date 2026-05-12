@@ -1181,7 +1181,7 @@ function CategoryRow({
           {kind !== 'occasion' && (
             <div className="flex-1 min-w-[180px] max-w-[280px]">
               {sample?.entry ? (
-                <audio controls src={sample.entry.audioUrl} className="w-full h-8" preload="none" />
+                <audio controls src={sample.entry.audioUrl} className="w-full h-8" preload="metadata" />
               ) : (
                 <span className="text-[11px] text-muted-foreground italic">Mostra nu a fost generată</span>
               )}
