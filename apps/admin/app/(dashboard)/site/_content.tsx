@@ -31,6 +31,7 @@ import {
   getSelectedSiteId,
   setSelectedSiteId,
 } from '@/lib/api/sites.api';
+import { SEED_OCCASIONS, SEED_STYLES, SEED_VOICES } from '@/lib/seed-categories';
 import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -699,6 +700,32 @@ function CategoriesTab({
   const { toast } = useToast();
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
+  // Pre-completare din seed-data: dacă DB returnează liste goale, populăm
+  // local form-ul cu valorile default (cele care apar oricum pe site-ul public
+  // ca fallback). NU scriem în DB până când userul nu editează / salvează,
+  // așa că `sites.styles/voices/occasions` rămân `[]` în DB pentru site-urile
+  // ne-customizate (nu poluăm zona Database admin).
+  const seededForSiteRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (seededForSiteRef.current === siteId) return;
+    seededForSiteRef.current = siteId;
+    const patch: Partial<SiteDto> = {};
+    if (!form.styles?.length) patch.styles = SEED_STYLES;
+    if (!form.voices?.length) patch.voices = SEED_VOICES;
+    if (!form.occasions?.length) patch.occasions = SEED_OCCASIONS;
+    if (Object.keys(patch).length > 0) {
+      setForm({ ...form, ...patch });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteId]);
+
+  // Identitatea de referință cu seed-ul = lista încă nu a fost editată / salvată
+  // (orice modificare creează un array nou prin spread / filter / map).
+  const seededStyles = form.styles === SEED_STYLES;
+  const seededVoices = form.voices === SEED_VOICES;
+  const seededOccasions = form.occasions === SEED_OCCASIONS;
+  const anySeeded = seededStyles || seededVoices || seededOccasions;
+
   // Helpers ────────────────────────────────────────────────────────────────
   const styleSample = (key: string) => samples?.styles.find((s) => s.key === key) ?? null;
   const voiceSample = (key: string) => samples?.voices.find((s) => s.key === key) ?? null;
@@ -821,6 +848,29 @@ function CategoriesTab({
 
   return (
     <div className="space-y-6">
+      {anySeeded && (
+        <Card className="border-dashed border-primary/40 bg-primary/5">
+          <CardContent className="p-3 text-sm flex items-start gap-3">
+            <Sparkles className="h-4 w-4 mt-0.5 text-primary shrink-0" />
+            <div className="space-y-1">
+              <div className="font-medium text-foreground">
+                Listă default pre-completată
+              </div>
+              <div className="text-muted-foreground text-xs leading-relaxed">
+                {[
+                  seededStyles ? `${SEED_STYLES.length} stiluri` : null,
+                  seededVoices ? `${SEED_VOICES.length} voci` : null,
+                  seededOccasions ? `${SEED_OCCASIONS.length} ocazii` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}{' '}
+                preluate din seed-data (aceeași listă pe care o vede site-ul când DB-ul e gol).
+                Nimic nu e salvat încă în baza de date — editează direct sau apasă „Salvează modificările" ca să le ancorezi pe acest site.
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <Card>
         <CardContent className="p-3 flex flex-wrap items-center gap-3">
           <Button onClick={generateAllMissing}>
