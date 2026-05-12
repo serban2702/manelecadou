@@ -17,6 +17,8 @@ export interface SampleOverrides {
   customStylePrompt?: string;
   /** Numele destinatarului în lyrics (default 'Demo'). */
   recipientName?: string;
+  /** Numele expeditorului — apare în primele 2 rânduri cântate („De la X, pentru Y..."). */
+  dedication?: string;
 }
 
 export const SAMPLE_STYLES = [
@@ -248,6 +250,7 @@ export class SiteSamplesService {
       style: kind === 'style' ? key : fallbackStyle,
       occasion: 'altul',
       recipientName: overrides?.recipientName?.trim() || 'Demo',
+      dedication: overrides?.dedication?.trim() || undefined,
       message: 'demo sample',
       voiceArtist,
       lyrics,
@@ -316,7 +319,7 @@ export class SiteSamplesService {
     siteId: string,
     kind: SampleKind,
     key: string,
-    opts?: { recipientName?: string; voiceKey?: string; customStylePrompt?: string },
+    opts?: { recipientName?: string; voiceKey?: string; customStylePrompt?: string; dedication?: string },
   ): Promise<{ lyrics: string }> {
     this.validateKey(kind, key);
     const site = await this.sites.findById(siteId);
@@ -333,6 +336,7 @@ export class SiteSamplesService {
       style: styleId,
       occasion: 'altul',
       recipientName: opts?.recipientName?.trim() || 'Demo',
+      dedication: opts?.dedication?.trim() || undefined,
       message: 'demo sample',
       voiceArtist,
       locale: site.locale,

@@ -1063,15 +1063,18 @@ function CategoryRow({
   onRemove: () => void;
   onGenerate?: (
     regenerate: boolean,
-    overrides?: { voice?: string; lyrics?: string; customStylePrompt?: string; recipientName?: string },
+    overrides?: { voice?: string; lyrics?: string; customStylePrompt?: string; recipientName?: string; dedication?: string },
   ) => void;
   onUpload?: (file: File) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [open18n, setOpenI18n] = useState(false);
-  const [recipient, setRecipient] = useState('Demo');
+  const [recipient, setRecipient] = useState('Andrei');
+  const [dedication, setDedication] = useState('');
   const [voiceOverride, setVoiceOverride] = useState<string>('');
-  const [aiHint, setAiHint] = useState('');
+  const [aiHint, setAiHint] = useState<string>(
+    kind === 'style' ? (entry as SiteStyleEntry).lyricsHint ?? '' : '',
+  );
   const [sunoPromptDraft, setSunoPromptDraft] = useState<string>(
     kind === 'style' ? (entry as SiteStyleEntry).sunoPrompt ?? '' : '',
   );
@@ -1085,6 +1088,12 @@ function CategoryRow({
       setSunoPromptDraft((entry as SiteStyleEntry).sunoPrompt ?? '');
     }
   }, [(entry as SiteStyleEntry).sunoPrompt, kind]);
+
+  useEffect(() => {
+    if (kind === 'style') {
+      setAiHint((prev) => prev || (entry as SiteStyleEntry).lyricsHint || '');
+    }
+  }, [(entry as SiteStyleEntry).lyricsHint, kind]);
 
   const status: 'present' | 'generating' | 'missing' = !sample
     ? 'missing'
@@ -1103,6 +1112,7 @@ function CategoryRow({
         key: entry.id,
         voice: voiceOverride || undefined,
         recipientName: recipient || undefined,
+        dedication: dedication.trim() || undefined,
         customStylePrompt: aiHint.trim() || sunoPromptDraft.trim() || undefined,
       });
       setLyrics(res.lyrics);
@@ -1116,13 +1126,14 @@ function CategoryRow({
 
   function submitGenerate(regenerate: boolean) {
     if (!onGenerate) return;
-    const overrides: { voice?: string; lyrics?: string; customStylePrompt?: string; recipientName?: string } = {};
+    const overrides: { voice?: string; lyrics?: string; customStylePrompt?: string; recipientName?: string; dedication?: string } = {};
     if (voiceOverride) overrides.voice = voiceOverride;
     if (lyrics.trim()) overrides.lyrics = lyrics.trim();
     if (kind === 'style' && sunoPromptDraft.trim() && sunoPromptDraft !== ((entry as SiteStyleEntry).sunoPrompt ?? '')) {
       overrides.customStylePrompt = sunoPromptDraft.trim();
     }
-    if (recipient && recipient !== 'Demo') overrides.recipientName = recipient;
+    if (recipient.trim()) overrides.recipientName = recipient.trim();
+    if (dedication.trim()) overrides.dedication = dedication.trim();
     onGenerate(regenerate, Object.keys(overrides).length > 0 ? overrides : undefined);
   }
 
@@ -1262,7 +1273,17 @@ function CategoryRow({
                       <Textarea
                         value={(entry as SiteStyleEntry).sunoPrompt ?? ''}
                         onChange={(e) => onChange({ sunoPrompt: e.target.value })}
+                        rows={3}
+                      />
+                    </Field>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Field label="Hint AI default pentru versuri (pre-completează „Hint AI" la mostre)">
+                      <Textarea
+                        value={(entry as SiteStyleEntry).lyricsHint ?? ''}
+                        onChange={(e) => onChange({ lyricsHint: e.target.value })}
                         rows={2}
+                        placeholder="Ex: manea de jale despre dor, vocabular cu lacrimi/inimă, ritm liric lent"
                       />
                     </Field>
                   </div>
@@ -1315,7 +1336,11 @@ function CategoryRow({
                 <div className="text-xs font-medium text-muted-foreground uppercase">Personalizează mostra</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <Field label="Nume destinatar (în lyrics)">
-                    <Input value={recipient} onChange={(e) => setRecipient(e.target.value)} />
+                    <Input
+                      value={recipient}
+                      onChange={(e) => setRecipient(e.target.value)}
+                      placeholder="Ex: Andrei, Mariana, Costel..."
+                    />
                   </Field>
                   <Field label="Voce override (gol = default)">
                     <select
@@ -1332,6 +1357,14 @@ function CategoryRow({
                     </select>
                   </Field>
                 </div>
+
+                <Field label="Dedicație — expeditor (opțional)">
+                  <Input
+                    value={dedication}
+                    onChange={(e) => setDedication(e.target.value)}
+                    placeholder='Ex: "fratele tău Ionuț" — apare în deschidere ("De la <expeditor>, pentru <destinatar>")'
+                  />
+                </Field>
 
                 <Field label="Hint AI pentru versuri (opțional)">
                   <Textarea

@@ -105,6 +105,9 @@ export interface SiteStyleEntry {
   i18n?: Record<string, { nm?: string; ds?: string; heat?: string }>;
   /** Override prompt Suno pentru acest stil (se pune în suno.stylePromptMap). */
   sunoPrompt?: string;
+  /** Hint scurt pentru writer-ul OpenAI — pre-completează „Hint AI pentru versuri"
+   *  în UI-ul de sample generation. Ex: „manea de jale, vocabular cu lacrimi/inimă". */
+  lyricsHint?: string;
 }
 
 export interface SiteVoiceEntry {

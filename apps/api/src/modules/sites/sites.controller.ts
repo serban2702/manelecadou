@@ -197,18 +197,20 @@ export class AdminSiteSamplesController {
       lyrics?: string;
       customStylePrompt?: string;
       recipientName?: string;
+      dedication?: string;
     },
   ) {
     if (!body?.kind || !body?.key) {
       throw new BadRequestException('kind și key sunt obligatorii');
     }
     const overrides =
-      body.voice || body.lyrics || body.customStylePrompt || body.recipientName
+      body.voice || body.lyrics || body.customStylePrompt || body.recipientName || body.dedication
         ? {
             voice: body.voice,
             lyrics: body.lyrics,
             customStylePrompt: body.customStylePrompt,
             recipientName: body.recipientName,
+            dedication: body.dedication,
           }
         : undefined;
     const result = await this.samples.generateOne(id, body.kind, body.key, !!body.regenerate, overrides);
@@ -221,7 +223,7 @@ export class AdminSiteSamplesController {
   @HttpCode(200)
   async previewLyrics(
     @Param('id') id: string,
-    @Body() body: { kind: SampleKind; key: string; voice?: string; recipientName?: string; customStylePrompt?: string },
+    @Body() body: { kind: SampleKind; key: string; voice?: string; recipientName?: string; customStylePrompt?: string; dedication?: string },
   ) {
     if (!body?.kind || !body?.key) {
       throw new BadRequestException('kind și key sunt obligatorii');
@@ -230,6 +232,7 @@ export class AdminSiteSamplesController {
       voiceKey: body.voice,
       recipientName: body.recipientName,
       customStylePrompt: body.customStylePrompt,
+      dedication: body.dedication,
     });
   }
 

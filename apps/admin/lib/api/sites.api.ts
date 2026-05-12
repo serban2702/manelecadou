@@ -76,6 +76,7 @@ export interface SiteStyleEntry {
   heat?: string;
   i18n?: Record<string, { nm?: string; ds?: string; heat?: string }>;
   sunoPrompt?: string;
+  lyricsHint?: string;
 }
 
 export interface SiteVoiceEntry {
@@ -131,6 +132,7 @@ export const SitesApi = {
       lyrics?: string;
       customStylePrompt?: string;
       recipientName?: string;
+      dedication?: string;
     },
   ) =>
     // Suno polling takes up to 6 min — overriding default 30s timeout. 8 min ca să avem buffer.
@@ -141,7 +143,7 @@ export const SitesApi = {
     ),
   previewSampleLyrics: (
     id: string,
-    body: { kind: 'style' | 'voice'; key: string; voice?: string; recipientName?: string; customStylePrompt?: string },
+    body: { kind: 'style' | 'voice'; key: string; voice?: string; recipientName?: string; customStylePrompt?: string; dedication?: string },
   ) =>
     // OpenAI lyrics writer + critic pot dura 30-60s. Bump la 90s.
     http.post<{ lyrics: string }>(`/admin/sites/${id}/samples/preview-lyrics`, body, {
