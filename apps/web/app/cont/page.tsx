@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { SiteShell } from '@/components/SiteShell';
+import { confirmDialog } from '@/components/ConfirmDialog';
 import { useSession } from '@/lib/providers';
 import { api, ApiError } from '@/lib/api';
 
@@ -22,11 +23,21 @@ export default function ContPage() {
   }, [session.ready, session.user, router]);
 
   async function submit(type: 'export' | 'delete') {
-    const confirmMsg =
+    const ok = await confirmDialog(
       type === 'delete'
-        ? 'Sigur vrei să ceri ștergerea contului? E ireversibilă o dată procesată.'
-        : 'Cere export al datelor tale? Te vom contacta în maxim 30 zile.';
-    if (!window.confirm(confirmMsg)) return;
+        ? {
+            title: 'Ștergi contul?',
+            description: 'Cererea de ștergere e ireversibilă odată procesată de echipă (în maxim 30 zile).',
+            confirmText: 'Cere ștergere',
+            variant: 'destructive',
+          }
+        : {
+            title: 'Cere export al datelor?',
+            description: 'Echipa noastră te va contacta pe email în maxim 30 zile cu arhiva datelor tale.',
+            confirmText: 'Cere export',
+          },
+    );
+    if (!ok) return;
     setSubmitting(type);
     setError(null);
     try {

@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/cn';
 import { useToast } from '@/components/ui/use-toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { HtmlBody } from '@/components/inbox/HtmlBody';
 import { ReplyComposer } from '@/components/inbox/ReplyComposer';
 import { SuggestionBanner } from '@/components/inbox/SuggestionBanner';
@@ -86,7 +87,12 @@ export default function InboxPage() {
 
   async function handleArchive() {
     if (!detail?.message) return;
-    if (!confirm('Arhivezi mesajul? Atașamentele lui vor fi șterse local; textul rămâne.')) return;
+    const ok = await confirmDialog({
+      title: 'Arhivezi mesajul?',
+      description: 'Atașamentele lui vor fi șterse local; textul rămâne.',
+      confirmText: 'Arhivează',
+    });
+    if (!ok) return;
     try {
       await MailApi.archive(detail.message.id);
       toast({ variant: 'success', title: 'Mesaj arhivat', description: 'Atașamentele au fost șterse.' });
@@ -111,7 +117,13 @@ export default function InboxPage() {
 
   async function handleDelete() {
     if (!detail?.message) return;
-    if (!confirm('Șterge mesajul complet (text + atașamente)? Acțiunea nu se poate anula local.')) return;
+    const ok = await confirmDialog({
+      title: 'Ștergi mesajul complet?',
+      description: 'Atât textul cât și atașamentele vor dispărea. Acțiunea nu se poate anula local.',
+      confirmText: 'Șterge',
+      variant: 'destructive',
+    });
+    if (!ok) return;
     try {
       await MailApi.deleteMessage(detail.message.id);
       toast({ variant: 'success', title: 'Mesaj șters' });
@@ -329,7 +341,15 @@ export default function InboxPage() {
                           <button
                             key={a.id}
                             type="button"
-                            onClick={() => downloadAttachment(a.id, a.filename)}
+                            onClick={() => {
+                              MailApi.downloadAttachment(a.id, a.filename).catch((e) =>
+                                toast({
+                                  variant: 'destructive',
+                                  title: 'Descărcare eșuată',
+                                  description: (e as Error).message,
+                                }),
+                              );
+                            }}
                             className="text-xs px-2 py-1 rounded-md border border-border hover:bg-secondary/50 inline-flex items-center gap-1.5"
                             title="Descarcă (atașamentul nu se randează în browser)"
                           >
@@ -411,10 +431,6 @@ function MessageRow({ m, active, accountLabel, onClick }: { m: MailMessageRow; a
       </div>
     </button>
   );
-}
-
-function downloadAttachment(id: string, filename: string): void {
-  MailApi.downloadAttachment(id, filename).catch((e) => alert(`Descărcare eșuată: ${(e as Error).message}`));
 }
 
 function replySubject(s: string): string {

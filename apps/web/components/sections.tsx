@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Ic } from './icons';
+import { toast } from './Toaster';
 import { DEMOS, FEED, TESTI, TOP } from '@/lib/seed-data';
 import { siteSupportEmail, siteUrl } from '@/lib/site-shared';
 import { useSite } from '@/lib/site-context';
@@ -212,7 +213,7 @@ export function Smecher() {
       navigator.share({ title: t('title'), text, url });
     } else {
       navigator.clipboard?.writeText(`${text} ${url}`);
-      alert(t('shareCopied'));
+      toast(t('shareCopied'), 'success');
     }
   }
 

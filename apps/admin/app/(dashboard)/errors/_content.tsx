@@ -31,6 +31,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/cn';
 import { SiteBadge } from '@/components/site-badge';
 
@@ -72,7 +73,12 @@ export default function AdminErrorsPage() {
   }
 
   async function resolveAll() {
-    if (!confirm('Marchezi toate erorile nerezolvate ca rezolvate?')) return;
+    const ok = await confirmDialog({
+      title: 'Marchezi toate erorile ca rezolvate?',
+      description: 'Toate erorile nerezolvate vor fi mutate în starea „rezolvate".',
+      confirmText: 'Rezolvă toate',
+    });
+    if (!ok) return;
     const res = await ErrorsApi.resolveAll();
     toast({ variant: 'success', title: `${res.affected} erori marcate ca rezolvate` });
     refetchList();
@@ -80,7 +86,13 @@ export default function AdminErrorsPage() {
   }
 
   async function clearResolved() {
-    if (!confirm('Ștergi definitiv toate erorile deja rezolvate? Acțiunea nu poate fi anulată.')) return;
+    const ok = await confirmDialog({
+      title: 'Ștergi erorile rezolvate?',
+      description: 'Toate erorile deja rezolvate vor fi șterse definitiv. Acțiunea nu poate fi anulată.',
+      confirmText: 'Șterge rezolvate',
+      variant: 'destructive',
+    });
+    if (!ok) return;
     const res = await ErrorsApi.clear(true);
     toast({ variant: 'success', title: `${res.affected} erori șterse` });
     refetchList();
@@ -88,8 +100,20 @@ export default function AdminErrorsPage() {
   }
 
   async function clearAll() {
-    if (!confirm('ȘTERGI TOATE erorile (inclusiv cele nerezolvate)? Acțiunea nu poate fi anulată.')) return;
-    if (!confirm('Sigur? Confirmă încă o dată.')) return;
+    const ok1 = await confirmDialog({
+      title: 'Ștergi TOATE erorile?',
+      description: 'Inclusiv cele nerezolvate. Acțiunea nu poate fi anulată.',
+      confirmText: 'Continuă',
+      variant: 'destructive',
+    });
+    if (!ok1) return;
+    const ok2 = await confirmDialog({
+      title: 'Confirmă încă o dată',
+      description: 'Sigur ștergi definitiv toate erorile?',
+      confirmText: 'Da, șterge tot',
+      variant: 'destructive',
+    });
+    if (!ok2) return;
     const res = await ErrorsApi.clear(false);
     toast({ variant: 'success', title: `${res.affected} erori șterse` });
     refetchList();

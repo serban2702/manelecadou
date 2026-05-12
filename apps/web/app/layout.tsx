@@ -9,6 +9,8 @@ import { CursorHint } from '@/components/CursorHint';
 import { Analytics } from '@/components/Analytics';
 import { Tracker } from '@/components/Tracker';
 import { CookieConsent } from '@/components/CookieConsent';
+import { ConfirmDialogProvider } from '@/components/ConfirmDialog';
+import { Toaster } from '@/components/Toaster';
 import { ClientErrorReporter } from '@/components/ClientErrorReporter';
 import { MaintenancePage } from '@/components/MaintenancePage';
 import { LOCALE_META, isLocale } from '@/i18n/locales';
@@ -168,6 +170,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <Tracker />
                 </Suspense>
                 <CookieConsent />
+                <ConfirmDialogProvider />
+                <Toaster />
                 <ClientErrorReporter />
               </Providers>
             </SiteProvider>

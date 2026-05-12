@@ -6,6 +6,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import { Bold, Italic, Link2, List, ListOrdered, Loader2, Send, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { promptDialog } from '@/components/ui/prompt-dialog';
 
 interface Props {
   to: string[];
@@ -66,8 +67,16 @@ export function ReplyComposer({ to, subject, initialHtml, aiSuggestionHtml, onSe
         <ToolBtn active={editor?.isActive('orderedList')} onClick={() => editor?.chain().focus().toggleOrderedList().run()}><ListOrdered className="h-3.5 w-3.5" /></ToolBtn>
         <ToolBtn
           active={editor?.isActive('link')}
-          onClick={() => {
-            const url = prompt('URL?');
+          onClick={async () => {
+            const existing = editor?.getAttributes('link').href as string | undefined;
+            const url = await promptDialog({
+              title: 'Adaugă link',
+              label: 'URL',
+              placeholder: 'https://exemplu.ro',
+              defaultValue: existing ?? '',
+              type: 'url',
+              confirmText: 'Aplică',
+            });
             if (!url) return;
             editor?.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
           }}

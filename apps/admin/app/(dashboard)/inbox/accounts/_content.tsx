@@ -14,6 +14,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { AccountFormDialog } from '@/components/inbox/AccountFormDialog';
 
 export default function MailAccountsPage() {
@@ -90,10 +91,14 @@ export default function MailAccountsPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => {
-                        if (confirm(`Șterge contul ${a.email}? Toate mesajele asociate vor fi șterse local.`)) {
-                          removeMut(a.id);
-                        }
+                      onClick={async () => {
+                        const ok = await confirmDialog({
+                          title: `Ștergi contul ${a.email}?`,
+                          description: 'Toate mesajele asociate vor fi șterse local.',
+                          confirmText: 'Șterge cont',
+                          variant: 'destructive',
+                        });
+                        if (ok) removeMut(a.id);
                       }}
                       title="Șterge"
                     >

@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 interface FormState {
   title: string;
@@ -112,7 +113,21 @@ export default function KnowledgeBasePage() {
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(e)}><Pencil className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => { if (confirm('Ștergi articolul?')) removeKb(e.id); }}><Trash2 className="h-4 w-4" /></Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={async () => {
+                        const ok = await confirmDialog({
+                          title: 'Ștergi articolul?',
+                          description: `„${e.title}" nu va mai fi folosit de AI pentru răspunsuri.`,
+                          confirmText: 'Șterge',
+                          variant: 'destructive',
+                        });
+                        if (ok) removeKb(e.id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5 items-center text-xs">
