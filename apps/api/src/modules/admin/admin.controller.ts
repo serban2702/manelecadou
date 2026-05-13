@@ -136,11 +136,38 @@ export class AdminController {
 
   @Get('payments')
   async listPayments(@Query('limit') limit = '50', @CurrentSiteId() siteId: string | null) {
-    return this.payments.find({
+    const payments = await this.payments.find({
       where: siteId ? { siteId } : {},
       order: { createdAt: 'DESC' },
       take: Math.min(Number(limit) || 50, 200),
     });
+    if (payments.length === 0) return [];
+
+    const userIds = Array.from(
+      new Set(payments.map((p) => p.userId).filter((x): x is string => !!x)),
+    );
+    const guestIds = Array.from(
+      new Set(payments.map((p) => p.guestId).filter((x): x is string => !!x)),
+    );
+    const [usersList, guestsList] = await Promise.all([
+      userIds.length
+        ? this.users.find({ where: userIds.map((id) => ({ id })) })
+        : Promise.resolve([]),
+      guestIds.length
+        ? this.guests.find({ where: guestIds.map((id) => ({ id })) })
+        : Promise.resolve([]),
+    ]);
+    const userEmail = new Map(usersList.map((u) => [u.id, u.email]));
+    const guestEmail = new Map(guestsList.map((g) => [g.id, g.email]));
+
+    return payments.map((p) => ({
+      ...p,
+      email: p.userId
+        ? userEmail.get(p.userId) ?? null
+        : p.guestId
+          ? guestEmail.get(p.guestId) ?? null
+          : null,
+    }));
   }
 
   // ===== Action endpoints =====

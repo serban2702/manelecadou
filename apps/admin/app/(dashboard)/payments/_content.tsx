@@ -49,7 +49,8 @@ export default function PaymentsPage() {
               {isAllSelected && <TableHead>Site</TableHead>}
               <TableHead>Provider</TableHead>
               <TableHead className="text-right">Sumă</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead className="w-[110px]">Status</TableHead>
+              <TableHead>Email</TableHead>
               <TableHead>Owner</TableHead>
               <TableHead>ID</TableHead>
             </TableRow>
@@ -73,18 +74,20 @@ export default function PaymentsPage() {
                 <TableCell className="text-right font-mono tabular-nums">
                   {(p.amount / 100).toFixed(2)} {p.currency}
                 </TableCell>
-                <TableCell>
-                  <div className="flex flex-col gap-0.5">
-                    <Badge variant={STATUS_VARIANT[p.status] ?? 'muted'}>{p.status}</Badge>
-                    {p.status === 'failed' && (p.failureReason || p.failureCode) && (
-                      <span
-                        className="text-[10px] text-rose-300/80 line-clamp-1 max-w-[260px]"
-                        title={`${p.failureCode ?? ''}${p.failureCode && p.failureReason ? ' — ' : ''}${p.failureReason ?? ''}`}
-                      >
-                        {p.failureCode ? `${p.failureCode}: ` : ''}{p.failureReason ?? '—'}
-                      </span>
-                    )}
-                  </div>
+                <TableCell className="w-[110px]">
+                  <Badge
+                    variant={STATUS_VARIANT[p.status] ?? 'muted'}
+                    title={
+                      p.status === 'failed' && (p.failureReason || p.failureCode)
+                        ? `${p.failureCode ?? ''}${p.failureCode && p.failureReason ? ' — ' : ''}${p.failureReason ?? ''}`
+                        : undefined
+                    }
+                  >
+                    {p.status}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground max-w-[220px] truncate">
+                  {p.email ?? '—'}
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {p.userId

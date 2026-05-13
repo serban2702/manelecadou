@@ -107,6 +107,8 @@ export interface AdminPayment {
   failureReason?: string | null;
   /** Cod scurt (decline_code, error code). */
   failureCode?: string | null;
+  /** Email-ul plătitorului (user.email sau guest.email). */
+  email?: string | null;
 }
 
 export interface AdminError {
