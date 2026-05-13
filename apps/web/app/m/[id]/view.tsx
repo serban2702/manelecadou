@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Suspense, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { api, ApiError, type GenerationDto } from '@/lib/api';
+import { api, ApiError, resolveMediaUrl, type GenerationDto } from '@/lib/api';
 import { ManeaPlayer } from '@/components/ManeaPlayer';
 import { STYLES, VOICES, OCC } from '@/lib/seed-data';
 import { useSite } from '@/lib/site-context';
@@ -66,7 +66,6 @@ function ShareGenerationViewInner() {
   if (!g) return <main style={{ padding: 40, textAlign: 'center' }}><p className="ld">Se încarcă...</p></main>;
 
   const isPaid = g.type === 'full' || g.paidUnlocked;
-  const previewSec = !isPaid ? 30 : undefined;
   const styleNm = STYLES.find((s) => s.id === g.style)?.nm ?? g.style;
   const occNm = OCC.find((o) => o.id === g.occasion)?.nm ?? g.occasion;
   const voiceNm = VOICES.find((v) => v.id === g.voiceArtist)?.nm ?? g.voiceArtist;
@@ -112,24 +111,23 @@ function ShareGenerationViewInner() {
         </div>
       )}
 
-      {/* Două versiuni audio (cea normală + cea cadou) */}
+      {/* Două versiuni audio. Fișierul demo (30s + fade-out) e generat fizic
+          pe backend, deci playerul nu trebuie să mai trunchieze nimic în UI. */}
       {g.audioUrl && (
         <div style={{ marginTop: 16 }}>
           <ManeaPlayer
-            audioUrl={g.audioUrl}
+            audioUrl={resolveMediaUrl(g.audioUrl)!}
             title="Versiunea 1"
             subtitle={isPaid ? 'completă' : 'demo 30s'}
-            maxDurationSec={previewSec}
           />
         </div>
       )}
       {g.bonusAudioUrl && (
         <div style={{ marginTop: 12 }}>
           <ManeaPlayer
-            audioUrl={g.bonusAudioUrl}
+            audioUrl={resolveMediaUrl(g.bonusAudioUrl)!}
             title="Versiunea 2 🎁 (cadou)"
             subtitle={isPaid ? 'completă' : 'demo 30s'}
-            maxDurationSec={previewSec}
           />
         </div>
       )}

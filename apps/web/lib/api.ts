@@ -4,6 +4,18 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
 const GUEST_KEY = 'mc_guest_id';
 const TOKEN_KEY = 'mc_access_token';
 
+/**
+ * URL-urile media (`/uploads/...`) vin relativ din API. În prod sunt
+ * rezolvate same-origin de Caddy; în dev (web pe :1500, api pe :1501)
+ * trebuie prefixate cu API_URL ca să ajungă la backend.
+ */
+export function resolveMediaUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (/^https?:\/\//.test(url)) return url;
+  if (url.startsWith('/')) return `${API_URL}${url}`;
+  return url;
+}
+
 export function getGuestId(): string | null {
   if (typeof window === 'undefined') return null;
   return window.localStorage.getItem(GUEST_KEY);

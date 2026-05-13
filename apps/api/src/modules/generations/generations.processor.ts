@@ -14,6 +14,7 @@ import { User } from '../users/user.entity';
 import { MailerService } from '../../mailer/mailer.module';
 import { generationReadyTemplate } from '../../mailer/templates/templates';
 import { SitesService } from '../sites/sites.service';
+import { AudioProcessorService } from './audio-processor.service';
 
 @Processor(GENERATIONS_QUEUE)
 export class GenerationsProcessor extends WorkerHost {
@@ -28,6 +29,7 @@ export class GenerationsProcessor extends WorkerHost {
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
     private readonly sites: SitesService,
+    private readonly audio: AudioProcessorService,
   ) {
     super();
   }
@@ -94,10 +96,39 @@ export class GenerationsProcessor extends WorkerHost {
       });
 
       gen.tracks = result.tracks;
-      gen.audioUrl = result.tracks[0]?.audioUrl ?? null;
-      gen.bonusAudioUrl = result.tracks[1]?.audioUrl ?? null;
       gen.coverUrl = result.tracks[0]?.coverUrl ?? null;
       gen.providerJobId = result.providerJobId;
+
+      // SECURITATE: descărcăm audio-ul de la Suno la noi și generăm un fișier
+      // demo separat (30s + fade-out). Pentru neplătiți, controller-ul expune
+      // doar URL-ul demo — nu există cale să recupereze full-ul din network.
+      const mainSource = result.tracks[0]?.audioUrl;
+      const bonusSource = result.tracks[1]?.audioUrl;
+      if (mainSource) {
+        try {
+          const m = await this.audio.downloadAndMakeDemo(gen.id, mainSource, 'full');
+          gen.audioUrl = m.fullUrl;
+          gen.demoAudioUrl = m.demoUrl;
+        } catch (err) {
+          this.logger.error(`audio processing failed for ${gen.id} (main): ${(err as Error).message}`);
+          // Fallback: păstrăm URL-ul Suno DOAR la noi în DB ca audioUrl, dar fără
+          // demo. Controller-ul nu expune nimic dacă lipsește demoAudioUrl.
+          gen.audioUrl = mainSource;
+          gen.demoAudioUrl = null;
+        }
+      }
+      if (bonusSource) {
+        try {
+          const b = await this.audio.downloadAndMakeDemo(gen.id, bonusSource, 'bonus');
+          gen.bonusAudioUrl = b.fullUrl;
+          gen.demoBonusAudioUrl = b.demoUrl;
+        } catch (err) {
+          this.logger.warn(`audio processing failed for ${gen.id} (bonus): ${(err as Error).message}`);
+          gen.bonusAudioUrl = bonusSource;
+          gen.demoBonusAudioUrl = null;
+        }
+      }
+
       gen.status = 'succeeded';
       gen.completedAt = new Date();
       await this.repo.save(gen);

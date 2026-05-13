@@ -3,7 +3,7 @@ FROM node:22-alpine
 # postgresql-client e necesar pentru pg_dump / psql, folosite de
 # /admin/database (backup, restore, reset). Versiunea trebuie sa fie
 # >= cu serverul (postgres:16) ca pg_dump sa nu se planga de mismatch.
-RUN apk add --no-cache postgresql16-client
+RUN apk add --no-cache postgresql16-client ffmpeg
 
 RUN corepack enable && corepack prepare pnpm@9.12.3 --activate
 

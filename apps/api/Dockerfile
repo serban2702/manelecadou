@@ -17,7 +17,7 @@ RUN pnpm run build
 RUN pnpm prune --prod
 
 FROM node:22-alpine AS runner
-RUN apk add --no-cache postgresql16-client tini wget
+RUN apk add --no-cache postgresql16-client tini wget ffmpeg
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules

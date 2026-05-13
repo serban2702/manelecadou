@@ -36,7 +36,8 @@ export class GenerationsController {
       occasion: g.occasion,
       recipientName: g.recipientName,
       voiceArtist: g.voiceArtist,
-      audioUrl: g.audioUrl,
+      // Vitrina publică — expunem DOAR demo-ul, niciodată audio-ul complet.
+      audioUrl: g.demoAudioUrl,
       coverUrl: g.coverUrl,
       createdAt: g.createdAt,
     }));
@@ -71,7 +72,8 @@ export class GenerationsController {
         occasion: g.occasion,
         recipientName: g.recipientName,
         voiceArtist: g.voiceArtist,
-        audioUrl: g.audioUrl,
+        // Listă publică — doar demo, niciodată full.
+        audioUrl: g.demoAudioUrl,
         coverUrl: g.coverUrl,
         viewCount: g.viewCount,
         createdAt: g.createdAt,
@@ -104,10 +106,14 @@ export class GenerationsController {
   ) {
     // Întâi încercăm ca owner (date complete)
     try {
-      return await this.svc.findOne(id, {
+      const g = await this.svc.findOne(id, {
         userId: user?.id ?? null,
         guestId: user ? null : guestId,
       });
+      // SECURITATE: owner-ul neplătit primește DOAR fișierul demo. URL-ul
+      // fișierului complet nu apare niciodată în payload pentru un user
+      // fără paidUnlocked sau fără type='full'.
+      return sanitizeAudio(g);
     } catch {
       // Fallback: dacă generation-ul e succeeded, expunem o vedere publică restrânsă
       const pub = await this.svc.findOnePublic(id);
@@ -116,6 +122,8 @@ export class GenerationsController {
       if (pub.type === 'demo' && !pub.paidUnlocked) throw new Error('Not your generation');
       // best-effort view tracking; ignorăm eșecul (nu blochează request-ul)
       this.svc.incrementViewCount(pub.id).catch(() => {});
+      // Vizitatorii anonimi pe link partajat — doar demo, niciodată full.
+      const isPaid = pub.type === 'full' || pub.paidUnlocked;
       return {
         id: pub.id,
         type: pub.type,
@@ -125,8 +133,8 @@ export class GenerationsController {
         occasion: pub.occasion,
         recipientName: pub.recipientName,
         voiceArtist: pub.voiceArtist,
-        audioUrl: pub.audioUrl,
-        bonusAudioUrl: pub.bonusAudioUrl,
+        audioUrl: isPaid ? pub.audioUrl : pub.demoAudioUrl,
+        bonusAudioUrl: isPaid ? pub.bonusAudioUrl : pub.demoBonusAudioUrl,
         coverUrl: pub.coverUrl,
         lyrics: pub.lyrics,
         paidUnlocked: pub.paidUnlocked,
@@ -222,4 +230,26 @@ export class GenerationsController {
       guestId: user ? null : guestId,
     });
   }
+}
+
+/**
+ * Filtrează URL-urile audio din payload: dacă userul nu are dreptul la
+ * fișierul complet, înlocuiește audioUrl/bonusAudioUrl cu URL-urile demo.
+ * Astfel inspectarea Network nu dezvăluie niciodată URL-ul fișierului full.
+ */
+function sanitizeAudio<T extends {
+  type?: string;
+  paidUnlocked?: boolean;
+  audioUrl?: string | null;
+  bonusAudioUrl?: string | null;
+  demoAudioUrl?: string | null;
+  demoBonusAudioUrl?: string | null;
+}>(g: T): T {
+  const isPaid = g.type === 'full' || g.paidUnlocked === true;
+  if (isPaid) return g;
+  return {
+    ...g,
+    audioUrl: g.demoAudioUrl ?? null,
+    bonusAudioUrl: g.demoBonusAudioUrl ?? null,
+  };
 }

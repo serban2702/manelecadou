@@ -6,6 +6,7 @@ import { Generation } from './generation.entity';
 import { GenerationsService, GENERATIONS_QUEUE } from './generations.service';
 import { GenerationsProcessor } from './generations.processor';
 import { GenerationsController } from './generations.controller';
+import { AudioProcessorService } from './audio-processor.service';
 import { SunoModule } from '../suno/suno.module';
 import { AuthModule } from '../auth/auth.module';
 import { PaymentsModule } from '../payments/payments.module';
@@ -28,7 +29,7 @@ import { SitesModule } from '../sites/sites.module';
     GiftCodesModule,
     SitesModule,
   ],
-  providers: [GenerationsService, GenerationsProcessor],
+  providers: [GenerationsService, GenerationsProcessor, AudioProcessorService],
   controllers: [GenerationsController],
   exports: [GenerationsService],
 })

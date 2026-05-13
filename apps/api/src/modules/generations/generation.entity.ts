@@ -86,11 +86,21 @@ export class Generation {
   @Column({ type: 'jsonb', nullable: true })
   tracks!: Array<{ audioUrl: string; durationSec: number; coverUrl?: string }> | null;
 
+  /** URL-ul fișierului COMPLET, găzduit local (`/uploads/audio/<id>/full.mp3`).
+   *  Expus în payload doar dacă userul are dreptul (paidUnlocked + owner). */
   @Column({ type: 'text', nullable: true })
   audioUrl!: string | null;
 
   @Column({ type: 'text', nullable: true })
   bonusAudioUrl!: string | null;
+
+  /** URL-ul fișierului DEMO (30s + fade-out). Singurul expus pentru
+   *  neplătiți și pe paginile publice. Fișier separat fizic — fără full audio. */
+  @Column({ type: 'text', nullable: true })
+  demoAudioUrl!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  demoBonusAudioUrl!: string | null;
 
   @Column({ type: 'text', nullable: true })
   coverUrl!: string | null;

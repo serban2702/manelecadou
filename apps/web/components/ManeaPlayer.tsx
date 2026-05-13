@@ -2,17 +2,20 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Ic } from './icons';
+import { resolveMediaUrl } from '@/lib/api';
 
 interface Props {
   audioUrl: string;
   title?: string;
   subtitle?: string;
   compact?: boolean;
-  /** Dacă e setat, redarea se oprește la atâtea secunde (preview pentru demo neplătit). */
+  /** @deprecated demo-ul e acum un fișier separat de 30s pe backend.
+   *  Lăsat ca prop pentru compatibilitate dar nu mai trunchiază nimic. */
   maxDurationSec?: number;
 }
 
-export function ManeaPlayer({ audioUrl, title, subtitle, compact = false, maxDurationSec }: Props) {
+export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = false, maxDurationSec }: Props) {
+  const audioUrl = resolveMediaUrl(rawAudioUrl) ?? rawAudioUrl;
   const previewLimited = typeof maxDurationSec === 'number' && maxDurationSec > 0;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const wsRef = useRef<any>(null);
