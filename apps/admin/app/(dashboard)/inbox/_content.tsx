@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { formatDistanceToNowStrict, format } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import DOMPurify from 'dompurify';
-import { Archive, ArchiveRestore, Inbox as InboxIcon, Mail, Paperclip, Settings2, Sparkles, Trash2, Wifi, WifiOff } from 'lucide-react';
+import { Archive, ArchiveRestore, Bot, Inbox as InboxIcon, Mail, MessagesSquare, Paperclip, Settings2, Sparkles, Trash2, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { MailApi, type MailMessageRow } from '@/lib/api';
 import { useAsync } from '@/lib/hooks/use-async';
 import { useMailSocket } from '@/lib/inbox-ws';
@@ -32,6 +32,9 @@ export default function InboxPage() {
   const [composerHtml, setComposerHtml] = useState<string>('');
   const [view, setView] = useState<'inbox' | 'archive'>('inbox');
   const [bodyMode, setBodyMode] = useState<'original' | 'ro'>('original');
+  const [showAccounts, setShowAccounts] = useState(true);
+  const [showAssistant, setShowAssistant] = useState(true);
+  const [showReply, setShowReply] = useState(true);
 
   const { data: accounts, refetch: refetchAccounts } = useAsync(
     () => MailApi.accounts(),
@@ -182,13 +185,44 @@ export default function InboxPage() {
             <Badge variant="secondary" className="gap-1 text-muted-foreground"><WifiOff className="h-3 w-3" /> offline</Badge>
           )}
         </div>
-        <Link href="/inbox/accounts"><Button variant="outline" size="sm"><Settings2 className="h-4 w-4" /> Conturi</Button></Link>
+        <div className="flex items-center gap-1.5">
+          <PanelToggle
+            active={showAccounts}
+            onClick={() => setShowAccounts((v) => !v)}
+            icon={<Users className="h-3.5 w-3.5" />}
+            label="Conturi"
+          />
+          <PanelToggle
+            active={showReply}
+            onClick={() => setShowReply((v) => !v)}
+            icon={<MessagesSquare className="h-3.5 w-3.5" />}
+            label="Reply"
+          />
+          <PanelToggle
+            active={showAssistant}
+            onClick={() => setShowAssistant((v) => !v)}
+            icon={<Bot className="h-3.5 w-3.5" />}
+            label="AI"
+          />
+          <Link href="/inbox/accounts"><Button variant="outline" size="sm"><Settings2 className="h-4 w-4" /> Conturi</Button></Link>
+        </div>
       </div>
 
       <div className="flex flex-1 min-h-0 gap-3">
         {/* Pane 1: accounts */}
+        {showAccounts && (
         <aside className="w-56 shrink-0 flex flex-col border border-border rounded-lg overflow-hidden bg-card/40">
-          <div className="px-3 py-2 border-b border-border text-xs uppercase tracking-wider text-muted-foreground">Conturi</div>
+          <div className="px-3 py-2 border-b border-border text-xs uppercase tracking-wider text-muted-foreground flex items-center justify-between gap-2">
+            <span>Conturi</span>
+            <button
+              onClick={() => setShowAccounts(false)}
+              className="rounded-md p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+              title="Ascunde panoul Conturi"
+              aria-label="Ascunde panoul Conturi"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
           <div className="flex-1 overflow-y-auto">
             <button
               className={cn('w-full text-left px-3 py-2 text-sm hover:bg-secondary/50 flex items-center gap-2', activeAccountId === 'all' && 'bg-primary/10 text-primary')}
@@ -214,6 +248,7 @@ export default function InboxPage() {
             ))}
           </div>
         </aside>
+        )}
 
         {/* Pane 2: message list */}
         <section className="w-[360px] shrink-0 flex flex-col border border-border rounded-lg overflow-hidden bg-card/40">
@@ -365,8 +400,19 @@ export default function InboxPage() {
                 ))}
               </div>
 
-              {detail.message.direction === 'in' && (
+              {detail.message.direction === 'in' && showReply && (
                 <div className="border-t border-border p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="text-xs uppercase tracking-wider text-muted-foreground">Răspunde</div>
+                    <button
+                      onClick={() => setShowReply(false)}
+                      className="rounded-md p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                      title="Ascunde composer-ul de reply"
+                      aria-label="Ascunde composer-ul de reply"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                   <ReplyComposer
                     key={detail.message.id}
                     to={[detail.message.fromAddr ?? '']}
@@ -383,14 +429,46 @@ export default function InboxPage() {
         </section>
 
         {/* Pane 4: AI Assistant — vizibil mereu, contextual pe mesajul activ */}
-        <AssistantPanel
-          contextKind="mail"
-          refId={detail?.message?.id ?? null}
-          detectedLang={detail?.message?.detectedLang}
-          onInsertDraft={(text) => setComposerHtml(toHtmlIfPlain(text))}
-        />
+        {showAssistant && (
+          <AssistantPanel
+            contextKind="mail"
+            refId={detail?.message?.id ?? null}
+            detectedLang={detail?.message?.detectedLang}
+            onInsertDraft={(text) => setComposerHtml(toHtmlIfPlain(text))}
+            onClose={() => setShowAssistant(false)}
+          />
+        )}
       </div>
     </div>
+  );
+}
+
+function PanelToggle({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors',
+        active
+          ? 'border-primary/30 bg-primary/10 text-primary'
+          : 'border-border text-muted-foreground hover:bg-secondary',
+      )}
+      title={`${active ? 'Ascunde' : 'Afișează'} panoul ${label}`}
+      aria-pressed={active}
+    >
+      {icon} {label}
+    </button>
   );
 }
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Bot, Loader2, Sparkles, Wand2, ScrollText, Languages, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Bot, Loader2, Sparkles, Wand2, ScrollText, Languages, ChevronRight, AlertTriangle, X } from 'lucide-react';
 import {
   AiAssistantApi,
   type AssistantContextKind,
@@ -23,6 +23,8 @@ interface Props {
   /** Callback când userul apasă „Inserează în composer" → primește textul în limba țintă. */
   onInsertDraft: (text: string) => void;
   className?: string;
+  /** Dacă e setat, afișează un buton X în header care invocă acest callback. */
+  onClose?: () => void;
 }
 
 /**
@@ -32,7 +34,7 @@ interface Props {
  * - Quick-ops: reformulează, corectează gramatical, scurtează, extinde.
  * - Buton „Inserează" trimite textul ÎN LIMBA ȚINTĂ în composer-ul părinte.
  */
-export function AssistantPanel({ contextKind, refId, detectedLang, onInsertDraft, className }: Props) {
+export function AssistantPanel({ contextKind, refId, detectedLang, onInsertDraft, className, onClose }: Props) {
   const { toast } = useToast();
   const [history, setHistory] = useState<AssistantTurn[]>([]);
   const [input, setInput] = useState('');
@@ -90,6 +92,16 @@ export function AssistantPanel({ contextKind, refId, detectedLang, onInsertDraft
           {history.length > 0 && (
             <button onClick={reset} className="text-[10px] text-muted-foreground hover:text-foreground">
               reset
+            </button>
+          )}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="ml-1 rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
+              title="Ascunde AI Assistant"
+              aria-label="Ascunde AI Assistant"
+            >
+              <X className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
