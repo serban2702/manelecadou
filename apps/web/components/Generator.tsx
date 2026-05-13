@@ -20,6 +20,7 @@ import {
 } from '@/lib/api';
 import { useGenerationPolling, useSession } from '@/lib/providers';
 import { useSite } from '@/lib/site-context';
+import { track } from '@/lib/tracking';
 import { formatPrice } from '@/lib/site-shared';
 
 type Data = {
@@ -337,6 +338,14 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     setSubmitting(true);
     setError(null);
     try {
+      const total = site.basePriceCents / 100;
+      track('InitiateCheckout', {
+        content_id: generationId,
+        content_name: 'Manea Cadou',
+        content_type: 'product',
+        value: total,
+        currency: site.currency,
+      });
       const { url } = await api.createCheckoutSession({
         generationId,
         tipAmount: data.tipAmount || 0,
@@ -375,6 +384,14 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     setSubmitting(true);
     setError(null);
     try {
+      const total = site.basePriceCents / 100;
+      track('InitiateCheckout', {
+        content_id: 'pay-first',
+        content_name: 'Manea Cadou',
+        content_type: 'product',
+        value: total,
+        currency: site.currency,
+      });
       const { url, generationId: gid } = await api.createDirectCheckoutSession({
         generation: {
           style: data.style,

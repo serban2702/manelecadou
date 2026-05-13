@@ -32,6 +32,7 @@ import { KbModule } from './modules/kb/kb.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { SitesModule } from './modules/sites/sites.module';
 import { AiAssistantModule } from './modules/ai-assistant/ai-assistant.module';
+import { TiktokModule } from './modules/tiktok/tiktok.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { AiAssistantModule } from './modules/ai-assistant/ai-assistant.module';
     SunoModule,
     GenerationsModule,
     PaymentsModule,
+    TiktokModule,
     AdminModule,
     DatabaseAdminModule,
     ChatModule,

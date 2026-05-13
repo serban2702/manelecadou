@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { api, ApiError, resolveMediaUrl, type GenerationDto } from '@/lib/api';
+import { track } from '@/lib/tracking';
 import { ManeaPlayer } from '@/components/ManeaPlayer';
 import { STYLES, VOICES, OCC } from '@/lib/seed-data';
 import { useSite } from '@/lib/site-context';
@@ -20,9 +21,12 @@ export default function ShareGenerationView() {
 function ShareGenerationViewInner() {
   const params = useParams<{ id: string }>();
   const search = useSearchParams();
+  const site = useSite();
   const [g, setG] = useState<GenerationDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
+  const viewTrackedRef = useRef(false);
+  const purchaseTrackedRef = useRef(false);
 
   async function refresh() {
     try {
@@ -37,22 +41,52 @@ function ShareGenerationViewInner() {
     refresh();
   }, [params.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ViewContent — exact o dată pe încărcarea unei manele.
+  useEffect(() => {
+    if (!g || viewTrackedRef.current) return;
+    viewTrackedRef.current = true;
+    track('ViewContent', {
+      content_id: g.id,
+      content_name: `Manea pentru ${g.recipientName}`,
+      content_type: 'product',
+      value: site.basePriceCents / 100,
+      currency: site.currency,
+    });
+  }, [g, site.basePriceCents, site.currency]);
+
   useEffect(() => {
     const paymentId = search.get('paymentId');
     const success = search.get('success');
     if (!paymentId || success !== '1' || unlocking) return;
     setUnlocking(true);
     (async () => {
+      let paid: { amount: number; currency: string } | null = null;
       for (let i = 0; i < 10; i++) {
         try {
           const p = await api.getPayment(paymentId);
-          if (p?.status === 'paid') break;
+          if (p?.status === 'paid') {
+            paid = { amount: p.amount, currency: p.currency };
+            break;
+          }
         } catch {}
         await new Promise((r) => setTimeout(r, 1000));
       }
       try {
         await api.unlockGeneration(params.id, paymentId);
         await refresh();
+        // CompletePayment — trimis o singură dată per paymentId.
+        if (paid && !purchaseTrackedRef.current) {
+          purchaseTrackedRef.current = true;
+          track('CompletePayment', {
+            content_id: params.id,
+            content_name: 'Manea Cadou',
+            content_type: 'product',
+            value: paid.amount / 100,
+            currency: paid.currency,
+            // event_id = paymentId → dedup cu Events API server-side.
+            event_id: paymentId,
+          });
+        }
       } catch (e) {
         setError('Nu am putut debloca după plată: ' + (e as Error).message);
       } finally {
@@ -188,6 +222,13 @@ function PaywallSection({ generationId, onUnlocked }: { generationId: string; on
     setSubmittingPay(true);
     setPayError(null);
     try {
+      track('InitiateCheckout', {
+        content_id: generationId,
+        content_name: 'Manea Cadou',
+        content_type: 'product',
+        value: site.basePriceCents / 100,
+        currency: site.currency,
+      });
       const { url } = await api.createCheckoutSession({
         generationId,
         promoCode: promoApplied?.code,

@@ -1,10 +1,30 @@
 'use client';
 
 import Script from 'next/script';
+import { useEffect } from 'react';
+import { usePathname } from 'next/navigation';
+import { trackPageView } from '@/lib/tracking';
 
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID ?? '';
 const META_PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID ?? '';
 const TIKTOK_PIXEL_ID = process.env.NEXT_PUBLIC_TIKTOK_PIXEL_ID ?? '';
+
+function PageViewOnNavigate() {
+  const pathname = usePathname();
+  useEffect(() => {
+    // Primul PageView e trimis de scriptul inline. La fiecare navigare
+    // ulterioară (SPA), trimitem explicit.
+    if (typeof window === 'undefined') return;
+    trackPageView();
+    if (window.gtag) {
+      window.gtag('event', 'page_view', {
+        page_path: pathname,
+        page_location: window.location.href,
+      });
+    }
+  }, [pathname]);
+  return null;
+}
 
 export function Analytics() {
   return (
@@ -42,6 +62,8 @@ export function Analytics() {
           `}
         </Script>
       )}
+
+      {(TIKTOK_PIXEL_ID || META_PIXEL_ID) && <PageViewOnNavigate />}
 
       {TIKTOK_PIXEL_ID && (
         <Script id="tiktok-pixel" strategy="afterInteractive">

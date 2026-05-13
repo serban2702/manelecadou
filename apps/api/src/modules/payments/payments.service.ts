@@ -21,6 +21,7 @@ import { SitesService } from '../sites/sites.service';
 import { SettingsService } from '../settings/settings.service';
 import { GenerationsService } from '../generations/generations.service';
 import { CreateGenerationDto } from '../generations/dto/create-generation.dto';
+import { TiktokEventsService } from '../tiktok/tiktok-events.service';
 
 interface CheckoutInput {
   userId: string | null;
@@ -50,6 +51,7 @@ export class PaymentsService {
     private readonly settings: SettingsService,
     @Inject(forwardRef(() => GenerationsService))
     private readonly generations: GenerationsService,
+    private readonly tiktok: TiktokEventsService,
   ) {}
 
   /** Returnează instanța Stripe, re-instanțiată dacă cheia s-a schimbat în admin. */
@@ -420,6 +422,30 @@ export class PaymentsService {
           });
         }
       }
+      // TikTok Events API: trimitem CompletePayment server-side cu event_id
+      // = paymentId (același folosit de pixelul browser → dedup automat).
+      if (isPaid) {
+        const amount = session.amount_total ?? 0;
+        const currency = (session.currency ?? 'ron').toUpperCase();
+        const generationId = session.metadata?.generationId || undefined;
+        this.tiktok
+          .trackEvent({
+            eventName: 'CompletePayment',
+            eventId: paymentId,
+            url: session.metadata?.siteDomain
+              ? `https://${session.metadata.siteDomain}/`
+              : undefined,
+            email: session.customer_email ?? null,
+            value: amount / 100,
+            currency,
+            contentId: generationId ?? paymentId,
+            contentName: 'Manea Cadou',
+          })
+          .catch((err) =>
+            this.logger.warn(`TikTok CompletePayment failed: ${(err as Error).message}`),
+          );
+      }
+
       // Cod cadou: emite codul + email
       if (isPaid && session.metadata?.giftPurchase === 'true' && session.metadata?.giftTier) {
         const payment = await this.repo.findOne({ where: { id: paymentId } });

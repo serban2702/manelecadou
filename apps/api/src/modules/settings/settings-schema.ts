@@ -104,6 +104,8 @@ export const SETTINGS_SCHEMA: SettingCategory[] = [
       { key: 'GA4_API_SECRET', label: 'GA4 API secret', kind: 'secret', encrypted: true, hotReload: true },
       { key: 'META_PIXEL_ID', label: 'Meta Pixel ID', kind: 'string', hotReload: true },
       { key: 'META_CAPI_TOKEN', label: 'Meta CAPI token', kind: 'secret', encrypted: true, hotReload: true },
+      { key: 'TIKTOK_PIXEL_ID', label: 'TikTok Pixel ID', kind: 'string', hotReload: true, placeholder: 'CXXXXXXXXXXX' },
+      { key: 'TIKTOK_ACCESS_TOKEN', label: 'TikTok Events API access token', description: 'Din TikTok Events Manager → Settings → Generate Access Token. Necesar pentru tracking server-side (dedup cu pixelul browser).', kind: 'secret', encrypted: true, hotReload: true },
     ],
   },
 ];
