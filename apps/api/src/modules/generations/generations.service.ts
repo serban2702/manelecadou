@@ -2,8 +2,10 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -14,15 +16,25 @@ import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { User } from '../users/user.entity';
 import { Payment } from '../payments/payment.entity';
 import { CreateGenerationDto } from './dto/create-generation.dto';
+import { MailerService } from '../../mailer/mailer.module';
+import { paymentSuccessTemplate } from '../../mailer/templates/templates';
+import { SitesService } from '../sites/sites.service';
 
 export const GENERATIONS_QUEUE = 'generations';
 
 @Injectable()
 export class GenerationsService {
+  private readonly logger = new Logger('GenerationsService');
+
   constructor(
     @InjectRepository(Generation) private readonly repo: Repository<Generation>,
+    @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(GuestSession) private readonly guests: Repository<GuestSession>,
     @InjectQueue(GENERATIONS_QUEUE) private readonly queue: Queue,
     private readonly dataSource: DataSource,
+    private readonly mailer: MailerService,
+    private readonly config: ConfigService,
+    private readonly sites: SitesService,
   ) {}
 
   async create(
@@ -320,24 +332,84 @@ export class GenerationsService {
   }
 
   /**
-   * Marchează o generation ca plătită + o pune la coadă. Apelat din webhook-ul
-   * Stripe după ce un payment direct (fără demo) a fost confirmat. Idempotent —
-   * dacă e deja queued/running, întoarce starea curentă.
+   * Marchează o generation ca plătită. Apelat din webhook-ul Stripe după ce
+   * un payment a fost confirmat. Idempotent:
+   *   - paidUnlocked devine true (acoperă atât flow-ul pay-first cât și
+   *     demo-first — în demo-first, generation era deja 'succeeded' dar
+   *     paidUnlocked=false; webhook-ul e singura sursă de adevăr).
+   *   - dacă status='pending' (flow pay-first), o pune la coadă.
+   *   - trimite emailul de confirmare a plății (cu link spre /m/<id>).
    */
   async markPaidAndQueue(generationId: string, paymentId: string): Promise<Generation | null> {
     const gen = await this.repo.findOne({ where: { id: generationId } });
     if (!gen) return null;
-    if (gen.status !== 'pending') return gen; // deja pornită
+
+    const wasPending = gen.status === 'pending';
+    const wasAlreadyUnlocked = gen.paidUnlocked;
+
     gen.paidUnlocked = true;
     gen.paymentId = paymentId;
-    gen.status = 'queued';
+    if (wasPending) gen.status = 'queued';
     const saved = await this.repo.save(gen);
-    await this.queue.add(
-      'generate',
-      { generationId: saved.id },
-      { removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
-    );
+
+    if (wasPending) {
+      await this.queue.add(
+        'generate',
+        { generationId: saved.id },
+        { removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
+      );
+    }
+
+    if (!wasAlreadyUnlocked) {
+      await this.sendPaymentConfirmationEmail(saved, paymentId);
+    }
+
     return saved;
+  }
+
+  private async sendPaymentConfirmationEmail(gen: Generation, paymentId: string): Promise<void> {
+    try {
+      const payment = await this.dataSource
+        .getRepository(Payment)
+        .findOne({ where: { id: paymentId } });
+      if (!payment) return;
+
+      let email: string | null = null;
+      if (gen.ownerUserId) {
+        const u = await this.users.findOne({ where: { id: gen.ownerUserId } });
+        email = u?.email ?? null;
+      } else if (gen.ownerGuestId) {
+        const g = await this.guests.findOne({ where: { id: gen.ownerGuestId } });
+        email = g?.email ?? null;
+      }
+      if (!email) return;
+
+      const site = gen.siteId ? await this.sites.findById(gen.siteId) : null;
+      const siteUrl = site
+        ? site.domain.startsWith('localhost') || site.domain.startsWith('127.')
+          ? this.config.get<string>('APP_URL') ?? `http://${site.domain}`
+          : `https://${site.domain}`
+        : this.config.get<string>('APP_URL') ?? 'http://localhost:1500';
+      const link = `${siteUrl}/m/${gen.id}`;
+
+      const tpl = paymentSuccessTemplate({
+        amountRON: payment.amount / 100,
+        currency: payment.currency,
+        generationLink: link,
+        recipientName: gen.recipientName,
+        locale: site?.locale ?? gen.locale ?? 'ro',
+      });
+      await this.mailer.send({
+        to: email,
+        subject: tpl.subject,
+        html: tpl.html,
+        text: tpl.text,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `payment confirmation email failed for gen ${gen.id}: ${(err as Error).message}`,
+      );
+    }
   }
 
   async unlockWithPayment(
