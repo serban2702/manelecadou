@@ -8,6 +8,7 @@ import { User } from '../users/user.entity';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { Generation } from '../generations/generation.entity';
 import { Payment } from '../payments/payment.entity';
+import { AnalyticsSession } from '../analytics/analytics-session.entity';
 import { MailerService } from '../../mailer/mailer.module';
 import { SeederService } from '../../database/seeder/seeder.service';
 
@@ -30,6 +31,7 @@ export class AdminController {
     @InjectRepository(GuestSession) private readonly guests: Repository<GuestSession>,
     @InjectRepository(Generation) private readonly generations: Repository<Generation>,
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
+    @InjectRepository(AnalyticsSession) private readonly analyticsSessions: Repository<AnalyticsSession>,
     private readonly mailer: MailerService,
     private readonly seeder: SeederService,
   ) {}
@@ -113,10 +115,47 @@ export class AdminController {
 
   @Get('guests')
   async listGuests(@Query('limit') limit = '50', @CurrentSiteId() siteId: string | null) {
-    return this.guests.find({
+    const guests = await this.guests.find({
       where: siteId ? { siteId } : {},
       order: { lastSeenAt: 'DESC' },
       take: Math.min(Number(limit) || 50, 200),
+    });
+    if (guests.length === 0) return [];
+
+    // Pentru fiecare guest, luăm cea mai recentă analytics_session (care conține
+    // geo, device, browser, sursă). Folosim DISTINCT ON pentru a primi un singur
+    // rând per guestId într-un singur query.
+    const guestIds = guests.map((g) => g.id);
+    const sessions = await this.analyticsSessions
+      .createQueryBuilder('s')
+      .where('s."guestId" IN (:...ids)', { ids: guestIds })
+      .orderBy('s."guestId"')
+      .addOrderBy('s."lastActivityAt"', 'DESC')
+      .distinctOn(['s."guestId"'])
+      .getMany();
+    const byGuest = new Map(sessions.map((s) => [s.guestId, s]));
+
+    return guests.map((g) => {
+      const s = byGuest.get(g.id);
+      return {
+        ...g,
+        analytics: s
+          ? {
+              country: s.country,
+              countryName: s.countryName,
+              city: s.city,
+              device: s.device,
+              browserName: s.browserName,
+              osName: s.osName,
+              source: s.source,
+              medium: s.medium,
+              pageViews: s.pageViews,
+              durationSec: s.durationSec,
+              isBot: s.isBot,
+              botCategory: s.botCategory,
+            }
+          : null,
+      };
     });
   }
 

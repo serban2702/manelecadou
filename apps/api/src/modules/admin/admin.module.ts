@@ -9,6 +9,7 @@ import { Generation } from '../generations/generation.entity';
 import { Payment } from '../payments/payment.entity';
 import { SunoLog } from '../suno/suno-log.entity';
 import { SunoCreditPurchase } from '../suno/suno-credit-purchase.entity';
+import { AnalyticsSession } from '../analytics/analytics-session.entity';
 import { AuthModule } from '../auth/auth.module';
 import { MailerModule } from '../../mailer/mailer.module';
 import { SeederModule } from '../../database/seeder/seeder.module';
@@ -16,7 +17,7 @@ import { SunoModule } from '../suno/suno.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, GuestSession, Generation, Payment, SunoLog, SunoCreditPurchase]),
+    TypeOrmModule.forFeature([User, GuestSession, Generation, Payment, SunoLog, SunoCreditPurchase, AnalyticsSession]),
     AuthModule,
     MailerModule,
     SeederModule,

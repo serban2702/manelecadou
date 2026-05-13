@@ -27,6 +27,21 @@ export interface AdminGuest {
   createdAt: string;
   lastSeenAt: string;
   siteId?: string | null;
+  /** Date din cea mai recentă analytics_session asociată guestului. */
+  analytics?: {
+    country: string | null;
+    countryName: string | null;
+    city: string | null;
+    device: string | null;
+    browserName: string | null;
+    osName: string | null;
+    source: string | null;
+    medium: string | null;
+    pageViews: number;
+    durationSec: number;
+    isBot: boolean;
+    botCategory: string;
+  } | null;
 }
 
 export interface AdminGeneration {
