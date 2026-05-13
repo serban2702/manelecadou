@@ -6,6 +6,8 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { api, ApiError, type GenerationDto } from '@/lib/api';
 import { ManeaPlayer } from '@/components/ManeaPlayer';
 import { STYLES, VOICES, OCC } from '@/lib/seed-data';
+import { useSite } from '@/lib/site-context';
+import { formatPrice } from '@/lib/site-shared';
 
 export default function ShareGenerationView() {
   return (
@@ -154,14 +156,44 @@ function ShareGenerationViewInner() {
 }
 
 function PaywallSection({ generationId, onUnlocked }: { generationId: string; onUnlocked: () => void }) {
+  const site = useSite();
+  const fmt = (cents: number) => formatPrice(site, cents);
   const [submittingPay, setSubmittingPay] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+  const [promoCode, setPromoCode] = useState('');
+  const [promoApplied, setPromoApplied] = useState<{ code: string; discountCents: number } | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [validatingPromo, setValidatingPromo] = useState(false);
+
+  const basePrice = site.basePriceCents;
+  const finalTotal = Math.max(0, basePrice - (promoApplied?.discountCents ?? 0));
+
+  async function applyPromo() {
+    if (!promoCode.trim()) return;
+    setPromoError(null);
+    setValidatingPromo(true);
+    try {
+      const r = await api.validatePromo(promoCode.trim(), undefined, basePrice);
+      if (r.ok && r.appliedDiscountCents) {
+        setPromoApplied({ code: promoCode.trim(), discountCents: r.appliedDiscountCents });
+      } else {
+        setPromoError(translatePromoReason(r.reason));
+      }
+    } catch {
+      setPromoError('Eroare validare. Încearcă din nou.');
+    } finally {
+      setValidatingPromo(false);
+    }
+  }
 
   async function startCheckout() {
     setSubmittingPay(true);
     setPayError(null);
     try {
-      const { url } = await api.createCheckoutSession({ generationId });
+      const { url } = await api.createCheckoutSession({
+        generationId,
+        promoCode: promoApplied?.code,
+      });
       window.location.href = url;
     } catch (e) {
       setPayError(e instanceof ApiError ? e.message : 'Eroare la inițierea plății');
@@ -182,6 +214,27 @@ function PaywallSection({ generationId, onUnlocked }: { generationId: string; on
         Plătește o singură dată — primești pe email ambele versiuni complete, fără limita de 30s.
       </p>
 
+      {promoApplied && (
+        <div style={{
+          marginTop: 10, padding: 10, borderRadius: 8,
+          background: 'rgba(62,224,126,0.08)', border: '1px solid rgba(62,224,126,0.4)',
+          fontSize: 13,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>Preț</span>
+            <span>{fmt(basePrice)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--green)', marginTop: 4 }}>
+            <span>Promo <code>{promoApplied.code}</code></span>
+            <span>−{fmt(promoApplied.discountCents)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.1)', fontWeight: 700 }}>
+            <span>Total</span>
+            <span className="gold-text">{fmt(finalTotal)}</span>
+          </div>
+        </div>
+      )}
+
       <button
         onClick={startCheckout}
         disabled={submittingPay}
@@ -193,16 +246,73 @@ function PaywallSection({ generationId, onUnlocked }: { generationId: string; on
           opacity: submittingPay ? 0.7 : 1,
         }}
       >
-        {submittingPay ? 'Te ducem la plată...' : '🔒 Deblochează — vezi prețul la checkout'}
+        {submittingPay
+          ? 'Te ducem la plată...'
+          : promoApplied
+            ? `🔒 Deblochează — ${fmt(finalTotal)}`
+            : '🔒 Deblochează — vezi prețul la checkout'}
       </button>
 
       {payError && (
         <div style={{ marginTop: 8, fontSize: 12, color: '#ff8888' }}>{payError}</div>
       )}
 
+      <div style={{ marginTop: 10 }}>
+        {!promoApplied ? (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              type="text"
+              placeholder="Cod promo?"
+              value={promoCode}
+              onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoError(null); }}
+              style={{
+                flex: 1, padding: '8px 10px', borderRadius: 8,
+                background: 'rgba(0,0,0,0.3)', border: '1px solid var(--line)',
+                color: 'var(--gold-2)', fontFamily: 'inherit', fontSize: 13,
+                fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase',
+              }}
+            />
+            <button
+              type="button"
+              onClick={applyPromo}
+              disabled={!promoCode.trim() || validatingPromo}
+              className="btn btn-ghost btn-sm"
+              style={{ padding: '8px 14px', fontSize: 13 }}
+            >
+              {validatingPromo ? '...' : 'Aplică'}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => { setPromoApplied(null); setPromoCode(''); }}
+            style={{
+              background: 'transparent', border: 'none',
+              color: 'rgba(255,245,220,0.5)', cursor: 'pointer', fontSize: 12,
+              textDecoration: 'underline',
+            }}
+          >
+            ✕ Elimină promo
+          </button>
+        )}
+        {promoError && <div style={{ marginTop: 6, fontSize: 12, color: '#ff8888' }}>{promoError}</div>}
+      </div>
+
       <PaywallGiftCode generationId={generationId} onUnlocked={onUnlocked} />
     </div>
   );
+}
+
+function translatePromoReason(reason: string | undefined): string {
+  switch (reason) {
+    case 'invalid': return 'Cod invalid sau dezactivat.';
+    case 'expired': return 'Cod expirat.';
+    case 'not_yet_valid': return 'Cod neactivat încă.';
+    case 'used_up': return 'Cod folosit complet.';
+    case 'wrong_email': return 'Cod restricționat la alt email.';
+    case 'empty': return 'Introdu un cod.';
+    default: return 'Cod nevalid.';
+  }
 }
 
 function PaywallGiftCode({ generationId, onUnlocked }: { generationId: string; onUnlocked: () => void }) {

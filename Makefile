@@ -40,9 +40,9 @@ logs-caddy:
 
 # Tail live al access-log-ului pino (toate request-urile, JSON lines).
 logs-file:
-	@ssh $(VPS) "docker exec -it manele-api-1 sh -c 'tail -f /app/logs/access.log'"
+	@ssh $(VPS) "docker exec -it manele-api-1 sh -c 'tail -f /app/logs/access.log*'"
 
-# Doar liniile 429 din ultimele 24h, agregate pe path (cele mai frecvente sus).
+# Doar liniile 429 din ultimele zile, agregate pe path (cele mai frecvente sus).
 logs-429:
 	@ssh $(VPS) "docker exec manele-api-1 sh -c \"cat /app/logs/access.log* 2>/dev/null | grep -E '\\\"status\\\":429|throttler-reject' | awk -F'\\\"path\\\":\\\"' '{print \\\$$2}' | awk -F'\\\"' '{print \\\$$1}' | sort | uniq -c | sort -rn | head -30\""
 

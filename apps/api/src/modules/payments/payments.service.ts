@@ -158,6 +158,7 @@ export class PaymentsService {
       line_items: lineItems,
       success_url: `${siteUrl}${successPath}`,
       cancel_url: `${siteUrl}${cancelPath}`,
+      expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
       metadata: {
         paymentId: payment.id,
         generationId: input.generationId ?? '',
@@ -307,6 +308,7 @@ export class PaymentsService {
       ],
       success_url: `${siteUrl}/cadou/success?paymentId=${payment.id}`,
       cancel_url: `${siteUrl}/cadou?paymentId=${payment.id}&cancel=1`,
+      expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
       metadata: {
         paymentId: payment.id,
         giftPurchase: 'true',
@@ -437,6 +439,24 @@ export class PaymentsService {
     if (event.type === 'payment_intent.payment_failed') {
       const pi = event.data.object as Stripe.PaymentIntent;
       await this.recordPaymentFailureFromIntent(pi);
+    }
+
+    // Sesiunea de checkout a expirat (userul a abandonat / nu a apăsat Pay
+    // în fereastra de `expires_at`). Stripe NU trimite niciodată un event
+    // imediat când userul închide tab-ul, doar acest expired după timeout.
+    if (event.type === 'checkout.session.expired') {
+      const session = event.data.object as Stripe.Checkout.Session;
+      const paymentId = session.metadata?.paymentId;
+      if (paymentId) {
+        await this.repo.update(
+          { id: paymentId },
+          {
+            status: 'failed',
+            failureReason: 'Checkout abandonat (sesiune expirată)',
+            failureCode: 'session_expired',
+          },
+        );
+      }
     }
 
     // Plăți async (SEPA, ACH, etc.) care eșuează după ce checkout-ul a închis.
