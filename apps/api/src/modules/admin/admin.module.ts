@@ -11,6 +11,7 @@ import { SunoLog } from '../suno/suno-log.entity';
 import { SunoCreditPurchase } from '../suno/suno-credit-purchase.entity';
 import { AnalyticsSession } from '../analytics/analytics-session.entity';
 import { AuthModule } from '../auth/auth.module';
+import { PaymentsModule } from '../payments/payments.module';
 import { MailerModule } from '../../mailer/mailer.module';
 import { SeederModule } from '../../database/seeder/seeder.module';
 import { SunoModule } from '../suno/suno.module';
@@ -22,6 +23,7 @@ import { SunoModule } from '../suno/suno.module';
     MailerModule,
     SeederModule,
     SunoModule,
+    PaymentsModule,
   ],
   controllers: [AdminController, AdminSunoController],
   providers: [AdminGuard],

@@ -4,12 +4,15 @@ import { useState } from 'react';
 import { useAsync } from "@/lib/hooks/use-async";
 import { format } from 'date-fns';
 import { ro } from 'date-fns/locale';
-import { CreditCard } from 'lucide-react';
+import { CreditCard, RotateCcw } from 'lucide-react';
 import { AdminApi, AnalyticsApi } from '@/lib/api';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/ui/empty';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/components/ui/use-toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Table,
   TableBody,
@@ -110,7 +113,52 @@ export default function PaymentsPage() {
 }
 
 function PaymentDetailDrawer({ id, onClose }: { id: string; onClose: () => void }) {
-  const { data, loading } = useAsync(() => AnalyticsApi.paymentDetail(id), [id]);
+  const { toast } = useToast();
+  const { data, loading, refetch } = useAsync(() => AnalyticsApi.paymentDetail(id), [id]);
+  const { data: stripeDetails, loading: stripeLoading } = useAsync(
+    () => AdminApi.paymentStripeDetails(id),
+    [id],
+  );
+  const [refunding, setRefunding] = useState(false);
+
+  async function handleRefund() {
+    if (!data) return;
+    const totalLabel = `${(data.payment.amount / 100).toFixed(2)} ${data.payment.currency}`;
+    const ok = await confirmDialog({
+      title: `Refund ${totalLabel}?`,
+      description:
+        'Suma va fi returnată integral pe cardul clientului prin Stripe. ' +
+        'Statusul plății devine "refunded". Operațiunea NU se poate anula.',
+      variant: 'destructive',
+    });
+    if (!ok) return;
+    setRefunding(true);
+    try {
+      const result = await AdminApi.paymentRefund(id, { reason: 'requested_by_customer' });
+      if (result.ok) {
+        toast({
+          title: 'Refund inițiat',
+          description: `${(result.amountCents / 100).toFixed(2)} ${data.payment.currency} returnați — ${result.refundId}`,
+        });
+        await refetch();
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Refund eșuat',
+          description: result.error,
+        });
+      }
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: 'Refund eșuat',
+        description: (err as Error).message,
+      });
+    } finally {
+      setRefunding(false);
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/40"
@@ -120,11 +168,24 @@ function PaymentDetailDrawer({ id, onClose }: { id: string; onClose: () => void 
         className="h-full w-full max-w-xl overflow-y-auto border-l border-white/10 bg-[hsl(220_22%_9%)] p-5 text-sm shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between gap-2">
           <h3 className="text-base font-semibold">Plată {id.slice(0, 8)}…</h3>
-          <button onClick={onClose} className="text-muted-foreground hover:text-white">
-            ✕
-          </button>
+          <div className="flex items-center gap-2">
+            {data?.payment.status === 'paid' && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleRefund}
+                disabled={refunding}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                {refunding ? 'Se procesează...' : 'Refund'}
+              </Button>
+            )}
+            <button onClick={onClose} className="text-muted-foreground hover:text-white">
+              ✕
+            </button>
+          </div>
         </div>
         {loading ? (
           <Skeleton className="h-96 w-full" />
@@ -167,6 +228,50 @@ function PaymentDetailDrawer({ id, onClose }: { id: string; onClose: () => void 
                 <Kv k="ID" v={data.user.id} mono />
               </Section>
             )}
+
+            <Section title="Date facturare (Stripe)">
+              {stripeLoading ? (
+                <Skeleton className="h-24 w-full" />
+              ) : !stripeDetails ? (
+                <p className="text-xs text-muted-foreground">
+                  Detaliile nu sunt disponibile (plată fără Stripe Session sau eroare API).
+                </p>
+              ) : (
+                <>
+                  <Kv k="Nume" v={stripeDetails.name ?? '—'} />
+                  <Kv k="Email" v={stripeDetails.email ?? '—'} />
+                  <Kv k="Telefon" v={stripeDetails.phone ?? '—'} />
+                  {stripeDetails.address ? (
+                    <>
+                      <Kv k="Adresă" v={stripeDetails.address.line1 ?? '—'} />
+                      {stripeDetails.address.line2 && (
+                        <Kv k="Adresă (2)" v={stripeDetails.address.line2} />
+                      )}
+                      <Kv
+                        k="Oraș"
+                        v={`${stripeDetails.address.city ?? '—'}${
+                          stripeDetails.address.state ? `, ${stripeDetails.address.state}` : ''
+                        }`}
+                      />
+                      <Kv k="Cod poștal" v={stripeDetails.address.postalCode ?? '—'} />
+                      <Kv k="Țară" v={stripeDetails.address.country ?? '—'} />
+                    </>
+                  ) : (
+                    <Kv k="Adresă" v="—" />
+                  )}
+                  {stripeDetails.paymentMethod && (
+                    <Kv
+                      k="Card"
+                      v={
+                        stripeDetails.paymentMethod.brand
+                          ? `${stripeDetails.paymentMethod.brand.toUpperCase()} ••••${stripeDetails.paymentMethod.last4 ?? '????'} (${stripeDetails.paymentMethod.expMonth}/${stripeDetails.paymentMethod.expYear})`
+                          : '—'
+                      }
+                    />
+                  )}
+                </>
+              )}
+            </Section>
 
             {data.session && (
               <Section title="Sesiune originală">

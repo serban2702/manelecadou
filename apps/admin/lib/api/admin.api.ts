@@ -31,6 +31,37 @@ export class AdminApi {
   static generationDelete(id: string): Promise<unknown> {
     return http.delete(`/admin/generations/${id}`);
   }
+  static paymentStripeDetails(id: string): Promise<{
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    address: {
+      line1: string | null;
+      line2: string | null;
+      city: string | null;
+      state: string | null;
+      postalCode: string | null;
+      country: string | null;
+    } | null;
+    paymentMethod: {
+      brand: string | null;
+      last4: string | null;
+      expMonth: number | null;
+      expYear: number | null;
+      country: string | null;
+    } | null;
+  } | null> {
+    return http.get(`/admin/payments/${id}/stripe-details`);
+  }
+  static paymentRefund(
+    id: string,
+    body: { amountCents?: number; reason?: string } = {},
+  ): Promise<
+    | { ok: true; refundId: string; amountCents: number }
+    | { ok: false; error: string }
+  > {
+    return http.post(`/admin/payments/${id}/refund`, body);
+  }
 }
 
 export class PromoApi {

@@ -568,6 +568,129 @@ export class PaymentsService {
       };
     }
   }
+
+  /**
+   * Returnează detalii de facturare din Stripe Session pentru un payment dat:
+   * customer name, email, phone, billing address. Folosit în admin pentru
+   * emiterea facturilor / contabilitate.
+   */
+  async fetchStripeCustomerDetails(paymentId: string): Promise<{
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    address: {
+      line1: string | null;
+      line2: string | null;
+      city: string | null;
+      state: string | null;
+      postalCode: string | null;
+      country: string | null;
+    } | null;
+    paymentMethod: {
+      brand: string | null;
+      last4: string | null;
+      expMonth: number | null;
+      expYear: number | null;
+      country: string | null;
+    } | null;
+  } | null> {
+    const payment = await this.repo.findOne({ where: { id: paymentId } });
+    if (!payment?.providerSessionId) return null;
+    const stripe = await this.getStripe();
+    if (!stripe) return null;
+
+    try {
+      const session = await stripe.checkout.sessions.retrieve(payment.providerSessionId, {
+        expand: ['customer_details', 'payment_intent.latest_charge.payment_method_details.card'],
+      });
+      const cd = session.customer_details;
+      const pi = session.payment_intent as Stripe.PaymentIntent | null;
+      const charge = pi?.latest_charge as Stripe.Charge | null;
+      const card = charge?.payment_method_details?.card ?? null;
+
+      const addr = cd?.address ?? null;
+      return {
+        name: cd?.name ?? null,
+        email: cd?.email ?? payment.userId ? null : null,
+        phone: cd?.phone ?? null,
+        address: addr
+          ? {
+              line1: addr.line1 ?? null,
+              line2: addr.line2 ?? null,
+              city: addr.city ?? null,
+              state: addr.state ?? null,
+              postalCode: addr.postal_code ?? null,
+              country: addr.country ?? null,
+            }
+          : null,
+        paymentMethod: card
+          ? {
+              brand: card.brand ?? null,
+              last4: card.last4 ?? null,
+              expMonth: card.exp_month ?? null,
+              expYear: card.exp_year ?? null,
+              country: card.country ?? null,
+            }
+          : null,
+      };
+    } catch (err) {
+      this.logger.warn(`fetchStripeCustomerDetails failed: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Face refund prin Stripe. Acceptă suma parțială (în cents) sau full refund
+   * (default). Actualizează Payment.status la 'refunded' și salvează motivul.
+   */
+  async refund(
+    paymentId: string,
+    options: { amountCents?: number; reason?: string } = {},
+  ): Promise<{ ok: true; refundId: string; amountCents: number } | { ok: false; error: string }> {
+    const payment = await this.repo.findOne({ where: { id: paymentId } });
+    if (!payment) return { ok: false, error: 'payment_not_found' };
+    if (payment.status !== 'paid') {
+      return { ok: false, error: `cannot refund payment with status='${payment.status}'` };
+    }
+    if (!payment.providerSessionId) {
+      return { ok: false, error: 'no_provider_session_id' };
+    }
+    const stripe = await this.getStripe();
+    if (!stripe) return { ok: false, error: 'stripe_not_configured' };
+
+    try {
+      const session = await stripe.checkout.sessions.retrieve(payment.providerSessionId);
+      const piId =
+        typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : session.payment_intent?.id;
+      if (!piId) return { ok: false, error: 'no_payment_intent' };
+
+      const refund = await stripe.refunds.create({
+        payment_intent: piId,
+        amount: options.amountCents,
+        reason: options.reason === 'requested_by_customer' ? 'requested_by_customer' : undefined,
+        metadata: {
+          paymentId,
+          adminReason: options.reason ?? '',
+        },
+      });
+
+      await this.repo.update(
+        { id: paymentId },
+        {
+          status: 'refunded',
+          failureReason: options.reason ? `Refund: ${options.reason}` : 'Refund manual din admin',
+          failureCode: 'refunded',
+        },
+      );
+
+      return { ok: true, refundId: refund.id, amountCents: refund.amount };
+    } catch (err) {
+      this.logger.warn(`refund failed for ${paymentId}: ${(err as Error).message}`);
+      return { ok: false, error: (err as Error).message };
+    }
+  }
 }
 
 function extractIntentFailureReason(pi: Stripe.PaymentIntent): { reason: string; code: string } {

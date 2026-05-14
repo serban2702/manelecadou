@@ -8,6 +8,7 @@ import { User } from '../users/user.entity';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { Generation } from '../generations/generation.entity';
 import { Payment } from '../payments/payment.entity';
+import { PaymentsService } from '../payments/payments.service';
 import { AnalyticsSession } from '../analytics/analytics-session.entity';
 import { MailerService } from '../../mailer/mailer.module';
 import { SeederService } from '../../database/seeder/seeder.service';
@@ -33,6 +34,7 @@ export class AdminController {
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     @InjectRepository(AnalyticsSession) private readonly analyticsSessions: Repository<AnalyticsSession>,
     private readonly mailer: MailerService,
+    private readonly paymentsService: PaymentsService,
     private readonly seeder: SeederService,
   ) {}
 
@@ -207,6 +209,22 @@ export class AdminController {
           ? guestEmail.get(p.guestId) ?? null
           : null,
     }));
+  }
+
+  @Get('payments/:id/stripe-details')
+  async getPaymentStripeDetails(@Param('id') id: string) {
+    return this.paymentsService.fetchStripeCustomerDetails(id);
+  }
+
+  @Post('payments/:id/refund')
+  async refundPayment(
+    @Param('id') id: string,
+    @Body() body: { amountCents?: number; reason?: string },
+  ) {
+    return this.paymentsService.refund(id, {
+      amountCents: body?.amountCents,
+      reason: body?.reason,
+    });
   }
 
   // ===== Action endpoints =====
