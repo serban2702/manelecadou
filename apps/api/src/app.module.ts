@@ -33,6 +33,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { SitesModule } from './modules/sites/sites.module';
 import { AiAssistantModule } from './modules/ai-assistant/ai-assistant.module';
 import { TiktokModule } from './modules/tiktok/tiktok.module';
+import { SeoPagesModule } from './modules/seo-pages/seo-pages.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { TiktokModule } from './modules/tiktok/tiktok.module';
     GenerationsModule,
     PaymentsModule,
     TiktokModule,
+    SeoPagesModule,
     AdminModule,
     DatabaseAdminModule,
     ChatModule,

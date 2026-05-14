@@ -9,6 +9,7 @@ const STATIC_PAGES = [
   { path: '/studio',           priority: 0.9, changeFrequency: 'weekly' as const },
   { path: '/asculta',          priority: 0.9, changeFrequency: 'daily' as const },
   { path: '/top',              priority: 0.7, changeFrequency: 'daily' as const },
+  { path: '/articole',         priority: 0.8, changeFrequency: 'weekly' as const },
   { path: '/faq',              priority: 0.6, changeFrequency: 'monthly' as const },
   { path: '/contact',          priority: 0.5, changeFrequency: 'monthly' as const },
   { path: '/termeni',          priority: 0.3, changeFrequency: 'yearly' as const },
@@ -57,5 +58,27 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // tolerăm eșecul — sitemap-ul rămâne cu doar paginile statice
   }
 
-  return [...staticItems, ...dynamicItems];
+  // Paginile SEO „articole" — 40-50 entries per site, generate cu OpenAI.
+  let seoItems: MetadataRoute.Sitemap = [];
+  try {
+    const h = await headers();
+    const host = h.get('x-forwarded-host') || h.get('host') || site.domain;
+    const res = await fetch(`${API_INTERNAL}/api/public/seo-pages`, {
+      headers: { Host: host, 'X-Forwarded-Host': host },
+      next: { revalidate: 1800, tags: ['site-sitemap-seo'] },
+    });
+    if (res.ok) {
+      const payload = (await res.json()) as { items: Array<{ slug: string; updatedAt?: string }> };
+      seoItems = payload.items.map((p) => ({
+        url: `${baseUrl}/articole/${p.slug}`,
+        lastModified: p.updatedAt ? new Date(p.updatedAt) : now,
+        changeFrequency: 'monthly' as const,
+        priority: 0.7,
+      }));
+    }
+  } catch {
+    // tolerăm eșecul
+  }
+
+  return [...staticItems, ...dynamicItems, ...seoItems];
 }

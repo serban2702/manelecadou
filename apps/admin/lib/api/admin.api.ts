@@ -64,6 +64,61 @@ export class AdminApi {
   }
 }
 
+// ============== SEO Pages ==============
+
+export interface AdminSeoPage {
+  id: string;
+  siteId: string;
+  slug: string;
+  category: string;
+  locale: string;
+  title: string;
+  metaDescription: string;
+  h1: string;
+  excerpt: string | null;
+  contentMd: string;
+  source: 'ai' | 'manual';
+  published: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SeoSlugTemplate {
+  slug: string;
+  category: string;
+  primaryKeyword: string;
+  intent: string;
+}
+
+export class SeoPagesApi {
+  static list(): Promise<AdminSeoPage[]> {
+    return http.get('/admin/seo-pages');
+  }
+  static templates(): Promise<SeoSlugTemplate[]> {
+    return http.get('/admin/seo-pages/templates');
+  }
+  static regenerateAll(opts: { regenerate?: boolean } = {}): Promise<{
+    created: number;
+    updated: number;
+    skipped: number;
+    failed: string[];
+  }> {
+    return http.post('/admin/seo-pages/regenerate-all', opts);
+  }
+  static regenerateOne(slug: string): Promise<AdminSeoPage> {
+    return http.post(`/admin/seo-pages/${slug}/regenerate`);
+  }
+  static update(
+    id: string,
+    patch: Partial<Pick<AdminSeoPage, 'title' | 'metaDescription' | 'h1' | 'excerpt' | 'contentMd' | 'published'>>,
+  ): Promise<AdminSeoPage> {
+    return http.patch(`/admin/seo-pages/${id}`, patch);
+  }
+  static delete(id: string): Promise<{ ok: boolean }> {
+    return http.delete(`/admin/seo-pages/${id}`);
+  }
+}
+
 export class PromoApi {
   static list(): Promise<AdminPromoCode[]> { return http.get('/admin/promo'); }
   static create(input: {

@@ -424,6 +424,7 @@ export function Footer() {
         <a href="/cookies">{t('links.cookies')}</a>
         <a href="/contact">{t('links.contact')}</a>
         <a href="/faq">{t('links.faq')}</a>
+        <a href="/articole">Articole</a>
         <a href="https://anpc.ro" target="_blank" rel="noopener noreferrer">ANPC</a>
         <a href="https://anpc.ro/ce-este-sal/" target="_blank" rel="noopener noreferrer">SAL</a>
         <a href="https://ec.europa.eu/consumers/odr/main/index.cfm?event=main.home2.show&lng=RO" target="_blank" rel="noopener noreferrer">SOL</a>
