@@ -579,8 +579,11 @@ input, textarea, select { font-family: inherit; }
 .lf-pop .tx .when { display: block; font-size: 9px; color: rgba(255,245,220,0.45); letter-spacing: 0.05em; text-transform: uppercase; margin-top: 1px; }
 .lf-pop .em { font-size: 18px; flex-shrink: 0; }
 
-/* ========== Cookie consent ========== */
-.cc {
+/* ========== Cookie consent ==========
+   Class redenumită din .cc → .cookie-banner ca să nu mai colizioneze cu
+   character counter-ul `.field .cc` (vezi Generator.tsx). Înainte counter-ul
+   primea position:fixed prin cascadă și apărea la baza ecranului. */
+.cookie-banner {
   position: fixed;
   bottom: 16px; left: 16px; right: 16px;
   z-index: 200;
@@ -594,12 +597,12 @@ input, textarea, select { font-family: inherit; }
   max-width: 480px; margin: 0 auto;
 }
 @keyframes ccin { from { transform: translateY(120%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-.cc h4 { font-family: 'Cinzel', serif; font-size: 16px; color: var(--gold-2); margin-bottom: 4px; }
-.cc h4 .em { font-size: 18px; margin-right: 4px; }
-.cc p { font-size: 12px; line-height: 1.5; color: rgba(255,245,220,0.8); margin-bottom: 12px; }
-.cc p a { color: var(--gold); text-decoration: underline; }
-.cc-row { display: flex; gap: 8px; }
-.cc-row .btn { flex: 1; padding: 11px 10px; font-size: 13px; }
+.cookie-banner h4 { font-family: 'Cinzel', serif; font-size: 16px; color: var(--gold-2); margin-bottom: 4px; }
+.cookie-banner h4 .em { font-size: 18px; margin-right: 4px; }
+.cookie-banner p { font-size: 12px; line-height: 1.5; color: rgba(255,245,220,0.8); margin-bottom: 12px; }
+.cookie-banner p a { color: var(--gold); text-decoration: underline; }
+.cookie-banner-row { display: flex; gap: 8px; }
+.cookie-banner-row .btn { flex: 1; padding: 11px 10px; font-size: 13px; }
 
 /* ========== Calculator șmecher ========== */
 .smc {

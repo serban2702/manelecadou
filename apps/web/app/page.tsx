@@ -8,7 +8,6 @@ import {
   PriceStrip,
   QuickListen,
   Leaderboard,
-  GiftMini,
   Testimonials,
   Smecher,
   Ticker,
@@ -84,10 +83,6 @@ export default function HomePage() {
             <div className="side-card">
               <h4>{tHome('side.offer')}</h4>
               <PriceStrip />
-            </div>
-            <div className="side-card">
-              <h4>{tHome('side.giftSomeone')}</h4>
-              <GiftMini />
             </div>
           </aside>
         </section>

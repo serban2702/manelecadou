@@ -29,7 +29,6 @@ export function SiteShell({ children, hideStickyCta }: { children: ReactNode; hi
     { href: '/asculta', label: tNav('asculta') },
     { href: '/studio', label: tNav('studio') },
     { href: '/top', label: tNav('top') },
-    { href: '/cadou', label: tNav('cadou') },
   ];
 
   useEffect(() => {

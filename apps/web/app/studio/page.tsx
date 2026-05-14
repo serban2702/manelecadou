@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { SiteShell } from '@/components/SiteShell';
 import { Generator } from '@/components/Generator';
-import { PriceStrip, GiftMini } from '@/components/sections';
+import { PriceStrip } from '@/components/sections';
 
 export default function StudioPage() {
   const [playing, setPlaying] = useState<string | null>(null);
@@ -32,10 +32,6 @@ export default function StudioPage() {
             <div className="side-card">
               <h4>{t('sideOfferTitle')}</h4>
               <PriceStrip />
-            </div>
-            <div className="side-card">
-              <h4>{t('sideGiftTitle')}</h4>
-              <GiftMini />
             </div>
             <div className="side-card">
               <h4>{t('whyTryTitle')}</h4>

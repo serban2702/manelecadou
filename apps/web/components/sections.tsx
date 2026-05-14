@@ -352,14 +352,14 @@ export function Ticker() {
 export function Cookie({ onClose }: { onClose: (mode: 'rej' | 'all') => void }) {
   const t = useTranslations('cookie');
   return (
-    <div className="cc">
+    <div className="cookie-banner">
       <h4><span className="em">🍪</span> {t('title')}</h4>
       <p>
         {t.rich('body', {
           a: (chunks) => <a href="/cookies" style={{ color: 'var(--gold)' }}>{chunks}</a>,
         })}
       </p>
-      <div className="cc-row">
+      <div className="cookie-banner-row">
         <button className="btn btn-gold btn-block" onClick={() => onClose('all')}>
           {t('accept')}
         </button>
@@ -478,16 +478,3 @@ function Badge({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function GiftMini() {
-  const t = useTranslations('giftMini');
-  return (
-    <div className="gift-mini">
-      <span className="ribbon">🎁 NEW</span>
-      <h3 className="gold-text">{t('title')}</h3>
-      <p>{t('body')}</p>
-      <button className="btn btn-rose btn-block">
-        <Ic.Gift s={14} /> {t('cta')}
-      </button>
-    </div>
-  );
-}

@@ -38,10 +38,6 @@ const Q = [
     a: 'Conform legii, produsele digitale customizate nu se returnează după livrare. Dar dacă maneaua nu e ok tehnic (audio defect, versuri tăiate), facem alta gratis.',
   },
   {
-    q: 'Cum cumpăr cod cadou?',
-    a: 'Pe pagina /cadou alegi pachetul, plătești tu, primești cod pe email și îl dai cui vrei. Codul e valabil 1 an.',
-  },
-  {
     q: 'Cu ce plătesc?',
     a: 'Card bancar prin Stripe. În viitor: Apple Pay, Google Pay, Netopia (cardul românesc).',
   },
