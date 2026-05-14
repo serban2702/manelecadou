@@ -271,7 +271,11 @@
     },
     "side": {
       "offer": "Ofertă",
-      "giftSomeone": "🎁 Cadou pentru cineva"
+      "whyTitle": "De ce manele cadou?",
+      "whyBullet1": "🎯 Versuri scrise cu AI, verificate de un al doilea AI",
+      "whyBullet2": "🎤 2 versiuni audio, alegi pe cea mai tare",
+      "whyBullet3": "📧 Livrate pe email în <2 minute",
+      "whyBullet4": "💰 Demo gratis — plătești doar dacă vrei tot"
     },
     "top": {
       "badge": "★ Top săptămână",

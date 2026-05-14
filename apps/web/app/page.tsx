@@ -84,6 +84,15 @@ export default function HomePage() {
               <h4>{tHome('side.offer')}</h4>
               <PriceStrip />
             </div>
+            <div className="side-card">
+              <h4>{tHome('side.whyTitle')}</h4>
+              <ul style={{ paddingLeft: 18, fontSize: 13, color: 'rgba(255,245,220,0.7)', marginTop: 6 }}>
+                <li style={{ marginBottom: 6 }}>{tHome('side.whyBullet1')}</li>
+                <li style={{ marginBottom: 6 }}>{tHome('side.whyBullet2')}</li>
+                <li style={{ marginBottom: 6 }}>{tHome('side.whyBullet3')}</li>
+                <li>{tHome('side.whyBullet4')}</li>
+              </ul>
+            </div>
           </aside>
         </section>
 
