@@ -36,6 +36,13 @@ export class TiktokEventsService {
     userAgent?: string | null;
     ip?: string | null;
     email?: string | null;
+    phone?: string | null;
+    /** Identificator stabil al clientului (userId / guestId). Crește EMQ score. */
+    externalId?: string | null;
+    /** TikTok Click ID — vine ca ?ttclid=... din URL pentru click-uri ad. */
+    ttclid?: string | null;
+    /** TikTok pixel cookie — setat de ttq.page() pe browser. */
+    ttp?: string | null;
     value?: number;
     currency?: string;
     contentId?: string;
@@ -50,8 +57,15 @@ export class TiktokEventsService {
       return;
     }
 
+    // TikTok Events API v1.3 cere email/phone/external_id ca ARRAY de string-uri
+    // hash-uite SHA-256. Trimiterea ca string scalar e tratată ca "missing" în
+    // EMQ score și apare ca diagnostic „Email and phone are missing".
     const user: Record<string, unknown> = {};
-    if (input.email) user.email = sha256Hex(input.email.trim().toLowerCase());
+    if (input.email) user.email = [sha256Hex(input.email.trim().toLowerCase())];
+    if (input.phone) user.phone = [sha256Hex(input.phone.replace(/\s|-/g, ''))];
+    if (input.externalId) user.external_id = [sha256Hex(input.externalId)];
+    if (input.ttclid) user.ttclid = input.ttclid;
+    if (input.ttp) user.ttp = input.ttp;
     if (input.userAgent) user.user_agent = input.userAgent;
     if (input.ip) user.ip = input.ip;
 

@@ -161,6 +161,9 @@ export class PaymentsService {
       success_url: `${siteUrl}${successPath}`,
       cancel_url: `${siteUrl}${cancelPath}`,
       expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
+      // Colectăm telefonul ca să crească EMQ score-ul pentru TikTok / Meta
+      // server-side tracking (hash-uit înainte de trimitere).
+      phone_number_collection: { enabled: true },
       metadata: {
         paymentId: payment.id,
         generationId: input.generationId ?? '',
@@ -430,6 +433,13 @@ export class PaymentsService {
         const currency = (session.currency ?? 'ron').toUpperCase();
         const generationId = session.metadata?.generationId || undefined;
         const siteForTracking = await this.sites.findById(metaSiteId).catch(() => null);
+        const payment = await this.repo.findOne({ where: { id: paymentId } });
+        // Email și phone sunt acum colectate din Stripe Checkout
+        // (customer_details). External ID = userId sau guestId, stabil per client.
+        const customerEmail =
+          session.customer_details?.email ?? session.customer_email ?? null;
+        const customerPhone = session.customer_details?.phone ?? null;
+        const externalId = payment?.userId ?? payment?.guestId ?? null;
         this.tiktok
           .trackEvent({
             site: siteForTracking,
@@ -438,7 +448,9 @@ export class PaymentsService {
             url: session.metadata?.siteDomain
               ? `https://${session.metadata.siteDomain}/`
               : undefined,
-            email: session.customer_email ?? null,
+            email: customerEmail,
+            phone: customerPhone,
+            externalId,
             value: amount / 100,
             currency,
             contentId: generationId ?? paymentId,
