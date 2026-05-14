@@ -1,18 +1,28 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { ro } from 'date-fns/locale';
-import { FileText, RefreshCw, Sparkles, Trash2, ExternalLink } from 'lucide-react';
+import { Edit3, FileText, RefreshCw, Save, Sparkles, Trash2, ExternalLink } from 'lucide-react';
 import { SeoPagesApi, type AdminSeoPage } from '@/lib/api';
 import { useAsync } from '@/lib/hooks/use-async';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/ui/empty';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Table,
   TableBody,
@@ -37,6 +47,7 @@ export default function SeoPagesContent() {
   const { data: templates } = useAsync(() => SeoPagesApi.templates(), []);
   const [bulkRunning, setBulkRunning] = useState(false);
   const [regenSlug, setRegenSlug] = useState<string | null>(null);
+  const [editing, setEditing] = useState<AdminSeoPage | null>(null);
 
   async function runBulk(regenerate: boolean) {
     const label = regenerate
@@ -200,6 +211,14 @@ export default function SeoPagesContent() {
                     <Button
                       size="sm"
                       variant="outline"
+                      onClick={() => setEditing(p)}
+                      title="Editează manual"
+                    >
+                      <Edit3 className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
                       onClick={() => regenOne(p.slug)}
                       disabled={regenSlug === p.slug}
                       title="Regenerează cu AI"
@@ -223,6 +242,184 @@ export default function SeoPagesContent() {
           </TableBody>
         </Table>
       )}
+
+      <EditDialog
+        page={editing}
+        onClose={() => setEditing(null)}
+        onSaved={async () => {
+          setEditing(null);
+          await refetch();
+        }}
+      />
     </div>
+  );
+}
+
+function EditDialog({
+  page,
+  onClose,
+  onSaved,
+}: {
+  page: AdminSeoPage | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [form, setForm] = useState({
+    title: '',
+    metaDescription: '',
+    h1: '',
+    excerpt: '',
+    contentMd: '',
+    published: true,
+  });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (page) {
+      setForm({
+        title: page.title,
+        metaDescription: page.metaDescription,
+        h1: page.h1,
+        excerpt: page.excerpt ?? '',
+        contentMd: page.contentMd,
+        published: page.published,
+      });
+    }
+  }, [page]);
+
+  if (!page) return null;
+
+  async function save() {
+    if (!page) return;
+    setSaving(true);
+    try {
+      await SeoPagesApi.update(page.id, form);
+      toast({ title: 'Salvat', description: 'Pagina a devenit „manual" — nu va fi suprascrisă la regenerare.' });
+      onSaved();
+    } catch (err) {
+      toast({ variant: 'destructive', title: 'Eroare', description: (err as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const charCount = (s: string, max?: number) =>
+    `${s.length}${max ? ` / ${max}` : ''}`;
+
+  return (
+    <Dialog open={!!page} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Edit3 className="h-4 w-4" /> Editează pagina SEO
+          </DialogTitle>
+          <DialogDescription>
+            <code className="text-xs">/articole/{page.slug}</code> · categoria{' '}
+            <Badge variant="outline" className="text-xs ml-1">
+              {page.category}
+            </Badge>
+            {page.source === 'manual' && (
+              <Badge variant="success" className="text-xs ml-2">manual</Badge>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 mt-2">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <Label className="text-xs">Title (browser tab + Google SERP)</Label>
+              <span className="text-[10px] text-muted-foreground">{charCount(form.title, 70)}</span>
+            </div>
+            <Input
+              value={form.title}
+              maxLength={200}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <Label className="text-xs">Meta description (Google SERP)</Label>
+              <span className="text-[10px] text-muted-foreground">{charCount(form.metaDescription, 160)}</span>
+            </div>
+            <Textarea
+              value={form.metaDescription}
+              maxLength={320}
+              rows={2}
+              onChange={(e) => setForm({ ...form, metaDescription: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <Label className="text-xs">H1 (titlul mare de pe pagină)</Label>
+              <span className="text-[10px] text-muted-foreground">{charCount(form.h1)}</span>
+            </div>
+            <Input
+              value={form.h1}
+              maxLength={200}
+              onChange={(e) => setForm({ ...form, h1: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <Label className="text-xs">Excerpt (sub H1 + meta OG)</Label>
+              <span className="text-[10px] text-muted-foreground">{charCount(form.excerpt, 180)}</span>
+            </div>
+            <Textarea
+              value={form.excerpt}
+              maxLength={320}
+              rows={2}
+              onChange={(e) => setForm({ ...form, excerpt: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <Label className="text-xs">Conținut (Markdown — H2 cu ##, listă cu -, etc.)</Label>
+              <span className="text-[10px] text-muted-foreground">{charCount(form.contentMd)}</span>
+            </div>
+            <Textarea
+              value={form.contentMd}
+              rows={18}
+              onChange={(e) => setForm({ ...form, contentMd: e.target.value })}
+              className="font-mono text-xs"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 pt-2">
+            <input
+              type="checkbox"
+              id="published"
+              checked={form.published}
+              onChange={(e) => setForm({ ...form, published: e.target.checked })}
+            />
+            <Label htmlFor="published" className="text-xs cursor-pointer">
+              Publicată (vizibilă pe site)
+            </Label>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-border">
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Renunță
+          </Button>
+          <a
+            href={`/articole/${page.slug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-muted-foreground hover:text-foreground self-center mr-auto inline-flex items-center gap-1"
+          >
+            <ExternalLink className="h-3 w-3" /> Vezi live
+          </a>
+          <Button onClick={save} disabled={saving}>
+            <Save className="h-4 w-4" />
+            {saving ? 'Salvez...' : 'Salvează'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
