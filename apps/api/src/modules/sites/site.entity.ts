@@ -163,8 +163,8 @@ export class Site {
   @Column({ type: 'varchar', length: 8, default: 'RON' })
   currency!: string; // RON|EUR|BGN|RSD|TRY|HUF...
 
-  @Column({ type: 'integer', default: 4900 })
-  basePriceCents!: number; // preț de bază în cele mai mici unități ale monedei
+  @Column({ type: 'integer', default: 2999 })
+  basePriceCents!: number; // preț de bază în cele mai mici unități ale monedei (29.99 lei default)
 
   @Column({ type: 'integer', default: 0 })
   giftPriceCents!: number; // preț cod cadou single

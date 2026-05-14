@@ -12,7 +12,7 @@ import { Repository } from 'typeorm';
 import Stripe from 'stripe';
 
 import { Payment } from './payment.entity';
-import { tipSurchargeCents } from './pricing';
+import { tipSurchargeCents, PREMIUM_EXTRA_CENTS } from './pricing';
 import { PromoService } from '../promo/promo.service';
 import { GiftCodesService } from '../gift-codes/gift-codes.service';
 import { GiftTier, TIER_PRICES_RON } from '../gift-codes/gift-code.entity';
@@ -79,20 +79,32 @@ export class PaymentsService {
     return tipSurchargeCents(tipAmount);
   }
 
-  private siteTotal(site: Site, tipAmount: number): number {
-    return site.basePriceCents + this.siteTipSurcharge(site, tipAmount);
+  private sitePremiumExtra(site: Site, premium: boolean): number {
+    if (!premium) return 0;
+    if (site.currency.toUpperCase() !== 'RON') return 0;
+    return PREMIUM_EXTRA_CENTS;
+  }
+
+  private siteTotal(site: Site, tipAmount: number, premium: boolean): number {
+    return (
+      site.basePriceCents +
+      this.sitePremiumExtra(site, premium) +
+      this.siteTipSurcharge(site, tipAmount)
+    );
   }
 
   /** Returnează prețul calculat (nu apelează Stripe). */
   quote(site: Site, input: { tipAmount?: number; premium?: boolean }) {
     const tip = input.tipAmount ?? 0;
+    const premium = !!input.premium;
     const surcharge = this.siteTipSurcharge(site, tip);
-    const total = this.siteTotal(site, tip);
+    const premiumExtra = this.sitePremiumExtra(site, premium);
+    const total = this.siteTotal(site, tip, premium);
     return {
       base: site.basePriceCents,
       tipAmount: tip,
       tipSurcharge: surcharge,
-      premiumExtra: 0,
+      premiumExtra,
       total,
       currency: site.currency,
     };
@@ -103,7 +115,7 @@ export class PaymentsService {
     if (!stripe) throw new ServiceUnavailableException('Stripe not configured');
     const site = input.site;
 
-    const baseTotal = this.siteTotal(site, input.tipAmount ?? 0);
+    const baseTotal = this.siteTotal(site, input.tipAmount ?? 0, !!input.premium);
     let total = baseTotal;
     let promoCodeId: string | undefined;
     let appliedDiscountCents = 0;

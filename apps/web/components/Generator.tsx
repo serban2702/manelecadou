@@ -1024,7 +1024,7 @@ function DedicStep({ data, upd }: any) {
   return (
     <>
       <h3>4. Cadou & Premium</h3>
-      <p className="ld">Cât îi pui în versuri, ca să-l dai pe spate? (Surplus 10%, max 150 lei.)</p>
+      <p className="ld">Cât îi pui în versuri, ca să-l dai pe spate? (Suprataxă 5%, plafon 50 lei.)</p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
         {TIP_PRESETS.map((amt) => (
@@ -1062,10 +1062,16 @@ function DedicStep({ data, upd }: any) {
             type="number"
             min={0}
             max={1_000_000_000}
+            step={100}
             placeholder="ex. 1500"
             value={data.tipAmount || ''}
             onChange={(e) => upd('tipAmount', Math.max(0, Math.min(1_000_000_000, Number(e.target.value) || 0)))}
           />
+        )}
+        {customMode && data.tipAmount > 0 && (
+          <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.5)', marginTop: 4 }}>
+            Suprataxă: +{Math.min(50, Math.round(data.tipAmount * 0.05))} lei (5% capped la 50 lei).
+          </div>
         )}
       </div>
 
@@ -1102,9 +1108,15 @@ function DedicStep({ data, upd }: any) {
           <span>Manea de bază (90s × 2)</span>
           <span>{fmt(quote?.base ?? site.basePriceCents)}</span>
         </div>
+        {(quote?.premiumExtra ?? 0) > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(255,245,220,0.7)', marginTop: 4 }}>
+            <span>👑 Upgrade Premium</span>
+            <span>+{fmt(quote?.premiumExtra ?? 0)}</span>
+          </div>
+        )}
         {(quote?.tipSurcharge ?? 0) > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(255,245,220,0.7)', marginTop: 4 }}>
-            <span>Suprataxă dedicație ({data.tipAmount} lei × 10%, plafon 150)</span>
+            <span>Suprataxă dedicație ({data.tipAmount} lei × 5%, plafon 50)</span>
             <span>+{fmt(quote?.tipSurcharge ?? 0)}</span>
           </div>
         )}
@@ -1273,6 +1285,12 @@ function PayFirstStep({
           <span>Manea completă (90s × 2)</span>
           <span>{fmt(quote?.base ?? site.basePriceCents)}</span>
         </div>
+        {(quote?.premiumExtra ?? 0) > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
+            <span>👑 Upgrade Premium</span>
+            <span>+{fmt(quote?.premiumExtra ?? 0)}</span>
+          </div>
+        )}
         {(quote?.tipSurcharge ?? 0) > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
             <span>Suprataxă dedicație {data.tipAmount} {site.currency}</span>
@@ -1638,6 +1656,12 @@ function UnlockStep({
           <span>Manea completă (90s × 2)</span>
           <span>{fmt(quote?.base ?? site.basePriceCents)}</span>
         </div>
+        {(quote?.premiumExtra ?? 0) > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
+            <span>👑 Upgrade Premium</span>
+            <span>+{fmt(quote?.premiumExtra ?? 0)}</span>
+          </div>
+        )}
         {(quote?.tipSurcharge ?? 0) > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
             <span>Suprataxă dedicație {data.tipAmount} lei</span>
