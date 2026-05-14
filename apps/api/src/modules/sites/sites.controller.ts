@@ -125,6 +125,7 @@ export class AdminSitesController {
       brand: s.brand,
       seo: s.seo,
       analytics: s.analytics,
+      analyticsSecrets: s.analyticsSecrets ?? {},
       stripe: s.stripe,
       suno: s.suno,
       social: s.social,

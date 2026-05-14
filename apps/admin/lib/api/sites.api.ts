@@ -19,6 +19,12 @@ export interface SiteDto {
   };
   seo: { title?: string; description?: string; keywords?: string };
   analytics: { ga4Id?: string; metaPixelId?: string; tiktokPixelId?: string };
+  /** Token-uri server-side pentru tracking (server-only — nu apare în /public/site). */
+  analyticsSecrets?: {
+    ga4ApiSecret?: string;
+    metaCapiToken?: string;
+    tiktokAccessToken?: string;
+  };
   stripe: { priceId?: string | null; productName?: string; statementDescriptor?: string };
   suno: {
     basePrompt?: string;

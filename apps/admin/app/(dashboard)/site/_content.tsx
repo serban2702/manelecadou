@@ -455,16 +455,38 @@ function BrandSeoTab({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto) =
             placeholder="G-XXXXXXX"
           />
         </Field>
+        <Field label="GA4 Measurement Protocol API secret" description="Pentru tracking server-side. Din GA4 → Data Streams → Measurement Protocol API secrets.">
+          <Input
+            type="password"
+            value={form.analyticsSecrets?.ga4ApiSecret ?? ''}
+            onChange={(e) => setForm({ ...form, analyticsSecrets: { ...form.analyticsSecrets, ga4ApiSecret: e.target.value } })}
+          />
+        </Field>
         <Field label="Meta Pixel ID">
           <Input
             value={form.analytics?.metaPixelId ?? ''}
             onChange={(e) => setForm({ ...form, analytics: { ...form.analytics, metaPixelId: e.target.value } })}
           />
         </Field>
+        <Field label="Meta CAPI access token" description="Pentru Meta Conversions API server-side.">
+          <Input
+            type="password"
+            value={form.analyticsSecrets?.metaCapiToken ?? ''}
+            onChange={(e) => setForm({ ...form, analyticsSecrets: { ...form.analyticsSecrets, metaCapiToken: e.target.value } })}
+          />
+        </Field>
         <Field label="TikTok Pixel ID">
           <Input
             value={form.analytics?.tiktokPixelId ?? ''}
             onChange={(e) => setForm({ ...form, analytics: { ...form.analytics, tiktokPixelId: e.target.value } })}
+            placeholder="CXXXXXXXXXXX"
+          />
+        </Field>
+        <Field label="TikTok Events API access token" description="Pentru tracking server-side (Sales Conversion). Din TikTok Events Manager → Settings → Generate Access Token.">
+          <Input
+            type="password"
+            value={form.analyticsSecrets?.tiktokAccessToken ?? ''}
+            onChange={(e) => setForm({ ...form, analyticsSecrets: { ...form.analyticsSecrets, tiktokAccessToken: e.target.value } })}
           />
         </Field>
       </Section>
@@ -1524,10 +1546,11 @@ function SubSection({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
       <Label className="text-xs">{label}</Label>
+      {description && <p className="text-[11px] text-muted-foreground leading-snug">{description}</p>}
       {children}
     </div>
   );

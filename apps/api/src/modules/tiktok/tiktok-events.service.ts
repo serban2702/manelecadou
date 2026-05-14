@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { SettingsService } from '../settings/settings.service';
+import type { Site } from '../sites/site.entity';
 
 /**
  * Trimite evenimente către TikTok Events API (server-side) pentru dedup cu pixelul
@@ -8,28 +8,26 @@ import { SettingsService } from '../settings/settings.service';
  *
  * Docs: https://business-api.tiktok.com/portal/docs?id=1771101303285761
  *
- * Foloseste `TIKTOK_PIXEL_ID` (același ca pe browser) și `TIKTOK_ACCESS_TOKEN`
- * (din Events Manager → Settings → Generate Access Token). Setări citite din
- * SettingsService (admin /settings) sau din env ca fallback.
+ * Pixel ID + access token sunt PER-SITE (citite din Site.analytics +
+ * Site.analyticsSecrets). Fiecare site din admin are propriile credențiale.
  */
 @Injectable()
 export class TiktokEventsService {
   private readonly logger = new Logger('TiktokEvents');
   private readonly endpoint = 'https://business-api.tiktok.com/open_api/v1.3/event/track/';
 
-  constructor(private readonly settings: SettingsService) {}
-
-  async isEnabled(): Promise<boolean> {
-    const pixelId = await this.settings.get('TIKTOK_PIXEL_ID');
-    const token = await this.settings.get('TIKTOK_ACCESS_TOKEN');
+  isEnabled(site: Site | null | undefined): boolean {
+    const pixelId = site?.analytics?.tiktokPixelId;
+    const token = site?.analyticsSecrets?.tiktokAccessToken;
     return !!(pixelId && token);
   }
 
   /**
-   * Trimite un eveniment. `eventId` trebuie să fie identic cu cel trimis de
-   * pixelul browser ca să se facă dedup automat.
+   * Trimite un eveniment pentru un site dat. `eventId` trebuie să fie identic
+   * cu cel trimis de pixelul browser ca să se facă dedup automat.
    */
   async trackEvent(input: {
+    site: Site | null | undefined;
     eventName: 'PageView' | 'ViewContent' | 'InitiateCheckout' | 'CompletePayment';
     eventId: string;
     eventTimeUnix?: number;
@@ -43,10 +41,12 @@ export class TiktokEventsService {
     contentId?: string;
     contentName?: string;
   }): Promise<void> {
-    const pixelId = await this.settings.get('TIKTOK_PIXEL_ID');
-    const token = await this.settings.get('TIKTOK_ACCESS_TOKEN');
+    const pixelId = input.site?.analytics?.tiktokPixelId;
+    const token = input.site?.analyticsSecrets?.tiktokAccessToken;
     if (!pixelId || !token) {
-      this.logger.debug('TIKTOK_PIXEL_ID / TIKTOK_ACCESS_TOKEN missing — skip');
+      this.logger.debug(
+        `TikTok pixel/token missing for site ${input.site?.slug ?? 'unknown'} — skip`,
+      );
       return;
     }
 

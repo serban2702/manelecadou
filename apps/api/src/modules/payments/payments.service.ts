@@ -422,14 +422,17 @@ export class PaymentsService {
           });
         }
       }
-      // TikTok Events API: trimitem CompletePayment server-side cu event_id
-      // = paymentId (același folosit de pixelul browser → dedup automat).
-      if (isPaid) {
+      // TikTok Events API per-site: încărcăm site-ul (cu credențialele
+      // TikTok ale acelui site) și trimitem CompletePayment server-side cu
+      // event_id = paymentId (același folosit de pixelul browser → dedup).
+      if (isPaid && metaSiteId) {
         const amount = session.amount_total ?? 0;
         const currency = (session.currency ?? 'ron').toUpperCase();
         const generationId = session.metadata?.generationId || undefined;
+        const siteForTracking = await this.sites.findById(metaSiteId).catch(() => null);
         this.tiktok
           .trackEvent({
+            site: siteForTracking,
             eventName: 'CompletePayment',
             eventId: paymentId,
             url: session.metadata?.siteDomain

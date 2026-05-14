@@ -95,19 +95,6 @@ export const SETTINGS_SCHEMA: SettingCategory[] = [
       { key: 'STRIPE_WEBHOOK_SECRET', label: 'Webhook secret', kind: 'secret', encrypted: true, hotReload: true, placeholder: 'whsec_...' },
     ],
   },
-  {
-    id: 'marketing',
-    title: 'Marketing & Analytics',
-    description: 'Pixeli și ID-uri pentru tracking. Modificările au efect după restart pentru server-side; client-side se reîncarcă la refresh.',
-    settings: [
-      { key: 'GA4_MEASUREMENT_ID', label: 'GA4 Measurement ID', kind: 'string', hotReload: true, placeholder: 'G-XXXXXXXX' },
-      { key: 'GA4_API_SECRET', label: 'GA4 API secret', kind: 'secret', encrypted: true, hotReload: true },
-      { key: 'META_PIXEL_ID', label: 'Meta Pixel ID', kind: 'string', hotReload: true },
-      { key: 'META_CAPI_TOKEN', label: 'Meta CAPI token', kind: 'secret', encrypted: true, hotReload: true },
-      { key: 'TIKTOK_PIXEL_ID', label: 'TikTok Pixel ID', kind: 'string', hotReload: true, placeholder: 'CXXXXXXXXXXX' },
-      { key: 'TIKTOK_ACCESS_TOKEN', label: 'TikTok Events API access token', description: 'Din TikTok Events Manager → Settings → Generate Access Token. Necesar pentru tracking server-side (dedup cu pixelul browser).', kind: 'secret', encrypted: true, hotReload: true },
-    ],
-  },
 ];
 
 export const ALL_KEYS: string[] = SETTINGS_SCHEMA.flatMap((c) => c.settings.map((s) => s.key));

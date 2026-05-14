@@ -28,6 +28,20 @@ export interface SiteAnalytics {
   tiktokPixelId?: string;
 }
 
+/**
+ * Token-uri / secrete pentru integrarea server-side (Events API, Measurement
+ * Protocol, CAPI). NU sunt expuse prin `/api/public/site` — doar admin le vede
+ * și API-ul le citește pentru a apela TikTok / Meta / GA din webhook-uri.
+ */
+export interface SiteAnalyticsSecrets {
+  /** TikTok Events API access token (din Events Manager → Settings → Generate). */
+  tiktokAccessToken?: string;
+  /** GA4 Measurement Protocol API secret (din GA4 → Data Streams → Measurement Protocol). */
+  ga4ApiSecret?: string;
+  /** Meta Conversions API access token (din Events Manager → Settings). */
+  metaCapiToken?: string;
+}
+
 export interface SiteStripe {
   // Toate site-urile folosesc același cont Stripe (un singur SECRET_KEY global).
   // Aici stocăm doar configurația per-site (preț + metadata de raportare).
@@ -163,6 +177,11 @@ export class Site {
 
   @Column({ type: 'jsonb', default: () => `'{}'::jsonb` })
   analytics!: SiteAnalytics;
+
+  /** Token-uri server-side pentru tracking (TikTok Events API, GA4 Measurement
+   *  Protocol, Meta CAPI). Server-only — NU se serializează în public/site. */
+  @Column({ type: 'jsonb', default: () => `'{}'::jsonb` })
+  analyticsSecrets!: SiteAnalyticsSecrets;
 
   @Column({ type: 'jsonb', default: () => `'{}'::jsonb` })
   stripe!: SiteStripe;
