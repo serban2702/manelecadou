@@ -77,7 +77,7 @@ function ShareGenerationViewInner() {
         // CompletePayment — trimis o singură dată per paymentId.
         if (paid && !purchaseTrackedRef.current) {
           purchaseTrackedRef.current = true;
-          track('CompletePayment', {
+          track('Purchase', {
             content_id: params.id,
             content_name: 'Manea Cadou',
             content_type: 'product',

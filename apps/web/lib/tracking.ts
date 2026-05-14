@@ -13,7 +13,9 @@ export type TrackEventName =
   | 'PageView'
   | 'ViewContent'
   | 'InitiateCheckout'
-  | 'CompletePayment';
+  /** TikTok a redenumit `CompletePayment` → `Purchase` (noul standard, aliniat cu Meta).
+   *  Events Manager listează doar `Purchase` în funnel-ul de e-commerce. */
+  | 'Purchase';
 
 interface TrackParams {
   /** Valoare monetară (pentru CompletePayment). */
@@ -105,11 +107,9 @@ export function track(event: TrackEventName, params: TrackParams = {}): string {
   // Meta Pixel (mapare similară — denumirile sunt aceleași în mare)
   if (window.fbq) {
     try {
-      const fbEvent =
-        event === 'CompletePayment' ? 'Purchase' :
-        event === 'InitiateCheckout' ? 'InitiateCheckout' :
-        event === 'ViewContent' ? 'ViewContent' :
-        'PageView';
+      // Meta folosește `Purchase` ca standard, deci event-ul nostru se
+      // mapează 1:1. Restul au denumiri identice între platforme.
+      const fbEvent = event;
       const fbParams: Record<string, unknown> = {};
       if (params.value != null) fbParams.value = params.value;
       if (params.currency) fbParams.currency = params.currency;
@@ -124,9 +124,9 @@ export function track(event: TrackEventName, params: TrackParams = {}): string {
   }
 
   // GA4 — folosim doar pentru evenimentele importante
-  if (window.gtag && (event === 'CompletePayment' || event === 'InitiateCheckout')) {
+  if (window.gtag && (event === 'Purchase' || event === 'InitiateCheckout')) {
     try {
-      window.gtag('event', event === 'CompletePayment' ? 'purchase' : 'begin_checkout', {
+      window.gtag('event', event === 'Purchase' ? 'purchase' : 'begin_checkout', {
         value: params.value,
         currency: params.currency,
         transaction_id: params.content_id,

@@ -433,7 +433,7 @@ export class PaymentsService {
         this.tiktok
           .trackEvent({
             site: siteForTracking,
-            eventName: 'CompletePayment',
+            eventName: 'Purchase',
             eventId: paymentId,
             url: session.metadata?.siteDomain
               ? `https://${session.metadata.siteDomain}/`
@@ -445,7 +445,7 @@ export class PaymentsService {
             contentName: 'Manea Cadou',
           })
           .catch((err) =>
-            this.logger.warn(`TikTok CompletePayment failed: ${(err as Error).message}`),
+            this.logger.warn(`TikTok Purchase event failed: ${(err as Error).message}`),
           );
       }
 

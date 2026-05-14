@@ -28,7 +28,7 @@ export class TiktokEventsService {
    */
   async trackEvent(input: {
     site: Site | null | undefined;
-    eventName: 'PageView' | 'ViewContent' | 'InitiateCheckout' | 'CompletePayment';
+    eventName: 'PageView' | 'ViewContent' | 'InitiateCheckout' | 'Purchase';
     eventId: string;
     eventTimeUnix?: number;
     url?: string;
