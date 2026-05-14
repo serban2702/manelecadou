@@ -82,7 +82,7 @@ export class SeoPageGeneratorService {
       `OUTPUT RULES:`,
       `- Output ONLY a single valid JSON object with keys: title, metaDescription, h1, excerpt, contentMd.`,
       `- NO markdown code fences around the JSON.`,
-      `- title: 55-65 characters, includes primary keyword, ends with brand or location hint.`,
+      `- title: 50-58 characters, includes primary keyword. DO NOT include the brand name — the site appends it automatically as suffix.`,
       `- metaDescription: 140-160 characters, includes primary keyword + CTA.`,
       `- h1: 50-80 characters, more emotional/punchy than title (uses primary keyword variant).`,
       `- excerpt: 1 sentence, 120-180 characters — hook for cards/listings.`,

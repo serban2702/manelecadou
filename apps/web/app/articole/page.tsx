@@ -48,7 +48,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const site = await getSiteConfig();
   const baseUrl = siteUrl(site);
   return {
-    title: `Articole & Ghiduri — ${site.name}`,
+    title: { absolute: `Articole & ghiduri — ${site.name}` },
     description: `Idei de cadou, ghiduri și exemple de manele personalizate. Tot ce trebuie să știi înainte să-ți faci propria manea cadou.`,
     alternates: { canonical: `${baseUrl}/articole` },
   };

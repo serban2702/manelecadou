@@ -51,7 +51,9 @@ export async function generateMetadata({
   const url = `${baseUrl}/articole/${slug}`;
   const ogImage = site.brand?.ogImageUrl ?? `${baseUrl}/icon-512.png`;
   return {
-    title: page.title,
+    // absolute: ignoră template-ul „%s · BrandName" din root layout —
+    // title-ul generat cu AI conține deja brand-ul ca suffix.
+    title: { absolute: page.title },
     description: page.metaDescription,
     alternates: { canonical: url },
     openGraph: {
