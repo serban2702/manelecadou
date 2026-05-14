@@ -93,6 +93,50 @@ export default function HomePage() {
                 <li>{tHome('side.whyBullet4')}</li>
               </ul>
             </div>
+
+            <div className="side-card">
+              <h4>{tHome('side.howTitle')}</h4>
+              <ol style={{
+                listStyle: 'none', padding: 0, margin: '10px 0 0',
+                display: 'flex', flexDirection: 'column', gap: 12,
+              }}>
+                {[1, 2, 3].map((step) => (
+                  <li key={step} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <span style={{
+                      flexShrink: 0,
+                      width: 24, height: 24, borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #ffe28a, #b07c1e)',
+                      color: '#2a1a04', fontWeight: 900, fontSize: 12,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>{step}</span>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gold-2)' }}>
+                        {tHome(`side.howStep${step}Title`)}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'rgba(255,245,220,0.6)', lineHeight: 1.45, marginTop: 2 }}>
+                        {tHome(`side.howStep${step}Body`)}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+
+            <div className="side-card">
+              <h4>{tHome('side.socialTitle')}</h4>
+              <div style={{ fontSize: 14, color: 'var(--gold)', fontWeight: 700, marginTop: 6 }}>
+                {tHome('side.socialStars')}
+              </div>
+              <p style={{
+                fontSize: 13, color: 'rgba(255,245,220,0.75)',
+                marginTop: 8, lineHeight: 1.5, fontStyle: 'italic',
+              }}>
+                {tHome('side.socialQuote')}
+              </p>
+              <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.5)', marginTop: 6 }}>
+                {tHome('side.socialAuthor')}
+              </div>
+            </div>
           </aside>
         </section>
 
