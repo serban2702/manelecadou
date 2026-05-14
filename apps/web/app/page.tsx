@@ -122,21 +122,6 @@ export default function HomePage() {
               </ol>
             </div>
 
-            <div className="side-card">
-              <h4>{tHome('side.socialTitle')}</h4>
-              <div style={{ fontSize: 14, color: 'var(--gold)', fontWeight: 700, marginTop: 6 }}>
-                {tHome('side.socialStars')}
-              </div>
-              <p style={{
-                fontSize: 13, color: 'rgba(255,245,220,0.75)',
-                marginTop: 8, lineHeight: 1.5, fontStyle: 'italic',
-              }}>
-                {tHome('side.socialQuote')}
-              </p>
-              <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.5)', marginTop: 6 }}>
-                {tHome('side.socialAuthor')}
-              </div>
-            </div>
           </aside>
         </section>
 
