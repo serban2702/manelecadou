@@ -33,16 +33,34 @@ export function Hero({ onGen, onListen }: { onGen: () => void; onListen: () => v
 
 export function PriceStrip() {
   const t = useTranslations('price');
-  const tc = useTranslations('common');
+  const site = useSite();
+
+  // Folosim prețul real din site config (editabil din admin per site),
+  // nu cele hardcoded din messages JSON.
+  const standardCents = site.standardPriceCents ?? 0;
+  const baseCents = site.basePriceCents;
+  const showStrike = standardCents > baseCents;
+
+  const baseValue = baseCents / 100;
+  const baseInt = Math.floor(baseValue);
+  const baseFrac = Math.round((baseValue - baseInt) * 100)
+    .toString()
+    .padStart(2, '0');
+  const standardFormatted = (standardCents / 100).toFixed(2).replace('.', ',');
+
   return (
     <div className="price-strip">
       <span className="badge">{t('badge')}</span>
       <div className="left">
-        <div className="strike">{tc('priceMainStrike')} {tc('currency')}</div>
+        {showStrike && (
+          <div className="strike">
+            {standardFormatted} {site.currency}
+          </div>
+        )}
         <div className="now gold-text">
-          {tc('priceMain').split(',')[0]}
-          <span style={{ fontSize: 18 }}>,{tc('priceMain').split(',')[1] ?? '99'}</span>
-          <span className="lei">{tc('currency')}</span>
+          {baseInt}
+          <span style={{ fontSize: 18 }}>,{baseFrac}</span>
+          <span className="lei">{site.currency}</span>
         </div>
       </div>
       <div className="right">

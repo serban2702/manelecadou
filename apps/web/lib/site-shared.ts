@@ -12,6 +12,14 @@ export interface SiteConfig {
   locale: string;
   currency: string;
   basePriceCents: number;
+  /** Prețul „standard" tăiat în vitrine (anchor pentru reducere). 0 = nu se afișează. */
+  standardPriceCents?: number;
+  /** Suprataxă Manea Premium (cents). Default 2000. */
+  premiumExtraCents?: number;
+  /** Plafon de suprataxă pentru dedicație (cents). Default 5000. */
+  tipSurchargeCapCents?: number;
+  /** Procent de suprataxă din dedicație (0–100). Default 5. */
+  tipSurchargePercent?: number;
   giftPriceCents: number;
   brand: {
     primaryColor?: string;

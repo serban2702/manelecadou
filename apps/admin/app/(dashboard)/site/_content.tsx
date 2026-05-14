@@ -278,11 +278,41 @@ function GeneralTab({
             ))}
           </select>
         </Field>
-        <Field label="Preț bază (cents)">
+        <Field label="Preț bază (cents)" description="Prețul plătit de client la deblocare. Ex: 2999 = 29,99 lei.">
           <Input
             type="number"
             value={form.basePriceCents}
             onChange={(e) => setForm({ ...form, basePriceCents: Number(e.target.value) })}
+          />
+        </Field>
+        <Field label="Preț standard / strikethrough (cents)" description="Prețul ‚vechi’ afișat tăiat în vitrine (de unde se reduce). 0 = nu se afișează.">
+          <Input
+            type="number"
+            value={form.standardPriceCents ?? 0}
+            onChange={(e) => setForm({ ...form, standardPriceCents: Number(e.target.value) })}
+          />
+        </Field>
+        <Field label="Upgrade Premium — suprataxă (cents)" description="Cât costă în plus opțiunea Manea Premium. Default 2000 = 20 lei.">
+          <Input
+            type="number"
+            value={form.premiumExtraCents ?? 2000}
+            onChange={(e) => setForm({ ...form, premiumExtraCents: Number(e.target.value) })}
+          />
+        </Field>
+        <Field label="Dedicație — procent suprataxă (%)" description="Procent aplicat sumei dedicației. Default 5%.">
+          <Input
+            type="number"
+            min={0}
+            max={100}
+            value={form.tipSurchargePercent ?? 5}
+            onChange={(e) => setForm({ ...form, tipSurchargePercent: Number(e.target.value) })}
+          />
+        </Field>
+        <Field label="Dedicație — plafon suprataxă (cents)" description="Suprataxă maximă (cap) pentru dedicație. Default 5000 = 50 lei.">
+          <Input
+            type="number"
+            value={form.tipSurchargeCapCents ?? 5000}
+            onChange={(e) => setForm({ ...form, tipSurchargeCapCents: Number(e.target.value) })}
           />
         </Field>
         <Field label="Preț cod cadou single (cents)">

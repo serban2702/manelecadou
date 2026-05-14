@@ -1,9 +1,9 @@
 {
   "common": {
     "currency": "lei",
-    "priceMain": "24,99",
-    "priceMainStrike": "29,99",
-    "ctaMakeManea": "🎤 Fă o manea — 24,99 lei",
+    "priceMain": "29,99",
+    "priceMainStrike": "49,99",
+    "ctaMakeManea": "🎤 Fă o manea — de la 29,99 lei",
     "ctaMakeManeaShort": "Fă o manea",
     "ctaListen": "Ascultă exemple",
     "loading": "Se încarcă…",
@@ -17,7 +17,7 @@
     "copy": "Copiază",
     "copied": "Copiat!"
   },
-  "urgency": "OFERTĂ LIMITATĂ — Prima manea cu cont nou: <b>24,99 lei</b> (în loc de 29,99)",
+  "urgency": "OFERTĂ LIMITATĂ — Manea personalizată doar <b>29,99 lei</b> (preț întreg 49,99)",
   "nav": {
     "asculta": "Ascultă",
     "studio": "Fă o manea",
@@ -306,7 +306,7 @@
   "giftMini": {
     "title": "Cumperi cod, îl dai cuiva",
     "body": "Plătești tu. Primește el un cod prin SMS / email și își configurează maneaua singur.",
-    "cta": "Cumpără cod cadou — 24,99 lei"
+    "cta": "Cumpără cod cadou — 29,99 lei"
   },
   "metadata": {
     "title": "Manele Cadou — Fă-i o manea cu numele lui în 90 de secunde",

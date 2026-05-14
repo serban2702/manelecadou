@@ -12,7 +12,7 @@ import { Repository } from 'typeorm';
 import Stripe from 'stripe';
 
 import { Payment } from './payment.entity';
-import { tipSurchargeCents, PREMIUM_EXTRA_CENTS } from './pricing';
+import { PREMIUM_EXTRA_CENTS } from './pricing';
 import { PromoService } from '../promo/promo.service';
 import { GiftCodesService } from '../gift-codes/gift-codes.service';
 import { GiftTier, TIER_PRICES_RON } from '../gift-codes/gift-code.entity';
@@ -73,16 +73,22 @@ export class PaymentsService {
     return (await this.getStripe()) !== null;
   }
 
-  /** Tip-surcharge are sens doar pe RON (lei). Pe alte valute îl ignorăm. */
+  /** Tip-surcharge are sens doar pe RON (lei). Pe alte valute îl ignorăm.
+   *  Folosește valorile DIN site config (tipSurchargePercent + cap) cu fallback
+   *  la constantele globale dacă DB nu are valori setate. */
   private siteTipSurcharge(site: Site, tipAmount: number): number {
     if (site.currency.toUpperCase() !== 'RON') return 0;
-    return tipSurchargeCents(tipAmount);
+    if (!tipAmount || tipAmount < 0) return 0;
+    const percent = site.tipSurchargePercent ?? 5;
+    const cap = site.tipSurchargeCapCents ?? 5000;
+    const surchargeCents = Math.round(tipAmount * 100 * (percent / 100));
+    return Math.min(cap, surchargeCents);
   }
 
   private sitePremiumExtra(site: Site, premium: boolean): number {
     if (!premium) return 0;
     if (site.currency.toUpperCase() !== 'RON') return 0;
-    return PREMIUM_EXTRA_CENTS;
+    return site.premiumExtraCents ?? PREMIUM_EXTRA_CENTS;
   }
 
   private siteTotal(site: Site, tipAmount: number, premium: boolean): number {

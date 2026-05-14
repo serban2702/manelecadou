@@ -196,7 +196,7 @@ export default function AsculaPage() {
 
         <section className="band" style={{ textAlign: 'center' }}>
           <Link href="/studio" className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
-            🎤 Fă maneaua ta acum — 24,99 lei
+            🎤 Fă maneaua ta acum — 29,99 lei
           </Link>
         </section>
       </div>
