@@ -6,6 +6,7 @@ export * from './kb.api';
 export * from './settings.api';
 export * from './analytics.api';
 export * from './suno.api';
+export * from './lyrics.api';
 export * from './sites.api';
 export * from './database.api';
 export * from './ai-assistant.api';

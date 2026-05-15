@@ -1,7 +1,10 @@
 import { Injectable, Logger, Module } from '@nestjs/common';
 import { ConfigService, ConfigModule } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { SettingsService } from '../settings/settings.service';
 import { buildChatParams } from '../../openai/openai-params.helper';
+import { LyricsLog } from './lyrics-log.entity';
+import { LyricsLogService } from './lyrics-log.service';
 
 export interface LyricsInput {
   style: string;
@@ -24,6 +27,9 @@ export interface LyricsInput {
    *  Se trimite la OpenAI ca "STIL MUZICAL" în user prompt — ajută AI-ul să aleagă
    *  vocabular și ritm potrivit. Folosit la sample preview cu customStylePrompt. */
   styleHint?: string;
+  /** Context pentru logging (siteId + generationId) — opțional, doar pentru audit. */
+  siteId?: string | null;
+  generationId?: string | null;
 }
 
 const LOCALE_NAME: Record<string, string> = {
@@ -50,6 +56,7 @@ export class LyricsService {
   constructor(
     private readonly config: ConfigService,
     private readonly settings: SettingsService,
+    private readonly logs: LyricsLogService,
   ) {}
 
   /** Generează o ciornă de versuri (writer). */
@@ -57,41 +64,123 @@ export class LyricsService {
     if (input.customLyrics?.trim()) {
       return input.customLyrics.trim();
     }
-    // Construim system-ul ca să vedem ce s-ar fi trimis (util pentru debug
-    // în dev, indiferent dacă OPENAI_API_KEY e prezent sau nu).
     const sys = this.writerSystem(input.locale, input.writerSystemPrompt);
+    const user = this.writerUser(input);
     if (this.config.get<string>('NODE_ENV') !== 'production') {
       this.logger.log(`[DEV] writer locale=${input.locale ?? 'ro'} override=${!!input.writerSystemPrompt} sys_chars=${sys.length} preview="${sys.slice(0, 100).replace(/\n/g, ' ')}..."`);
     }
     const apiKey = await this.settings.get('OPENAI_API_KEY');
-    if (!apiKey) return this.mockDraft(input);
+    const model = (await this.settings.get('OPENAI_MODEL')) || 'gpt-4o-mini';
+    const logId = (await this.logs.start({
+      stage: 'writer',
+      systemPrompt: sys,
+      userPrompt: user,
+      model,
+      locale: input.locale ?? null,
+      siteId: input.siteId ?? null,
+      generationId: input.generationId ?? null,
+    }))?.id ?? null;
+
+    if (!apiKey) {
+      const mock = this.mockDraft(input);
+      await this.logs.finalize(logId, {
+        outcome: 'mock_fallback',
+        responseContent: mock,
+        errorMessage: 'OPENAI_API_KEY missing',
+      });
+      return mock;
+    }
     try {
-      return await this.openaiChat(apiKey, sys, this.writerUser(input));
+      const result = await this.openaiChat(apiKey, model, sys, user);
+      await this.logs.finalize(logId, {
+        outcome: 'success',
+        responseStatus: result.status,
+        responseBody: result.raw,
+        responseContent: result.content,
+        tokensPrompt: result.usage?.prompt_tokens ?? null,
+        tokensCompletion: result.usage?.completion_tokens ?? null,
+        tokensTotal: result.usage?.total_tokens ?? null,
+        durationMs: result.durationMs,
+      });
+      return result.content;
     } catch (err) {
-      this.logger.warn(`OpenAI writer failed, fallback mock: ${(err as Error).message}`);
-      return this.mockDraft(input);
+      const message = (err as Error).message;
+      this.logger.warn(`OpenAI writer failed, fallback mock: ${message}`);
+      const mock = this.mockDraft(input);
+      await this.logs.finalize(logId, {
+        outcome: 'mock_fallback',
+        responseContent: mock,
+        errorMessage: message,
+      });
+      return mock;
     }
   }
 
   /** Critic care rafinează versurile. */
   async refineDraft(input: LyricsInput, draft: string): Promise<string> {
     if (input.customLyrics?.trim()) return draft; // user's lyrics are sacred
+    const sys = this.criticSystem(input.locale, input.criticSystemPrompt);
+    const user = this.criticUser(input, draft);
     const apiKey = await this.settings.get('OPENAI_API_KEY');
-    if (!apiKey) return this.mockRefine(draft);
+    const model = (await this.settings.get('OPENAI_MODEL')) || 'gpt-4o-mini';
+    const logId = (await this.logs.start({
+      stage: 'critic',
+      systemPrompt: sys,
+      userPrompt: user,
+      model,
+      locale: input.locale ?? null,
+      siteId: input.siteId ?? null,
+      generationId: input.generationId ?? null,
+    }))?.id ?? null;
+
+    if (!apiKey) {
+      const mock = this.mockRefine(draft);
+      await this.logs.finalize(logId, {
+        outcome: 'mock_fallback',
+        responseContent: mock,
+        errorMessage: 'OPENAI_API_KEY missing',
+      });
+      return mock;
+    }
     try {
-      return await this.openaiChat(
-        apiKey,
-        this.criticSystem(input.locale, input.criticSystemPrompt),
-        this.criticUser(input, draft),
-      );
+      const result = await this.openaiChat(apiKey, model, sys, user);
+      await this.logs.finalize(logId, {
+        outcome: 'success',
+        responseStatus: result.status,
+        responseBody: result.raw,
+        responseContent: result.content,
+        tokensPrompt: result.usage?.prompt_tokens ?? null,
+        tokensCompletion: result.usage?.completion_tokens ?? null,
+        tokensTotal: result.usage?.total_tokens ?? null,
+        durationMs: result.durationMs,
+      });
+      return result.content;
     } catch (err) {
-      this.logger.warn(`OpenAI critic failed, fallback mock: ${(err as Error).message}`);
-      return this.mockRefine(draft);
+      const message = (err as Error).message;
+      this.logger.warn(`OpenAI critic failed, fallback mock: ${message}`);
+      const mock = this.mockRefine(draft);
+      await this.logs.finalize(logId, {
+        outcome: 'mock_fallback',
+        responseContent: mock,
+        errorMessage: message,
+      });
+      return mock;
     }
   }
 
-  private async openaiChat(apiKey: string, system: string, user: string): Promise<string> {
-    const model = (await this.settings.get('OPENAI_MODEL')) || 'gpt-4o-mini';
+  private async openaiChat(
+    apiKey: string,
+    model: string,
+    system: string,
+    user: string,
+  ): Promise<{
+    content: string;
+    raw: unknown;
+    status: number;
+    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+    durationMs: number;
+  }> {
+    const startedAt = Date.now();
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -109,9 +198,17 @@ export class LyricsService {
         }),
       ),
     });
-    if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
-    const json = (await res.json()) as { choices: Array<{ message: { content: string } }> };
-    return json.choices[0]?.message?.content?.trim() ?? '';
+    const durationMs = Date.now() - startedAt;
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`OpenAI ${res.status}: ${text}`);
+    }
+    const json = (await res.json()) as {
+      choices: Array<{ message: { content: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+    };
+    const content = json.choices[0]?.message?.content?.trim() ?? '';
+    return { content, raw: json, status: res.status, usage: json.usage, durationMs };
   }
 
   private writerSystem(locale?: string, override?: string): string {
@@ -247,8 +344,8 @@ export class LyricsService {
 }
 
 @Module({
-  imports: [ConfigModule],
-  providers: [LyricsService],
-  exports: [LyricsService],
+  imports: [ConfigModule, TypeOrmModule.forFeature([LyricsLog])],
+  providers: [LyricsService, LyricsLogService],
+  exports: [LyricsService, LyricsLogService],
 })
 export class LyricsModule {}

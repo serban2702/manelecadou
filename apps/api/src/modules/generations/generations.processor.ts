@@ -67,6 +67,8 @@ export class GenerationsProcessor extends WorkerHost {
         // de cel manelist românesc.
         writerSystemPrompt: site?.suno?.writerSystemPrompt,
         criticSystemPrompt: site?.suno?.criticSystemPrompt,
+        siteId: gen.siteId ?? null,
+        generationId: gen.id,
       };
 
       const draft = await this.lyricsSvc.writeDraft(lyricsBase);

@@ -343,6 +343,8 @@ export class SiteSamplesService {
       writerSystemPrompt: site.suno?.writerSystemPrompt,
       criticSystemPrompt: site.suno?.criticSystemPrompt,
       styleHint,
+      siteId: site.id,
+      generationId: null,
     };
     const draft = await this.lyrics.writeDraft(baseInput);
     const refined = await this.lyrics.refineDraft(baseInput, draft);

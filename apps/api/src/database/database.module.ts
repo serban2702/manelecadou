@@ -17,6 +17,7 @@ import { AnalyticsEvent } from '../modules/analytics/analytics-event.entity';
 import { AnalyticsSession } from '../modules/analytics/analytics-session.entity';
 import { SunoLog } from '../modules/suno/suno-log.entity';
 import { SunoCreditPurchase } from '../modules/suno/suno-credit-purchase.entity';
+import { LyricsLog } from '../modules/lyrics/lyrics-log.entity';
 import { Site } from '../modules/sites/site.entity';
 
 @Module({
@@ -30,7 +31,7 @@ import { Site } from '../modules/sites/site.entity';
         username: config.get<string>('POSTGRES_USER'),
         password: config.get<string>('POSTGRES_PASSWORD'),
         database: config.get<string>('POSTGRES_DB'),
-        entities: [User, GuestSession, MagicLink, Generation, Payment, Conversation, ChatMessage, PromoCode, PromoRedemption, GiftCode, RouletteSpin, ErrorLog, AnalyticsEvent, AnalyticsSession, SunoLog, SunoCreditPurchase, Site],
+        entities: [User, GuestSession, MagicLink, Generation, Payment, Conversation, ChatMessage, PromoCode, PromoRedemption, GiftCode, RouletteSpin, ErrorLog, AnalyticsEvent, AnalyticsSession, SunoLog, SunoCreditPurchase, LyricsLog, Site],
         // synchronize: TypeORM aliniază schema cu entitățile la fiecare boot.
         // În prod e ON intenționat (decizie 2026-05-11): schimbările de schema
         // se fac doar prin modificare de @Entity + deploy normal. Backup auto

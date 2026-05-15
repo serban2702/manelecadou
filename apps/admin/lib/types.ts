@@ -350,6 +350,45 @@ export interface SunoPurchase {
   recordedByEmail: string | null;
 }
 
+// ====== Lyrics (OpenAI logs) ======
+export type LyricsLogStage = 'writer' | 'critic';
+export type LyricsLogOutcome = 'pending' | 'success' | 'failed' | 'mock_fallback';
+
+export interface LyricsLog {
+  id: string;
+  siteId: string | null;
+  generationId: string | null;
+  stage: LyricsLogStage;
+  model: string | null;
+  locale: string | null;
+  responseStatus: number | null;
+  tokensPrompt: number | null;
+  tokensCompletion: number | null;
+  tokensTotal: number | null;
+  durationMs: number | null;
+  outcome: LyricsLogOutcome;
+  errorMessage: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface LyricsLogDetail extends LyricsLog {
+  systemPrompt: string;
+  userPrompt: string;
+  responseContent: string | null;
+  responseBody: unknown;
+}
+
+export interface LyricsSummary {
+  total: number;
+  totalTokens: number;
+  totalTokensPrompt: number;
+  totalTokensCompletion: number;
+  last24h: { count: number; tokens: number };
+  outcomeCounts: Record<string, number>;
+  stageCounts: Record<string, number>;
+}
+
 // ====== Analytics ======
 export interface AnalyticsRange { from: string; to: string }
 

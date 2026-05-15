@@ -42,6 +42,7 @@ const Payments        = dynamic(() => import('../payments/_content'),        { s
 const Users           = dynamic(() => import('../users/_content'),           { ssr: false, loading: Loading });
 const Guests          = dynamic(() => import('../guests/_content'),          { ssr: false, loading: Loading });
 const Suno            = dynamic(() => import('../suno/_content'),            { ssr: false, loading: Loading });
+const Lyrics          = dynamic(() => import('../lyrics/_content'),          { ssr: false, loading: Loading });
 const Analytics       = dynamic(() => import('../analytics/_content'),       { ssr: false, loading: Loading });
 const DatabaseAdmin   = dynamic(() => import('../database/_content'),        { ssr: false, loading: Loading });
 const Sites           = dynamic(() => import('../sites/_content'),           { ssr: false, loading: Loading });
@@ -62,6 +63,7 @@ const ROUTES: Record<string, ComponentType> = {
   '/users':              Users,
   '/guests':             Guests,
   '/suno':               Suno,
+  '/lyrics':             Lyrics,
   '/analytics':          Analytics,
   '/database':           DatabaseAdmin,
   '/sites':              Sites,
