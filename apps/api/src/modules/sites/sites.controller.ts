@@ -275,6 +275,19 @@ export class AdminSiteSamplesController {
     const queued = await this.samples.generateAll(id, !!body?.regenerate);
     return { ok: true, queued, count: queued.length };
   }
+
+  /** Generează un Persona Suno pentru o voce din site, folosind mostra audio
+   *  existentă a vocii. Salvează personaId pe site.voices[].sunoPersonaId. */
+  @Post('voices/:voiceId/generate-persona')
+  @HttpCode(200)
+  async generatePersona(
+    @Param('id') id: string,
+    @Param('voiceId') voiceId: string,
+    @Body() body: { name?: string; description?: string; vocalStart?: number; vocalEnd?: number; style?: string },
+  ) {
+    const result = await this.samples.generatePersona(id, voiceId, body);
+    return { ok: true, ...result };
+  }
 }
 
 // Endpoint INTERN, fără auth, pentru Caddy on-demand TLS hook (/ask)

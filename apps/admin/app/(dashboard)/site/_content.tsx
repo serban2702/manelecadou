@@ -1353,6 +1353,19 @@ function CategoryRow({
                       onChange={(e) => onChange({ tg: e.target.value })}
                     />
                   </Field>
+                  <Field label="Sex vocal (trimis ca vocalGender la Suno)">
+                    <select
+                      value={(entry as SiteVoiceEntry).gender ?? ''}
+                      onChange={(e) =>
+                        onChange({ gender: (e.target.value || undefined) as 'm' | 'f' | undefined })
+                      }
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
+                    >
+                      <option value="">Auto (Suno alege)</option>
+                      <option value="m">♂ Bărbat</option>
+                      <option value="f">♀ Femeie</option>
+                    </select>
+                  </Field>
                   <Field label="Voce Suno (sunoVoice — override voiceMap)">
                     <Input
                       value={(entry as SiteVoiceEntry).sunoVoice ?? ''}
@@ -1360,6 +1373,15 @@ function CategoryRow({
                       placeholder="lasă gol = id-ul"
                     />
                   </Field>
+                  <div className="sm:col-span-2">
+                    <PersonaControl
+                      siteId={siteId}
+                      voiceId={entry.id}
+                      voice={entry as SiteVoiceEntry}
+                      sample={sample}
+                      onPersonaCreated={(patch) => onChange(patch)}
+                    />
+                  </div>
                 </>
               )}
               {kind === 'style' && (
@@ -1393,6 +1415,54 @@ function CategoryRow({
                         onChange={(e) => onChange({ lyricsHint: e.target.value })}
                         rows={2}
                         placeholder="Ex: manea de jale despre dor, vocabular cu lacrimi/inimă, ritm liric lent"
+                      />
+                    </Field>
+                  </div>
+                  <Field
+                    label="Style weight (0..1)"
+                    description="Cât strict urmează Suno tag-urile de style. Default ~0.5. Pentru genuri tradiționale → 0.7-0.9."
+                  >
+                    <Input
+                      type="number"
+                      step="0.05"
+                      min={0}
+                      max={1}
+                      value={(entry as SiteStyleEntry).styleWeight ?? ''}
+                      onChange={(e) =>
+                        onChange({
+                          styleWeight: e.target.value === '' ? undefined : Number(e.target.value),
+                        })
+                      }
+                      placeholder="(default Suno)"
+                    />
+                  </Field>
+                  <Field
+                    label="Weirdness constraint (0..1)"
+                    description="Creativitate / deviere. Tradițional → 0.1-0.3; experimental → 0.5-0.7."
+                  >
+                    <Input
+                      type="number"
+                      step="0.05"
+                      min={0}
+                      max={1}
+                      value={(entry as SiteStyleEntry).weirdnessConstraint ?? ''}
+                      onChange={(e) =>
+                        onChange({
+                          weirdnessConstraint: e.target.value === '' ? undefined : Number(e.target.value),
+                        })
+                      }
+                      placeholder="(default Suno)"
+                    />
+                  </Field>
+                  <div className="sm:col-span-2">
+                    <Field
+                      label="Negative tags (CSV)"
+                      description={'Genuri / trăsături de exclus. Mai eficient decât a scrie „NOT pop" în prompt. Ex: pop, EDM, trap-rap, mumble rap.'}
+                    >
+                      <Input
+                        value={(entry as SiteStyleEntry).negativeTags ?? ''}
+                        onChange={(e) => onChange({ negativeTags: e.target.value })}
+                        placeholder="pop, EDM, trap-rap"
                       />
                     </Field>
                   </div>
@@ -1626,5 +1696,135 @@ function Toggle({ label, value, onChange }: { label: string; value: boolean; onC
       <span className="text-sm">{label}</span>
       <Switch checked={value} onCheckedChange={onChange} />
     </label>
+  );
+}
+
+/**
+ * Control inline pentru a genera un Persona Suno pornind de la mostra audio
+ * existentă a unei voci. Persona = vocea cantăreață consistentă pe care Suno
+ * o aplică pe toate generările (prin parametrul `personaId`).
+ *
+ * Stări:
+ *  - Persona deja generat: afișează nume + data, buton „Regenerează" (re-call).
+ *  - Mostră audio cu audioId: buton „Generează persona" activ.
+ *  - Fără mostră / mostră fără audioId: dezactivat cu hint.
+ */
+function PersonaControl({
+  siteId,
+  voiceId,
+  voice,
+  sample,
+  onPersonaCreated,
+}: {
+  siteId: string;
+  voiceId: string;
+  voice: SiteVoiceEntry;
+  sample: SampleStatusDto | null;
+  onPersonaCreated: (patch: Partial<SiteVoiceEntry>) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [description, setDescription] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const { toast } = useToast();
+
+  const hasSample = !!sample?.entry;
+  const sampleHasAudioId = !!(sample?.entry as any)?.sunoAudioId;
+  const hasPersona = !!voice.sunoPersonaId;
+
+  async function run() {
+    setBusy(true);
+    try {
+      const res = await SitesApi.generatePersona(siteId, voiceId, {
+        name: voice.nm || voiceId,
+        description: description.trim() || undefined,
+      });
+      onPersonaCreated({
+        sunoPersonaId: res.voice.sunoPersonaId,
+        sunoPersonaName: res.voice.sunoPersonaName,
+        sunoPersonaSourceTaskId: res.voice.sunoPersonaSourceTaskId,
+        sunoPersonaSourceAudioId: res.voice.sunoPersonaSourceAudioId,
+        sunoPersonaCreatedAt: res.voice.sunoPersonaCreatedAt,
+      });
+      toast({ variant: 'success', title: 'Persona generat', description: res.voice.sunoPersonaName ?? voiceId });
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Eroare la generare persona',
+        description: err?.response?.data?.message ?? err?.message ?? 'unknown',
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-md border border-border/60 bg-secondary/20 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-medium uppercase text-muted-foreground">Persona Suno</div>
+        {hasPersona && (
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
+            ACTIV
+          </span>
+        )}
+      </div>
+
+      {hasPersona ? (
+        <div className="text-xs space-y-1">
+          <div>
+            <span className="text-muted-foreground">Nume:</span>{' '}
+            <span className="font-medium">{voice.sunoPersonaName ?? '—'}</span>
+          </div>
+          <div className="font-mono text-[11px] text-muted-foreground truncate">
+            id: {voice.sunoPersonaId}
+          </div>
+          {voice.sunoPersonaCreatedAt && (
+            <div className="text-[11px] text-muted-foreground">
+              creat: {new Date(voice.sunoPersonaCreatedAt).toLocaleString('ro-RO')}
+            </div>
+          )}
+        </div>
+      ) : !hasSample ? (
+        <p className="text-xs text-muted-foreground">
+          Generează întâi o mostră audio pentru această voce, apoi vei putea crea persona.
+        </p>
+      ) : !sampleHasAudioId ? (
+        <p className="text-xs text-yellow-500">
+          Mostra existentă nu are <code>audioId</code> Suno (a fost generată înainte de această
+          versiune). Regenerează mostra pentru a putea crea persona.
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Mostra are <code>audioId</code> ✓. Click pe „Generează persona" pentru a crea o voce
+          consistentă pe care Suno o va aplica pe toate manelele cu această voce.
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setShowAdvanced((v) => !v)}
+        className="text-[11px] text-muted-foreground hover:text-foreground"
+      >
+        {showAdvanced ? '▾' : '▸'} Descriere personalizată (opțional)
+      </button>
+      {showAdvanced && (
+        <Textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={2}
+          placeholder="Ex: Authentic Romanian manele singer, melismatic male vocal, heavy auto-tune, oriental phrasing."
+        />
+      )}
+
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          size="sm"
+          disabled={busy || !hasSample || !sampleHasAudioId}
+          onClick={run}
+        >
+          {busy ? 'Generează…' : hasPersona ? 'Regenerează persona' : 'Generează persona'}
+        </Button>
+      </div>
+    </div>
   );
 }

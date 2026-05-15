@@ -43,6 +43,7 @@ export class SunoRealProvider extends SunoProvider {
     }
 
     const customMode = !!input.lyrics;
+    const limits = modelLimits(model);
 
     const body: Record<string, unknown> = {
       customMode,
@@ -50,6 +51,35 @@ export class SunoRealProvider extends SunoProvider {
       model,
       callBackUrl: `${apiUrl}/api/suno/callback`,
     };
+
+    // Parametri Suno opționali — îi adăugăm doar dacă sunt setați, ca să nu
+    // trimitem null-uri pe care API-ul Suno le-ar putea respinge.
+    if (input.vocalGender === 'm' || input.vocalGender === 'f') {
+      body.vocalGender = input.vocalGender;
+    }
+    if (customMode && input.personaId) {
+      body.personaId = input.personaId;
+      // voice_persona doar pe V5+ — fallback la style_persona altfel.
+      const modelMajor = /^V(\d)/.exec(model)?.[1] ?? '4';
+      const safeModel =
+        input.personaModel === 'voice_persona' && parseInt(modelMajor, 10) >= 5
+          ? 'voice_persona'
+          : 'style_persona';
+      body.personaModel = safeModel;
+    }
+    if (typeof input.styleWeight === 'number' && input.styleWeight >= 0 && input.styleWeight <= 1) {
+      body.styleWeight = Math.round(input.styleWeight * 100) / 100;
+    }
+    if (
+      typeof input.weirdnessConstraint === 'number' &&
+      input.weirdnessConstraint >= 0 &&
+      input.weirdnessConstraint <= 1
+    ) {
+      body.weirdnessConstraint = Math.round(input.weirdnessConstraint * 100) / 100;
+    }
+    if (input.negativeTags?.trim()) {
+      body.negativeTags = input.negativeTags.trim();
+    }
 
     // Curățăm prefixele duplicate pe care utilizatorii le tastează în câmpurile
     // de dedicație / nume ("De la X" în câmpul dedicație → ar produce "de la De la X").
@@ -66,15 +96,15 @@ export class SunoRealProvider extends SunoProvider {
       // Scoatem și nume de artiști reali din lyrics pentru orice eventualitate
       // (Suno respinge dacă apar în prompt sau style).
       const safeLyrics = stripBannedArtistNames(cleanInput.lyrics ?? '');
-      body.prompt = truncate(this.ensureDedicationOpening(safeLyrics, cleanInput), 4900);
-      body.style = truncate(this.buildStyleTag(cleanInput), 950);
+      body.prompt = truncate(this.ensureDedicationOpening(safeLyrics, cleanInput), limits.prompt);
+      body.style = truncate(this.buildStyleTag(cleanInput, !!input.vocalGender), limits.style);
       const titleBase = cleanDedication
         ? `Pentru ${cleanRecipient}, de la ${cleanDedication}`
         : `Pentru ${cleanRecipient}`;
-      body.title = truncate(titleBase, 95);
+      body.title = truncate(titleBase, limits.title);
     } else {
-      // Non-custom: Suno generează versurile pe baza prompt-ului
-      body.prompt = truncate(this.buildSimplePrompt(cleanInput), 480);
+      // Non-custom: Suno generează versurile pe baza prompt-ului. Limita e 500.
+      body.prompt = truncate(this.buildSimplePrompt(cleanInput), limits.simplePrompt);
     }
 
     this.logger.log(
@@ -197,6 +227,7 @@ export class SunoRealProvider extends SunoProvider {
             audioUrl: it.audioUrl!,
             durationSec: Math.round(it.duration ?? input.durationSec),
             coverUrl: it.imageUrl,
+            audioId: it.id,
           })),
           lyrics: items[0]?.prompt,
           providerJobId: taskId,
@@ -240,7 +271,7 @@ export class SunoRealProvider extends SunoProvider {
    *   - site.suno.stylePromptMap[style] — override complet pentru un stil
    *   - site.suno.basePrompt            — înlocuiește CORE-ul default
    */
-  private buildStyleTag(i: SunoGenerateInput): string {
+  private buildStyleTag(i: SunoGenerateInput, vocalGenderProvided = false): string {
     const siteSuno = i.site?.suno;
     const styleOverride = siteSuno?.stylePromptMap?.[i.style];
     if (styleOverride) {
@@ -251,9 +282,15 @@ export class SunoRealProvider extends SunoProvider {
     // IMPORTANT: NU includem nume de artiști reali — Suno respinge tag-urile cu artist names
     // (SENSITIVE_WORD_ERROR: "we don't reference specific artists"). Descriem doar
     // caracteristici sonore.
+    //
+    // Când vocalGender e setat explicit (parametru direct Suno), scoatem
+    // "male vocal" hardcoded ca să nu intre în conflict cu cererea (ex. voce feminină).
+    const vocalDescriptor = vocalGenderProvided
+      ? 'ornamented melismatic vocal with heavy auto-tune, pitch slides and "of/aoleu" interjections'
+      : 'ornamented melismatic male vocal with heavy auto-tune, pitch slides and "of/aoleu" interjections';
     const CORE = siteSuno?.basePrompt ??
       'Romanian MANELE (NOT pop, NOT EDM, NOT generic dance, NOT trap-rap), authentic balkan gypsy pop, classic Romanian wedding-band manele tradition (Pitești / București scene, late 90s through 2010s era), ' +
-      'Hijaz Phrygian-dominant oriental scale, ornamented melismatic male vocal with heavy auto-tune, pitch slides and "of/aoleu" interjections, ' +
+      `Hijaz Phrygian-dominant oriental scale, ${vocalDescriptor}, ` +
       'darbuka derbeke percussion, finger cymbals, oriental synth lead (Korg Pa keyboard, taksim), ' +
       'accordion runs, violin glissando, clarinet trills, deep dumbek kick, fast hi-hat triplets, Romanian language';
 
@@ -376,6 +413,32 @@ export class SunoRealProvider extends SunoProvider {
     // Lyrics-ul nu are [Verse 1]: construim un schelet minim valid pentru Suno.
     return `[Intro: oriental synth taksim, accordion doina]\n[Verse 1]\n${openingLines.join('\n')}\n\n${lyrics}`;
   }
+}
+
+/**
+ * Limite de caractere per-model conform docs.sunoapi.org:
+ *  - V4:                       prompt 3000, style 200, title 80, simplePrompt 500
+ *  - V4_5, V4_5PLUS, V5, V5_5: prompt 5000, style 1000, title 100, simplePrompt 500
+ *  - V4_5ALL:                  prompt 5000, style 1000, title 80, simplePrompt 500
+ *
+ * Lăsăm o marjă mică (50 chars la prompt, 5 la style/title) ca să nu fim
+ * exact pe limită.
+ */
+function modelLimits(model: string): {
+  prompt: number;
+  style: number;
+  title: number;
+  simplePrompt: number;
+} {
+  const m = (model || '').toUpperCase();
+  if (m === 'V4') {
+    return { prompt: 2950, style: 195, title: 78, simplePrompt: 480 };
+  }
+  if (m === 'V4_5ALL') {
+    return { prompt: 4900, style: 950, title: 78, simplePrompt: 480 };
+  }
+  // V4_5, V4_5PLUS, V5, V5_5 + default
+  return { prompt: 4900, style: 950, title: 95, simplePrompt: 480 };
 }
 
 function truncate(s: string, max: number): string {

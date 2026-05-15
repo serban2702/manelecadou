@@ -114,6 +114,9 @@ export interface SiteSampleEntry {
   audioUrl: string;
   generatedAt: string; // ISO date
   sunoTaskId?: string;
+  /** AudioId returnat de Suno pe track-ul ales. Necesar pentru a putea
+   *  crea ulterior un Persona din această mostră. */
+  sunoAudioId?: string;
 }
 
 /**
@@ -134,6 +137,15 @@ export interface SiteStyleEntry {
   /** Hint scurt pentru writer-ul OpenAI — pre-completează „Hint AI pentru versuri"
    *  în UI-ul de sample generation. Ex: „manea de jale, vocabular cu lacrimi/inimă". */
   lyricsHint?: string;
+  /** Cât de strict urmează Suno tag-urile de style (0..1). Default Suno ~0.5.
+   *  Pentru manele unde vrem fidelitate ridicată la sub-genre → 0.7-0.9. */
+  styleWeight?: number;
+  /** Cât de creativ / deviant e modelul (0..1). Pentru genuri tradiționale → mic
+   *  (0.1-0.3); pentru experimentale (trapanele, tallava) → mai mare. */
+  weirdnessConstraint?: number;
+  /** Tag-uri / genuri de exclus, CSV. Ex: "pop, EDM, trap-rap, rap". Mai eficient
+   *  decât a scrie „NOT pop" în prompt-ul pozitiv. */
+  negativeTags?: string;
 }
 
 export interface SiteVoiceEntry {
@@ -144,6 +156,21 @@ export interface SiteVoiceEntry {
   i18n?: Record<string, { nm?: string; tg?: string }>;
   /** Override voice mapping pentru Suno (cheia ajunge în suno.voiceMap). */
   sunoVoice?: string;
+  /** Sex vocal — trimis ca `vocalGender: 'm'|'f'` în request-ul Suno. Garantează
+   *  genul vocii (Suno acceptă nativ acest parametru, nu mai depindem de
+   *  descriptori în prompt). Gol = lăsăm Suno să decidă. */
+  gender?: 'm' | 'f';
+  /** PersonaId returnat de Suno `/generate/generate-persona`. Când e setat,
+   *  se trimite ca `personaId` la generare → consistență voce/stil cross-piese. */
+  sunoPersonaId?: string;
+  /** Numele afișat al persona-ului (pentru a-l identifica în admin). */
+  sunoPersonaName?: string;
+  /** TaskId-ul mostrei sursă din care s-a generat persona — pentru audit. */
+  sunoPersonaSourceTaskId?: string;
+  /** AudioId-ul mostrei sursă — Suno limitează la 1 persona per audioId. */
+  sunoPersonaSourceAudioId?: string;
+  /** Data generării persona-ului (ISO). */
+  sunoPersonaCreatedAt?: string;
 }
 
 export interface SiteOccasionEntry {

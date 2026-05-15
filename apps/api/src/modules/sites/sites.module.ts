@@ -9,12 +9,14 @@ import { SiteContextMiddleware } from './site-context.middleware';
 import { SiteSamplesService } from './site-samples.service';
 import { SunoModule } from '../suno/suno.module';
 import { LyricsModule } from '../lyrics/lyrics.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Site]),
     SunoModule,
     LyricsModule,
+    SettingsModule,
     // JwtModule local cu același secret ca AuthModule — middleware-ul are nevoie să
     // decodeze JWT-ul ÎNAINTE de guards (pentru anti-abuz pe siteId per-user).
     JwtModule.registerAsync({

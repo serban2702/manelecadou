@@ -17,12 +17,27 @@ export interface SunoGenerateInput {
    * Implicit 'submit' (manea pentru user). Ajunge ca tag în SunoLog.
    */
   requestType?: 'submit' | 'sample';
+  /** Sex vocal — Suno acceptă 'm' sau 'f' direct. */
+  vocalGender?: 'm' | 'f';
+  /** PersonaId pre-existent (din /generate/generate-persona) pentru a forța
+   *  consistență vocală cross-piese. Custom Mode only. */
+  personaId?: string;
+  /** style_persona (default) | voice_persona (V5 only). */
+  personaModel?: 'style_persona' | 'voice_persona';
+  /** Cât strict urmează tag-urile de style (0..1). */
+  styleWeight?: number;
+  /** Constrângere de creativitate (0..1). */
+  weirdnessConstraint?: number;
+  /** Tag-uri de exclus (CSV) — ex. 'pop, EDM, trap-rap'. */
+  negativeTags?: string;
 }
 
 export interface SunoTrack {
   audioUrl: string;
   durationSec: number;
   coverUrl?: string;
+  /** AudioId Suno — necesar pentru a putea genera Persona ulterior. */
+  audioId?: string;
 }
 
 export interface SunoGenerateResult {

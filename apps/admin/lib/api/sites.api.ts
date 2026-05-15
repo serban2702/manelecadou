@@ -91,6 +91,12 @@ export interface SiteStyleEntry {
   i18n?: Record<string, { nm?: string; ds?: string; heat?: string }>;
   sunoPrompt?: string;
   lyricsHint?: string;
+  /** Cât strict urmează Suno tag-urile de style (0..1). Default Suno ~0.5. */
+  styleWeight?: number;
+  /** Creativitate / deviere (0..1). */
+  weirdnessConstraint?: number;
+  /** Tag-uri de exclus (CSV). */
+  negativeTags?: string;
 }
 
 export interface SiteVoiceEntry {
@@ -100,6 +106,14 @@ export interface SiteVoiceEntry {
   av: string;
   i18n?: Record<string, { nm?: string; tg?: string }>;
   sunoVoice?: string;
+  /** Sex vocal — trimis ca vocalGender ('m'|'f') la Suno. */
+  gender?: 'm' | 'f';
+  /** PersonaId Suno persistat. Când e setat, se aplică pe toate generările. */
+  sunoPersonaId?: string;
+  sunoPersonaName?: string;
+  sunoPersonaSourceTaskId?: string;
+  sunoPersonaSourceAudioId?: string;
+  sunoPersonaCreatedAt?: string;
 }
 
 export interface SiteOccasionEntry {
@@ -179,6 +193,17 @@ export const SitesApi = {
       timeout: 60_000,
     });
   },
+  /** Generează un Persona Suno pentru o voce. Folosește mostra audio existentă
+   *  a vocii (cere taskId + audioId persistate la generare). Răspunde cu vocea
+   *  actualizată (conține sunoPersonaId). */
+  generatePersona: (
+    id: string,
+    voiceId: string,
+    body: { name?: string; description?: string; vocalStart?: number; vocalEnd?: number; style?: string } = {},
+  ) =>
+    http.post<{ ok: true; voice: any }>(`/admin/sites/${id}/samples/voices/${voiceId}/generate-persona`, body, {
+      timeout: 60_000,
+    }),
 };
 
 const STORAGE_KEY = 'mc_admin_site';

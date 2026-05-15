@@ -5,8 +5,9 @@ import { join } from 'path';
 import { SunoProvider, SunoGenerateInput } from '../suno/suno.types';
 import { SunoLogService } from '../suno/suno-log.service';
 import { LyricsService } from '../lyrics/lyrics.module';
+import { SettingsService } from '../settings/settings.service';
 import { SitesService } from './sites.service';
-import { Site, SiteSampleEntry, SiteSuno } from './site.entity';
+import { Site, SiteSampleEntry, SiteSuno, SiteVoiceEntry } from './site.entity';
 
 export interface SampleOverrides {
   /** Override pentru voice (default = pentru style: 'adi'; pentru voice: key-ul însuși) */
@@ -56,6 +57,7 @@ export class SiteSamplesService {
     private readonly logs: SunoLogService,
     private readonly config: ConfigService,
     private readonly lyrics: LyricsService,
+    private readonly settings: SettingsService,
   ) {}
 
   private flightKey({ siteId, kind, key }: InFlightKey): string {
@@ -129,6 +131,7 @@ export class SiteSamplesService {
         audioUrl,
         generatedAt: new Date().toISOString(),
         sunoTaskId: result.providerJobId,
+        sunoAudioId: track.audioId,
       };
 
       await this.persist(site, kind, key, entry);
@@ -393,6 +396,100 @@ export class SiteSamplesService {
       suno.voiceSamples = { ...(suno.voiceSamples ?? {}), [key]: entry };
     }
     await this.sites.update(site.id, { suno });
+  }
+
+  /**
+   * Generează un Persona Suno din mostra audio a unei voci și salvează ID-ul
+   * pe `SiteVoiceEntry.sunoPersonaId`. Necesar ca vocea respectivă să aibă
+   * deja o mostră generată CU `sunoAudioId` populat (mostre vechi nu au).
+   *
+   * Suno cere taskId + audioId + name + description. Răspunde 200 cu data.personaId.
+   * Constrângeri: un audioId poate genera un singur persona; modele V4+; segment
+   * vocal 10-30 secunde (default 0..30).
+   */
+  async generatePersona(
+    siteId: string,
+    voiceId: string,
+    opts?: { name?: string; description?: string; vocalStart?: number; vocalEnd?: number; style?: string },
+  ): Promise<{ voice: SiteVoiceEntry }> {
+    const site = await this.sites.findById(siteId);
+    if (!site) throw new NotFoundException('Site negăsit');
+
+    const voice = site.voices?.find((v) => v.id === voiceId);
+    if (!voice) throw new NotFoundException(`Vocea „${voiceId}" nu există pe site.`);
+
+    const sample = site.suno?.voiceSamples?.[voiceId];
+    if (!sample?.sunoTaskId || !sample?.sunoAudioId) {
+      throw new BadRequestException(
+        'Mostra audio nu are taskId/audioId Suno. Regenerează mostra pentru această voce.',
+      );
+    }
+
+    const baseUrl = (await this.settings.get('SUNO_API_BASE_URL')) || 'https://api.sunoapi.org';
+    const apiKey = await this.settings.get('SUNO_API_KEY');
+    if (!apiKey) throw new BadRequestException('SUNO_API_KEY nu e setat în Settings.');
+
+    const personaName = opts?.name?.trim() || voice.nm || voiceId;
+    const personaDescription =
+      opts?.description?.trim() ||
+      `Authentic manele singer in the ${voice.gender === 'f' ? 'female' : 'male'} register — derived from sample of "${voice.nm ?? voiceId}".`;
+
+    const body: Record<string, unknown> = {
+      taskId: sample.sunoTaskId,
+      audioId: sample.sunoAudioId,
+      name: personaName.slice(0, 80),
+      description: personaDescription.slice(0, 500),
+    };
+    if (typeof opts?.vocalStart === 'number') body.vocalStart = opts.vocalStart;
+    if (typeof opts?.vocalEnd === 'number') body.vocalEnd = opts.vocalEnd;
+    if (opts?.style) body.style = opts.style;
+
+    this.logger.log(
+      `generate-persona siteSlug=${site.slug} voiceId=${voiceId} taskId=${sample.sunoTaskId} audioId=${sample.sunoAudioId}`,
+    );
+
+    const res = await fetch(`${baseUrl}/api/v1/generate/generate-persona`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new BadRequestException(`Suno generate-persona ${res.status}: ${text.slice(0, 400)}`);
+    }
+    let parsed: { code?: number; msg?: string; data?: { personaId?: string; name?: string } };
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new BadRequestException('Răspuns invalid de la Suno generate-persona.');
+    }
+    const personaId = parsed?.data?.personaId;
+    if (parsed?.code !== 200 || !personaId) {
+      throw new BadRequestException(
+        `Suno generate-persona: ${parsed?.msg ?? 'fără personaId în răspuns'}`,
+      );
+    }
+
+    // Persist pe voice entry.
+    const voices = (site.voices ?? []).map((v) =>
+      v.id === voiceId
+        ? {
+            ...v,
+            sunoPersonaId: personaId,
+            sunoPersonaName: parsed.data?.name ?? personaName,
+            sunoPersonaSourceTaskId: sample.sunoTaskId,
+            sunoPersonaSourceAudioId: sample.sunoAudioId,
+            sunoPersonaCreatedAt: new Date().toISOString(),
+          }
+        : v,
+    );
+    await this.sites.update(site.id, { voices });
+
+    const updated = voices.find((v) => v.id === voiceId)!;
+    return { voice: updated };
   }
 }
 

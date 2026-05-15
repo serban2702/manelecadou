@@ -86,6 +86,11 @@ export class GenerationsProcessor extends WorkerHost {
       await this.repo.save(gen);
 
       // Step 3: audio
+      // Citim configurațiile per-voce și per-stil din site (gender, persona,
+      // styleWeight, weirdnessConstraint, negativeTags) și le pasăm la Suno.
+      const voiceEntry = site?.voices?.find((v) => v.id === gen.voiceArtist);
+      const styleEntry = site?.styles?.find((s) => s.id === gen.style);
+
       const result = await this.suno.generate({
         type: gen.type,
         durationSec: gen.durationSec,
@@ -98,6 +103,11 @@ export class GenerationsProcessor extends WorkerHost {
         lyrics: refined,
         generationId: gen.id,
         site: site ?? undefined,
+        vocalGender: voiceEntry?.gender,
+        personaId: voiceEntry?.sunoPersonaId,
+        styleWeight: styleEntry?.styleWeight,
+        weirdnessConstraint: styleEntry?.weirdnessConstraint,
+        negativeTags: styleEntry?.negativeTags,
       });
 
       gen.tracks = result.tracks;
