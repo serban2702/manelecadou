@@ -182,7 +182,7 @@ export class LyricsService {
     if (input.customLyrics?.trim()) {
       return input.customLyrics.trim();
     }
-    const sys = this.writerSystem(input.locale, input.writerSystemPrompt);
+    const sys = this.writerSystem(input);
     const user = this.writerUser(input);
     if (this.config.get<string>('NODE_ENV') !== 'production') {
       this.logger.log(`[DEV] writer locale=${input.locale ?? 'ro'} override=${!!input.writerSystemPrompt} sys_chars=${sys.length}`);
@@ -237,7 +237,7 @@ export class LyricsService {
   /** Critic care rafinează versurile. */
   async refineDraft(input: LyricsInput, draft: string): Promise<string> {
     if (input.customLyrics?.trim()) return draft; // user's lyrics are sacred
-    const sys = this.criticSystem(input.locale, input.criticSystemPrompt);
+    const sys = this.criticSystem(input);
     const user = this.criticUser(input, draft);
     const apiKey = await this.settings.get('OPENAI_API_KEY');
     const model = (await this.settings.get('OPENAI_MODEL')) || 'gpt-4o-mini';
@@ -339,14 +339,17 @@ export class LyricsService {
     return `OUTPUT LANGUAGE: all sung lyrics MUST be in ${lang}. Recipient and sender names appear as-is (do not translate proper nouns). Suno tags ([Intro], [Verse 1], [Chorus], [Bridge], [Outro], [Adlib]) STAY IN ENGLISH.\n\n`;
   }
 
-  private writerSystem(locale?: string, override?: string): string {
-    const body = override?.trim() || DEFAULT_WRITER_SYSTEM;
-    return this.langDirective(locale) + body;
+  private writerSystem(input: LyricsInput): string {
+    const body = input.writerSystemPrompt?.trim() || DEFAULT_WRITER_SYSTEM;
+    // Substituim {{variabile}} și în system body — utile pentru override-uri
+    // per-site din admin care vor să folosească numele destinatarului direct
+    // în meta-instrucțiuni. Default-ul nu conține placeholders, deci e no-op.
+    return this.langDirective(input.locale) + fillTemplate(body, this.templateVars(input));
   }
 
-  private criticSystem(locale?: string, override?: string): string {
-    const body = override?.trim() || DEFAULT_CRITIC_SYSTEM;
-    return this.langDirective(locale) + body;
+  private criticSystem(input: LyricsInput): string {
+    const body = input.criticSystemPrompt?.trim() || DEFAULT_CRITIC_SYSTEM;
+    return this.langDirective(input.locale) + fillTemplate(body, this.templateVars(input));
   }
 
   private templateVars(i: LyricsInput): Record<string, unknown> {
