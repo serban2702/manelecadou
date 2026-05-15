@@ -9,14 +9,16 @@ import { SiteContextMiddleware } from './site-context.middleware';
 import { SiteSamplesService } from './site-samples.service';
 import { SunoModule } from '../suno/suno.module';
 import { LyricsModule } from '../lyrics/lyrics.module';
-import { SettingsModule } from '../settings/settings.module';
+// SettingsModule e @Global() — SettingsService e injectabil în SiteSamplesService
+// fără import explicit. NU adăuga `SettingsModule` în `imports` aici: AuthModule
+// importă SitesModule, deci ar produce ciclu SitesModule → SettingsModule →
+// AuthModule → SitesModule.
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Site]),
     SunoModule,
     LyricsModule,
-    SettingsModule,
     // JwtModule local cu același secret ca AuthModule — middleware-ul are nevoie să
     // decodeze JWT-ul ÎNAINTE de guards (pentru anti-abuz pe siteId per-user).
     JwtModule.registerAsync({
