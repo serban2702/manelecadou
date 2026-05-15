@@ -343,6 +343,7 @@ export class SiteSamplesService {
       writerSystemPrompt: site.suno?.writerSystemPrompt,
       criticSystemPrompt: site.suno?.criticSystemPrompt,
       styleHint,
+      currency: site.currency,
       siteId: site.id,
       generationId: null,
     };

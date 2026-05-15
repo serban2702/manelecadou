@@ -7,29 +7,39 @@ import { LyricsLog } from './lyrics-log.entity';
 import { LyricsLogService } from './lyrics-log.service';
 
 export interface LyricsInput {
+  /** Cheia stilului (clasic / modern / oriental / etc) — text liber. */
   style: string;
+  /** Cheia ocaziei (nuntă / botez / aniversare / etc). */
   occasion: string;
   recipientName: string;
   message: string;
+  /** Numele celui care dedică piesa (expeditor). */
   dedication?: string;
+  /** Suma dedicată (în moneda site-ului). */
   tipAmount?: number;
+  /** Codul valutei site-ului (RON, BGN, EUR, TRY, RSD, HRK, …). */
+  currency?: string;
   voiceArtist: string;
   customLyrics?: string;
   locale?: string;
   /** Override system prompt pentru writer (din Site.suno.writerSystemPrompt).
-   *  Când e setat, ÎNLOCUIEȘTE complet system prompt-ul default RO — codul
-   *  doar prepend-ează langDirective ("CRITICAL: write in <Lang>") dacă
-   *  locale != ro. Folosește pentru a livra vocabular nativ pe BG, RS, TR. */
+   *  Când e setat, ÎNLOCUIEȘTE corpul default — codul prepend-ează doar
+   *  langDirective (forțează limba de output). Folosește pentru chalga BG,
+   *  turbofolk RS, arabesk TR etc. */
   writerSystemPrompt?: string;
-  /** Idem pentru critic. Gol = fallback la default RO. */
+  /** Idem pentru critic. Gol = fallback la corpul default. */
   criticSystemPrompt?: string;
-  /** Hint descriptiv despre stilul muzical (ex: "modern manele 2020s, trap-808 sub-bass…").
-   *  Se trimite la OpenAI ca "STIL MUZICAL" în user prompt — ajută AI-ul să aleagă
-   *  vocabular și ritm potrivit. Folosit la sample preview cu customStylePrompt. */
+  /** Hint descriptiv despre stilul muzical (ex: "modern manele 2020s, trap-808 sub-bass…"). */
   styleHint?: string;
-  /** Context pentru logging (siteId + generationId) — opțional, doar pentru audit. */
+  /** Context pentru logging — opțional, doar pentru audit. */
   siteId?: string | null;
   generationId?: string | null;
+}
+
+export interface LyricsOutput {
+  draft: string;
+  final: string;
+  notes?: string;
 }
 
 const LOCALE_NAME: Record<string, string> = {
@@ -43,11 +53,119 @@ const LOCALE_NAME: Record<string, string> = {
   bs: 'Bosnian',
 };
 
-export interface LyricsOutput {
-  draft: string;
-  final: string;
-  notes?: string;
+/** Marker pentru câmpurile pe care userul nu le-a completat (cerință explicită). */
+const NOT_FILLED = 'Utilizatorul nu a completat';
+
+/** Înlocuiește {{variabilă}} cu valoarea din map; valori goale/null → NOT_FILLED. */
+function fillTemplate(template: string, vars: Record<string, unknown>): string {
+  return template.replace(/{{\s*(\w+)\s*}}/g, (_, key: string) => {
+    const v = vars[key];
+    if (v === undefined || v === null) return NOT_FILLED;
+    const s = typeof v === 'number' ? String(v) : String(v).trim();
+    if (s === '' || s === '0') {
+      // tipAmount = 0 → tratat ca lipsă (păstrăm semantica veche).
+      if (key === 'tipAmount' && (v === 0 || v === '0')) return NOT_FILLED;
+      if (s === '') return NOT_FILLED;
+    }
+    return s;
+  });
 }
+
+/**
+ * System prompt default pentru writer — în engleză (limba "neutră" pe care GPT
+ * o procesează cel mai sigur ca meta-instrucțiune). Output-ul real e forțat în
+ * limba țintă prin langDirective.
+ *
+ * Override-ul per-site (writerSystemPrompt) ÎNLOCUIEȘTE acest corp — codul
+ * concatenează langDirective + override și nu mai folosește textul de mai jos.
+ */
+const DEFAULT_WRITER_SYSTEM = [
+  'You are a songwriter specialized EXCLUSIVELY in authentic manele — the Romanian Balkan-oriental lăutărească genre (2000-2010 Pitești/București scene). NEVER mention real artist names (Suno rejects songs with celebrity references).',
+  '',
+  'Mandatory output structure with Suno tags (TAGS STAY IN ENGLISH, even when lyrics are in another language):',
+  '[Intro: oriental synth taksim, accordion doina] — instrumental description ONLY, no sung text on this line.',
+  '[Verse 1] — if a sender is provided, the FIRST 2 sung lines must clearly state BOTH the sender name AND the recipient name, in the natural opening style of the target language (e.g. Romanian "De la X, pentru Y, cu drag"; English "From X, for Y, with love"). NEVER put names inside square brackets — square brackets are instrumental metadata.',
+  '[Chorus] — melismatic hook, repeatable, prolonged vowels, repeated 2-4 times with small variations.',
+  '[Verse 2]',
+  '[Chorus] — full repeat.',
+  '[Bridge / Adlib: aoleu, haide haide] — instrumental description.',
+  '[Outro: long live] — short outro phrase in target language (e.g. "să trăiești" in RO).',
+  '',
+  'CRITICAL RULE: text inside [square brackets] is instrumental metadata — NOT sung. The voice sings ONLY the lines AFTER the brackets. Sender / recipient names go on separate lines after [Verse 1], NEVER inside [Intro: ...].',
+  '',
+  'Manele vocabulary to use natively in the target language (or as-is if it has no equivalent): "brother / fraților", "God-God / Doamne-Doamne", "of of of", "aoleu", "haide", "life", "fate", "enemies", "true friends", "my heart", "money", "may God give you", "night", "drinking glass", "world", "mother", "father", "my blood", "long live". Use manele interjections ("aaa", "of", "haide-haide", "uuu") as-is — they are universal.',
+  '',
+  'Rhyme AABB or ABAB. 8-10 syllables per line. Themes: life drama, fate, brotherhood, money and swagger, jealous enemies, passionate love, celebration with drinks.',
+  '',
+  'Sub-genres available: clasic (lăutărească), modern (trap-manea), oriental (darbuka), trompetă (fanfară), de jale (heartbreak with crying), comercială (club), opulență (luxury / money / swagger), iubire (sweet love), tallava, kuchek, trapanele (dark), de pahar (drinking party).',
+  '',
+  'No vulgar language, but KEEP the manele attitude (pride, drama, brotherhood, money, fate). Do NOT sound like polite pop — sound like a REAL manea.',
+  '',
+  'Return ONLY the lyrics with Suno tags. No explanations.',
+].join('\n');
+
+/**
+ * User prompt template pentru writer. `{{variabilă}}` se înlocuiește cu input-ul
+ * userului; orice variabilă necompletată devine "Utilizatorul nu a completat".
+ */
+const WRITER_USER_TEMPLATE = [
+  'Write lyrics for an authentic manea with these details:',
+  '- Music style (key): {{style}}',
+  '- Occasion: {{occasion}}',
+  '- Recipient (person honored): {{recipientName}}',
+  '- Sender (person dedicating the song): {{senderName}}',
+  '- Tip amount dedicated: {{tipAmount}} {{currency}}',
+  '- Personal message to convey: {{message}}',
+  '- Voice artist style: {{voiceArtist}}',
+  '- Optional music style hint: {{styleHint}}',
+  '',
+  'REQUIREMENTS:',
+  '1. Use the recipient name at least 3 times in the lyrics, including in the chorus.',
+  '2. If the sender is provided, the first 2 sung lines after [Verse 1] must clearly contain BOTH the sender and the recipient name, in the natural opening style of the target language. Reprise the sender name once in [Bridge] or [Outro].',
+  '3. If a tip amount is provided, include a swagger line dedicating that amount, using the currency-appropriate phrasing in the target language (e.g. RO "dedic X lei / arunc X la lăutari"; BG лева; TR lira; EUR euro).',
+  '4. Strictly use Suno tags: [Intro], [Verse 1], [Chorus], [Verse 2], [Chorus], [Bridge], [Outro]. Write the chorus in full twice.',
+  '5. Total length: 20-28 lines of lyrics (excluding tag lines).',
+  '6. Adapt the tone to the requested voice artist (jale → more "of"/"aoleu"; swagger → more flex/money/enemies).',
+  '7. MUST sound like a real manea, NOT pop — use manele vocabulary natively in the target language.',
+  '',
+  `IMPORTANT: if any field above is literally "${NOT_FILLED}", that value was not provided by the user — skip the related instruction (e.g. do not invent a sender name, do not invent a tip amount).`,
+].join('\n');
+
+/**
+ * System prompt default pentru critic — engleză, meta-instrucțiuni.
+ */
+const DEFAULT_CRITIC_SYSTEM = [
+  'You are an editor of authentic manele lyrics. You refine the draft while preserving:',
+  '1. The recipient name EXACTLY as given.',
+  '2. The personal message — keep the idea, you may rephrase.',
+  '3. If a sender is provided, the first 2 sung lines after [Verse 1] (NOT inside [Intro: ...]) must clearly contain BOTH names plus the message essence. If the draft buried them or put them inside square brackets, REWRITE the opening: line 1 = a natural-language equivalent of "From <sender>, for <recipient>..." in the target language; line 2 = a short line carrying the message idea. The [Intro: ...] tag stays PURELY instrumental — not a single sung word inside.',
+  '4. Manele-style vocabulary in the target language ("of", "aoleu", "brother", "God-God", "haide" or their equivalents).',
+  '5. ALL Suno tags ([Intro], [Verse], [Chorus], [Bridge], [Outro], [Adlib]) exactly as they are — DO NOT translate or rename them.',
+  '6. Strengthen the chorus hook if it is weak. DO NOT turn the song into pop.',
+  '',
+  'Return ONLY the final lyrics with the tags intact. No explanations.',
+].join('\n');
+
+const CRITIC_USER_TEMPLATE = [
+  'Refine the following manea draft.',
+  '',
+  'Context:',
+  '- Style: {{style}}',
+  '- Occasion: {{occasion}}',
+  '- Recipient: {{recipientName}}',
+  '- Sender (dedication from): {{senderName}}',
+  '- Tip amount: {{tipAmount}} {{currency}}',
+  '- Key message to preserve: {{message}}',
+  '',
+  'REQUIREMENTS:',
+  `- If the sender field is NOT "${NOT_FILLED}", the first 2 sung lines after [Verse 1] must clearly state BOTH the sender and the recipient name, in the natural opening style of the target language (line 1 follows the pattern "From <sender>, for <recipient>..." translated naturally; line 2 paraphrases the key message). If the draft buried these or put them inside [brackets], REWRITE the opening. Never put names inside [brackets] — they would become instrumental. Reprise the sender once in [Bridge] or [Outro].`,
+  `- If the tip amount is NOT "${NOT_FILLED}", make sure a swagger line dedicates it using the proper currency in target language.`,
+  '',
+  'Draft:',
+  '{{draft}}',
+  '',
+  'Return the refined lyrics, tags intact.',
+].join('\n');
 
 @Injectable()
 export class LyricsService {
@@ -67,7 +185,7 @@ export class LyricsService {
     const sys = this.writerSystem(input.locale, input.writerSystemPrompt);
     const user = this.writerUser(input);
     if (this.config.get<string>('NODE_ENV') !== 'production') {
-      this.logger.log(`[DEV] writer locale=${input.locale ?? 'ro'} override=${!!input.writerSystemPrompt} sys_chars=${sys.length} preview="${sys.slice(0, 100).replace(/\n/g, ' ')}..."`);
+      this.logger.log(`[DEV] writer locale=${input.locale ?? 'ro'} override=${!!input.writerSystemPrompt} sys_chars=${sys.length}`);
     }
     const apiKey = await this.settings.get('OPENAI_API_KEY');
     const model = (await this.settings.get('OPENAI_MODEL')) || 'gpt-4o-mini';
@@ -211,127 +329,68 @@ export class LyricsService {
     return { content, raw: json, status: res.status, usage: json.usage, durationMs };
   }
 
-  private writerSystem(locale?: string, override?: string): string {
+  /**
+   * Directiva de limbă — ÎNTOTDEAUNA prezentă, indiferent de locale. Forțează
+   * OpenAI să cânte în limba țintă, chiar dacă meta-instrucțiunile sunt în
+   * engleză (cazul implicit).
+   */
+  private langDirective(locale?: string): string {
     const lang = LOCALE_NAME[locale ?? 'ro'] ?? 'Romanian';
-    const langDirective = lang === 'Romanian'
-      ? ''
-      : `CRITICAL: Write the lyrics in ${lang}. All sung lyrics, recipient name aside, must be in ${lang}. Suno tags ([Intro], [Verse 1], [Chorus], [Bridge], [Outro], [Adlib]) stay in English. `;
-    // Override per-site (chalga BG, turbofolk RS, arabesk TR etc.) — înlocuiește
-    // complet vocabularul + atitudinea + sub-genurile, păstrăm doar langDirective.
-    if (override?.trim()) {
-      return langDirective + override.trim();
-    }
-    return langDirective + [
-      'Ești un textier român specializat EXCLUSIV în manele autentice. NU scrii pop, NU scrii dance, NU scrii party generic. Scrii MANEA românească reală — tradiția lăutărească orientală, era 2000-2010, scena Pitești / București. INTERZIS să menționezi nume de artiști reali în versuri (Suno respinge piesele care conțin nume de cântăreți celebri).',
-      'Vocabular obligatoriu de manea: "frate", "fraților", "Doamne-Doamne", "of of of", "aoleu", "haide", "viață", "soartă", "dușmani", "prieteni adevărați", "inima mea", "bani", "să-ți dea Dumnezeu", "noaptea", "pahar", "lume", "mama", "tata", "sângele meu", "să trăiești". Folosește interjecții manelistice ("aaa", "of", "haide-haide", "uuu").',
-      'Structură obligatorie cu tag-uri Suno în output: începi cu [Intro: oriental synth taksim, accordion doina] (DOAR descriere instrumentală între paranteze, NICIUN text de cântat pe această linie), apoi [Verse 1] cu primele 2 rânduri OBLIGATORIU rostite clar (vezi instrucțiunea din user-prompt despre dedicație/mesaj), [Chorus] (refren melismatic cu hook puternic, repetabil), [Verse 2], [Chorus], [Bridge / Adlib: aoleu, haide haide] (descriere între paranteze), [Outro: "să trăiești"].',
-      'REGULĂ CRITICĂ Suno: tot textul dintre paranteze pătrate este metadată instrumentală — NU se cântă. Vocea cântă DOAR liniile de după bracket-uri. De aceea, dedicația și mesajul personal trebuie să fie pe linii separate DUPĂ [Verse 1], NU în interiorul tag-ului [Intro: ...].',
-      'Refrenul TREBUIE să fie hook melismatic, repetitiv, ușor de cântat — fraza-cheie repetată de 2-4 ori cu mici variații, cu vocale prelungite (ex: "viaaațăăă", "iniiiima").',
-      'Versurile au rimă AABB sau ABAB, ritm de manea (8-10 silabe pe rând). Tematica autentică: drama vieții, soartă, frățietate, bani și șmecherie, dușmani gelozi, dragoste pătimașă, sărbătoare cu pahar.',
-      'Subgenuri: clasic (lăutărească), modern (trap-manea), oriental (darbuka), trompetă (fanfară), de jale (heartbreak cu plâns), comercială (club), opulență (lux/bani/șmecherie), iubire (dulce), tallava, kuchek, trapanele (dark), de pahar (petrecere).',
-      'Fără limbaj injurios, dar PĂSTREAZĂ atitudinea de manea (mândrie, dramă, frățietate, bani, soartă). Nu suna "frumușel pop" — suna A MANEA REALĂ. Returnează DOAR versurile cu tag-uri, fără explicații.',
-    ].join(' ');
+    return `OUTPUT LANGUAGE: all sung lyrics MUST be in ${lang}. Recipient and sender names appear as-is (do not translate proper nouns). Suno tags ([Intro], [Verse 1], [Chorus], [Bridge], [Outro], [Adlib]) STAY IN ENGLISH.\n\n`;
   }
 
-  private writerUser(i: LyricsInput): string {
-    const tipLine = i.tipAmount ? `Include în versuri formularea șmecher: "dedic ${i.tipAmount} de lei" sau echivalent (ex: "arunc ${i.tipAmount} la lăutari").` : '';
-    const messageHook = i.message?.trim() ? this.condenseMessage(i.message) : '';
-    const dedicationOpening = i.dedication
-      ? [
-          `OBLIGATORIU — DESCHIDEREA PIESEI (PRIMELE 2 RÂNDURI DUPĂ [Verse 1]):`,
-          `Rândul 1 (sung, NU în paranteze): "De la ${i.dedication}, pentru ${i.recipientName}, cu drag" (sau o variantă care conține CLAR ambele nume).`,
-          messageHook
-            ? `Rândul 2 (sung, NU în paranteze): o reformulare scurtă a mesajului personal — "${messageHook}" — astfel încât în primele 8 secunde de cântat să se audă: cine dedică (${i.dedication}), cui (${i.recipientName}), și care e ideea mesajului.`
-            : `Rândul 2 (sung): continuă cu un vers ce reia ideea ocaziei (${i.occasion}).`,
-          `NU pune dedicația / numele între paranteze — paranteze = instrument, NU vocea. Reia "${i.dedication}" încă o dată în [Bridge] sau [Outro].`,
-        ].join(' ')
-      : '';
-    const styleHintLine = i.styleHint?.trim()
-      ? `STIL MUZICAL (aliniază vocabularul și ritmul cu această descriere): ${i.styleHint.trim()}`
-      : '';
-    return [
-      `Scrie versurile pentru o MANEA ${i.style} autentică, ocazia: ${i.occasion}.`,
-      styleHintLine,
-      `Pentru: ${i.recipientName} (folosește numele de minim 3 ori în versuri, inclusiv în refren).`,
-      `Mesajul personal de transmis: "${i.message}".`,
-      dedicationOpening,
-      tipLine,
-      `Format STRICT cu tag-uri Suno: [Intro], [Verse 1], [Chorus], [Verse 2], [Chorus], [Bridge], [Outro]. Refrenul scris complet de 2 ori.`,
-      `Lungime totală: 20-28 rânduri de versuri (excluzând tag-urile).`,
-      `Vocea cerută: ${i.voiceArtist} — adaptează tonul (voce de jale → mai mult "of"/"aoleu"; voce de șmecher → mai mult flex/bani/dușmani).`,
-      `IMPORTANT: TREBUIE să sune a MANEA, nu a melodie pop. Folosește vocabularul manelistic obligatoriu și interjecții.`,
-    ].filter(Boolean).join('\n');
+  private writerSystem(locale?: string, override?: string): string {
+    const body = override?.trim() || DEFAULT_WRITER_SYSTEM;
+    return this.langDirective(locale) + body;
   }
 
   private criticSystem(locale?: string, override?: string): string {
-    const lang = LOCALE_NAME[locale ?? 'ro'] ?? 'Romanian';
-    const langDirective = lang === 'Romanian'
-      ? ''
-      : `CRITICAL: Keep all lyrics in ${lang}. Do NOT translate to Romanian. Suno tags stay in English. `;
-    if (override?.trim()) {
-      return langDirective + override.trim();
-    }
-    return langDirective + [
-      'Ești editor de versuri de MANELE autentice. Rafinezi ciorna păstrând:',
-      '(1) NUMELE destinatarului exact, nemodificat;',
-      '(2) MESAJUL personal — păstrezi ideea, poți reformula;',
-      '(3) DACĂ există dedicație, primele 2 rânduri DUPĂ [Verse 1] (NU în interiorul tag-ului [Intro]) trebuie să conțină CLAR atât numele expeditorului cât și al destinatarului, plus esența mesajului. Dacă ciorna le-a îngropat sau le-a pus între paranteze pătrate, REScrie deschiderea: linia 1 din Verse 1 = "De la <expeditor>, pentru <destinatar>..."; linia 2 = un vers scurt cu ideea mesajului. Tag-ul [Intro: ...] rămâne PUR INSTRUMENTAL — niciun cuvânt cântat în el.',
-      '(4) Vocabularul manelistic ("of", "aoleu", "frate", "Doamne-Doamne", "haide");',
-      '(5) TOATE tag-urile Suno ([Intro], [Verse], [Chorus], [Bridge], [Outro], [Adlib]) exact cum sunt;',
-      '(6) Întărești hook-ul refrenului dacă e slab. NU transforma în pop.',
-      'Returnează DOAR versurile finale cu tag-uri intacte, fără explicații.',
-    ].join(' ');
+    const body = override?.trim() || DEFAULT_CRITIC_SYSTEM;
+    return this.langDirective(locale) + body;
+  }
+
+  private templateVars(i: LyricsInput): Record<string, unknown> {
+    return {
+      style: i.style,
+      occasion: i.occasion,
+      recipientName: i.recipientName,
+      senderName: i.dedication,
+      tipAmount: i.tipAmount,
+      currency: i.currency,
+      message: i.message,
+      voiceArtist: i.voiceArtist,
+      styleHint: i.styleHint,
+    };
+  }
+
+  private writerUser(i: LyricsInput): string {
+    return fillTemplate(WRITER_USER_TEMPLATE, this.templateVars(i));
   }
 
   private criticUser(i: LyricsInput, draft: string): string {
-    const messageHook = i.message?.trim() ? this.condenseMessage(i.message) : '';
-    return [
-      `Stil: ${i.style}, ocazie: ${i.occasion}, pentru ${i.recipientName}.`,
-      `Mesaj-cheie de păstrat: "${i.message}"`,
-      i.dedication
-        ? [
-            `EXPEDITOR (dedicație): "${i.dedication}". DESTINATAR: "${i.recipientName}".`,
-            `OBLIGATORIU primele 2 rânduri DUPĂ tag-ul [Verse 1] (cele care se cântă efectiv, NU descrierea instrumentală din [Intro: ...]):`,
-            `  • rândul 1: "De la ${i.dedication}, pentru ${i.recipientName}, cu drag" (sau formulare echivalentă cu AMBELE nume rostite clar).`,
-            messageHook
-              ? `  • rândul 2: parafrazează scurt mesajul "${messageHook}".`
-              : `  • rândul 2: continuă cu ideea ocaziei.`,
-            `Verifică ciorna: dacă "${i.dedication}" sau "${i.recipientName}" lipsesc din primele 2 rânduri sung după [Verse 1], REScrie deschiderea. Niciodată să nu pui numele între [paranteze] — ar deveni instrumental.`,
-            `Reia "${i.dedication}" încă o dată în [Bridge] sau [Outro].`,
-          ].join(' ')
-        : '',
-      `Ciornă:\n${draft}`,
-      `Întoarce versurile finale rafinate.`,
-    ].filter(Boolean).join('\n\n');
-  }
-
-  /**
-   * Condensează un mesaj lung al utilizatorului într-o frază de ~10-12 cuvinte
-   * potrivită ca rând cântat în deschiderea piesei. Tăiem la prima propoziție
-   * sau la 80 caractere, fără să rupem cuvinte.
-   */
-  private condenseMessage(msg: string): string {
-    const cleaned = msg.replace(/\s+/g, ' ').trim();
-    if (!cleaned) return '';
-    const firstSentence = cleaned.split(/[.!?]/)[0]?.trim() ?? cleaned;
-    if (firstSentence.length <= 80) return firstSentence;
-    const cut = firstSentence.slice(0, 80);
-    const lastSpace = cut.lastIndexOf(' ');
-    return (lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trim();
+    return fillTemplate(CRITIC_USER_TEMPLATE, {
+      ...this.templateVars(i),
+      draft,
+    });
   }
 
   private mockDraft(i: LyricsInput): string {
-    const refrain = `Pentru ${i.recipientName}, cu drag,\nO manea ${i.style} de pahar.`;
+    // Mock simplu pentru dev (fără OPENAI_API_KEY). Folosește placeholder-ele
+    // exact ca în template — utile la inspecție vizuală în log-uri.
+    const sender = i.dedication?.trim() || NOT_FILLED;
+    const recipient = i.recipientName?.trim() || NOT_FILLED;
     return [
-      refrain,
-      `${i.message ? `"${i.message.slice(0, 80)}"` : 'Doamne, dă-i sănătate'}`,
-      i.dedication ? `— ${i.dedication}` : '',
-      i.tipAmount ? `Cu dedicație ${i.tipAmount} de lei,` : '',
-      i.tipAmount ? 'Să sune banii ca arginții.' : '',
-      `\nCuplet:\n${i.recipientName}, ești frate-n viața mea,`,
-      `Banii vin, banii merg, dar prietenia stă.`,
-      `Refren:\n${refrain}`,
-    ].filter(Boolean).join('\n');
+      '[Intro: oriental synth taksim, accordion doina]',
+      '[Verse 1]',
+      `De la ${sender}, pentru ${recipient}, cu drag,`,
+      i.message?.trim() ? `${i.message.slice(0, 80)}` : NOT_FILLED,
+      '[Chorus]',
+      `${recipient}, ești frate-n viața mea,`,
+      'Banii vin, banii merg, dar prietenia stă.',
+      '[Outro: să trăiești]',
+      '',
+      `(MOCK FALLBACK — set OPENAI_API_KEY în Settings.)`,
+    ].join('\n');
   }
 
   private mockRefine(draft: string): string {
