@@ -609,6 +609,23 @@ function SunoStripeTab({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto)
           </Field>
         </div>
         <div className="col-span-full">
+          <Field
+            label="User prompt writer (cererea propriu-zisă)"
+            description="Placeholders: {{style}}, {{occasion}}, {{recipientName}}, {{senderName}}, {{tipAmount}}, {{currency}}, {{message}}, {{voiceArtist}}, {{styleHint}}. Gol = template default."
+          >
+            <Textarea
+              value={(form.suno as any)?.writerUserTemplate ?? ''}
+              onChange={(e) =>
+                setForm({ ...form, suno: { ...form.suno, writerUserTemplate: e.target.value } as any })
+              }
+              rows={8}
+              placeholder={
+                'Ex: Write lyrics for an authentic chalga song with these details:\n- Style: {{style}}\n- Recipient: {{recipientName}}\n- Sender: {{senderName}}\n- Message: {{message}}\n...'
+              }
+            />
+          </Field>
+        </div>
+        <div className="col-span-full">
           <Field label="System prompt critic (verificator lyrics)">
             <Textarea
               value={(form.suno as any)?.criticSystemPrompt ?? ''}
@@ -616,6 +633,23 @@ function SunoStripeTab({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto)
                 setForm({ ...form, suno: { ...form.suno, criticSystemPrompt: e.target.value } as any })
               }
               rows={3}
+            />
+          </Field>
+        </div>
+        <div className="col-span-full">
+          <Field
+            label="User prompt critic (input pentru rafinare)"
+            description="Placeholders ca la writer + {{draft}} (ciorna primită). Gol = template default."
+          >
+            <Textarea
+              value={(form.suno as any)?.criticUserTemplate ?? ''}
+              onChange={(e) =>
+                setForm({ ...form, suno: { ...form.suno, criticUserTemplate: e.target.value } as any })
+              }
+              rows={6}
+              placeholder={
+                'Ex: Refine the following draft.\nContext:\n- Recipient: {{recipientName}}\n- Message: {{message}}\nDraft:\n{{draft}}'
+              }
             />
           </Field>
         </div>

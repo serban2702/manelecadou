@@ -27,8 +27,15 @@ export interface LyricsInput {
    *  langDirective (forțează limba de output). Folosește pentru chalga BG,
    *  turbofolk RS, arabesk TR etc. */
   writerSystemPrompt?: string;
+  /** Override user prompt template pentru writer (din Site.suno.writerUserTemplate).
+   *  Conține placeholders {{style}}, {{occasion}}, {{recipientName}}, {{senderName}},
+   *  {{tipAmount}}, {{currency}}, {{message}}, {{voiceArtist}}, {{styleHint}}.
+   *  Gol = fallback la WRITER_USER_TEMPLATE (RO-centric). */
+  writerUserTemplate?: string;
   /** Idem pentru critic. Gol = fallback la corpul default. */
   criticSystemPrompt?: string;
+  /** Override user prompt template pentru critic. Placeholders ca la writer + {{draft}}. */
+  criticUserTemplate?: string;
   /** Hint descriptiv despre stilul muzical (ex: "modern manele 2020s, trap-808 sub-bass…"). */
   styleHint?: string;
   /** Context pentru logging — opțional, doar pentru audit. */
@@ -392,11 +399,13 @@ export class LyricsService {
   }
 
   private writerUser(i: LyricsInput): string {
-    return fillTemplate(WRITER_USER_TEMPLATE, this.templateVars(i));
+    const template = i.writerUserTemplate?.trim() || WRITER_USER_TEMPLATE;
+    return fillTemplate(template, this.templateVars(i));
   }
 
   private criticUser(i: LyricsInput, draft: string): string {
-    return fillTemplate(CRITIC_USER_TEMPLATE, {
+    const template = i.criticUserTemplate?.trim() || CRITIC_USER_TEMPLATE;
+    return fillTemplate(template, {
       ...this.templateVars(i),
       draft,
     });

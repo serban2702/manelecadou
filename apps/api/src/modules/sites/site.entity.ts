@@ -84,9 +84,21 @@ export interface SiteSuno {
    */
   writerSystemPrompt?: string;
   /**
+   * User prompt template pentru writer. Conține placeholders `{{style}}`,
+   * `{{occasion}}`, `{{recipientName}}`, `{{senderName}}`, `{{tipAmount}}`,
+   * `{{currency}}`, `{{message}}`, `{{voiceArtist}}`, `{{styleHint}}`. Gol =
+   * fallback la template-ul default RO din `lyrics.module.ts`.
+   */
+  writerUserTemplate?: string;
+  /**
    * System prompt pentru OpenAI critic. La fel — gol = fallback RO.
    */
   criticSystemPrompt?: string;
+  /**
+   * User prompt template pentru critic. Aceleași placeholders ca writer + `{{draft}}`.
+   * Gol = fallback la default.
+   */
+  criticUserTemplate?: string;
   // Voice mapping per-site (dacă vrei voci diferite pe BG vs RO)
   voiceMap?: Record<string, string>;
   // Limba lyricsului (default = locale-ul site-ului)

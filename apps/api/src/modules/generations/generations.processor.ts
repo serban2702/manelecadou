@@ -66,7 +66,9 @@ export class GenerationsProcessor extends WorkerHost {
         // OpenAI primește vocabular nativ (chalga, turbofolk, arabesk) în loc
         // de cel manelist românesc.
         writerSystemPrompt: site?.suno?.writerSystemPrompt,
+        writerUserTemplate: site?.suno?.writerUserTemplate,
         criticSystemPrompt: site?.suno?.criticSystemPrompt,
+        criticUserTemplate: site?.suno?.criticUserTemplate,
         currency: site?.currency,
         siteId: gen.siteId ?? null,
         generationId: gen.id,
