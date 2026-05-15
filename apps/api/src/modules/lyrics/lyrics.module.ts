@@ -56,6 +56,31 @@ const LOCALE_NAME: Record<string, string> = {
 /** Marker pentru câmpurile pe care userul nu le-a completat (cerință explicită). */
 const NOT_FILLED = 'Utilizatorul nu a completat';
 
+/**
+ * Mapare ISO currency code → numele uzual folosit în versuri.
+ * Trimitem GPT-ului direct cuvântul natural ("lei" în loc de "RON"), ca să
+ * elimine ambiguitatea. GPT îl scrie în scriptul limbii țintă dacă e nevoie.
+ */
+const CURRENCY_NAME: Record<string, string> = {
+  RON: 'lei',
+  BGN: 'лева',
+  RSD: 'динара',
+  TRY: 'lira',
+  EUR: 'euro',
+  HRK: 'kuna',
+  HUF: 'forinți',
+  BAM: 'maraka',
+  USD: 'dolari',
+  GBP: 'lire',
+};
+
+function currencyDisplayName(code?: string): string | undefined {
+  if (!code) return undefined;
+  const upper = code.trim().toUpperCase();
+  if (!upper) return undefined;
+  return CURRENCY_NAME[upper] ?? upper;
+}
+
 /** Înlocuiește {{variabilă}} cu valoarea din map; valori goale/null → NOT_FILLED. */
 function fillTemplate(template: string, vars: Record<string, unknown>): string {
   return template.replace(/{{\s*(\w+)\s*}}/g, (_, key: string) => {
@@ -122,7 +147,7 @@ const WRITER_USER_TEMPLATE = [
   'REQUIREMENTS:',
   '1. Use the recipient name at least 3 times in the lyrics, including in the chorus.',
   '2. If the sender is provided, the first 2 sung lines after [Verse 1] must clearly contain BOTH the sender and the recipient name, in the natural opening style of the target language. Reprise the sender name once in [Bridge] or [Outro].',
-  '3. If a tip amount is provided, include a swagger line dedicating that amount, using the currency-appropriate phrasing in the target language (e.g. RO "dedic X lei / arunc X la lăutari"; BG лева; TR lira; EUR euro).',
+  '3. If a tip amount is provided, include a swagger line dedicating that amount, using the currency value as-given (e.g. RO "dedic X lei / arunc X la lăutari"). Use the currency word literally as provided — do NOT translate or convert it.',
   '4. Strictly use Suno tags: [Intro], [Verse 1], [Chorus], [Verse 2], [Chorus], [Bridge], [Outro]. Write the chorus in full twice.',
   '5. Total length: 20-28 lines of lyrics (excluding tag lines).',
   '6. Adapt the tone to the requested voice artist (jale → more "of"/"aoleu"; swagger → more flex/money/enemies).',
@@ -359,7 +384,7 @@ export class LyricsService {
       recipientName: i.recipientName,
       senderName: i.dedication,
       tipAmount: i.tipAmount,
-      currency: i.currency,
+      currency: currencyDisplayName(i.currency),
       message: i.message,
       voiceArtist: i.voiceArtist,
       styleHint: i.styleHint,
