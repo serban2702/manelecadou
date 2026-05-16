@@ -1210,8 +1210,7 @@ function CategoryRow({
   onUpload?: (file: File) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [open18n, setOpenI18n] = useState(false);
-  const [recipient, setRecipient] = useState('Andrei');
+const [recipient, setRecipient] = useState('Andrei');
   const [dedication, setDedication] = useState('');
   const [voiceOverride, setVoiceOverride] = useState<string>('');
   const [aiHint, setAiHint] = useState<string>(
@@ -1403,13 +1402,6 @@ function CategoryRow({
                       <option value="f">♀ Femeie</option>
                     </select>
                   </Field>
-                  <Field label="Voce Suno (sunoVoice — override voiceMap)">
-                    <Input
-                      value={(entry as SiteVoiceEntry).sunoVoice ?? ''}
-                      onChange={(e) => onChange({ sunoVoice: e.target.value })}
-                      placeholder="lasă gol = id-ul"
-                    />
-                  </Field>
                   <div className="sm:col-span-2">
                     <PersonaControl
                       siteId={siteId}
@@ -1507,45 +1499,6 @@ function CategoryRow({
               )}
             </div>
 
-            {/* Traduceri per locale */}
-            <div className="pt-2 border-t border-dashed border-border/60">
-              <button
-                type="button"
-                className="text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => setOpenI18n((o) => !o)}
-              >
-                {open18n ? '▾' : '▸'} Traduceri per locale ({Object.keys(entry.i18n ?? {}).length})
-              </button>
-              {open18n && (
-                <div className="mt-2 space-y-2">
-                  {I18N_FIELD_LOCALES.filter((l) => l !== site.locale).map((loc) => {
-                    const fields = kind === 'voice' ? ['nm', 'tg'] : kind === 'occasion' ? ['nm'] : ['nm', 'ds', 'heat'];
-                    return (
-                      <details key={loc} className="border border-border/60 rounded p-2">
-                        <summary className="text-xs cursor-pointer">{loc.toUpperCase()}</summary>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                          {fields.map((f) => (
-                            <Field key={f} label={f}>
-                              <Input
-                                value={(entry.i18n?.[loc] as any)?.[f] ?? ''}
-                                onChange={(e) => {
-                                  const next = {
-                                    ...(entry.i18n ?? {}),
-                                    [loc]: { ...(entry.i18n?.[loc] ?? {}), [f]: e.target.value },
-                                  };
-                                  onChange({ i18n: next });
-                                }}
-                              />
-                            </Field>
-                          ))}
-                        </div>
-                      </details>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
             {/* Personalizare generare (doar pentru kind cu samples) */}
             {kind !== 'occasion' && onGenerate && (
               <div className="pt-3 border-t border-dashed border-border/60 space-y-2">
@@ -1558,20 +1511,22 @@ function CategoryRow({
                       placeholder="Ex: Andrei, Mariana, Costel..."
                     />
                   </Field>
-                  <Field label="Voce override (gol = default)">
-                    <select
-                      value={voiceOverride}
-                      onChange={(e) => setVoiceOverride(e.target.value)}
-                      className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm"
-                    >
-                      <option value="">— default —</option>
-                      {voiceKeys.map((v) => (
-                        <option key={v} value={v}>
-                          {v}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
+                  {kind === 'style' && (
+                    <Field label="Voce override (gol = default)">
+                      <select
+                        value={voiceOverride}
+                        onChange={(e) => setVoiceOverride(e.target.value)}
+                        className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm"
+                      >
+                        <option value="">— default —</option>
+                        {voiceKeys.map((v) => (
+                          <option key={v} value={v}>
+                            {v}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
                 </div>
 
                 <Field label="Dedicație — expeditor (opțional)">
