@@ -438,7 +438,8 @@ function modelLimits(model: string): {
     return { prompt: 4900, style: 950, title: 78, simplePrompt: 480 };
   }
   // V4_5, V4_5PLUS, V5, V5_5 + default
-  return { prompt: 4900, style: 950, title: 95, simplePrompt: 480 };
+  // Nota: documentatia spune 100 dar API-ul enforceaza 80 in practica → 75 cu marja.
+  return { prompt: 4900, style: 950, title: 75, simplePrompt: 480 };
 }
 
 function truncate(s: string, max: number): string {
