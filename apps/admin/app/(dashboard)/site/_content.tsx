@@ -1016,7 +1016,7 @@ function CategoriesTab({
               const ok = await confirmDialog({
                 title: '⚠️ Reset complet categorii & stiluri?',
                 description:
-                  'Această acțiune va ȘTERGE toate stilurile, vocile și ocaziile personalizate și le va înlocui cu valorile default (cu iconițele noi). Mostrele audio NU sunt șterse — rămân pe disc. Acțiunea este ireversibilă fără backup DB.',
+                  'Această acțiune va ȘTERGE toate stilurile, vocile și ocaziile personalizate și le va înlocui cu valorile default (cu iconițele noi). Mostrele audio vor fi șterse de pe disc și din DB. Acțiunea este ireversibilă fără backup DB.',
                 confirmText: 'Da, resetează la default',
                 variant: 'destructive',
               });
@@ -1028,7 +1028,13 @@ function CategoriesTab({
               };
               setForm({ ...form, ...patch });
               await onSavePartial(patch);
-              toast({ variant: 'success', title: 'Reset efectuat', description: 'Categoriile au fost resetate la valorile default cu iconițe noi.' });
+              try {
+                await SitesApi.clearAllSamples(siteId);
+              } catch {
+                // non-fatal — categoriile au fost resetate oricum
+              }
+              onRefresh();
+              toast({ variant: 'success', title: 'Reset efectuat', description: 'Categoriile și mostrele audio au fost resetate la valorile default.' });
             }}
           >
             <RotateCcw className="h-4 w-4" />
@@ -1369,15 +1375,6 @@ function CategoryRow({
                   onChange={(ic) => onChange({ ic: ic ?? undefined } as Partial<SiteStyleEntry & SiteVoiceEntry & SiteOccasionEntry>)}
                 />
               </Field>
-              {kind !== 'voice' && (
-                <Field label="Emoji fallback (dacă nu e icoană SVG)">
-                  <Input
-                    value={(entry as SiteStyleEntry | SiteOccasionEntry).em ?? ''}
-                    onChange={(e) => onChange({ em: e.target.value })}
-                    placeholder="ex: 🎻"
-                  />
-                </Field>
-              )}
               {kind === 'voice' && (
                 <>
                   <Field label="Inițiale avatar (2 caractere)">

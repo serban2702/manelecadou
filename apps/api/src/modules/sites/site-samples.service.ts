@@ -399,6 +399,41 @@ export class SiteSamplesService {
   }
 
   /**
+   * Șterge toate mostrele audio ale site-ului: fișierele MP3 din uploads/site-samples/<slug>/
+   * și intrările styleSamples / voiceSamples din suno config.
+   */
+  async clearAllSamples(siteId: string): Promise<{ deleted: number }> {
+    const site = await this.sites.findById(siteId);
+    if (!site) throw new NotFoundException('Site negăsit');
+
+    const uploadsDir = this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
+    const dir = join(uploadsDir, 'site-samples', site.slug);
+
+    let deleted = 0;
+    try {
+      const files = await fs.readdir(dir);
+      await Promise.all(
+        files
+          .filter((f) => /\.(mp3|wav|m4a|ogg)$/i.test(f))
+          .map(async (f) => {
+            await fs.unlink(join(dir, f));
+            deleted++;
+          }),
+      );
+    } catch {
+      // directorul poate să nu existe — ignorăm ENOENT
+    }
+
+    const suno = { ...(site.suno ?? {}) };
+    delete suno.styleSamples;
+    delete suno.voiceSamples;
+    await this.sites.update(site.id, { suno });
+
+    this.logger.log(`clearAllSamples siteSlug=${site.slug} deleted=${deleted}`);
+    return { deleted };
+  }
+
+  /**
    * Generează un Persona Suno din mostra audio a unei voci și salvează ID-ul
    * pe `SiteVoiceEntry.sunoPersonaId`. Necesar ca vocea respectivă să aibă
    * deja o mostră generată CU `sunoAudioId` populat (mostre vechi nu au).

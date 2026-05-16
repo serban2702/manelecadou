@@ -276,6 +276,14 @@ export class AdminSiteSamplesController {
     return { ok: true, queued, count: queued.length };
   }
 
+  /** Șterge toate mostrele audio (fișiere MP3 + intrările din DB). */
+  @Delete()
+  @HttpCode(200)
+  async clearAll(@Param('id') id: string) {
+    const result = await this.samples.clearAllSamples(id);
+    return { ok: true, ...result };
+  }
+
   /** Generează un Persona Suno pentru o voce din site, folosind mostra audio
    *  existentă a vocii. Salvează personaId pe site.voices[].sunoPersonaId. */
   @Post('voices/:voiceId/generate-persona')

@@ -203,6 +203,9 @@ export const SitesApi = {
       timeout: 60_000,
     });
   },
+  /** Șterge toate mostrele audio (fișiere MP3 + intrările din DB). */
+  clearAllSamples: (id: string) =>
+    http.delete<{ ok: true; deleted: number }>(`/admin/sites/${id}/samples`),
   /** Generează un Persona Suno pentru o voce. Folosește mostra audio existentă
    *  a vocii (cere taskId + audioId persistate la generare). Răspunde cu vocea
    *  actualizată (conține sunoPersonaId). */
