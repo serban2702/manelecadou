@@ -20,6 +20,7 @@ export const SEED_STYLES: SiteStyleEntry[] = [
   {
     id: 'clasic',
     em: '🎻',
+    ic: { name: 'Music2', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 },
     nm: 'Clasică de pahar',
     ds: 'Acordeon, lăutărească',
     heat: '🔥 #1',
@@ -29,6 +30,7 @@ export const SEED_STYLES: SiteStyleEntry[] = [
   {
     id: 'modern',
     em: '🎹',
+    ic: { name: 'Zap', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 },
     nm: 'Modernă',
     ds: 'Trap-manea, beat tare',
     heat: '🔥 hot',
@@ -38,6 +40,7 @@ export const SEED_STYLES: SiteStyleEntry[] = [
   {
     id: 'oriental',
     em: '🪘',
+    ic: { name: 'AudioWaveform', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 },
     nm: 'Orientală',
     ds: 'Darbuka, melisme',
     lyricsHint: 'manea orientală cu plâns, vocabular cu „of / aoleu / soartă / dor", melisme lungi, ritm lent dramatic',
@@ -46,6 +49,7 @@ export const SEED_STYLES: SiteStyleEntry[] = [
   {
     id: 'trompeta',
     em: '🎺',
+    ic: { name: 'Music4', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 },
     nm: 'Cu trompetă',
     ds: 'Banda de fanfare',
     lyricsHint: 'manea de nuntă cu fanfară, vocabular cu „nuntă / mireasă / petrecere", ritm vioi, atmosferă de joc',
@@ -54,6 +58,7 @@ export const SEED_STYLES: SiteStyleEntry[] = [
   {
     id: 'romantica',
     em: '💔',
+    ic: { name: 'HeartCrack', fill: 'none', stroke: '#ef4444', strokeWidth: 2 },
     nm: 'De jale',
     ds: 'Pentru inimi frânte',
     lyricsHint: 'manea de jale, vocabular cu lacrimi / inimă frântă / dor / „aoleu", ritm liric lent, plâns autentic',
@@ -62,6 +67,7 @@ export const SEED_STYLES: SiteStyleEntry[] = [
   {
     id: 'comerciala',
     em: '💃',
+    ic: { name: 'TrendingUp', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 },
     nm: 'Comercială',
     ds: 'De club, de sezon',
     lyricsHint: 'manea comercială de sezon, hook puternic în refren, vocabular accesibil, ritm de club',
@@ -70,6 +76,7 @@ export const SEED_STYLES: SiteStyleEntry[] = [
   {
     id: 'opulenta',
     em: '👑',
+    ic: { name: 'Crown', fill: '#f59e0b', stroke: '#d97706', strokeWidth: 1.5 },
     nm: 'De opulență',
     ds: 'Banii curg, lux total',
     heat: '🔥 new',
@@ -79,6 +86,7 @@ export const SEED_STYLES: SiteStyleEntry[] = [
   {
     id: 'iubire',
     em: '❤️',
+    ic: { name: 'Heart', fill: '#ef4444', stroke: '#dc2626', strokeWidth: 1.5 },
     nm: 'De iubire',
     ds: 'Romantic pur, dulce',
     lyricsHint: 'manea de iubire dulce, vocabular cu „inima mea / sufletul meu / draga mea", ton cald și tandru',
@@ -87,6 +95,7 @@ export const SEED_STYLES: SiteStyleEntry[] = [
   {
     id: 'tallava',
     em: '🎷',
+    ic: { name: 'Flame', fill: 'none', stroke: '#f97316', strokeWidth: 2 },
     nm: 'Tallava',
     ds: 'Ritm balcanic, BG/MK',
     lyricsHint: 'tallava balcanică, vocabular mixt RO-BG-MK, ritm rapid de joc, atmosferă explosive',
@@ -95,6 +104,7 @@ export const SEED_STYLES: SiteStyleEntry[] = [
   {
     id: 'kuchek',
     em: '🥁',
+    ic: { name: 'Disc3', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 },
     nm: 'Kuchek',
     ds: 'Ritm rom bulgăresc',
     lyricsHint: 'kuchek bulgăresc rom, ritm 9/8 odd-meter, atmosferă de petrecere stradală, vocabular festiv',
@@ -103,6 +113,7 @@ export const SEED_STYLES: SiteStyleEntry[] = [
   {
     id: 'trapanele',
     em: '🎧',
+    ic: { name: 'Headphones', fill: 'none', stroke: '#8b5cf6', strokeWidth: 2 },
     nm: 'Trapanele',
     ds: 'Trap × manea, hard',
     lyricsHint: 'trapanele dark, vocabular cu „noaptea / strada / dușmani", versuri cântate (NU rapate), atitudine hard',
@@ -111,6 +122,7 @@ export const SEED_STYLES: SiteStyleEntry[] = [
   {
     id: 'pahar',
     em: '🍷',
+    ic: { name: 'Wine', fill: 'none', stroke: '#ef4444', strokeWidth: 2 },
     nm: 'De pahar',
     ds: 'Petrecere, voie bună',
     lyricsHint: 'manea de pahar la petrecere, vocabular cu „pahar / haide / fraților / să trăiești", refren cu strigăte',
@@ -119,25 +131,25 @@ export const SEED_STYLES: SiteStyleEntry[] = [
 ];
 
 export const SEED_VOICES: SiteVoiceEntry[] = [
-  { id: 'florinel', nm: 'Florinel de Aur', tg: 'Voce caldă, clasic', av: 'FA' },
-  { id: 'adi', nm: 'Adi Șampanie', tg: 'Modern, club', av: 'AȘ' },
-  { id: 'ticu', nm: 'Țicu Diamante', tg: 'Trap-manea, tânăr', av: 'ȚD' },
-  { id: 'mariana', nm: 'Mariana Trandafir', tg: 'Voce feminină', av: 'MT' },
-  { id: 'nicu', nm: 'Nicu Mercedes', tg: 'Orientală, plâns', av: 'NM' },
-  { id: 'gigi', nm: 'Gigi Cash', tg: 'Comercial, voios', av: 'GC' },
+  { id: 'florinel', nm: 'Florinel de Aur', tg: 'Voce caldă, clasic', av: 'FA', ic: { name: 'Mic', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'adi', nm: 'Adi Șampanie', tg: 'Modern, club', av: 'AȘ', ic: { name: 'MicVocal', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'ticu', nm: 'Țicu Diamante', tg: 'Trap-manea, tânăr', av: 'ȚD', ic: { name: 'Headphones', fill: 'none', stroke: '#8b5cf6', strokeWidth: 2 } },
+  { id: 'mariana', nm: 'Mariana Trandafir', tg: 'Voce feminină', av: 'MT', ic: { name: 'Flower2', fill: '#ec4899', stroke: '#db2777', strokeWidth: 1.5 } },
+  { id: 'nicu', nm: 'Nicu Mercedes', tg: 'Orientală, plâns', av: 'NM', ic: { name: 'HeartCrack', fill: 'none', stroke: '#ef4444', strokeWidth: 2 } },
+  { id: 'gigi', nm: 'Gigi Cash', tg: 'Comercial, voios', av: 'GC', ic: { name: 'Sparkles', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
 ];
 
 export const SEED_OCCASIONS: SiteOccasionEntry[] = [
-  { id: 'zi', em: '🎂', nm: 'Zi naștere' },
-  { id: 'nunta', em: '💒', nm: 'Nuntă' },
-  { id: 'botez', em: '👶', nm: 'Botez' },
-  { id: 'cumatrie', em: '🍷', nm: 'Cumătrie' },
-  { id: 'cuplu', em: '❤️', nm: 'Aniv. cuplu' },
-  { id: 'sef', em: '💼', nm: 'Pentru șef' },
-  { id: 'dragoste', em: '😍', nm: 'Declarație' },
-  { id: 'roast', em: '🤡', nm: 'Roast prieten' },
-  { id: 'nas', em: '🤝', nm: 'Naș / fin' },
-  { id: 'inmorm', em: '🕯️', nm: 'Înmormântare' },
-  { id: 'motiv', em: '💪', nm: 'Motivațională' },
-  { id: 'altul', em: '✨', nm: 'Altă ocazie' },
+  { id: 'zi', em: '🎂', nm: 'Zi naștere', ic: { name: 'Cake', fill: 'none', stroke: '#ec4899', strokeWidth: 2 } },
+  { id: 'nunta', em: '💒', nm: 'Nuntă', ic: { name: 'Gem', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'botez', em: '👶', nm: 'Botez', ic: { name: 'Baby', fill: 'none', stroke: '#3b82f6', strokeWidth: 2 } },
+  { id: 'cumatrie', em: '🍷', nm: 'Cumătrie', ic: { name: 'Wine', fill: 'none', stroke: '#ef4444', strokeWidth: 2 } },
+  { id: 'cuplu', em: '❤️', nm: 'Aniv. cuplu', ic: { name: 'Heart', fill: '#ef4444', stroke: '#dc2626', strokeWidth: 1.5 } },
+  { id: 'sef', em: '💼', nm: 'Pentru șef', ic: { name: 'Briefcase', fill: 'none', stroke: '#6b7280', strokeWidth: 2 } },
+  { id: 'dragoste', em: '😍', nm: 'Declarație', ic: { name: 'Sparkles', fill: 'none', stroke: '#ec4899', strokeWidth: 2 } },
+  { id: 'roast', em: '🤡', nm: 'Roast prieten', ic: { name: 'Laugh', fill: 'none', stroke: '#f97316', strokeWidth: 2 } },
+  { id: 'nas', em: '🤝', nm: 'Naș / fin', ic: { name: 'Handshake', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'inmorm', em: '🕯️', nm: 'Înmormântare', ic: { name: 'Feather', fill: 'none', stroke: '#6b7280', strokeWidth: 2 } },
+  { id: 'motiv', em: '💪', nm: 'Motivațională', ic: { name: 'Zap', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'altul', em: '✨', nm: 'Altă ocazie', ic: { name: 'Star', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
 ];

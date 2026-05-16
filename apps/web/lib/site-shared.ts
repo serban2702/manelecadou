@@ -70,12 +70,20 @@ export interface SiteConfig {
   voiceSamples?: Record<string, SiteSampleEntry>;
 }
 
+export interface SiteIconConfig {
+  name: string;
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+}
+
 export interface SiteStyleEntry {
   id: string;
   em: string;
   nm: string;
   ds: string;
   heat?: string;
+  ic?: SiteIconConfig;
   i18n?: Record<string, { nm?: string; ds?: string; heat?: string }>;
   sunoPrompt?: string;
 }
@@ -85,6 +93,7 @@ export interface SiteVoiceEntry {
   nm: string;
   tg: string;
   av: string;
+  ic?: SiteIconConfig;
   i18n?: Record<string, { nm?: string; tg?: string }>;
   sunoVoice?: string;
 }
@@ -93,6 +102,7 @@ export interface SiteOccasionEntry {
   id: string;
   em: string;
   nm: string;
+  ic?: SiteIconConfig;
   i18n?: Record<string, { nm?: string }>;
 }
 

@@ -124,12 +124,22 @@ export interface SiteSampleEntry {
  * și mostre audio (nu se schimbă după ce e setată). Restul câmpurilor sunt
  * pentru afișare + integrarea cu Suno/OpenAI.
  */
+/** Configurare icoană SVG (Lucide) pentru o categorie. */
+export interface SiteIconConfig {
+  name: string;        // PascalCase, ex: "Music2", "Heart"
+  fill?: string;       // culoare fill, ex: "none", "#ff6b6b"
+  stroke?: string;     // culoare stroke, ex: "currentColor", "#ff6b6b"
+  strokeWidth?: number; // grosime contur, ex: 1.5, 2, 2.5
+}
+
 export interface SiteStyleEntry {
   id: string;
-  em: string; // emoji / icon (ex. "🎻")
+  em: string; // emoji / icon (ex. "🎻") — fallback dacă `ic` nu e setat
   nm: string; // nume default (folosit dacă nu e i18n.nm pe locale-ul curent)
   ds: string; // descriere default
   heat?: string; // badge opțional ("🔥 #1", "🔥 hot", "🔥 new", etc.)
+  /** Icoană SVG configurabilă (override față de emoji `em`). */
+  ic?: SiteIconConfig;
   /** Override traduceri per locale. Cheia = locale ("ro", "bg", ...). */
   i18n?: Record<string, { nm?: string; ds?: string; heat?: string }>;
   /** Override prompt Suno pentru acest stil (se pune în suno.stylePromptMap). */
@@ -153,6 +163,8 @@ export interface SiteVoiceEntry {
   nm: string;
   tg: string; // tagline scurt
   av: string; // inițiale avatar (2 caractere)
+  /** Icoană SVG configurabilă (override față de inițialele avatar). */
+  ic?: SiteIconConfig;
   i18n?: Record<string, { nm?: string; tg?: string }>;
   /** Override voice mapping pentru Suno (cheia ajunge în suno.voiceMap). */
   sunoVoice?: string;
@@ -177,6 +189,8 @@ export interface SiteOccasionEntry {
   id: string;
   em: string;
   nm: string;
+  /** Icoană SVG configurabilă (override față de emoji `em`). */
+  ic?: SiteIconConfig;
   i18n?: Record<string, { nm?: string }>;
 }
 

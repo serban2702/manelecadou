@@ -1,48 +1,51 @@
+import type { SiteIconConfig } from './icon-registry';
+
 export type StyleOption = {
   id: string;
   em: string;
   nm: string;
   ds: string;
   heat?: string;
+  ic?: SiteIconConfig;
 };
 
 export const STYLES: StyleOption[] = [
-  { id: 'clasic', em: '🎻', nm: 'Clasică de pahar', ds: 'Acordeon, lăutărească', heat: '🔥 #1' },
-  { id: 'modern', em: '🎹', nm: 'Modernă', ds: 'Trap-manea, beat tare', heat: '🔥 hot' },
-  { id: 'oriental', em: '🪘', nm: 'Orientală', ds: 'Darbuka, melisme' },
-  { id: 'trompeta', em: '🎺', nm: 'Cu trompetă', ds: 'Banda de fanfare' },
-  { id: 'romantica', em: '💔', nm: 'De jale', ds: 'Pentru inimi frânte' },
-  { id: 'comerciala', em: '💃', nm: 'Comercială', ds: 'De club, de sezon' },
-  { id: 'opulenta', em: '👑', nm: 'De opulență', ds: 'Banii curg, lux total', heat: '🔥 new' },
-  { id: 'iubire', em: '❤️', nm: 'De iubire', ds: 'Romantic pur, dulce' },
-  { id: 'tallava', em: '🎷', nm: 'Tallava', ds: 'Ritm balcanic, BG/MK' },
-  { id: 'kuchek', em: '🥁', nm: 'Kuchek', ds: 'Ritm rom bulgăresc' },
-  { id: 'trapanele', em: '🎧', nm: 'Trapanele', ds: 'Trap × manea, hard' },
-  { id: 'pahar', em: '🍷', nm: 'De pahar', ds: 'Petrecere, voie bună' },
+  { id: 'clasic', em: '🎻', nm: 'Clasică de pahar', ds: 'Acordeon, lăutărească', heat: '🔥 #1', ic: { name: 'Music2', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'modern', em: '🎹', nm: 'Modernă', ds: 'Trap-manea, beat tare', heat: '🔥 hot', ic: { name: 'Zap', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'oriental', em: '🪘', nm: 'Orientală', ds: 'Darbuka, melisme', ic: { name: 'AudioWaveform', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'trompeta', em: '🎺', nm: 'Cu trompetă', ds: 'Banda de fanfare', ic: { name: 'Music4', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'romantica', em: '💔', nm: 'De jale', ds: 'Pentru inimi frânte', ic: { name: 'HeartCrack', fill: 'none', stroke: '#ef4444', strokeWidth: 2 } },
+  { id: 'comerciala', em: '💃', nm: 'Comercială', ds: 'De club, de sezon', ic: { name: 'TrendingUp', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'opulenta', em: '👑', nm: 'De opulență', ds: 'Banii curg, lux total', heat: '🔥 new', ic: { name: 'Crown', fill: '#f59e0b', stroke: '#d97706', strokeWidth: 1.5 } },
+  { id: 'iubire', em: '❤️', nm: 'De iubire', ds: 'Romantic pur, dulce', ic: { name: 'Heart', fill: '#ef4444', stroke: '#dc2626', strokeWidth: 1.5 } },
+  { id: 'tallava', em: '🎷', nm: 'Tallava', ds: 'Ritm balcanic, BG/MK', ic: { name: 'Flame', fill: 'none', stroke: '#f97316', strokeWidth: 2 } },
+  { id: 'kuchek', em: '🥁', nm: 'Kuchek', ds: 'Ritm rom bulgăresc', ic: { name: 'Disc3', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'trapanele', em: '🎧', nm: 'Trapanele', ds: 'Trap × manea, hard', ic: { name: 'Headphones', fill: 'none', stroke: '#8b5cf6', strokeWidth: 2 } },
+  { id: 'pahar', em: '🍷', nm: 'De pahar', ds: 'Petrecere, voie bună', ic: { name: 'Wine', fill: 'none', stroke: '#ef4444', strokeWidth: 2 } },
 ];
 
 export const OCC = [
-  { id: 'zi', em: '🎂', nm: 'Zi naștere' },
-  { id: 'nunta', em: '💒', nm: 'Nuntă' },
-  { id: 'botez', em: '👶', nm: 'Botez' },
-  { id: 'cumatrie', em: '🍷', nm: 'Cumătrie' },
-  { id: 'cuplu', em: '❤️', nm: 'Aniv. cuplu' },
-  { id: 'sef', em: '💼', nm: 'Pentru șef' },
-  { id: 'dragoste', em: '😍', nm: 'Declarație' },
-  { id: 'roast', em: '🤡', nm: 'Roast prieten' },
-  { id: 'nas', em: '🤝', nm: 'Naș / fin' },
-  { id: 'inmorm', em: '🕯️', nm: 'Înmormântare' },
-  { id: 'motiv', em: '💪', nm: 'Motivațională' },
-  { id: 'altul', em: '✨', nm: 'Altă ocazie' },
+  { id: 'zi', em: '🎂', nm: 'Zi naștere', ic: { name: 'Cake', fill: 'none', stroke: '#ec4899', strokeWidth: 2 } },
+  { id: 'nunta', em: '💒', nm: 'Nuntă', ic: { name: 'Gem', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'botez', em: '👶', nm: 'Botez', ic: { name: 'Baby', fill: 'none', stroke: '#3b82f6', strokeWidth: 2 } },
+  { id: 'cumatrie', em: '🍷', nm: 'Cumătrie', ic: { name: 'Wine', fill: 'none', stroke: '#ef4444', strokeWidth: 2 } },
+  { id: 'cuplu', em: '❤️', nm: 'Aniv. cuplu', ic: { name: 'Heart', fill: '#ef4444', stroke: '#dc2626', strokeWidth: 1.5 } },
+  { id: 'sef', em: '💼', nm: 'Pentru șef', ic: { name: 'Briefcase', fill: 'none', stroke: '#6b7280', strokeWidth: 2 } },
+  { id: 'dragoste', em: '😍', nm: 'Declarație', ic: { name: 'Sparkles', fill: 'none', stroke: '#ec4899', strokeWidth: 2 } },
+  { id: 'roast', em: '🤡', nm: 'Roast prieten', ic: { name: 'Laugh', fill: 'none', stroke: '#f97316', strokeWidth: 2 } },
+  { id: 'nas', em: '🤝', nm: 'Naș / fin', ic: { name: 'Handshake', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'inmorm', em: '🕯️', nm: 'Înmormântare', ic: { name: 'Feather', fill: 'none', stroke: '#6b7280', strokeWidth: 2 } },
+  { id: 'motiv', em: '💪', nm: 'Motivațională', ic: { name: 'Zap', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'altul', em: '✨', nm: 'Altă ocazie', ic: { name: 'Star', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
 ];
 
 export const VOICES = [
-  { id: 'florinel', nm: 'Florinel de Aur', tg: 'Voce caldă, clasic', av: 'FA' },
-  { id: 'adi', nm: 'Adi Șampanie', tg: 'Modern, club', av: 'AȘ' },
-  { id: 'ticu', nm: 'Țicu Diamante', tg: 'Trap-manea, tânăr', av: 'ȚD' },
-  { id: 'mariana', nm: 'Mariana Trandafir', tg: 'Voce feminină', av: 'MT' },
-  { id: 'nicu', nm: 'Nicu Mercedes', tg: 'Orientală, plâns', av: 'NM' },
-  { id: 'gigi', nm: 'Gigi Cash', tg: 'Comercial, voios', av: 'GC' },
+  { id: 'florinel', nm: 'Florinel de Aur', tg: 'Voce caldă, clasic', av: 'FA', ic: { name: 'Mic', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'adi', nm: 'Adi Șampanie', tg: 'Modern, club', av: 'AȘ', ic: { name: 'MicVocal', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'ticu', nm: 'Țicu Diamante', tg: 'Trap-manea, tânăr', av: 'ȚD', ic: { name: 'Headphones', fill: 'none', stroke: '#8b5cf6', strokeWidth: 2 } },
+  { id: 'mariana', nm: 'Mariana Trandafir', tg: 'Voce feminină', av: 'MT', ic: { name: 'Flower2', fill: '#ec4899', stroke: '#db2777', strokeWidth: 1.5 } },
+  { id: 'nicu', nm: 'Nicu Mercedes', tg: 'Orientală, plâns', av: 'NM', ic: { name: 'HeartCrack', fill: 'none', stroke: '#ef4444', strokeWidth: 2 } },
+  { id: 'gigi', nm: 'Gigi Cash', tg: 'Comercial, voios', av: 'GC', ic: { name: 'Sparkles', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
 ];
 
 export const DEMOS = [

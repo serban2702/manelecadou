@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { Ic } from './icons';
+import { SiteIcon } from './SiteIcon';
 import { Wave } from './sections';
 import { ManeaPlayer } from './ManeaPlayer';
 import { OCC, STYLES, VOICES, type StyleOption } from '@/lib/seed-data';
@@ -785,7 +786,7 @@ function StyleStep({ data, upd, playing, onPlay, styles }: any & { styles: Style
           try { ds = tStyles(`${s.id}.ds`); } catch { /* fallback */ }
           return (
             <div key={s.id} role="button" tabIndex={0} className={`style-pick ${data.style === s.id ? 'on' : ''}`} onClick={() => upd('style', s.id)}>
-              <span className="em">{s.em}</span>
+              <span className="em">{s.ic ? <SiteIcon ic={s.ic} em={s.em} size={24} /> : s.em}</span>
               <div style={{ flex: 1, minWidth: 0, paddingRight: 30 }}>
                 <div className="nm">{nm}</div>
                 <div className="ds">{ds}</div>
@@ -814,12 +815,12 @@ function OccStep({ data, upd, occasions }: any & { occasions: Array<{ id: string
       <h3>2. Pentru ce ocazie?</h3>
       <p className="ld">Alege una. Adaptăm versurile.</p>
       <div className="occ-list">
-        {occasions.map((o: { id: string; em: string; nm: string }) => {
+        {occasions.map((o: { id: string; em: string; nm: string; ic?: any }) => {
           let nm = o.nm;
           try { nm = tOcc(o.id); } catch { /* fallback */ }
           return (
           <button key={o.id} className={`occ-pick ${data.occ === o.id ? 'on' : ''}`} onClick={() => upd('occ', o.id)}>
-            <span className="em">{o.em}</span>
+            <span className="em">{o.ic ? <SiteIcon ic={o.ic} em={o.em} size={22} /> : o.em}</span>
             <span className="nm">{nm}</span>
           </button>
           );
@@ -837,6 +838,7 @@ function siteStylesToOptions(
   return list.map((s) => ({
     id: s.id,
     em: s.em || '🎵',
+    ic: s.ic,
     nm: s.i18n?.[locale]?.nm || s.nm,
     ds: s.i18n?.[locale]?.ds || s.ds,
     heat: s.i18n?.[locale]?.heat || s.heat,
@@ -846,10 +848,11 @@ function siteStylesToOptions(
 function siteOccasionsToOptions(
   list: SiteOccasionEntry[],
   locale: string,
-): Array<{ id: string; em: string; nm: string }> {
+): Array<{ id: string; em: string; nm: string; ic?: SiteOccasionEntry['ic'] }> {
   return list.map((o) => ({
     id: o.id,
     em: o.em || '✨',
+    ic: o.ic,
     nm: o.i18n?.[locale]?.nm || o.nm,
   }));
 }
@@ -857,12 +860,13 @@ function siteOccasionsToOptions(
 function siteVoicesToOptions(
   list: SiteVoiceEntry[],
   locale: string,
-): Array<{ id: string; nm: string; tg: string; av: string }> {
+): Array<{ id: string; nm: string; tg: string; av: string; ic?: SiteVoiceEntry['ic'] }> {
   return list.map((v) => ({
     id: v.id,
     nm: v.i18n?.[locale]?.nm || v.nm,
     tg: v.i18n?.[locale]?.tg || v.tg,
     av: v.av,
+    ic: v.ic,
   }));
 }
 
@@ -985,11 +989,11 @@ function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Arr
 
       <h3 style={{ marginTop: 22 }}>🎤 Care artist îți cântă?</h3>
       <div className="voice-list">
-        {(voices as Array<{ id: string; nm: string; tg: string; av: string }>).map((v, idx) => {
+        {(voices as Array<{ id: string; nm: string; tg: string; av: string; ic?: any }>).map((v, idx) => {
           const isP = playing === `voice-${v.id}`;
           return (
             <div key={v.id} role="button" tabIndex={0} className={`voice-pick ${data.voice === v.id ? 'on' : ''}`} onClick={() => upd('voice', v.id)}>
-              <div className="av">{v.av}</div>
+              <div className="av">{v.ic ? <SiteIcon ic={v.ic} em={v.av} size={22} /> : v.av}</div>
               <div className="info">
                 <div className="nm">{v.nm}</div>
                 <div className="tg">{v.tg}</div>

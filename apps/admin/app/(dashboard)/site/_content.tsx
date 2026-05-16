@@ -14,11 +14,13 @@ import {
   Music2,
   Plus,
   RefreshCcw,
+  RotateCcw,
   Sparkles,
   Trash2,
   Upload,
   Wand2,
 } from 'lucide-react';
+import { IconPicker, renderSiteIcon } from '@/components/icon-picker';
 import {
   SitesApi,
   type SamplesListDto,
@@ -1007,7 +1009,32 @@ function CategoriesTab({
             <RefreshCcw className="h-4 w-4" />
             Regenerează tot
           </Button>
-          <div className="text-xs text-muted-foreground ml-auto">
+          <Button
+            variant="outline"
+            className="border-destructive/40 text-destructive hover:bg-destructive/10 ml-auto"
+            onClick={async () => {
+              const ok = await confirmDialog({
+                title: '⚠️ Reset complet categorii & stiluri?',
+                description:
+                  'Această acțiune va ȘTERGE toate stilurile, vocile și ocaziile personalizate și le va înlocui cu valorile default (cu iconițele noi). Mostrele audio NU sunt șterse — rămân pe disc. Acțiunea este ireversibilă fără backup DB.',
+                confirmText: 'Da, resetează la default',
+                variant: 'destructive',
+              });
+              if (!ok) return;
+              const patch = {
+                styles: SEED_STYLES,
+                voices: SEED_VOICES,
+                occasions: SEED_OCCASIONS,
+              };
+              setForm({ ...form, ...patch });
+              await onSavePartial(patch);
+              toast({ variant: 'success', title: 'Reset efectuat', description: 'Categoriile au fost resetate la valorile default cu iconițe noi.' });
+            }}
+          >
+            <RotateCcw className="h-4 w-4" />
+            Reset la default (cu iconițe noi)
+          </Button>
+          <div className="text-xs text-muted-foreground">
             {styles.length} stiluri · {voices.length} voci · {occasions.length} ocazii
           </div>
         </CardContent>
@@ -1251,12 +1278,18 @@ function CategoryRow({
       <CardContent className="p-3">
         {/* Header rând: identitate + status + audio + acțiuni rapide */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-lg w-7 text-center">{('em' in entry && entry.em) || (kind === 'voice' ? '🎤' : '')}</span>
-          {kind === 'voice' && (
-            <span className="text-[10px] font-bold w-8 h-7 grid place-items-center rounded bg-secondary/40">
-              {(entry as SiteVoiceEntry).av || '··'}
-            </span>
-          )}
+          {/* Icon display: SVG from ic field, else emoji, else initials */}
+          <span className="w-8 h-8 flex items-center justify-center shrink-0">
+            {(entry as SiteStyleEntry | SiteOccasionEntry | SiteVoiceEntry).ic ? (
+              renderSiteIcon((entry as SiteStyleEntry | SiteOccasionEntry | SiteVoiceEntry).ic!, 22)
+            ) : 'em' in entry && entry.em ? (
+              <span className="text-lg">{entry.em}</span>
+            ) : kind === 'voice' ? (
+              <span className="text-[11px] font-bold w-8 h-7 grid place-items-center rounded bg-secondary/40">
+                {(entry as SiteVoiceEntry).av || '··'}
+              </span>
+            ) : null}
+          </span>
           <div className="w-40 min-w-0">
             <div className="text-sm font-medium truncate">{entry.nm || <span className="italic text-muted-foreground">fără nume</span>}</div>
             <code className="text-[10px] text-muted-foreground">{entry.id}</code>
@@ -1330,11 +1363,18 @@ function CategoryRow({
               <Field label="Nume">
                 <Input value={entry.nm} onChange={(e) => onChange({ nm: e.target.value })} />
               </Field>
+              <Field label="Icoană SVG">
+                <IconPicker
+                  value={(entry as SiteStyleEntry | SiteOccasionEntry | SiteVoiceEntry).ic ?? null}
+                  onChange={(ic) => onChange({ ic: ic ?? undefined } as Partial<SiteStyleEntry & SiteVoiceEntry & SiteOccasionEntry>)}
+                />
+              </Field>
               {kind !== 'voice' && (
-                <Field label="Emoji / icon">
+                <Field label="Emoji fallback (dacă nu e icoană SVG)">
                   <Input
                     value={(entry as SiteStyleEntry | SiteOccasionEntry).em ?? ''}
                     onChange={(e) => onChange({ em: e.target.value })}
+                    placeholder="ex: 🎻"
                   />
                 </Field>
               )}
