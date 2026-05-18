@@ -78,6 +78,8 @@ export interface AdminChatConversation {
   lastMessageAt: string | null;
   online: boolean;
   lastSeenAt: string | null;
+  /** Ultimul IP cunoscut din analytics_sessions. */
+  ip: string | null;
 }
 
 export interface AdminChatMessage {

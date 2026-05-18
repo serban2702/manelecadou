@@ -192,6 +192,16 @@ export default function AdminChatPage() {
                           : 'fără mesaje'}
                       </span>
                     </div>
+                    {c.ip && (
+                      <div className="mt-1">
+                        <code
+                          className="text-[10px] font-mono px-1 py-0.5 rounded bg-secondary/40 text-muted-foreground"
+                          title="Ultimul IP cunoscut"
+                        >
+                          {c.ip}
+                        </code>
+                      </div>
+                    )}
                   </button>
                 );
               })
@@ -237,6 +247,17 @@ export default function AdminChatPage() {
                       <span>fără activitate</span>
                     )}
                     <span>· {thread.conversation.status}</span>
+                    {thread.conversation.ip && (
+                      <>
+                        <span>·</span>
+                        <code
+                          className="text-[10px] font-mono px-1 py-0.5 rounded bg-secondary/40"
+                          title="Ultimul IP cunoscut (din analytics_sessions)"
+                        >
+                          {thread.conversation.ip}
+                        </code>
+                      </>
+                    )}
                   </div>
                 </div>
               </header>

@@ -21,6 +21,8 @@ const ONLINE_WINDOW_SEC = 120;
 export interface ConversationWithPresence extends Conversation {
   online: boolean;
   lastSeenAt: string | null;
+  /** Cel mai recent IP al userului/guest-ului din analytics_sessions. */
+  ip: string | null;
 }
 
 interface OwnerCtx {
@@ -71,6 +73,45 @@ export class ChatService {
         .groupBy('s.guestId')
         .getRawMany<{ guestId: string; lastSeenAt: Date }>();
       for (const r of rows) guests.set(r.guestId, r.lastSeenAt);
+    }
+    return { users, guests };
+  }
+
+  /**
+   * Întoarce ultimul IP cunoscut pentru fiecare user/guest, din analytics_sessions.
+   * IP-ul se schimbă rar (per sesiune) — îl folosim ca indicator informativ în chat.
+   */
+  private async fetchLastIp(
+    userIds: string[],
+    guestIds: string[],
+  ): Promise<{ users: Map<string, string>; guests: Map<string, string> }> {
+    const users = new Map<string, string>();
+    const guests = new Map<string, string>();
+    if (userIds.length > 0) {
+      const rows = await this.analyticsSessions
+        .createQueryBuilder('s')
+        .select('s.userId', 'userId')
+        .addSelect('s.ip', 'ip')
+        .where('s.userId IN (:...ids)', { ids: userIds })
+        .andWhere('s.ip IS NOT NULL')
+        .distinctOn(['s.userId'])
+        .orderBy('s.userId')
+        .addOrderBy('s.lastActivityAt', 'DESC')
+        .getRawMany<{ userId: string; ip: string }>();
+      for (const r of rows) if (r.ip) users.set(r.userId, r.ip);
+    }
+    if (guestIds.length > 0) {
+      const rows = await this.analyticsSessions
+        .createQueryBuilder('s')
+        .select('s.guestId', 'guestId')
+        .addSelect('s.ip', 'ip')
+        .where('s.guestId IN (:...ids)', { ids: guestIds })
+        .andWhere('s.ip IS NOT NULL')
+        .distinctOn(['s.guestId'])
+        .orderBy('s.guestId')
+        .addOrderBy('s.lastActivityAt', 'DESC')
+        .getRawMany<{ guestId: string; ip: string }>();
+      for (const r of rows) if (r.ip) guests.set(r.guestId, r.ip);
     }
     return { users, guests };
   }
@@ -200,7 +241,10 @@ export class ChatService {
 
     const userIds = all.map((c) => c.userId).filter((v): v is string => !!v);
     const guestIds = all.map((c) => c.guestId).filter((v): v is string => !!v);
-    const presence = await this.fetchPresence(userIds, guestIds);
+    const [presence, ips] = await Promise.all([
+      this.fetchPresence(userIds, guestIds),
+      this.fetchLastIp(userIds, guestIds),
+    ]);
 
     const now = Date.now();
     const augmented: ConversationWithPresence[] = all.map((c) => {
@@ -213,10 +257,15 @@ export class ChatService {
       const wsOnline = this.gateway.isOnline({ userId: c.userId, guestId: c.guestId });
       const analyticsOnline = lastSeenMs > 0 && (now - lastSeenMs) / 1000 < ONLINE_WINDOW_SEC;
       const online = wsOnline || analyticsOnline;
+      const ip =
+        (c.userId && ips.users.get(c.userId)) ||
+        (c.guestId && ips.guests.get(c.guestId)) ||
+        null;
       return {
         ...c,
         online,
         lastSeenAt: wsOnline ? new Date().toISOString() : seenAt ? new Date(seenAt).toISOString() : null,
+        ip,
       };
     });
 
@@ -251,21 +300,31 @@ export class ChatService {
     return augmented;
   }
 
-  /** Returnează presence pentru o singură conversație (folosit în view-ul thread). */
-  async conversationPresence(c: Conversation): Promise<{ online: boolean; lastSeenAt: string | null }> {
+  /** Returnează presence + ultimul IP pentru o singură conversație (folosit în view-ul thread). */
+  async conversationPresence(
+    c: Conversation,
+  ): Promise<{ online: boolean; lastSeenAt: string | null; ip: string | null }> {
     const wsOnline = this.gateway.isOnline({ userId: c.userId, guestId: c.guestId });
-    if (wsOnline) return { online: true, lastSeenAt: new Date().toISOString() };
-    const presence = await this.fetchPresence(
-      c.userId ? [c.userId] : [],
-      c.guestId ? [c.guestId] : [],
-    );
+    const userIds = c.userId ? [c.userId] : [];
+    const guestIds = c.guestId ? [c.guestId] : [];
+    const [presence, ips] = await Promise.all([
+      this.fetchPresence(userIds, guestIds),
+      this.fetchLastIp(userIds, guestIds),
+    ]);
+    const ip =
+      (c.userId && ips.users.get(c.userId)) ||
+      (c.guestId && ips.guests.get(c.guestId)) ||
+      null;
+    if (wsOnline) {
+      return { online: true, lastSeenAt: new Date().toISOString(), ip };
+    }
     const seenAt =
       (c.userId && presence.users.get(c.userId)) ||
       (c.guestId && presence.guests.get(c.guestId)) ||
       null;
     const lastSeenMs = seenAt ? new Date(seenAt).getTime() : 0;
     const online = lastSeenMs > 0 && (Date.now() - lastSeenMs) / 1000 < ONLINE_WINDOW_SEC;
-    return { online, lastSeenAt: seenAt ? new Date(seenAt).toISOString() : null };
+    return { online, lastSeenAt: seenAt ? new Date(seenAt).toISOString() : null, ip };
   }
 
   async getConversation(id: string): Promise<Conversation> {
