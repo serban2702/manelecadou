@@ -172,10 +172,6 @@ export interface SiteVoiceEntry {
    *  genul vocii (Suno acceptă nativ acest parametru, nu mai depindem de
    *  descriptori în prompt). Gol = lăsăm Suno să decidă. */
   gender?: 'm' | 'f';
-  /** Grupă de vârstă a vocii — folosit ca hint în tag-urile Suno (ex.
-   *  „child vocal", „elderly vocal") și în prompt-ul lyrics writer. Gol =
-   *  default adult. */
-  ageHint?: 'child' | 'teen' | 'adult' | 'elder';
   /** PersonaId returnat de Suno `/generate/generate-persona`. Când e setat,
    *  se trimite ca `personaId` la generare → consistență voce/stil cross-piese. */
   sunoPersonaId?: string;

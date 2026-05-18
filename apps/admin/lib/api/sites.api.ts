@@ -117,9 +117,6 @@ export interface SiteVoiceEntry {
   sunoVoice?: string;
   /** Sex vocal — trimis ca vocalGender ('m'|'f') la Suno. */
   gender?: 'm' | 'f';
-  /** Grupă de vârstă vocală — țesut în tag-ul de stil Suno (child / teen /
-   *  adult / elder). Default adult = neutru. */
-  ageHint?: 'child' | 'teen' | 'adult' | 'elder';
   /** PersonaId Suno persistat. Când e setat, se aplică pe toate generările. */
   sunoPersonaId?: string;
   sunoPersonaName?: string;
@@ -180,7 +177,6 @@ export const SitesApi = {
       tipAmount?: number;
       premium?: boolean;
       vocalGender?: 'm' | 'f';
-      vocalAge?: 'child' | 'teen' | 'adult' | 'elder';
     },
   ) =>
     // Suno polling takes up to 6 min — overriding default 30s timeout. 8 min ca să avem buffer.

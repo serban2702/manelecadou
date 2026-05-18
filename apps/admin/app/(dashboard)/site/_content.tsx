@@ -857,7 +857,6 @@ function CategoriesTab({
       tipAmount?: number;
       premium?: boolean;
       vocalGender?: 'm' | 'f';
-      vocalAge?: 'child' | 'teen' | 'adult' | 'elder';
     },
   ) {
     setBusyKey(`${kind}-${key}`);
@@ -1230,7 +1229,6 @@ function CategoryRow({
       tipAmount?: number;
       premium?: boolean;
       vocalGender?: 'm' | 'f';
-      vocalAge?: 'child' | 'teen' | 'adult' | 'elder';
     },
   ) => void;
   onUpload?: (file: File) => void;
@@ -1252,22 +1250,18 @@ function CategoryRow({
   const [messageDraft, setMessageDraft] = useState<string>('');
   const [tipAmountDraft, setTipAmountDraft] = useState<string>('');
   const [premiumDraft, setPremiumDraft] = useState<boolean>(false);
-  // Override-uri vocal — pre-completate din entry (dacă e voce) ca să nu depindă
-  // de „Salvează modificările". Schimbarea lor aici NU modifică entry-ul persistat.
+  // Override vocal gender — pre-completat din entry (dacă e voce) ca să nu depindă
+  // de „Salvează modificările". Schimbarea aici NU modifică entry-ul persistat.
   const [genderOverride, setGenderOverride] = useState<'' | 'm' | 'f'>(
     kind === 'voice' ? ((entry as SiteVoiceEntry).gender ?? '') : '',
-  );
-  const [ageOverride, setAgeOverride] = useState<'' | 'child' | 'teen' | 'adult' | 'elder'>(
-    kind === 'voice' ? ((entry as SiteVoiceEntry).ageHint ?? '') : '',
   );
   // Sincronizează când entry-ul își schimbă referința (după save / refresh).
   useEffect(() => {
     if (kind === 'voice') {
       setGenderOverride((entry as SiteVoiceEntry).gender ?? '');
-      setAgeOverride((entry as SiteVoiceEntry).ageHint ?? '');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [(entry as SiteVoiceEntry).gender, (entry as SiteVoiceEntry).ageHint, kind]);
+  }, [(entry as SiteVoiceEntry).gender, kind]);
   const [aiHint, setAiHint] = useState<string>(
     kind === 'style' ? (entry as SiteStyleEntry).lyricsHint ?? '' : '',
   );
@@ -1346,7 +1340,6 @@ function CategoryRow({
       tipAmount?: number;
       premium?: boolean;
       vocalGender?: 'm' | 'f';
-      vocalAge?: 'child' | 'teen' | 'adult' | 'elder';
     } = {};
     if (voiceOverride) overrides.voice = voiceOverride;
     if (lyrics.trim()) overrides.lyrics = lyrics.trim();
@@ -1362,7 +1355,6 @@ function CategoryRow({
     if (typeof tip === 'number') overrides.tipAmount = tip;
     if (premiumDraft) overrides.premium = true;
     if (genderOverride) overrides.vocalGender = genderOverride;
-    if (ageOverride) overrides.vocalAge = ageOverride;
     onGenerate(regenerate, Object.keys(overrides).length > 0 ? overrides : undefined);
   }
 
@@ -1488,31 +1480,6 @@ function CategoryRow({
                       <option value="">Auto (Suno alege)</option>
                       <option value="m">♂ Bărbat</option>
                       <option value="f">♀ Femeie</option>
-                    </select>
-                  </Field>
-                  <Field
-                    label="Grupă de vârstă vocală"
-                    description={'Țesut în tag-ul Suno (ex. „child male vocal", „elderly female vocal"). Default adult = neutru.'}
-                  >
-                    <select
-                      value={(entry as SiteVoiceEntry).ageHint ?? ''}
-                      onChange={(e) =>
-                        onChange({
-                          ageHint: (e.target.value || undefined) as
-                            | 'child'
-                            | 'teen'
-                            | 'adult'
-                            | 'elder'
-                            | undefined,
-                        })
-                      }
-                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
-                    >
-                      <option value="">— adult (default) —</option>
-                      <option value="child">🧒 Copil</option>
-                      <option value="teen">👦 Adolescent</option>
-                      <option value="adult">🧑 Adult</option>
-                      <option value="elder">🧓 Vârstnic</option>
                     </select>
                   </Field>
                   <div className="sm:col-span-2">
@@ -1686,42 +1653,20 @@ function CategoryRow({
                     />
                   </Field>
                   {kind === 'voice' && (
-                    <>
-                      <Field
-                        label="Sex vocal (override pentru această mostră)"
-                        description="Trimis ca vocalGender la Suno. Pre-completat din configul vocii — schimbă-l fără să salvezi entry-ul."
+                    <Field
+                      label="Sex vocal (override pentru această mostră)"
+                      description="Trimis ca vocalGender la Suno. Pre-completat din configul vocii — schimbă-l fără să salvezi entry-ul."
+                    >
+                      <select
+                        value={genderOverride}
+                        onChange={(e) => setGenderOverride(e.target.value as '' | 'm' | 'f')}
+                        className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm"
                       >
-                        <select
-                          value={genderOverride}
-                          onChange={(e) => setGenderOverride(e.target.value as '' | 'm' | 'f')}
-                          className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm"
-                        >
-                          <option value="">Auto (Suno alege)</option>
-                          <option value="m">♂ Bărbat</option>
-                          <option value="f">♀ Femeie</option>
-                        </select>
-                      </Field>
-                      <Field
-                        label="Grupă vârstă vocală (override)"
-                        description={'Țesut în descriptorul vocal Suno („child male vocal", „elderly female vocal"...) și prepend cu directivă „CRITICAL: singer is a CHILD".'}
-                      >
-                        <select
-                          value={ageOverride}
-                          onChange={(e) =>
-                            setAgeOverride(
-                              e.target.value as '' | 'child' | 'teen' | 'adult' | 'elder',
-                            )
-                          }
-                          className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm"
-                        >
-                          <option value="">— adult (default) —</option>
-                          <option value="child">🧒 Copil</option>
-                          <option value="teen">👦 Adolescent</option>
-                          <option value="adult">🧑 Adult</option>
-                          <option value="elder">🧓 Vârstnic</option>
-                        </select>
-                      </Field>
-                    </>
+                        <option value="">Auto (Suno alege)</option>
+                        <option value="m">♂ Bărbat</option>
+                        <option value="f">♀ Femeie</option>
+                      </select>
+                    </Field>
                   )}
                 </div>
 
