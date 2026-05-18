@@ -845,7 +845,18 @@ function CategoriesTab({
     kind: 'style' | 'voice',
     key: string,
     regenerate: boolean,
-    overrides?: { voice?: string; lyrics?: string; customStylePrompt?: string; recipientName?: string },
+    overrides?: {
+      voice?: string;
+      lyrics?: string;
+      customStylePrompt?: string;
+      recipientName?: string;
+      dedication?: string;
+      style?: string;
+      occasion?: string;
+      message?: string;
+      tipAmount?: number;
+      premium?: boolean;
+    },
   ) {
     setBusyKey(`${kind}-${key}`);
     if (samples) {
@@ -1205,14 +1216,38 @@ function CategoryRow({
   onRemove: () => void;
   onGenerate?: (
     regenerate: boolean,
-    overrides?: { voice?: string; lyrics?: string; customStylePrompt?: string; recipientName?: string; dedication?: string },
+    overrides?: {
+      voice?: string;
+      lyrics?: string;
+      customStylePrompt?: string;
+      recipientName?: string;
+      dedication?: string;
+      style?: string;
+      occasion?: string;
+      message?: string;
+      tipAmount?: number;
+      premium?: boolean;
+    },
   ) => void;
   onUpload?: (file: File) => void;
 }) {
   const [open, setOpen] = useState(false);
-const [recipient, setRecipient] = useState('Andrei');
+  const [recipient, setRecipient] = useState('Andrei');
   const [dedication, setDedication] = useState('');
   const [voiceOverride, setVoiceOverride] = useState<string>('');
+  // Câmpuri noi (paritate cu Generator-ul de pe site): style, occasion, message,
+  // tipAmount, premium. Folosite atât la previewLyrics (AI) cât și la generarea
+  // mostrei audio prin Suno.
+  const [styleOverride, setStyleOverride] = useState<string>(
+    // La mostra de voce, default = primul stil din site (sau gol).
+    kind === 'voice' ? (site.styles?.[0]?.id ?? '') : '',
+  );
+  const [occasionOverride, setOccasionOverride] = useState<string>(
+    site.occasions?.[0]?.id ?? '',
+  );
+  const [messageDraft, setMessageDraft] = useState<string>('');
+  const [tipAmountDraft, setTipAmountDraft] = useState<string>('');
+  const [premiumDraft, setPremiumDraft] = useState<boolean>(false);
   const [aiHint, setAiHint] = useState<string>(
     kind === 'style' ? (entry as SiteStyleEntry).lyricsHint ?? '' : '',
   );
@@ -1244,6 +1279,14 @@ const [recipient, setRecipient] = useState('Andrei');
         ? 'present'
         : 'missing';
 
+  function parseTipAmount(): number | undefined {
+    const trimmed = tipAmountDraft.trim();
+    if (!trimmed) return undefined;
+    const n = Number(trimmed);
+    if (!Number.isFinite(n) || n <= 0) return undefined;
+    return Math.floor(n);
+  }
+
   async function generateLyricsWithAI() {
     if (!onGenerate || kind === 'occasion') return;
     setLyricsBusy(true);
@@ -1255,6 +1298,10 @@ const [recipient, setRecipient] = useState('Andrei');
         recipientName: recipient || undefined,
         dedication: dedication.trim() || undefined,
         customStylePrompt: aiHint.trim() || sunoPromptDraft.trim() || undefined,
+        style: kind === 'voice' && styleOverride ? styleOverride : undefined,
+        occasion: occasionOverride || undefined,
+        message: messageDraft.trim() || undefined,
+        tipAmount: parseTipAmount(),
       });
       setLyrics(res.lyrics);
       rowToast({ variant: 'success', title: 'Lyrics generate', description: 'Editează apoi „Generează audio".' });
@@ -1267,7 +1314,18 @@ const [recipient, setRecipient] = useState('Andrei');
 
   function submitGenerate(regenerate: boolean) {
     if (!onGenerate) return;
-    const overrides: { voice?: string; lyrics?: string; customStylePrompt?: string; recipientName?: string; dedication?: string } = {};
+    const overrides: {
+      voice?: string;
+      lyrics?: string;
+      customStylePrompt?: string;
+      recipientName?: string;
+      dedication?: string;
+      style?: string;
+      occasion?: string;
+      message?: string;
+      tipAmount?: number;
+      premium?: boolean;
+    } = {};
     if (voiceOverride) overrides.voice = voiceOverride;
     if (lyrics.trim()) overrides.lyrics = lyrics.trim();
     if (kind === 'style' && sunoPromptDraft.trim() && sunoPromptDraft !== ((entry as SiteStyleEntry).sunoPrompt ?? '')) {
@@ -1275,6 +1333,12 @@ const [recipient, setRecipient] = useState('Andrei');
     }
     if (recipient.trim()) overrides.recipientName = recipient.trim();
     if (dedication.trim()) overrides.dedication = dedication.trim();
+    if (kind === 'voice' && styleOverride) overrides.style = styleOverride;
+    if (occasionOverride) overrides.occasion = occasionOverride;
+    if (messageDraft.trim()) overrides.message = messageDraft.trim();
+    const tip = parseTipAmount();
+    if (typeof tip === 'number') overrides.tipAmount = tip;
+    if (premiumDraft) overrides.premium = true;
     onGenerate(regenerate, Object.keys(overrides).length > 0 ? overrides : undefined);
   }
 
@@ -1402,6 +1466,31 @@ const [recipient, setRecipient] = useState('Andrei');
                       <option value="f">♀ Femeie</option>
                     </select>
                   </Field>
+                  <Field
+                    label="Grupă de vârstă vocală"
+                    description={'Țesut în tag-ul Suno (ex. „child male vocal", „elderly female vocal"). Default adult = neutru.'}
+                  >
+                    <select
+                      value={(entry as SiteVoiceEntry).ageHint ?? ''}
+                      onChange={(e) =>
+                        onChange({
+                          ageHint: (e.target.value || undefined) as
+                            | 'child'
+                            | 'teen'
+                            | 'adult'
+                            | 'elder'
+                            | undefined,
+                        })
+                      }
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
+                    >
+                      <option value="">— adult (default) —</option>
+                      <option value="child">🧒 Copil</option>
+                      <option value="teen">👦 Adolescent</option>
+                      <option value="adult">🧑 Adult</option>
+                      <option value="elder">🧓 Vârstnic</option>
+                    </select>
+                  </Field>
                   <div className="sm:col-span-2">
                     <PersonaControl
                       siteId={siteId}
@@ -1502,7 +1591,9 @@ const [recipient, setRecipient] = useState('Andrei');
             {/* Personalizare generare (doar pentru kind cu samples) */}
             {kind !== 'occasion' && onGenerate && (
               <div className="pt-3 border-t border-dashed border-border/60 space-y-2">
-                <div className="text-xs font-medium text-muted-foreground uppercase">Personalizează mostra</div>
+                <div className="text-xs font-medium text-muted-foreground uppercase">
+                  Personalizează mostra <span className="text-[10px] normal-case text-muted-foreground/70">(aceleași câmpuri ca pe site)</span>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <Field label="Nume destinatar (în lyrics)">
                     <Input
@@ -1527,6 +1618,49 @@ const [recipient, setRecipient] = useState('Andrei');
                       </select>
                     </Field>
                   )}
+                  {kind === 'voice' && (
+                    <Field label="Stil muzical (mostra cântă vocea pe stilul ales)">
+                      <select
+                        value={styleOverride}
+                        onChange={(e) => setStyleOverride(e.target.value)}
+                        className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm"
+                      >
+                        <option value="">— primul din site —</option>
+                        {(site.styles ?? []).map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.nm || s.id}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
+                  <Field label="Ocazie">
+                    <select
+                      value={occasionOverride}
+                      onChange={(e) => setOccasionOverride(e.target.value)}
+                      className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm"
+                    >
+                      <option value="">— nespecificat —</option>
+                      {(site.occasions ?? []).map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.nm || o.id}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field
+                    label={`Sumă dedicație (${site.currency || 'RON'})`}
+                    description="Ajunge în prompt ca {{tipAmount}} {{currency}} — AI-ul îl țese în lyrics."
+                  >
+                    <Input
+                      type="number"
+                      min={0}
+                      step={100}
+                      value={tipAmountDraft}
+                      onChange={(e) => setTipAmountDraft(e.target.value)}
+                      placeholder="Ex: 1500"
+                    />
+                  </Field>
                 </div>
 
                 <Field label="Dedicație — expeditor (opțional)">
@@ -1534,6 +1668,18 @@ const [recipient, setRecipient] = useState('Andrei');
                     value={dedication}
                     onChange={(e) => setDedication(e.target.value)}
                     placeholder='Ex: "fratele tău Ionuț" — apare în deschidere ("De la <expeditor>, pentru <destinatar>")'
+                  />
+                </Field>
+
+                <Field
+                  label="Mesaj personal pentru destinatar"
+                  description={'Apare ca „Personal message to weave in" în prompt-ul Suno și ca {{message}} la writer-ul de versuri.'}
+                >
+                  <Textarea
+                    value={messageDraft}
+                    onChange={(e) => setMessageDraft(e.target.value)}
+                    rows={2}
+                    placeholder="Ex: La mulți ani, șefule! Să dea Domnu' să luăm bonus de Crăciun..."
                   />
                 </Field>
 
@@ -1555,6 +1701,12 @@ const [recipient, setRecipient] = useState('Andrei');
                     />
                   </Field>
                 )}
+
+                <Toggle
+                  label="Premium (durată ~60s, calitate full în loc de demo 20s)"
+                  value={premiumDraft}
+                  onChange={setPremiumDraft}
+                />
 
                 <div>
                   <div className="flex items-center justify-between mb-1">

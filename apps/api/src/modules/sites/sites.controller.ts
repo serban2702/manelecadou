@@ -207,21 +207,41 @@ export class AdminSiteSamplesController {
       customStylePrompt?: string;
       recipientName?: string;
       dedication?: string;
+      style?: string;
+      occasion?: string;
+      message?: string;
+      tipAmount?: number;
+      premium?: boolean;
     },
   ) {
     if (!body?.kind || !body?.key) {
       throw new BadRequestException('kind și key sunt obligatorii');
     }
-    const overrides =
-      body.voice || body.lyrics || body.customStylePrompt || body.recipientName || body.dedication
-        ? {
-            voice: body.voice,
-            lyrics: body.lyrics,
-            customStylePrompt: body.customStylePrompt,
-            recipientName: body.recipientName,
-            dedication: body.dedication,
-          }
-        : undefined;
+    const hasAnyOverride =
+      body.voice ||
+      body.lyrics ||
+      body.customStylePrompt ||
+      body.recipientName ||
+      body.dedication ||
+      body.style ||
+      body.occasion ||
+      body.message ||
+      typeof body.tipAmount === 'number' ||
+      typeof body.premium === 'boolean';
+    const overrides = hasAnyOverride
+      ? {
+          voice: body.voice,
+          lyrics: body.lyrics,
+          customStylePrompt: body.customStylePrompt,
+          recipientName: body.recipientName,
+          dedication: body.dedication,
+          style: body.style,
+          occasion: body.occasion,
+          message: body.message,
+          tipAmount: body.tipAmount,
+          premium: body.premium,
+        }
+      : undefined;
     const result = await this.samples.generateOne(id, body.kind, body.key, !!body.regenerate, overrides);
     return { ok: true, ...result };
   }
@@ -232,7 +252,18 @@ export class AdminSiteSamplesController {
   @HttpCode(200)
   async previewLyrics(
     @Param('id') id: string,
-    @Body() body: { kind: SampleKind; key: string; voice?: string; recipientName?: string; customStylePrompt?: string; dedication?: string },
+    @Body() body: {
+      kind: SampleKind;
+      key: string;
+      voice?: string;
+      recipientName?: string;
+      customStylePrompt?: string;
+      dedication?: string;
+      style?: string;
+      occasion?: string;
+      message?: string;
+      tipAmount?: number;
+    },
   ) {
     if (!body?.kind || !body?.key) {
       throw new BadRequestException('kind și key sunt obligatorii');
@@ -242,6 +273,10 @@ export class AdminSiteSamplesController {
       recipientName: body.recipientName,
       customStylePrompt: body.customStylePrompt,
       dedication: body.dedication,
+      style: body.style,
+      occasion: body.occasion,
+      message: body.message,
+      tipAmount: body.tipAmount,
     });
   }
 

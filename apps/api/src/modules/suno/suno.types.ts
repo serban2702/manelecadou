@@ -19,6 +19,9 @@ export interface SunoGenerateInput {
   requestType?: 'submit' | 'sample';
   /** Sex vocal — Suno acceptă 'm' sau 'f' direct. */
   vocalGender?: 'm' | 'f';
+  /** Grupă de vârstă a vocii — Suno nu primește direct, dar îl țesem în
+   *  descriptorul de stil (ex. „child male vocal", „elderly female vocal"). */
+  vocalAge?: 'child' | 'teen' | 'adult' | 'elder';
   /** PersonaId pre-existent (din /generate/generate-persona) pentru a forța
    *  consistență vocală cross-piese. Custom Mode only. */
   personaId?: string;

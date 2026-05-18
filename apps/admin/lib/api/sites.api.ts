@@ -117,6 +117,9 @@ export interface SiteVoiceEntry {
   sunoVoice?: string;
   /** Sex vocal — trimis ca vocalGender ('m'|'f') la Suno. */
   gender?: 'm' | 'f';
+  /** Grupă de vârstă vocală — țesut în tag-ul de stil Suno (child / teen /
+   *  adult / elder). Default adult = neutru. */
+  ageHint?: 'child' | 'teen' | 'adult' | 'elder';
   /** PersonaId Suno persistat. Când e setat, se aplică pe toate generările. */
   sunoPersonaId?: string;
   sunoPersonaName?: string;
@@ -171,6 +174,11 @@ export const SitesApi = {
       customStylePrompt?: string;
       recipientName?: string;
       dedication?: string;
+      style?: string;
+      occasion?: string;
+      message?: string;
+      tipAmount?: number;
+      premium?: boolean;
     },
   ) =>
     // Suno polling takes up to 6 min — overriding default 30s timeout. 8 min ca să avem buffer.
@@ -181,7 +189,18 @@ export const SitesApi = {
     ),
   previewSampleLyrics: (
     id: string,
-    body: { kind: 'style' | 'voice'; key: string; voice?: string; recipientName?: string; customStylePrompt?: string; dedication?: string },
+    body: {
+      kind: 'style' | 'voice';
+      key: string;
+      voice?: string;
+      recipientName?: string;
+      customStylePrompt?: string;
+      dedication?: string;
+      style?: string;
+      occasion?: string;
+      message?: string;
+      tipAmount?: number;
+    },
   ) =>
     // OpenAI lyrics writer + critic pot dura 30-60s. Bump la 90s.
     http.post<{ lyrics: string }>(`/admin/sites/${id}/samples/preview-lyrics`, body, {

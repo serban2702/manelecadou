@@ -20,6 +20,17 @@ export interface SampleOverrides {
   recipientName?: string;
   /** Numele expeditorului — apare în primele 2 rânduri cântate („De la X, pentru Y..."). */
   dedication?: string;
+  /** Cheia stilului — folosit la mostre de tip 'voice' ca să auzi vocea pe stilul ales
+   *  (default = primul stil din site.styles, fallback 'clasic'). */
+  style?: string;
+  /** Cheia ocaziei — ajunge ca „themed for X" în tag-ul Suno și `{{occasion}}` în lyrics. */
+  occasion?: string;
+  /** Mesaj personal de la expeditor pentru destinatar (text liber, max ~180 chars). */
+  message?: string;
+  /** Suma dedicată (în moneda site-ului) — ajunge ca `{{tipAmount}}` la lyrics writer. */
+  tipAmount?: number;
+  /** Toggle Premium — afectează durata și calitatea în generarea normală. */
+  premium?: boolean;
 }
 
 export const SAMPLE_STYLES = [
@@ -247,15 +258,28 @@ export class SiteSamplesService {
       : site;
 
     const fallbackStyle = site.styles?.[0]?.id ?? 'clasic';
+    // Pentru mostra de voce, userul poate alege și stilul (default = primul din site).
+    const effectiveStyle = kind === 'style'
+      ? key
+      : (overrides?.style?.trim() || fallbackStyle);
+    // Sex + vârstă vocală — din configul vocii (override site.voices[].gender/ageHint).
+    const voiceCfg = site.voices?.find((v) => v.id === voiceKey);
+    const vocalGender = voiceCfg?.gender ?? undefined;
+    const vocalAge = voiceCfg?.ageHint ?? undefined;
+    // Premium = 'full' (~60-90s) vs demo (~20s). Mostra de admin rămâne scurtă
+    // pentru cost, dar respectă flag-ul dacă userul vrea audio mai bun.
+    const premium = !!overrides?.premium;
     const base: SunoGenerateInput = {
-      type: 'demo',
-      durationSec: 20,
-      style: kind === 'style' ? key : fallbackStyle,
-      occasion: 'altul',
+      type: premium ? 'full' : 'demo',
+      durationSec: premium ? 60 : 20,
+      style: effectiveStyle,
+      occasion: overrides?.occasion?.trim() || 'altul',
       recipientName: overrides?.recipientName?.trim() || '',
       dedication: overrides?.dedication?.trim() || undefined,
-      message: '',
+      message: overrides?.message?.trim() || '',
       voiceArtist,
+      vocalGender,
+      vocalAge,
       lyrics,
       site: effectiveSite,
       requestType: 'sample',
@@ -322,14 +346,24 @@ export class SiteSamplesService {
     siteId: string,
     kind: SampleKind,
     key: string,
-    opts?: { recipientName?: string; voiceKey?: string; customStylePrompt?: string; dedication?: string },
+    opts?: {
+      recipientName?: string;
+      voiceKey?: string;
+      customStylePrompt?: string;
+      dedication?: string;
+      style?: string;
+      occasion?: string;
+      message?: string;
+      tipAmount?: number;
+    },
   ): Promise<{ lyrics: string }> {
     this.validateKey(kind, key);
     const site = await this.sites.findById(siteId);
     if (!site) throw new NotFoundException('Site negăsit');
 
-    const styleId = kind === 'style' ? key : 'clasic';
-    const voiceKey = opts?.voiceKey ?? (kind === 'voice' ? key : 'adi');
+    const fallbackStyle = site.styles?.[0]?.id ?? 'clasic';
+    const styleId = kind === 'style' ? key : (opts?.style?.trim() || fallbackStyle);
+    const voiceKey = opts?.voiceKey ?? (kind === 'voice' ? key : (site.voices?.[0]?.id ?? 'adi'));
     const voiceArtist = site.suno?.voiceMap?.[voiceKey] ?? voiceKey;
     // Hint stil: override custom (din UI) > stylePromptMap[key] din site > nimic.
     const styleHint =
@@ -337,10 +371,11 @@ export class SiteSamplesService {
 
     const baseInput = {
       style: styleId,
-      occasion: 'altul',
+      occasion: opts?.occasion?.trim() || 'altul',
       recipientName: opts?.recipientName?.trim() || '',
       dedication: opts?.dedication?.trim() || undefined,
-      message: '',
+      tipAmount: typeof opts?.tipAmount === 'number' && opts.tipAmount > 0 ? opts.tipAmount : undefined,
+      message: opts?.message?.trim() || '',
       voiceArtist,
       locale: site.locale,
       writerSystemPrompt: site.suno?.writerSystemPrompt,

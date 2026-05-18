@@ -273,10 +273,12 @@ export class SunoRealProvider extends SunoProvider {
    */
   private buildStyleTag(i: SunoGenerateInput, vocalGenderProvided = false): string {
     const siteSuno = i.site?.suno;
+    const ageHint = vocalAgeDescriptor(i.vocalAge);
     const styleOverride = siteSuno?.stylePromptMap?.[i.style];
     if (styleOverride) {
       const occasionHint = i.occasion ? `, themed for ${i.occasion}` : '';
-      return `${styleOverride}${occasionHint}`;
+      const ageTag = ageHint ? `, ${ageHint}` : '';
+      return `${styleOverride}${ageTag}${occasionHint}`;
     }
     // Bază obligatorie: scări orientale + instrumentație + vocal style autentic manele.
     // IMPORTANT: NU includem nume de artiști reali — Suno respinge tag-urile cu artist names
@@ -285,9 +287,10 @@ export class SunoRealProvider extends SunoProvider {
     //
     // Când vocalGender e setat explicit (parametru direct Suno), scoatem
     // "male vocal" hardcoded ca să nu intre în conflict cu cererea (ex. voce feminină).
+    const ageWord = ageHint ? `${ageHint} ` : '';
     const vocalDescriptor = vocalGenderProvided
-      ? 'ornamented melismatic vocal with heavy auto-tune, pitch slides and "of/aoleu" interjections'
-      : 'ornamented melismatic male vocal with heavy auto-tune, pitch slides and "of/aoleu" interjections';
+      ? `ornamented melismatic ${ageWord}vocal with heavy auto-tune, pitch slides and "of/aoleu" interjections`
+      : `ornamented melismatic ${ageWord}male vocal with heavy auto-tune, pitch slides and "of/aoleu" interjections`;
     const CORE = siteSuno?.basePrompt ??
       'Romanian MANELE (NOT pop, NOT EDM, NOT generic dance, NOT trap-rap), authentic balkan gypsy pop, classic Romanian wedding-band manele tradition (Pitești / București scene, late 90s through 2010s era), ' +
       `Hijaz Phrygian-dominant oriental scale, ${vocalDescriptor}, ` +
@@ -336,15 +339,20 @@ export class SunoRealProvider extends SunoProvider {
 
     const styleText = styleMap[i.style] ?? `${i.style} manele subgenre`;
     const occasionHint = i.occasion ? `, themed for ${i.occasion}` : '';
-    return `${CORE}, ${styleText}${occasionHint}`;
+    const ageTag = ageHint ? `, ${ageHint}` : '';
+    return `${CORE}, ${styleText}${ageTag}${occasionHint}`;
   }
 
   private buildSimplePrompt(i: SunoGenerateInput): string {
     const dedicationOpening = i.dedication
       ? `OPENING (must be sung CLEARLY in the first 5 seconds): "De la ${i.dedication}, pentru ${i.recipientName}".`
       : `OPENING (must be sung CLEARLY in the first 5 seconds): "Pentru ${i.recipientName}".`;
+    const ageHint = vocalAgeDescriptor(i.vocalAge);
+    const vocalLabel = ageHint
+      ? `melismatic auto-tuned ${ageHint} vocal`
+      : 'melismatic auto-tuned male vocal';
     const parts = [
-      `Authentic Romanian MANELE song (balkan gypsy pop, oriental Hijaz scale, darbuka, accordion, violin, melismatic auto-tuned male vocal) — subgenre: ${i.style}, occasion: ${i.occasion}.`,
+      `Authentic Romanian MANELE song (balkan gypsy pop, oriental Hijaz scale, darbuka, accordion, violin, ${vocalLabel}) — subgenre: ${i.style}, occasion: ${i.occasion}.`,
       dedicationOpening,
       i.message ? `Personal message to weave in: "${i.message.slice(0, 180)}"` : '',
       `Romanian language. Must sound like real Romanian manele, NOT pop, NOT EDM, NOT rap.`,
@@ -445,6 +453,22 @@ function modelLimits(model: string): {
 function truncate(s: string, max: number): string {
   if (!s) return s;
   return s.length <= max ? s : s.slice(0, max - 3) + '...';
+}
+
+/** Mapează `vocalAge` la un descriptor englez folosit în tag-ul de stil Suno.
+ *  Returnează gol pentru `adult` (sau lipsă) ca să păstrăm formularea default. */
+function vocalAgeDescriptor(age?: 'child' | 'teen' | 'adult' | 'elder'): string {
+  switch (age) {
+    case 'child':
+      return 'child';
+    case 'teen':
+      return 'teen';
+    case 'elder':
+      return 'elderly';
+    case 'adult':
+    default:
+      return '';
+  }
 }
 
 /** Scoate conținutul dintre paranteze pătrate (metadată Suno instrumentală) ca să
