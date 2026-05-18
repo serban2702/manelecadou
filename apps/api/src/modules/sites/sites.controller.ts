@@ -212,6 +212,8 @@ export class AdminSiteSamplesController {
       message?: string;
       tipAmount?: number;
       premium?: boolean;
+      vocalGender?: 'm' | 'f';
+      vocalAge?: 'child' | 'teen' | 'adult' | 'elder';
     },
   ) {
     if (!body?.kind || !body?.key) {
@@ -227,7 +229,9 @@ export class AdminSiteSamplesController {
       body.occasion ||
       body.message ||
       typeof body.tipAmount === 'number' ||
-      typeof body.premium === 'boolean';
+      typeof body.premium === 'boolean' ||
+      body.vocalGender ||
+      body.vocalAge;
     const overrides = hasAnyOverride
       ? {
           voice: body.voice,
@@ -240,6 +244,8 @@ export class AdminSiteSamplesController {
           message: body.message,
           tipAmount: body.tipAmount,
           premium: body.premium,
+          vocalGender: body.vocalGender,
+          vocalAge: body.vocalAge,
         }
       : undefined;
     const result = await this.samples.generateOne(id, body.kind, body.key, !!body.regenerate, overrides);

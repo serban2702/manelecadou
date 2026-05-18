@@ -179,6 +179,8 @@ export const SitesApi = {
       message?: string;
       tipAmount?: number;
       premium?: boolean;
+      vocalGender?: 'm' | 'f';
+      vocalAge?: 'child' | 'teen' | 'adult' | 'elder';
     },
   ) =>
     // Suno polling takes up to 6 min — overriding default 30s timeout. 8 min ca să avem buffer.

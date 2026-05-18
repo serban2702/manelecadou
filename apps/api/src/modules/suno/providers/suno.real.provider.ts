@@ -277,8 +277,9 @@ export class SunoRealProvider extends SunoProvider {
     const styleOverride = siteSuno?.stylePromptMap?.[i.style];
     if (styleOverride) {
       const occasionHint = i.occasion ? `, themed for ${i.occasion}` : '';
-      const ageTag = ageHint ? `, ${ageHint}` : '';
-      return `${styleOverride}${ageTag}${occasionHint}`;
+      const rewritten = applyVocalAge(styleOverride, ageHint);
+      const prefix = vocalAgePrefix(ageHint);
+      return `${prefix}${rewritten}${occasionHint}`;
     }
     // Bază obligatorie: scări orientale + instrumentație + vocal style autentic manele.
     // IMPORTANT: NU includem nume de artiști reali — Suno respinge tag-urile cu artist names
@@ -291,11 +292,12 @@ export class SunoRealProvider extends SunoProvider {
     const vocalDescriptor = vocalGenderProvided
       ? `ornamented melismatic ${ageWord}vocal with heavy auto-tune, pitch slides and "of/aoleu" interjections`
       : `ornamented melismatic ${ageWord}male vocal with heavy auto-tune, pitch slides and "of/aoleu" interjections`;
-    const CORE = siteSuno?.basePrompt ??
-      'Romanian MANELE (NOT pop, NOT EDM, NOT generic dance, NOT trap-rap), authentic balkan gypsy pop, classic Romanian wedding-band manele tradition (Pitești / București scene, late 90s through 2010s era), ' +
-      `Hijaz Phrygian-dominant oriental scale, ${vocalDescriptor}, ` +
-      'darbuka derbeke percussion, finger cymbals, oriental synth lead (Korg Pa keyboard, taksim), ' +
-      'accordion runs, violin glissando, clarinet trills, deep dumbek kick, fast hi-hat triplets, Romanian language';
+    const CORE = siteSuno?.basePrompt
+      ? applyVocalAge(siteSuno.basePrompt, ageHint)
+      : 'Romanian MANELE (NOT pop, NOT EDM, NOT generic dance, NOT trap-rap), authentic balkan gypsy pop, classic Romanian wedding-band manele tradition (Pitești / București scene, late 90s through 2010s era), ' +
+        `Hijaz Phrygian-dominant oriental scale, ${vocalDescriptor}, ` +
+        'darbuka derbeke percussion, finger cymbals, oriental synth lead (Korg Pa keyboard, taksim), ' +
+        'accordion runs, violin glissando, clarinet trills, deep dumbek kick, fast hi-hat triplets, Romanian language';
 
     const styleMap: Record<string, string> = {
       clasic:
@@ -337,10 +339,11 @@ export class SunoRealProvider extends SunoProvider {
         'accordion and violin trade solos, hand claps, glasses clinking, celebratory shouts, 100 BPM',
     };
 
-    const styleText = styleMap[i.style] ?? `${i.style} manele subgenre`;
+    const rawStyleText = styleMap[i.style] ?? `${i.style} manele subgenre`;
+    const styleText = applyVocalAge(rawStyleText, ageHint);
     const occasionHint = i.occasion ? `, themed for ${i.occasion}` : '';
-    const ageTag = ageHint ? `, ${ageHint}` : '';
-    return `${CORE}, ${styleText}${ageTag}${occasionHint}`;
+    const prefix = vocalAgePrefix(ageHint);
+    return `${prefix}${CORE}, ${styleText}${occasionHint}`;
   }
 
   private buildSimplePrompt(i: SunoGenerateInput): string {
@@ -349,10 +352,11 @@ export class SunoRealProvider extends SunoProvider {
       : `OPENING (must be sung CLEARLY in the first 5 seconds): "Pentru ${i.recipientName}".`;
     const ageHint = vocalAgeDescriptor(i.vocalAge);
     const vocalLabel = ageHint
-      ? `melismatic auto-tuned ${ageHint} vocal`
+      ? `melismatic auto-tuned ${ageHint} vocal (singer is a ${ageHint}, NOT an adult)`
       : 'melismatic auto-tuned male vocal';
+    const prefix = vocalAgePrefix(ageHint);
     const parts = [
-      `Authentic Romanian MANELE song (balkan gypsy pop, oriental Hijaz scale, darbuka, accordion, violin, ${vocalLabel}) — subgenre: ${i.style}, occasion: ${i.occasion}.`,
+      `${prefix}Authentic Romanian MANELE song (balkan gypsy pop, oriental Hijaz scale, darbuka, accordion, violin, ${vocalLabel}) — subgenre: ${i.style}, occasion: ${i.occasion}.`,
       dedicationOpening,
       i.message ? `Personal message to weave in: "${i.message.slice(0, 180)}"` : '',
       `Romanian language. Must sound like real Romanian manele, NOT pop, NOT EDM, NOT rap.`,
@@ -469,6 +473,51 @@ function vocalAgeDescriptor(age?: 'child' | 'teen' | 'adult' | 'elder'): string 
     default:
       return '';
   }
+}
+
+/**
+ * Prepend directiv de vârstă în fața tag-ului de stil Suno. Trebuie să fie
+ * FOARTE explicit și prima propoziție pentru ca Suno să nu cadă în default-ul
+ * de „adult male vocal" indus de restul descrierii.
+ */
+function vocalAgePrefix(age: string): string {
+  if (!age) return '';
+  const detailed: Record<string, string> = {
+    child:
+      'CRITICAL: singer is a CHILD (age 7-10), prepubescent, high-pitched untrained child vocal, NOT an adult voice, light innocent timbre. ',
+    teen:
+      'CRITICAL: singer is a TEENAGER (age 13-16), young adolescent vocal, thin youthful timbre, NOT a mature adult voice. ',
+    elderly:
+      'CRITICAL: singer is ELDERLY (age 65+), aged worn voice with natural tremolo, slightly hoarse, weathered timbre. ',
+  };
+  return detailed[age] ?? '';
+}
+
+/**
+ * Rescrie un tag de stil (basePrompt sau stylePromptMap[style]) ca să înlocuiască
+ * descriptorii vocal-adulti („male vocal", „female vocal", „vocal") cu varianta
+ * age-adjusted. Necesar fiindcă Suno urmează descriptorii proeminenți din prompt
+ * — un simplu tag „child" la final nu îl forțează să schimbe vârsta vocii.
+ */
+function applyVocalAge(text: string, age: string): string {
+  if (!age || !text) return text;
+  // Înlocuiește „male vocal" / „female vocal" / „male voice" / „female voice"
+  // cu varianta prefixată. Group 1 e age modifier opțional + spațiul lui — așa
+  // nu mâncăm spațiul precedent când modifier-ul lipsește.
+  const re =
+    /\b(?:(child|teen|teenage|young|elderly|elder|aged)\s+)?(male|female)\s+(vocal|voice|singer)\b/gi;
+  let mutated = text.replace(re, (_m, pre, gender, kind) => {
+    if (pre) return `${pre} ${gender} ${kind}`; // deja prefixat — păstrăm
+    return `${age} ${gender} ${kind}`;
+  });
+  // Descriptori gender-neutri („vocal", „vocals", „singer") fără modifier înainte.
+  // Adăugăm prefix age doar dacă text-ul nu pomenește deja age-ul (anti-dublu-prefixare).
+  if (!new RegExp(`\\b${age}\\b`, 'i').test(mutated)) {
+    const reNeutral =
+      /\b(?<!(?:child|teen|teenage|young|elderly|elder|aged|male|female)\s)(vocals?|singer)\b/gi;
+    mutated = mutated.replace(reNeutral, `${age} $1`);
+  }
+  return mutated;
 }
 
 /** Scoate conținutul dintre paranteze pătrate (metadată Suno instrumentală) ca să

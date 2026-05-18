@@ -31,6 +31,10 @@ export interface SampleOverrides {
   tipAmount?: number;
   /** Toggle Premium — afectează durata și calitatea în generarea normală. */
   premium?: boolean;
+  /** Override sex vocal pentru această mostră (independent de voiceCfg.gender persistat). */
+  vocalGender?: 'm' | 'f';
+  /** Override grupă de vârstă vocală (independent de voiceCfg.ageHint persistat). */
+  vocalAge?: 'child' | 'teen' | 'adult' | 'elder';
 }
 
 export const SAMPLE_STYLES = [
@@ -262,10 +266,13 @@ export class SiteSamplesService {
     const effectiveStyle = kind === 'style'
       ? key
       : (overrides?.style?.trim() || fallbackStyle);
-    // Sex + vârstă vocală — din configul vocii (override site.voices[].gender/ageHint).
+    // Sex + vârstă vocală — override per-mostră > config voce persistată > undefined.
+    // Override-ul e necesar fiindcă schimbările din editor pe gender/ageHint nu se
+    // auto-salvează — userul ar putea seta „Copil" în UI dar baza de date încă să
+    // aibă valoarea veche când mostra e generată. Override-ul rezolvă asta.
     const voiceCfg = site.voices?.find((v) => v.id === voiceKey);
-    const vocalGender = voiceCfg?.gender ?? undefined;
-    const vocalAge = voiceCfg?.ageHint ?? undefined;
+    const vocalGender = overrides?.vocalGender ?? voiceCfg?.gender ?? undefined;
+    const vocalAge = overrides?.vocalAge ?? voiceCfg?.ageHint ?? undefined;
     // Premium = 'full' (~60-90s) vs demo (~20s). Mostra de admin rămâne scurtă
     // pentru cost, dar respectă flag-ul dacă userul vrea audio mai bun.
     const premium = !!overrides?.premium;
