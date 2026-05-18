@@ -120,6 +120,36 @@ export interface SiteSampleEntry {
 }
 
 /**
+ * Default-uri persistate pentru formularul „Personalizează mostra" din admin.
+ * Salvate per-entry (stil sau voce) la apăsarea „Salvează modificările" —
+ * la reîncărcare, formularul se completează cu ultimele valori folosite.
+ *
+ * NU se exportă în public/site, NU influențează generatorul user-facing —
+ * sunt strict pentru a păstra context-ul admin între sesiuni.
+ */
+export interface SiteSampleDefaults {
+  recipient?: string;
+  dedication?: string;
+  message?: string;
+  /** Cheia ocaziei (id din site.occasions). */
+  occasion?: string;
+  tipAmount?: number;
+  premium?: boolean;
+  /** Cheia stilului — folosit doar la mostra de voce. */
+  style?: string;
+  /** Cheia vocii — folosit doar la mostra de stil. */
+  voice?: string;
+  /** Override vocalGender pentru mostră. */
+  gender?: 'm' | 'f';
+  /** Hint AI pentru lyrics writer (override la lyricsHint default de pe stil). */
+  aiHint?: string;
+  /** Prompt Suno temporar (override la sunoPrompt default de pe stil). */
+  sunoPromptDraft?: string;
+  /** Versuri custom (cu Suno tags). Dacă e setat, sare peste lyrics auto. */
+  lyrics?: string;
+}
+
+/**
  * Stil muzical configurabil per-site. `id` = cheia stabilă folosită în URL-uri
  * și mostre audio (nu se schimbă după ce e setată). Restul câmpurilor sunt
  * pentru afișare + integrarea cu Suno/OpenAI.
@@ -156,6 +186,8 @@ export interface SiteStyleEntry {
   /** Tag-uri / genuri de exclus, CSV. Ex: "pop, EDM, trap-rap, rap". Mai eficient
    *  decât a scrie „NOT pop" în prompt-ul pozitiv. */
   negativeTags?: string;
+  /** Default-uri persistate pentru formularul „Personalizează mostra" din admin. */
+  sampleDefaults?: SiteSampleDefaults;
 }
 
 export interface SiteVoiceEntry {
@@ -183,6 +215,8 @@ export interface SiteVoiceEntry {
   sunoPersonaSourceAudioId?: string;
   /** Data generării persona-ului (ISO). */
   sunoPersonaCreatedAt?: string;
+  /** Default-uri persistate pentru formularul „Personalizează mostra" din admin. */
+  sampleDefaults?: SiteSampleDefaults;
 }
 
 export interface SiteOccasionEntry {

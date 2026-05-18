@@ -105,6 +105,24 @@ export interface SiteStyleEntry {
   weirdnessConstraint?: number;
   /** Tag-uri de exclus (CSV). */
   negativeTags?: string;
+  /** Default-uri persistate pentru „Personalizează mostra" din admin. */
+  sampleDefaults?: SiteSampleDefaults;
+}
+
+/** Default-uri persistate pentru formularul „Personalizează mostra" din admin. */
+export interface SiteSampleDefaults {
+  recipient?: string;
+  dedication?: string;
+  message?: string;
+  occasion?: string;
+  tipAmount?: number;
+  premium?: boolean;
+  style?: string;
+  voice?: string;
+  gender?: 'm' | 'f';
+  aiHint?: string;
+  sunoPromptDraft?: string;
+  lyrics?: string;
 }
 
 export interface SiteVoiceEntry {
@@ -123,6 +141,8 @@ export interface SiteVoiceEntry {
   sunoPersonaSourceTaskId?: string;
   sunoPersonaSourceAudioId?: string;
   sunoPersonaCreatedAt?: string;
+  /** Default-uri persistate pentru „Personalizează mostra" din admin. */
+  sampleDefaults?: SiteSampleDefaults;
 }
 
 export interface SiteOccasionEntry {

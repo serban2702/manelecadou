@@ -27,6 +27,7 @@ import {
   type SampleStatusDto,
   type SiteDto,
   type SiteOccasionEntry,
+  type SiteSampleDefaults,
   type SiteStyleEntry,
   type SiteVoiceEntry,
   ALL_SITES,
@@ -1234,56 +1235,37 @@ function CategoryRow({
   onUpload?: (file: File) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [recipient, setRecipient] = useState('Andrei');
-  const [dedication, setDedication] = useState('');
-  const [voiceOverride, setVoiceOverride] = useState<string>('');
-  // Câmpuri noi (paritate cu Generator-ul de pe site): style, occasion, message,
-  // tipAmount, premium. Folosite atât la previewLyrics (AI) cât și la generarea
-  // mostrei audio prin Suno.
-  const [styleOverride, setStyleOverride] = useState<string>(
-    // La mostra de voce, default = primul stil din site (sau gol).
-    kind === 'voice' ? (site.styles?.[0]?.id ?? '') : '',
-  );
-  const [occasionOverride, setOccasionOverride] = useState<string>(
-    site.occasions?.[0]?.id ?? '',
-  );
-  const [messageDraft, setMessageDraft] = useState<string>('');
-  const [tipAmountDraft, setTipAmountDraft] = useState<string>('');
-  const [premiumDraft, setPremiumDraft] = useState<boolean>(false);
-  // Override vocal gender — pre-completat din entry (dacă e voce) ca să nu depindă
-  // de „Salvează modificările". Schimbarea aici NU modifică entry-ul persistat.
-  const [genderOverride, setGenderOverride] = useState<'' | 'm' | 'f'>(
-    kind === 'voice' ? ((entry as SiteVoiceEntry).gender ?? '') : '',
-  );
-  // Sincronizează când entry-ul își schimbă referința (după save / refresh).
-  useEffect(() => {
-    if (kind === 'voice') {
-      setGenderOverride((entry as SiteVoiceEntry).gender ?? '');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [(entry as SiteVoiceEntry).gender, kind]);
-  const [aiHint, setAiHint] = useState<string>(
-    kind === 'style' ? (entry as SiteStyleEntry).lyricsHint ?? '' : '',
-  );
-  const [sunoPromptDraft, setSunoPromptDraft] = useState<string>(
-    kind === 'style' ? (entry as SiteStyleEntry).sunoPrompt ?? '' : '',
-  );
-  const [lyrics, setLyrics] = useState('');
   const [lyricsBusy, setLyricsBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { toast: rowToast } = useToast();
 
-  useEffect(() => {
-    if (kind === 'style') {
-      setSunoPromptDraft((entry as SiteStyleEntry).sunoPrompt ?? '');
-    }
-  }, [(entry as SiteStyleEntry).sunoPrompt, kind]);
+  // Toate inputurile din „Personalizează mostra" sunt persistate pe entry.sampleDefaults.
+  // Modificările sunt salvate doar când userul apasă „Salvează modificările" (parent form),
+  // exact ca celelalte câmpuri editabile ale entry-ului.
+  const sd = (entry as SiteStyleEntry | SiteVoiceEntry).sampleDefaults ?? {};
+  const updSampleDefaults = (patch: Partial<SiteSampleDefaults>) => {
+    onChange({
+      sampleDefaults: { ...sd, ...patch },
+    } as Partial<SiteStyleEntry & SiteVoiceEntry & SiteOccasionEntry>);
+  };
 
-  useEffect(() => {
-    if (kind === 'style') {
-      setAiHint((prev) => prev || (entry as SiteStyleEntry).lyricsHint || '');
-    }
-  }, [(entry as SiteStyleEntry).lyricsHint, kind]);
+  // Valori efective afișate (cu fallback la entity-level defaults sau preset).
+  const recipient = sd.recipient ?? 'Andrei';
+  const dedication = sd.dedication ?? '';
+  const voiceOverride = sd.voice ?? '';
+  const styleOverride =
+    sd.style ?? (kind === 'voice' ? site.styles?.[0]?.id ?? '' : '');
+  const occasionOverride = sd.occasion ?? (site.occasions?.[0]?.id ?? '');
+  const messageDraft = sd.message ?? '';
+  const tipAmountDraft = sd.tipAmount != null ? String(sd.tipAmount) : '';
+  const premiumDraft = sd.premium ?? false;
+  const genderOverride: '' | 'm' | 'f' =
+    sd.gender ?? (kind === 'voice' ? (entry as SiteVoiceEntry).gender ?? '' : '');
+  const aiHint =
+    sd.aiHint ?? (kind === 'style' ? (entry as SiteStyleEntry).lyricsHint ?? '' : '');
+  const sunoPromptDraft =
+    sd.sunoPromptDraft ?? (kind === 'style' ? (entry as SiteStyleEntry).sunoPrompt ?? '' : '');
+  const lyrics = sd.lyrics ?? '';
 
   const status: 'present' | 'generating' | 'missing' = !sample
     ? 'missing'
@@ -1294,11 +1276,10 @@ function CategoryRow({
         : 'missing';
 
   function parseTipAmount(): number | undefined {
-    const trimmed = tipAmountDraft.trim();
-    if (!trimmed) return undefined;
-    const n = Number(trimmed);
-    if (!Number.isFinite(n) || n <= 0) return undefined;
-    return Math.floor(n);
+    if (typeof sd.tipAmount === 'number' && sd.tipAmount > 0) {
+      return Math.floor(sd.tipAmount);
+    }
+    return undefined;
   }
 
   async function generateLyricsWithAI() {
@@ -1317,7 +1298,7 @@ function CategoryRow({
         message: messageDraft.trim() || undefined,
         tipAmount: parseTipAmount(),
       });
-      setLyrics(res.lyrics);
+      updSampleDefaults({ lyrics: res.lyrics });
       rowToast({ variant: 'success', title: 'Lyrics generate', description: 'Editează apoi „Generează audio".' });
     } catch (err) {
       rowToast({ variant: 'destructive', title: 'Eroare AI', description: (err as Error).message });
@@ -1589,7 +1570,7 @@ function CategoryRow({
                   <Field label="Nume destinatar (în lyrics)">
                     <Input
                       value={recipient}
-                      onChange={(e) => setRecipient(e.target.value)}
+                      onChange={(e) => updSampleDefaults({ recipient: e.target.value })}
                       placeholder="Ex: Andrei, Mariana, Costel..."
                     />
                   </Field>
@@ -1597,7 +1578,7 @@ function CategoryRow({
                     <Field label="Voce override (gol = default)">
                       <select
                         value={voiceOverride}
-                        onChange={(e) => setVoiceOverride(e.target.value)}
+                        onChange={(e) => updSampleDefaults({ voice: e.target.value || undefined })}
                         className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm"
                       >
                         <option value="">— default —</option>
@@ -1613,7 +1594,7 @@ function CategoryRow({
                     <Field label="Stil muzical (mostra cântă vocea pe stilul ales)">
                       <select
                         value={styleOverride}
-                        onChange={(e) => setStyleOverride(e.target.value)}
+                        onChange={(e) => updSampleDefaults({ style: e.target.value || undefined })}
                         className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm"
                       >
                         <option value="">— primul din site —</option>
@@ -1628,7 +1609,7 @@ function CategoryRow({
                   <Field label="Ocazie">
                     <select
                       value={occasionOverride}
-                      onChange={(e) => setOccasionOverride(e.target.value)}
+                      onChange={(e) => updSampleDefaults({ occasion: e.target.value || undefined })}
                       className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm"
                     >
                       <option value="">— nespecificat —</option>
@@ -1648,7 +1629,17 @@ function CategoryRow({
                       min={0}
                       step={100}
                       value={tipAmountDraft}
-                      onChange={(e) => setTipAmountDraft(e.target.value)}
+                      onChange={(e) => {
+                        const v = e.target.value.trim();
+                        if (!v) {
+                          updSampleDefaults({ tipAmount: undefined });
+                          return;
+                        }
+                        const n = Number(v);
+                        updSampleDefaults({
+                          tipAmount: Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined,
+                        });
+                      }}
                       placeholder="Ex: 1500"
                     />
                   </Field>
@@ -1659,7 +1650,11 @@ function CategoryRow({
                     >
                       <select
                         value={genderOverride}
-                        onChange={(e) => setGenderOverride(e.target.value as '' | 'm' | 'f')}
+                        onChange={(e) =>
+                          updSampleDefaults({
+                            gender: (e.target.value || undefined) as 'm' | 'f' | undefined,
+                          })
+                        }
                         className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm"
                       >
                         <option value="">Auto (Suno alege)</option>
@@ -1673,7 +1668,7 @@ function CategoryRow({
                 <Field label="Dedicație — expeditor (opțional)">
                   <Input
                     value={dedication}
-                    onChange={(e) => setDedication(e.target.value)}
+                    onChange={(e) => updSampleDefaults({ dedication: e.target.value })}
                     placeholder='Ex: "fratele tău Ionuț" — apare în deschidere ("De la <expeditor>, pentru <destinatar>")'
                   />
                 </Field>
@@ -1684,7 +1679,7 @@ function CategoryRow({
                 >
                   <Textarea
                     value={messageDraft}
-                    onChange={(e) => setMessageDraft(e.target.value)}
+                    onChange={(e) => updSampleDefaults({ message: e.target.value })}
                     rows={2}
                     placeholder="Ex: La mulți ani, șefule! Să dea Domnu' să luăm bonus de Crăciun..."
                   />
@@ -1693,17 +1688,17 @@ function CategoryRow({
                 <Field label="Hint AI pentru versuri (opțional)">
                   <Textarea
                     value={aiHint}
-                    onChange={(e) => setAiHint(e.target.value)}
+                    onChange={(e) => updSampleDefaults({ aiHint: e.target.value })}
                     rows={2}
                     placeholder="Ex: manea de jale despre dor, vocabular cu lacrimi/inimă, ritm liric lent"
                   />
                 </Field>
 
                 {kind === 'style' && (
-                  <Field label="Prompt Suno temporar (pentru această mostră — nu se salvează)">
+                  <Field label="Prompt Suno temporar (override pentru această mostră)">
                     <Textarea
                       value={sunoPromptDraft}
-                      onChange={(e) => setSunoPromptDraft(e.target.value)}
+                      onChange={(e) => updSampleDefaults({ sunoPromptDraft: e.target.value })}
                       rows={2}
                     />
                   </Field>
@@ -1712,7 +1707,7 @@ function CategoryRow({
                 <Toggle
                   label="Premium (durată ~60s, calitate full în loc de demo 20s)"
                   value={premiumDraft}
-                  onChange={setPremiumDraft}
+                  onChange={(v) => updSampleDefaults({ premium: v })}
                 />
 
                 <div>
@@ -1725,7 +1720,7 @@ function CategoryRow({
                   </div>
                   <Textarea
                     value={lyrics}
-                    onChange={(e) => setLyrics(e.target.value)}
+                    onChange={(e) => updSampleDefaults({ lyrics: e.target.value })}
                     rows={6}
                     className="font-mono text-xs"
                     placeholder={`Lasă gol = demo auto în limba site-ului (${site.locale}).`}
