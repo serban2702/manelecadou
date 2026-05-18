@@ -54,6 +54,11 @@
     "body": "Koristimo kolačiće za tvoju sesiju, prijavu, plaćanja (Stripe), analitiku i personalizovane reklame. Svi su neophodni za potpuno funkcioniranje. Detalji na stranici <a>Kolačići</a>.",
     "accept": "Razumijem, nastavi 👑"
   },
+  "cookieBanner": {
+    "body": "Koristimo kolačiće i prikupljamo podatke o korištenju (sesija, uređaj, približna lokacija) kako bismo poboljšali iskustvo i izmjerili učinak kampanja. Detalji u <a>Politici privatnosti</a>.",
+    "accept": "Prihvati",
+    "decline": "Odbij"
+  },
   "footer": {
     "tagline": "AI generator pjesama. Izmišljeni, parodijski glasovi. Ne predstavljaju prave izvođače. 🛡️ Jednokratno plaćanje, bez pretplate.",
     "links": {

@@ -54,6 +54,11 @@
     "body": "Oturumun, girişin, ödemelerin (Stripe), analitiğin ve kişiselleştirilmiş reklamlar için çerez kullanıyoruz. Hepsi sitenin tam çalışması için gerekli. Detaylar <a>Çerezler</a> sayfasında.",
     "accept": "Anladım, devam et 👑"
   },
+  "cookieBanner": {
+    "body": "Deneyimi iyileştirmek ve kampanya performansını ölçmek için çerezler kullanıyor ve kullanım verileri (oturum, cihaz, yaklaşık konum) topluyoruz. Ayrıntılar <a>Gizlilik Politikası</a> sayfasında.",
+    "accept": "Kabul",
+    "decline": "Reddet"
+  },
   "footer": {
     "tagline": "AI şarkı üretici. Kurgusal, parodi sesler. Gerçek sanatçıları temsil etmez. 🛡️ Tek seferlik ödeme, abonelik yok.",
     "links": {

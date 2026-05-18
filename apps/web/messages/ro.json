@@ -53,6 +53,11 @@
     "body": "Folosim cookie-uri pentru sesiunea ta, autentificare, plăți (Stripe), analytics și reclame personalizate. Toate sunt necesare pentru funcționarea completă a site-ului. Detalii pe pagina <a>Cookies</a>.",
     "accept": "Am înțeles, continuă 👑"
   },
+  "cookieBanner": {
+    "body": "Folosim cookie-uri și colectăm date de utilizare (sesiune, dispozitiv, geo aproximativ) pentru a îmbunătăți experiența și a măsura performanța campaniilor. Detalii în <a>Politica de confidențialitate</a>.",
+    "accept": "Accept",
+    "decline": "Refuz"
+  },
   "footer": {
     "tagline": "Generator de manele cu AI. Voci fictive, parodice. Nu reprezintă artiști reali. 🛡️ Plată unică, fără abonament.",
     "links": {
