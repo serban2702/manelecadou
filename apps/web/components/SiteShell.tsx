@@ -8,6 +8,7 @@ import { Cookie, Footer, LiveFeed } from './sections';
 import { ChatWidget } from './ChatWidget';
 import { RouletteWheel } from './RouletteWheel';
 import { LangSwitcher } from './LangSwitcher';
+import { CountrySwitcher } from './CountrySwitcher';
 import { MyGenerationsCounter } from './MyGenerationsCounter';
 import { useSession } from '@/lib/providers';
 import { useSite } from '@/lib/site-context';
@@ -85,6 +86,7 @@ export function SiteShell({ children, hideStickyCta }: { children: ReactNode; hi
           </nav>
           <div className="hdr-right" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <MyGenerationsCounter />
+            <CountrySwitcher />
             <LangSwitcher />
             {session.user ? (
               <Link href="/cont" className="lang-btn" style={{ textDecoration: 'none' }}>

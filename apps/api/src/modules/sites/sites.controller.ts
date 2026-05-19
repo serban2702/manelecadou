@@ -10,10 +10,35 @@ import { SiteSamplesService, SAMPLE_STYLES, SAMPLE_VOICES, SampleKind } from './
 // Public: returnează configul site-ului curent (rezolvat din Host) — folosit de web app
 @Controller('public/site')
 export class PublicSiteController {
+  constructor(private readonly sites: SitesService) {}
+
   @Get()
   current(@Req() req: Request) {
     if (!req.site) throw new NotFoundException('Site neconfigurat');
     return this.serialize(req.site, /* publicOnly */ true, req);
+  }
+
+  /**
+   * Listă de țări disponibile pentru selector-ul din topbar.
+   * Pentru fiecare locale activ + ne-hidden, întoarce site-ul cel mai vechi
+   * (după createdAt). O singură intrare per țară — click → redirect la domeniul ei.
+   */
+  @Get('countries')
+  async countries() {
+    const all = await this.sites.listAll();
+    const visible = all.filter((s) => s.active && !s.hiddenMode);
+    const oldestByLocale = new Map<string, Site>();
+    for (const s of visible) {
+      const existing = oldestByLocale.get(s.locale);
+      if (!existing || s.createdAt.getTime() < existing.createdAt.getTime()) {
+        oldestByLocale.set(s.locale, s);
+      }
+    }
+    return Array.from(oldestByLocale.values()).map((s) => ({
+      locale: s.locale,
+      domain: s.domain,
+      name: s.name,
+    }));
   }
 
   private serialize(site: Site, publicOnly: boolean, req: Request) {
