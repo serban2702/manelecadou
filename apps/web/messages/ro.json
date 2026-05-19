@@ -458,5 +458,144 @@
     "spinButton": "Învârte roata",
     "cooldownError": "Ai folosit deja roata. Încearcă peste 7 zile.",
     "genericError": "Eroare. Încearcă din nou."
+  },
+  "legal": {
+    "terms": {
+      "title": "Termeni și condiții",
+      "lastUpdate": "Ultima actualizare: 1 mai 2026",
+      "sec1": {
+        "h": "1. Părțile contractante",
+        "p": "Acest site ({domain}) este operat de <b>{legalName}</b>{regSuffix}{addressSuffix}.",
+        "regSuffix": ", înregistrată la Registrul Comerțului sub numărul {regCom}, CUI {cui}",
+        "addressSuffix": ", cu sediul în {address}"
+      },
+      "sec2": {
+        "h": "2. Despre serviciu",
+        "p1": "Oferim un serviciu de generare de manele cu inteligență artificială. Tu introduci stilul, ocazia, mesajul, vocea — noi îți întoarcem 1-2 piese audio MP3 generate automat.",
+        "p2": "<b>Important:</b> toate vocile sunt sintetice (AI). Numele artiștilor (Florinel de Aur, Adi Șampanie, etc.) sunt fictive și parodice. Nu reprezentăm artiști reali, vii sau decedați."
+      },
+      "sec3": {
+        "h": "3. Prețuri și plăți",
+        "b1": "Demo gratuit: 30 secunde, 1 per cont/sesiune.",
+        "b2": "Manea completă: <b>{fullPrice}</b> (TVA inclus).",
+        "b3": "Suprataxă dedicație: 10% din suma menționată în versuri, plafonată la 150 lei (doar pentru lei).",
+        "b4": "Plățile se procesează prin Stripe — nu stocăm datele cardului."
+      },
+      "sec4": {
+        "h": "4. Drepturi de utilizare",
+        "p": "Maneaua îți aparține pentru utilizare personală: o poți asculta, descărca, da pe TikTok, pune pe Story. Pentru utilizare comercială (reclame plătite, monetizare YouTube etc.), contactează-ne la <a>{email}</a>."
+      },
+      "sec5": {
+        "h": "5. Conținut interzis",
+        "intro": "Nu generăm manele cu:",
+        "b1": "Insulte rasiale, etnice, religioase",
+        "b2": "Amenințări sau apeluri la violență",
+        "b3": "Conținut sexual explicit",
+        "b4": "Identitate furată (impersonare a unei persoane reale fără consimțământ)",
+        "out": "Ne rezervăm dreptul de a refuza generarea și de a returna banii pentru request-uri neconforme."
+      },
+      "sec6": {
+        "h": "6. Returnare",
+        "p": "Conform OUG 34/2014 art. 16(m), produsele digitale customizate (cum sunt manelele tale unicat) <b>nu pot fi returnate</b> după livrare. Excepție: dacă maneaua are defect tehnic, o regenerăm gratis sau returnăm banii la cerere."
+      },
+      "sec7": {
+        "h": "7. Limitarea răspunderii",
+        "p": "AI-ul poate genera versuri ne-conforme cu intenția ta. Te rugăm să citești versurile înainte să le distribui public. Nu suntem răspunzători pentru daune indirecte rezultate din folosirea maneluței în context inadecvat."
+      },
+      "sec8": {
+        "h": "8. Litigii",
+        "p": "Litigiile se rezolvă pe cale amiabilă. În caz de eșec, competența aparține instanțelor române. Pentru consumatori: ANPC — <a>anpc.ro</a>."
+      }
+    },
+    "privacy": {
+      "title": "Politica de confidențialitate",
+      "lead": "Cum tratăm datele tale (GDPR-friendly).",
+      "sec1": {
+        "h": "1. Cine colectează datele",
+        "p": "Operatorul de date este <b>{legalName}</b>{cuiSuffix}. Pentru orice întrebare sau cerere GDPR (acces, ștergere, portabilitate): <a>{dpoEmail}</a>.",
+        "cuiSuffix": ", CUI {cui}"
+      },
+      "sec2": {
+        "h": "2. Ce date colectăm",
+        "b1": "<b>Email-ul tău</b> — pentru a-ți livra maneaua și pentru autentificare.",
+        "b2": "<b>ID de sesiune guest</b> (UUID anonim) — în localStorage, ne ajută să-ți reținem starea fără cont.",
+        "b3": "<b>Conținutul request-ului</b> (nume destinatar, mesaj, stil) — folosit doar pentru a genera maneaua ta.",
+        "b4": "<b>Date tehnice</b> (IP, browser, timestamp) — pentru securitate și prevenirea abuzului.",
+        "b5": "<b>Plăți</b> — Stripe procesează cardul. Noi vedem doar statusul (paid/failed) și suma."
+      },
+      "sec3": {
+        "h": "3. Pentru ce le folosim",
+        "b1": "Livrarea serviciului (generare manea + email).",
+        "b2": "Suport tehnic și răspuns la întrebări.",
+        "b3": "Statistici agregate, fără date personale.",
+        "b4": "Combaterea abuzului (rate-limit, ban).",
+        "out": "Nu vindem datele tale. Niciodată."
+      },
+      "sec4": {
+        "h": "4. Cât timp le păstrăm",
+        "b1": "Maneaua + request-ul: 12 luni de la generare, apoi se șterg.",
+        "b2": "Email-ul de cont: până ceri ștergerea contului.",
+        "b3": "Documente fiscale (facturi): 10 ani (obligație legală)."
+      },
+      "sec5": {
+        "h": "5. Drepturile tale",
+        "intro": "Conform GDPR, ai dreptul la:",
+        "b1": "Acces la datele tale (export complet)",
+        "b2": "Rectificare (corectare email, etc.)",
+        "b3": "Ștergere („dreptul de a fi uitat\")",
+        "b4": "Portabilitate (export în format machine-readable)",
+        "b5": "Opoziție la prelucrare",
+        "b6": "Plângere la ANSPDCP — <a>dataprotection.ro</a>"
+      },
+      "sec6": {
+        "h": "6. Cookies",
+        "p": "Vezi detalii pe <a>pagina de Cookies</a>."
+      },
+      "sec7": {
+        "h": "7. Furnizori terți",
+        "b1": "<b>Stripe</b> — procesare plăți",
+        "b2": "<b>Furnizori AI specializați</b> — generare audio și versuri (procesatori sub-contractați conform GDPR art. 28)",
+        "b3": "<b>Hosting</b> — date stocate în EU"
+      }
+    },
+    "cookies": {
+      "title": "Politica de cookies",
+      "lead": "Ce cookie-uri folosim și de ce sunt toate necesare.",
+      "sec1": {
+        "h": "Ce sunt cookie-urile?",
+        "p": "Sunt fișiere mici stocate în browser-ul tău. Le folosim ca să-ți reținem starea (ce ai în generator), să măsurăm cum se comportă site-ul, să procesăm plăți și să-ți arătăm reclame relevante."
+      },
+      "sec2": {
+        "h": "Toate cookie-urile sunt obligatorii pentru funcționalitate",
+        "p": "Pentru ca site-ul să funcționeze complet (generare, plată, autentificare, livrare), avem nevoie de toate cookie-urile listate mai jos. Prin folosirea site-ului, accepți integral politica de cookies. Dacă nu ești de acord, te rugăm să nu folosești site-ul."
+      },
+      "sec3": {
+        "h": "Categorii"
+      },
+      "cat1": {
+        "h": "1. Funcționale (sesiune, autentificare)",
+        "b1": "<code>mc_guest_id</code> — sesiunea ta fără cont. Durată: 1 an.",
+        "b2": "<code>mc_access_token</code> — la login, te ține autentificat. Durată: 7 zile.",
+        "b3": "<code>mc_cookie_consent</code> — confirmarea ta că ai citit politica. Durată: persistent."
+      },
+      "cat2": {
+        "h": "2. Plăți (Stripe)",
+        "b1": "<code>__stripe_mid</code>, <code>__stripe_sid</code> — fraud detection și sesiune Stripe."
+      },
+      "cat3": {
+        "h": "3. Analytics",
+        "b1": "<code>_ga</code>, <code>_ga_*</code> — Google Analytics 4 pentru măsurare trafic.",
+        "b2": "<code>plausible_*</code> — analytics privacy-friendly (alternativ)."
+      },
+      "cat4": {
+        "h": "4. Marketing & remarketing",
+        "b1": "<code>_fbp</code>, <code>fr</code> — Meta Pixel (Facebook/Instagram).",
+        "b2": "<code>tt_*</code>, <code>_ttp</code> — TikTok Pixel."
+      },
+      "sec4": {
+        "h": "Cum le poți șterge",
+        "p": "Poți oricând șterge cookie-urile din setările browser-ului tău (Chrome, Firefox, Safari). Atenție: după ștergere, nu vei mai putea folosi anumite funcții (ex: rămâne logat, procesare plată)."
+      }
+    }
   }
 }

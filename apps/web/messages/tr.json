@@ -460,5 +460,42 @@
     "spinButton": "Çarkı çevir",
     "cooldownError": "Çarkı zaten kullandın. 7 gün sonra tekrar dene.",
     "genericError": "Hata. Tekrar dene."
+  },
+  "legal": {
+    "terms": {
+      "title": "Şartlar ve Koşullar",
+      "lastUpdate": "Son güncelleme: 1 Mayıs 2026",
+      "sec1": { "h": "1. Sözleşme tarafları", "p": "Bu site ({domain}) <b>{legalName}</b>{regSuffix}{addressSuffix} tarafından işletilmektedir.", "regSuffix": ", Ticaret Sicili'ne {regCom} numarası ile kayıtlı, Vergi numarası {cui}", "addressSuffix": ", {address} adresinde mukim" },
+      "sec2": { "h": "2. Hizmet hakkında", "p1": "Yapay zeka ile manele üretim hizmeti sunuyoruz. Sen stili, vesileyi, mesajı ve sesi giriyorsun — biz sana otomatik olarak üretilmiş 1-2 MP3 ses dosyası teslim ediyoruz.", "p2": "<b>Önemli:</b> tüm sesler sentetiktir (AI). Sanatçı isimleri (Florinel de Aur, Adi Șampanie vb.) kurgusal ve parodidir. Yaşayan veya hayatını kaybetmiş gerçek sanatçıları temsil etmiyoruz." },
+      "sec3": { "h": "3. Fiyatlar ve ödemeler", "b1": "Ücretsiz demo: 30 saniye, hesap/oturum başına 1 adet.", "b2": "Tam manele: <b>{fullPrice}</b> (KDV dahil).", "b3": "İthaf ek ücreti: sözlerde geçen tutarın %10'u, üst sınır 150 TL (yalnızca TL için).", "b4": "Ödemeler Stripe üzerinden işlenir — kart bilgilerini saklamıyoruz." },
+      "sec4": { "h": "4. Kullanım hakları", "p": "Manele kişisel kullanımın için sana aittir: dinleyebilir, indirebilir, TikTok'ta paylaşabilir, Story'ye koyabilirsin. Ticari kullanım için (ücretli reklamlar, YouTube monetizasyonu vb.) bizimle <a>{email}</a> adresinden iletişime geç." },
+      "sec5": { "h": "5. Yasak içerik", "intro": "Şu içeriklerle manele üretmiyoruz:", "b1": "Irkçı, etnik veya dini hakaretler", "b2": "Tehdit veya şiddete çağrı", "b3": "Müstehcen cinsel içerik", "b4": "Kimlik hırsızlığı (gerçek bir kişinin rızası olmadan taklit edilmesi)", "out": "Uygun olmayan talepler için üretimi reddetme ve ödemeyi iade etme hakkımızı saklı tutarız." },
+      "sec6": { "h": "6. İade", "p": "6502 sayılı Tüketicinin Korunması Hakkında Kanun'un 15. maddesi (mesafeli sözleşmelerden cayma hakkının istisnaları — dijital içerik) uyarınca, kişiselleştirilmiş dijital ürünler (senin için özel üretilen maneleler gibi) teslimattan sonra <b>iade edilemez</b>. İstisna: manelede teknik bir kusur varsa, ücretsiz olarak yeniden üretiriz veya talep üzerine ödemeyi iade ederiz." },
+      "sec7": { "h": "7. Sorumluluğun sınırlandırılması", "p": "AI, niyetinle uyuşmayan sözler üretebilir. Sözleri kamuya açık olarak paylaşmadan önce okumanı rica ederiz. Manelenin uygun olmayan bağlamlarda kullanılmasından doğan dolaylı zararlardan sorumlu değiliz." },
+      "sec8": { "h": "8. Uyuşmazlıklar", "p": "Uyuşmazlıklar dostane yollarla çözülür. Başarısız olunması halinde yetki Türk mahkemelerine aittir. Tüketiciler için: Ticaret Bakanlığı Tüketicinin Korunması ve Piyasa Gözetimi Genel Müdürlüğü — <a>tuketici.ticaret.gov.tr</a>." }
+    },
+    "privacy": {
+      "title": "Gizlilik Politikası",
+      "lead": "Verilerini nasıl işliyoruz (GDPR uyumlu).",
+      "sec1": { "h": "1. Verileri kim topluyor", "p": "Veri sorumlusu <b>{legalName}</b>{cuiSuffix}'dir. Her türlü soru veya GDPR talebi (erişim, silme, taşınabilirlik) için: <a>{dpoEmail}</a>.", "cuiSuffix": ", Vergi numarası {cui}" },
+      "sec2": { "h": "2. Hangi verileri topluyoruz", "b1": "<b>E-posta adresin</b> — maneleni teslim etmek ve kimlik doğrulaması için.", "b2": "<b>Misafir oturum kimliği</b> (anonim UUID) — localStorage'da, hesap olmadan durumunu hatırlamamıza yardımcı olur.", "b3": "<b>Talep içeriği</b> (alıcı adı, mesaj, stil) — yalnızca maneleni üretmek için kullanılır.", "b4": "<b>Teknik veriler</b> (IP, tarayıcı, zaman damgası) — güvenlik ve kötüye kullanımın önlenmesi için.", "b5": "<b>Ödemeler</b> — Stripe kartı işler. Biz yalnızca durumu (paid/failed) ve tutarı görürüz." },
+      "sec3": { "h": "3. Hangi amaçla kullanıyoruz", "b1": "Hizmetin sunulması (manele üretimi + e-posta).", "b2": "Teknik destek ve sorulara yanıt.", "b3": "Kişisel veri içermeyen toplu istatistikler.", "b4": "Kötüye kullanımla mücadele (rate-limit, ban).", "out": "Verilerini satmıyoruz. Asla." },
+      "sec4": { "h": "4. Ne kadar süre saklıyoruz", "b1": "Manele + talep: üretimden itibaren 12 ay, sonra silinir.", "b2": "Hesap e-postası: hesap silinmesini talep edene kadar.", "b3": "Mali belgeler (faturalar): 10 yıl (yasal yükümlülük)." },
+      "sec5": { "h": "5. Haklarınız", "intro": "GDPR uyarınca şu haklara sahipsiniz:", "b1": "Verilerinize erişim (tam dışa aktarım)", "b2": "Düzeltme (e-posta vb. düzeltilmesi)", "b3": "Silme („unutulma hakkı\")", "b4": "Taşınabilirlik (makine tarafından okunabilir formatta dışa aktarım)", "b5": "İşlemeye itiraz", "b6": "KVKK'ya şikayet — <a>kvkk.gov.tr</a>" },
+      "sec6": { "h": "6. Cookies", "p": "Detaylar için <a>Cookies sayfasına</a> bakın." },
+      "sec7": { "h": "7. Üçüncü taraf sağlayıcılar", "b1": "<b>Stripe</b> — ödeme işleme", "b2": "<b>Uzmanlaşmış AI sağlayıcıları</b> — ses ve şarkı sözü üretimi (GDPR m. 28 uyarınca alt veri işleyenler)", "b3": "<b>Hosting</b> — veriler AB'de saklanır" }
+    },
+    "cookies": {
+      "title": "Çerez Politikası",
+      "lead": "Hangi çerezleri kullanıyoruz ve neden hepsi gerekli.",
+      "sec1": { "h": "Çerezler nedir?", "p": "Tarayıcında saklanan küçük dosyalardır. Durumunu hatırlamak (generatorda ne olduğunu), sitenin nasıl davrandığını ölçmek, ödemeleri işlemek ve sana alakalı reklamlar göstermek için kullanıyoruz." },
+      "sec2": { "h": "Tüm çerezler işlevsellik için zorunludur", "p": "Sitenin tam olarak çalışması için (üretim, ödeme, kimlik doğrulama, teslimat), aşağıda listelenen tüm çerezlere ihtiyacımız var. Siteyi kullanarak çerez politikasını tamamen kabul etmiş olursun. Kabul etmiyorsan, lütfen siteyi kullanma." },
+      "sec3": { "h": "Kategoriler" },
+      "cat1": { "h": "1. İşlevsel (oturum, kimlik doğrulama)", "b1": "<code>mc_guest_id</code> — hesap olmadan oturumun. Süre: 1 yıl.", "b2": "<code>mc_access_token</code> — giriş yaptığında seni oturumda tutar. Süre: 7 gün.", "b3": "<code>mc_cookie_consent</code> — politikayı okuduğuna dair onayın. Süre: kalıcı." },
+      "cat2": { "h": "2. Ödemeler (Stripe)", "b1": "<code>__stripe_mid</code>, <code>__stripe_sid</code> — dolandırıcılık tespiti ve Stripe oturumu." },
+      "cat3": { "h": "3. Analytics", "b1": "<code>_ga</code>, <code>_ga_*</code> — trafik ölçümü için Google Analytics 4.", "b2": "<code>plausible_*</code> — gizlilik dostu analytics (alternatif)." },
+      "cat4": { "h": "4. Marketing ve remarketing", "b1": "<code>_fbp</code>, <code>fr</code> — Meta Pixel (Facebook/Instagram).", "b2": "<code>tt_*</code>, <code>_ttp</code> — TikTok Pixel." },
+      "sec4": { "h": "Nasıl silebilirsin", "p": "Çerezleri istediğin zaman tarayıcı ayarlarından (Chrome, Firefox, Safari) silebilirsin. Dikkat: silme sonrasında bazı özellikleri kullanamayabilirsin (örn. oturumda kalma, ödeme işleme)." }
+    }
   }
 }

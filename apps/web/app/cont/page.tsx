@@ -7,10 +7,14 @@ import { SiteShell } from '@/components/SiteShell';
 import { confirmDialog } from '@/components/ConfirmDialog';
 import { useSession } from '@/lib/providers';
 import { api, ApiError } from '@/lib/api';
+import { useSite } from '@/lib/site-context';
+import { getLegalPath } from '@/lib/legal-slugs';
 
 export default function ContPage() {
   const router = useRouter();
   const session = useSession();
+  const site = useSite();
+  const privacyHref = getLegalPath(site.locale, 'privacy');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState<'export' | 'delete' | null>(null);
   const [submitted, setSubmitted] = useState<'export' | 'delete' | null>(null);
@@ -139,7 +143,7 @@ export default function ContPage() {
         </div>
 
         <p style={{ marginTop: 24, fontSize: 12, color: 'rgba(255,245,220,0.5)' }}>
-          Detalii pe pagina <Link href="/confidentialitate" style={{ color: 'var(--gold)' }}>Confidențialitate</Link>.
+          Detalii pe pagina <Link href={privacyHref} style={{ color: 'var(--gold)' }}>Confidențialitate</Link>.
         </p>
       </div>
     </SiteShell>

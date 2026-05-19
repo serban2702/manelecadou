@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { headers } from 'next/headers';
 import { getSiteConfig, siteUrl as buildSiteUrl } from '@/lib/site-config';
+import { getLegalPath } from '@/lib/legal-slugs';
 
 const API_INTERNAL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
 
@@ -12,9 +13,6 @@ const STATIC_PAGES = [
   { path: '/articole',         priority: 0.8, changeFrequency: 'weekly' as const },
   { path: '/faq',              priority: 0.6, changeFrequency: 'monthly' as const },
   { path: '/contact',          priority: 0.5, changeFrequency: 'monthly' as const },
-  { path: '/termeni',          priority: 0.3, changeFrequency: 'yearly' as const },
-  { path: '/confidentialitate',priority: 0.3, changeFrequency: 'yearly' as const },
-  { path: '/cookies',          priority: 0.3, changeFrequency: 'yearly' as const },
 ];
 
 /**
@@ -33,6 +31,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     lastModified: now,
     changeFrequency: p.changeFrequency,
     priority: p.priority,
+  }));
+
+  // Paginile legale: slug-ul depinde de locale-ul site-ului (RO „/termeni",
+  // BG „/uslovia", etc.). Vezi `lib/legal-slugs.ts`.
+  const legalItems: MetadataRoute.Sitemap = (
+    ['terms', 'privacy', 'cookies'] as const
+  ).map((page) => ({
+    url: `${baseUrl}${getLegalPath(site.locale, page)}`,
+    lastModified: now,
+    changeFrequency: 'yearly' as const,
+    priority: 0.3,
   }));
 
   // Generațiile publice ale site-ului curent — fetch cu Host forward, API
@@ -80,5 +89,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // tolerăm eșecul
   }
 
-  return [...staticItems, ...dynamicItems, ...seoItems];
+  return [...staticItems, ...legalItems, ...dynamicItems, ...seoItems];
 }

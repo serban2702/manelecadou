@@ -460,5 +460,42 @@
     "spinButton": "Zavrti kotač",
     "cooldownError": "Već si iskoristio kotač. Pokušaj ponovo za 7 dana.",
     "genericError": "Greška. Pokušaj ponovo."
+  },
+  "legal": {
+    "terms": {
+      "title": "Uslovi korištenja",
+      "lastUpdate": "Posljednje ažuriranje: 1. maj 2026.",
+      "sec1": { "h": "1. Ugovorne strane", "p": "Ovu stranicu ({domain}) vodi <b>{legalName}</b>{regSuffix}{addressSuffix}.", "regSuffix": ", upisana u Sudski registar pod brojem {regCom}, JIB {cui}", "addressSuffix": ", sa sjedištem u {address}" },
+      "sec2": { "h": "2. O usluzi", "p1": "Nudimo uslugu generisanja manele pomoću vještačke inteligencije. Ti unosiš stil, povod, poruku i glas — mi ti vraćamo 1-2 MP3 audio numere generisane automatski.", "p2": "<b>Važno:</b> svi glasovi su sintetički (AI). Imena izvođača (Florinel de Aur, Adi Šampanjac, itd.) su izmišljena i parodijska. Ne predstavljamo stvarne izvođače, žive ili preminule." },
+      "sec3": { "h": "3. Cijene i plaćanja", "b1": "Besplatan demo: 30 sekundi, 1 po nalogu/sesiji.", "b2": "Kompletna manela: <b>{fullPrice}</b> (PDV uključen).", "b3": "Doplata za posvetu: 10% od iznosa spomenutog u stihovima, ograničena na 150 KM (samo za KM).", "b4": "Plaćanja se obrađuju putem Stripe-a — ne pohranjujemo podatke o kartici." },
+      "sec4": { "h": "4. Prava korištenja", "p": "Manela pripada tebi za ličnu upotrebu: možeš je slušati, preuzeti, postaviti na TikTok ili Story. Za komercijalnu upotrebu (plaćene reklame, monetizacija YouTube-a, itd.) kontaktiraj nas na <a>{email}</a>." },
+      "sec5": { "h": "5. Zabranjen sadržaj", "intro": "Ne generišemo manele sa:", "b1": "Rasnim, etničkim ili vjerskim uvredama", "b2": "Prijetnjama ili pozivima na nasilje", "b3": "Eksplicitnim seksualnim sadržajem", "b4": "Ukradenim identitetom (oponašanje stvarne osobe bez saglasnosti)", "out": "Zadržavamo pravo da odbijemo generisanje i vratimo novac za zahtjeve koji nisu u skladu." },
+      "sec6": { "h": "6. Povrat", "p": "Prema Zakonu o zaštiti potrošača u BiH (izuzeća od prava na odustanak za digitalni sadržaj prilagođen potrošaču), prilagođeni digitalni proizvodi (kao što su tvoje jedinstvene manele) <b>ne mogu se vratiti</b> nakon isporuke. Izuzetak: ako manela ima tehnički nedostatak, regenerisat ćemo je besplatno ili vratiti novac na zahtjev." },
+      "sec7": { "h": "7. Ograničenje odgovornosti", "p": "AI može generisati stihove koji nisu u skladu sa tvojom namjerom. Molimo te da pročitaš stihove prije nego ih javno podijeliš. Nismo odgovorni za posrednu štetu nastalu korištenjem manele u neprikladnom kontekstu." },
+      "sec8": { "h": "8. Sporovi", "p": "Sporovi se rješavaju mirnim putem. U slučaju neuspjeha, nadležnost pripada sudovima Bosne i Hercegovine. Za potrošače: Ombudsmen za zaštitu potrošača BiH — <a>ozp.gov.ba</a>." }
+    },
+    "privacy": {
+      "title": "Politika privatnosti",
+      "lead": "Kako tretiramo tvoje podatke (u skladu sa GDPR).",
+      "sec1": { "h": "1. Ko prikuplja podatke", "p": "Voditelj obrade podataka je <b>{legalName}</b>{cuiSuffix}. Za bilo kakvo pitanje ili GDPR zahtjev (pristup, brisanje, prenosivost): <a>{dpoEmail}</a>.", "cuiSuffix": ", JIB {cui}" },
+      "sec2": { "h": "2. Koje podatke prikupljamo", "b1": "<b>Tvoj email</b> — za isporuku manele i za autentifikaciju.", "b2": "<b>ID gost sesije</b> (anonimni UUID) — u localStorage-u, pomaže nam da zapamtimo tvoje stanje bez naloga.", "b3": "<b>Sadržaj zahtjeva</b> (ime primaoca, poruka, stil) — koristi se samo za generisanje tvoje manele.", "b4": "<b>Tehnički podaci</b> (IP, browser, vremenska oznaka) — za sigurnost i sprečavanje zloupotrebe.", "b5": "<b>Plaćanja</b> — Stripe obrađuje karticu. Mi vidimo samo status (paid/failed) i iznos." },
+      "sec3": { "h": "3. Za šta ih koristimo", "b1": "Isporuka usluge (generisanje manele + email).", "b2": "Tehnička podrška i odgovori na pitanja.", "b3": "Agregirane statistike, bez ličnih podataka.", "b4": "Borba protiv zloupotrebe (rate-limit, ban).", "out": "Ne prodajemo tvoje podatke. Nikada." },
+      "sec4": { "h": "4. Koliko ih čuvamo", "b1": "Manela + zahtjev: 12 mjeseci od generisanja, zatim se brišu.", "b2": "Email naloga: dok ne zatražiš brisanje naloga.", "b3": "Fiskalni dokumenti (fakture): 10 godina (zakonska obaveza)." },
+      "sec5": { "h": "5. Tvoja prava", "intro": "Prema GDPR-u, imaš pravo na:", "b1": "Pristup tvojim podacima (kompletan izvoz)", "b2": "Ispravku (korekcija emaila, itd.)", "b3": "Brisanje („pravo na zaborav\")", "b4": "Prenosivost (izvoz u machine-readable formatu)", "b5": "Prigovor na obradu", "b6": "Žalba Agenciji za zaštitu ličnih podataka u BiH (AZLP) — <a>azlp.ba</a>" },
+      "sec6": { "h": "6. Cookies", "p": "Pogledaj detalje na <a>stranici Cookies</a>." },
+      "sec7": { "h": "7. Treći pružatelji usluga", "b1": "<b>Stripe</b> — obrada plaćanja", "b2": "<b>Specijalizovani AI pružatelji</b> — generisanje audio i stihova (pod-obrađivači prema GDPR čl. 28)", "b3": "<b>Hosting</b> — podaci pohranjeni u EU" }
+    },
+    "cookies": {
+      "title": "Politika kolačića",
+      "lead": "Koje kolačiće koristimo i zašto su svi neophodni.",
+      "sec1": { "h": "Šta su kolačići?", "p": "To su mali fajlovi koji se pohranjuju u tvom browser-u. Koristimo ih da zapamtimo tvoje stanje (šta imaš u generatoru), da mjerimo kako se sajt ponaša, da obradimo plaćanja i da ti prikažemo relevantne reklame." },
+      "sec2": { "h": "Svi kolačići su obavezni za funkcionalnost", "p": "Da bi sajt potpuno funkcionisao (generisanje, plaćanje, autentifikacija, isporuka), potrebni su nam svi kolačići navedeni ispod. Korištenjem sajta u potpunosti prihvataš politiku kolačića. Ako se ne slažeš, molimo te da ne koristiš sajt." },
+      "sec3": { "h": "Kategorije" },
+      "cat1": { "h": "1. Funkcionalni (sesija, autentifikacija)", "b1": "<code>mc_guest_id</code> — tvoja sesija bez naloga. Trajanje: 1 godina.", "b2": "<code>mc_access_token</code> — pri prijavi, drži te autentifikovanim. Trajanje: 7 dana.", "b3": "<code>mc_cookie_consent</code> — tvoja potvrda da si pročitao politiku. Trajanje: trajno." },
+      "cat2": { "h": "2. Plaćanja (Stripe)", "b1": "<code>__stripe_mid</code>, <code>__stripe_sid</code> — detekcija prevara i Stripe sesija." },
+      "cat3": { "h": "3. Analytics", "b1": "<code>_ga</code>, <code>_ga_*</code> — Google Analytics 4 za mjerenje prometa.", "b2": "<code>plausible_*</code> — privacy-friendly analytics (alternativno)." },
+      "cat4": { "h": "4. Marketing i remarketing", "b1": "<code>_fbp</code>, <code>fr</code> — Meta Pixel (Facebook/Instagram).", "b2": "<code>tt_*</code>, <code>_ttp</code> — TikTok Pixel." },
+      "sec4": { "h": "Kako ih možeš obrisati", "p": "U bilo kojem trenutku možeš obrisati kolačiće iz postavki tvog browser-a (Chrome, Firefox, Safari). Pažnja: nakon brisanja, nećeš moći koristiti određene funkcije (npr. ostati prijavljen, obrada plaćanja)." }
+    }
   }
 }

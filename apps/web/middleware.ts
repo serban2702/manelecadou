@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isIpWhitelisted } from '@/lib/site-shared';
+import { resolveLegalCanonical } from '@/lib/legal-slugs';
 
 const API_INTERNAL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://api:3000';
 
 // Cache simplu in-memory pentru a evita un round-trip API la fiecare request.
 // TTL 15s e suficient — admin update propagă <30s. Cheia include hidden +
 // whitelist ca să nu cache-uim greșit cross-IP.
-type CacheEntry = { hidden: boolean; ipWhitelist: string[]; expiresAt: number };
+type CacheEntry = { hidden: boolean; ipWhitelist: string[]; locale: string; expiresAt: number };
 const cache = new Map<string, CacheEntry>();
 const TTL_MS = 15_000;
 
@@ -34,7 +35,7 @@ async function fetchSiteFlags(host: string, clientIp: string | null): Promise<Ca
       cache: 'no-store',
     });
     if (!res.ok) {
-      const entry = { hidden: false, ipWhitelist: [], expiresAt: Date.now() + TTL_MS };
+      const entry = { hidden: false, ipWhitelist: [], locale: 'ro', expiresAt: Date.now() + TTL_MS };
       cache.set(host, entry);
       return entry;
     }
@@ -42,12 +43,13 @@ async function fetchSiteFlags(host: string, clientIp: string | null): Promise<Ca
     const entry: CacheEntry = {
       hidden: Boolean(site?.hiddenMode),
       ipWhitelist: Array.isArray(site?.ipWhitelist) ? site.ipWhitelist : [],
+      locale: typeof site?.locale === 'string' && site.locale ? site.locale : 'ro',
       expiresAt: Date.now() + TTL_MS,
     };
     cache.set(host, entry);
     return entry;
   } catch {
-    return { hidden: false, ipWhitelist: [], expiresAt: Date.now() + TTL_MS };
+    return { hidden: false, ipWhitelist: [], locale: 'ro', expiresAt: Date.now() + TTL_MS };
   }
 }
 
@@ -60,6 +62,15 @@ export async function middleware(req: NextRequest) {
     // Empty response — browser-ul afișează "ERR_EMPTY_RESPONSE" / "site can't be reached".
     // Cea mai aproape simulare a unui domeniu fără server activ.
     return new NextResponse(null, { status: 444 });
+  }
+
+  // Rewrite slug localizat (ex. /uslovia pe site BG) → ruta canonică Next (/termeni).
+  // Acceptăm și slug-ul canonic RO pe orice site (link-uri vechi nu se sparg).
+  const canonical = resolveLegalCanonical(req.nextUrl.pathname, flags.locale);
+  if (canonical && canonical !== req.nextUrl.pathname) {
+    const url = req.nextUrl.clone();
+    url.pathname = canonical;
+    return NextResponse.rewrite(url);
   }
 
   return NextResponse.next();

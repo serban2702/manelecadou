@@ -1,73 +1,106 @@
 import type { Metadata } from 'next';
+import { getTranslations, getLocale } from 'next-intl/server';
 import { SiteShell } from '@/components/SiteShell';
 import { getSiteConfig } from '@/lib/site-config';
+import { getLegalPath } from '@/lib/legal-slugs';
 
 export async function generateMetadata(): Promise<Metadata> {
   const site = await getSiteConfig();
-  return { title: `Politica de confidențialitate — ${site.name}` };
+  const t = await getTranslations('legal.privacy');
+  return { title: `${t('title')} — ${site.name}` };
 }
 
 export default async function PrivacyPage() {
   const site = await getSiteConfig();
+  const t = await getTranslations('legal.privacy');
+  const locale = await getLocale();
   const company = site.companyInfo ?? {};
   const legalName = company.legalName || site.name;
   const dpoEmail = `dpo@${site.domain}`;
+  const cuiSuffix = company.cui ? t('sec1.cuiSuffix', { cui: company.cui }) : '';
+  const cookiesHref = getLegalPath(locale, 'cookies');
+
   return (
     <SiteShell hideStickyCta>
       <div className="inner-page">
-        <h1 className="gold-text">Politica de confidențialitate</h1>
-        <p className="lead">Cum tratăm datele tale (GDPR-friendly).</p>
+        <h1 className="gold-text">{t('title')}</h1>
+        <p className="lead">{t('lead')}</p>
 
-        <h2>1. Cine colectează datele</h2>
+        <h2>{t('sec1.h')}</h2>
         <p>
-          Operatorul de date este <b>{legalName}</b>{company.cui && <>, CUI {company.cui}</>}. Pentru orice întrebare sau
-          cerere GDPR (acces, ștergere, portabilitate): <a href={`mailto:${dpoEmail}`} style={{ color: 'var(--gold)' }}>{dpoEmail}</a>.
+          {t.rich('sec1.p', {
+            b: (chunks) => <b>{chunks}</b>,
+            a: (chunks) => (
+              <a href={`mailto:${dpoEmail}`} style={{ color: 'var(--gold)' }}>
+                {chunks}
+              </a>
+            ),
+            legalName,
+            cuiSuffix,
+            dpoEmail,
+          })}
         </p>
 
-        <h2>2. Ce date colectăm</h2>
+        <h2>{t('sec2.h')}</h2>
         <ul>
-          <li><b>Email-ul tău</b> — pentru a-ți livra maneaua și pentru autentificare.</li>
-          <li><b>ID de sesiune guest</b> (UUID anonim) — în localStorage, ne ajută să-ți reținem starea fără cont.</li>
-          <li><b>Conținutul request-ului</b> (nume destinatar, mesaj, stil) — folosit doar pentru a genera maneaua ta.</li>
-          <li><b>Date tehnice</b> (IP, browser, timestamp) — pentru securitate și prevenirea abuzului.</li>
-          <li><b>Plăți</b> — Stripe procesează cardul. Noi vedem doar statusul (paid/failed) și suma.</li>
+          <li>{t.rich('sec2.b1', { b: (chunks) => <b>{chunks}</b> })}</li>
+          <li>{t.rich('sec2.b2', { b: (chunks) => <b>{chunks}</b> })}</li>
+          <li>{t.rich('sec2.b3', { b: (chunks) => <b>{chunks}</b> })}</li>
+          <li>{t.rich('sec2.b4', { b: (chunks) => <b>{chunks}</b> })}</li>
+          <li>{t.rich('sec2.b5', { b: (chunks) => <b>{chunks}</b> })}</li>
         </ul>
 
-        <h2>3. Pentru ce le folosim</h2>
+        <h2>{t('sec3.h')}</h2>
         <ul>
-          <li>Livrarea serviciului (generare manea + email).</li>
-          <li>Suport tehnic și răspuns la întrebări.</li>
-          <li>Statistici agregate, fără date personale.</li>
-          <li>Combaterea abuzului (rate-limit, ban).</li>
+          <li>{t('sec3.b1')}</li>
+          <li>{t('sec3.b2')}</li>
+          <li>{t('sec3.b3')}</li>
+          <li>{t('sec3.b4')}</li>
         </ul>
-        <p>Nu vindem datele tale. Niciodată.</p>
+        <p>{t('sec3.out')}</p>
 
-        <h2>4. Cât timp le păstrăm</h2>
+        <h2>{t('sec4.h')}</h2>
         <ul>
-          <li>Maneaua + request-ul: 12 luni de la generare, apoi se șterg.</li>
-          <li>Email-ul de cont: până ceri ștergerea contului.</li>
-          <li>Documente fiscale (facturi): 10 ani (obligație legală).</li>
-        </ul>
-
-        <h2>5. Drepturile tale</h2>
-        <p>Conform GDPR, ai dreptul la:</p>
-        <ul>
-          <li>Acces la datele tale (export complet)</li>
-          <li>Rectificare (corectare email, etc.)</li>
-          <li>Ștergere ("dreptul de a fi uitat")</li>
-          <li>Portabilitate (export în format machine-readable)</li>
-          <li>Opoziție la prelucrare</li>
-          <li>Plângere la ANSPDCP — <a href="https://dataprotection.ro" style={{ color: 'var(--gold)' }}>dataprotection.ro</a></li>
+          <li>{t('sec4.b1')}</li>
+          <li>{t('sec4.b2')}</li>
+          <li>{t('sec4.b3')}</li>
         </ul>
 
-        <h2>6. Cookies</h2>
-        <p>Vezi detalii pe <a href="/cookies" style={{ color: 'var(--gold)' }}>pagina de Cookies</a>.</p>
-
-        <h2>7. Furnizori terți</h2>
+        <h2>{t('sec5.h')}</h2>
+        <p>{t('sec5.intro')}</p>
         <ul>
-          <li><b>Stripe</b> — procesare plăți</li>
-          <li><b>Furnizori AI specializați</b> — generare audio și versuri (procesatori sub-contractați conform GDPR art. 28)</li>
-          <li><b>Hosting</b> — date stocate în EU</li>
+          <li>{t('sec5.b1')}</li>
+          <li>{t('sec5.b2')}</li>
+          <li>{t('sec5.b3')}</li>
+          <li>{t('sec5.b4')}</li>
+          <li>{t('sec5.b5')}</li>
+          <li>
+            {t.rich('sec5.b6', {
+              a: (chunks) => (
+                <a href="https://dataprotection.ro" style={{ color: 'var(--gold)' }}>
+                  {chunks}
+                </a>
+              ),
+            })}
+          </li>
+        </ul>
+
+        <h2>{t('sec6.h')}</h2>
+        <p>
+          {t.rich('sec6.p', {
+            a: (chunks) => (
+              <a href={cookiesHref} style={{ color: 'var(--gold)' }}>
+                {chunks}
+              </a>
+            ),
+          })}
+        </p>
+
+        <h2>{t('sec7.h')}</h2>
+        <ul>
+          <li>{t.rich('sec7.b1', { b: (chunks) => <b>{chunks}</b> })}</li>
+          <li>{t.rich('sec7.b2', { b: (chunks) => <b>{chunks}</b> })}</li>
+          <li>{t.rich('sec7.b3', { b: (chunks) => <b>{chunks}</b> })}</li>
         </ul>
       </div>
     </SiteShell>

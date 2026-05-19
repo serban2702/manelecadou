@@ -7,6 +7,7 @@ import { toast } from './Toaster';
 import { DEMOS, FEED as FEED_FALLBACK, TESTI, TOP } from '@/lib/seed-data';
 import { siteSupportEmail, siteUrl } from '@/lib/site-shared';
 import { useSite } from '@/lib/site-context';
+import { getLegalPath } from '@/lib/legal-slugs';
 
 export function Hero({ onGen, onListen }: { onGen: () => void; onListen: () => void }) {
   const t = useTranslations('hero');
@@ -389,12 +390,14 @@ export function Ticker() {
 
 export function Cookie({ onClose }: { onClose: (mode: 'rej' | 'all') => void }) {
   const t = useTranslations('cookie');
+  const site = useSite();
+  const cookiesHref = getLegalPath(site.locale, 'cookies');
   return (
     <div className="cookie-banner">
       <h4><span className="em">🍪</span> {t('title')}</h4>
       <p>
         {t.rich('body', {
-          a: (chunks) => <a href="/cookies" style={{ color: 'var(--gold)' }}>{chunks}</a>,
+          a: (chunks) => <a href={cookiesHref} style={{ color: 'var(--gold)' }}>{chunks}</a>,
         })}
       </p>
       <div className="cookie-banner-row">
@@ -457,9 +460,9 @@ export function Footer() {
       </div>
 
       <div className="links">
-        <a href="/termeni">{t('links.termeni')}</a>
-        <a href="/confidentialitate">{t('links.confidentialitate')}</a>
-        <a href="/cookies">{t('links.cookies')}</a>
+        <a href={getLegalPath(site.locale, 'terms')}>{t('links.termeni')}</a>
+        <a href={getLegalPath(site.locale, 'privacy')}>{t('links.confidentialitate')}</a>
+        <a href={getLegalPath(site.locale, 'cookies')}>{t('links.cookies')}</a>
         <a href="/contact">{t('links.contact')}</a>
         <a href="/faq">{t('links.faq')}</a>
         <a href="/articole">Articole</a>

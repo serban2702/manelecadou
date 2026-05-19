@@ -460,5 +460,144 @@
     "spinButton": "Заврти точак",
     "cooldownError": "Већ си користио точак. Покушај опет за 7 дана.",
     "genericError": "Грешка. Покушај опет."
+  },
+  "legal": {
+    "terms": {
+      "title": "Uslovi korišćenja",
+      "lastUpdate": "Poslednje ažuriranje: 1. maj 2026.",
+      "sec1": {
+        "h": "1. Ugovorne strane",
+        "p": "Ovaj sajt ({domain}) vodi <b>{legalName}</b>{regSuffix}{addressSuffix}.",
+        "regSuffix": ", registrovana u Agenciji za privredne registre pod brojem {regCom}, matični broj / PIB {cui}",
+        "addressSuffix": ", sa sedištem na adresi {address}"
+      },
+      "sec2": {
+        "h": "2. O usluzi",
+        "p1": "Pružamo uslugu generisanja pesama uz pomoć veštačke inteligencije. Ti unosiš stil, povod, poruku i glas — mi ti vraćamo 1-2 MP3 audio numere generisane automatski.",
+        "p2": "<b>Važno:</b> svi glasovi su sintetički (AI). Imena izvođača (Florinel de Aur, Adi Šampanjac, itd.) su izmišljena i parodijska. Ne predstavljamo prave izvođače, ni žive ni preminule."
+      },
+      "sec3": {
+        "h": "3. Cene i plaćanja",
+        "b1": "Besplatan demo: 30 sekundi, 1 po nalogu/sesiji.",
+        "b2": "Kompletna pesma: <b>{fullPrice}</b> (PDV uključen).",
+        "b3": "Doplata za posvetu: 10% od iznosa pomenutog u tekstu, ograničeno na 150 dinara (samo za RSD).",
+        "b4": "Plaćanja se obrađuju preko Stripe-a — ne čuvamo podatke o kartici."
+      },
+      "sec4": {
+        "h": "4. Prava korišćenja",
+        "p": "Pesma ti pripada za ličnu upotrebu: možeš je slušati, preuzeti, postaviti na TikTok, staviti na Story. Za komercijalnu upotrebu (plaćene reklame, monetizacija na YouTube-u, itd.), kontaktiraj nas na <a>{email}</a>."
+      },
+      "sec5": {
+        "h": "5. Zabranjeni sadržaj",
+        "intro": "Ne generišemo pesme sa:",
+        "b1": "Rasnim, etničkim ili verskim uvredama",
+        "b2": "Pretnjama ili pozivima na nasilje",
+        "b3": "Eksplicitnim seksualnim sadržajem",
+        "b4": "Krađom identiteta (lažno predstavljanje stvarne osobe bez saglasnosti)",
+        "out": "Zadržavamo pravo da odbijemo generisanje i vratimo novac za neusaglašene zahteve."
+      },
+      "sec6": {
+        "h": "6. Povraćaj",
+        "p": "U skladu sa Zakonom o zaštiti potrošača, član 37, prilagođeni digitalni proizvodi (kao što su tvoje jedinstvene pesme) <b>ne mogu se vratiti</b> nakon isporuke. Izuzetak: ako pesma ima tehničku grešku, ponovo je generišemo besplatno ili vraćamo novac na zahtev."
+      },
+      "sec7": {
+        "h": "7. Ograničenje odgovornosti",
+        "p": "AI može da generiše tekstove koji se ne podudaraju sa tvojom namerom. Molimo te pročitaj tekst pre nego što ga podeliš javno. Ne odgovaramo za indirektnu štetu nastalu korišćenjem pesme u neprikladnom kontekstu."
+      },
+      "sec8": {
+        "h": "8. Sporovi",
+        "p": "Sporovi se rešavaju sporazumno. U slučaju neuspeha, nadležnost imaju srpski sudovi. Za potrošače: Ministarstvo trgovine, turizma i telekomunikacija — <a>mtt.gov.rs</a>."
+      }
+    },
+    "privacy": {
+      "title": "Politika privatnosti",
+      "lead": "Kako postupamo sa tvojim podacima (u skladu sa GDPR-om).",
+      "sec1": {
+        "h": "1. Ko prikuplja podatke",
+        "p": "Rukovalac podataka je <b>{legalName}</b>{cuiSuffix}. Za bilo kakvo pitanje ili GDPR zahtev (pristup, brisanje, prenosivost): <a>{dpoEmail}</a>.",
+        "cuiSuffix": ", matični broj / PIB {cui}"
+      },
+      "sec2": {
+        "h": "2. Koje podatke prikupljamo",
+        "b1": "<b>Tvoj email</b> — kako bismo ti isporučili pesmu i za prijavu.",
+        "b2": "<b>ID gost-sesije</b> (anonimni UUID) — u localStorage-u, pomaže nam da pamtimo tvoje stanje bez naloga.",
+        "b3": "<b>Sadržaj zahteva</b> (ime primaoca, poruka, stil) — koristi se samo za generisanje tvoje pesme.",
+        "b4": "<b>Tehnički podaci</b> (IP, browser, timestamp) — za bezbednost i sprečavanje zloupotrebe.",
+        "b5": "<b>Plaćanja</b> — Stripe obrađuje karticu. Mi vidimo samo status (paid/failed) i iznos."
+      },
+      "sec3": {
+        "h": "3. Za šta ih koristimo",
+        "b1": "Isporuku usluge (generisanje pesme + email).",
+        "b2": "Tehničku podršku i odgovor na pitanja.",
+        "b3": "Agregirane statistike, bez ličnih podataka.",
+        "b4": "Borbu protiv zloupotrebe (rate-limit, ban).",
+        "out": "Ne prodajemo tvoje podatke. Nikada."
+      },
+      "sec4": {
+        "h": "4. Koliko dugo ih čuvamo",
+        "b1": "Pesma + zahtev: 12 meseci od generisanja, zatim se brišu.",
+        "b2": "Email naloga: dok ne zatražiš brisanje naloga.",
+        "b3": "Poreski dokumenti (računi): 10 godina (zakonska obaveza)."
+      },
+      "sec5": {
+        "h": "5. Tvoja prava",
+        "intro": "U skladu sa GDPR-om, imaš pravo na:",
+        "b1": "Pristup tvojim podacima (kompletan izvoz)",
+        "b2": "Ispravku (korekciju emaila, itd.)",
+        "b3": "Brisanje („pravo na zaborav\")",
+        "b4": "Prenosivost (izvoz u formatu pogodnom za mašinsko čitanje)",
+        "b5": "Prigovor na obradu",
+        "b6": "Pritužbu Povereniku za informacije od javnog značaja i zaštitu podataka o ličnosti — <a>poverenik.rs</a>"
+      },
+      "sec6": {
+        "h": "6. Kolačići",
+        "p": "Vidi detalje na <a>stranici o kolačićima</a>."
+      },
+      "sec7": {
+        "h": "7. Treća lica — dobavljači",
+        "b1": "<b>Stripe</b> — obrada plaćanja",
+        "b2": "<b>Specijalizovani AI dobavljači</b> — generisanje zvuka i tekstova (podizvođači obrade u skladu sa GDPR čl. 28)",
+        "b3": "<b>Hosting</b> — podaci se čuvaju u EU"
+      }
+    },
+    "cookies": {
+      "title": "Politika kolačića",
+      "lead": "Koje kolačiće koristimo i zašto su svi neophodni.",
+      "sec1": {
+        "h": "Šta su kolačići?",
+        "p": "To su mali fajlovi koji se čuvaju u tvom browser-u. Koristimo ih da pamtimo tvoje stanje (šta imaš u generatoru), da merimo kako se sajt ponaša, da obrađujemo plaćanja i da ti prikazujemo relevantne reklame."
+      },
+      "sec2": {
+        "h": "Svi kolačići su obavezni za funkcionalnost",
+        "p": "Da bi sajt funkcionisao u potpunosti (generisanje, plaćanje, prijava, isporuka), potrebni su nam svi kolačići navedeni u nastavku. Korišćenjem sajta u potpunosti prihvataš politiku kolačića. Ako se ne slažeš, molimo te da ne koristiš sajt."
+      },
+      "sec3": {
+        "h": "Kategorije"
+      },
+      "cat1": {
+        "h": "1. Funkcionalni (sesija, prijava)",
+        "b1": "<code>mc_guest_id</code> — tvoja sesija bez naloga. Trajanje: 1 godina.",
+        "b2": "<code>mc_access_token</code> — pri prijavi, drži te prijavljenim. Trajanje: 7 dana.",
+        "b3": "<code>mc_cookie_consent</code> — tvoja potvrda da si pročitao politiku. Trajanje: trajno."
+      },
+      "cat2": {
+        "h": "2. Plaćanja (Stripe)",
+        "b1": "<code>__stripe_mid</code>, <code>__stripe_sid</code> — detekcija prevara i Stripe sesija."
+      },
+      "cat3": {
+        "h": "3. Analitika",
+        "b1": "<code>_ga</code>, <code>_ga_*</code> — Google Analytics 4 za merenje saobraćaja.",
+        "b2": "<code>plausible_*</code> — analitika koja poštuje privatnost (alternativa)."
+      },
+      "cat4": {
+        "h": "4. Marketing i remarketing",
+        "b1": "<code>_fbp</code>, <code>fr</code> — Meta Pixel (Facebook/Instagram).",
+        "b2": "<code>tt_*</code>, <code>_ttp</code> — TikTok Pixel."
+      },
+      "sec4": {
+        "h": "Kako ih možeš obrisati",
+        "p": "U svakom trenutku možeš obrisati kolačiće u podešavanjima svog browser-a (Chrome, Firefox, Safari). Pažnja: nakon brisanja, nećeš više moći da koristiš određene funkcije (npr. ostajanje prijavljen, obrada plaćanja)."
+      }
+    }
   }
 }

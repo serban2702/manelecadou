@@ -460,5 +460,42 @@
     "spinButton": "Zavrti kolo",
     "cooldownError": "Že si uporabil kolo. Poskusi spet čez 7 dni.",
     "genericError": "Napaka. Poskusi spet."
+  },
+  "legal": {
+    "terms": {
+      "title": "Pogoji uporabe",
+      "lastUpdate": "Zadnja posodobitev: 1. maj 2026",
+      "sec1": { "h": "1. Pogodbeni stranki", "p": "To spletno mesto ({domain}) upravlja <b>{legalName}</b>{regSuffix}{addressSuffix}.", "regSuffix": ", vpisana v sodni register pod številko {regCom}, davčna številka {cui}", "addressSuffix": ", s sedežem na {address}" },
+      "sec2": { "h": "2. O storitvi", "p1": "Ponujamo storitev ustvarjanja manele pesmi z umetno inteligenco. Ti vneseš slog, priložnost, sporočilo in glas — mi ti vrnemo 1-2 avtomatsko ustvarjeni avdio datoteki MP3.", "p2": "<b>Pomembno:</b> vsi glasovi so sintetični (AI). Imena izvajalcev (Florinel de Aur, Adi Șampanie itd.) so izmišljena in parodična. Ne predstavljamo resničnih izvajalcev, živih ali pokojnih." },
+      "sec3": { "h": "3. Cene in plačila", "b1": "Brezplačni demo: 30 sekund, 1 na račun/sejo.", "b2": "Celotna manele pesem: <b>{fullPrice}</b> (DDV vključen).", "b3": "Doplačilo za posvetilo: 10 % zneska, omenjenega v besedilu, omejeno na 150 lei (samo za leie).", "b4": "Plačila se obdelujejo prek Stripe — podatkov o kartici ne shranjujemo." },
+      "sec4": { "h": "4. Pravice uporabe", "p": "Manele pesem pripada tebi za osebno uporabo: lahko jo poslušaš, prenašaš, deliš na TikToku ali objaviš v Story. Za komercialno uporabo (plačani oglasi, monetizacija YouTube itd.) nas kontaktiraj na <a>{email}</a>." },
+      "sec5": { "h": "5. Prepovedana vsebina", "intro": "Ne ustvarjamo manele pesmi z:", "b1": "Rasnimi, etničnimi ali verskimi žalitvami", "b2": "Grožnjami ali pozivi k nasilju", "b3": "Eksplicitno spolno vsebino", "b4": "Ukradeno identiteto (lažno predstavljanje resnične osebe brez privolitve)", "out": "Pridržujemo si pravico zavrniti ustvarjanje in vrniti denar za neskladne zahteve." },
+      "sec6": { "h": "6. Vračilo", "p": "V skladu z Zakonom o varstvu potrošnikov (ZVPot-1) in izjemami od pravice do odstopa za digitalne vsebine, prilagojene potrošniku, prilagojenih digitalnih izdelkov (kot so tvoje edinstvene manele pesmi) <b>ni mogoče vrniti</b> po dostavi. Izjema: če ima pesem tehnično napako, jo brezplačno ponovno ustvarimo ali na zahtevo vrnemo denar." },
+      "sec7": { "h": "7. Omejitev odgovornosti", "p": "AI lahko ustvari besedila, ki niso skladna s tvojim namenom. Prosimo, preberi besedilo, preden ga javno deliš. Nismo odgovorni za posredno škodo, ki bi nastala zaradi uporabe pesmi v neprimernem kontekstu." },
+      "sec8": { "h": "8. Spori", "p": "Spori se rešujejo sporazumno. V primeru neuspeha so pristojna slovenska sodišča. Za potrošnike: Tržni inšpektorat RS — <a>ti.gov.si</a>." }
+    },
+    "privacy": {
+      "title": "Politika zasebnosti",
+      "lead": "Kako obravnavamo tvoje podatke (skladno z GDPR).",
+      "sec1": { "h": "1. Kdo zbira podatke", "p": "Upravljavec podatkov je <b>{legalName}</b>{cuiSuffix}. Za vsako vprašanje ali zahtevo po GDPR (dostop, izbris, prenosljivost): <a>{dpoEmail}</a>.", "cuiSuffix": ", davčna številka {cui}" },
+      "sec2": { "h": "2. Katere podatke zbiramo", "b1": "<b>Tvoj e-poštni naslov</b> — za dostavo pesmi in avtentikacijo.", "b2": "<b>ID seje gosta</b> (anonimni UUID) — v localStorage, pomaga nam ohraniti tvoje stanje brez računa.", "b3": "<b>Vsebina zahteve</b> (ime prejemnika, sporočilo, slog) — uporabljena samo za ustvarjanje tvoje pesmi.", "b4": "<b>Tehnični podatki</b> (IP, brskalnik, časovni žig) — za varnost in preprečevanje zlorab.", "b5": "<b>Plačila</b> — Stripe obdeluje kartico. Mi vidimo le status (paid/failed) in znesek." },
+      "sec3": { "h": "3. Za kaj jih uporabljamo", "b1": "Izvajanje storitve (ustvarjanje pesmi + e-pošta).", "b2": "Tehnična podpora in odgovori na vprašanja.", "b3": "Združene statistike, brez osebnih podatkov.", "b4": "Preprečevanje zlorab (rate-limit, ban).", "out": "Tvojih podatkov ne prodajamo. Nikoli." },
+      "sec4": { "h": "4. Koliko časa jih hranimo", "b1": "Pesem + zahteva: 12 mesecev od ustvarjanja, nato se izbrišejo.", "b2": "E-poštni naslov računa: dokler ne zahtevaš izbrisa računa.", "b3": "Davčni dokumenti (računi): 10 let (zakonska obveznost)." },
+      "sec5": { "h": "5. Tvoje pravice", "intro": "V skladu z GDPR imaš pravico do:", "b1": "Dostopa do svojih podatkov (popoln izvoz)", "b2": "Popravka (popravek e-pošte itd.)", "b3": "Izbrisa („pravica do pozabe\")", "b4": "Prenosljivosti (izvoz v strojno berljivi obliki)", "b5": "Ugovora obdelavi", "b6": "Pritožbe pri Informacijskem pooblaščencu — <a>ip-rs.si</a>" },
+      "sec6": { "h": "6. Piškotki", "p": "Podrobnosti si oglej na <a>strani o piškotkih</a>." },
+      "sec7": { "h": "7. Tretji ponudniki", "b1": "<b>Stripe</b> — obdelava plačil", "b2": "<b>Specializirani ponudniki AI</b> — ustvarjanje zvoka in besedil (podizvajalski obdelovalci v skladu z GDPR čl. 28)", "b3": "<b>Gostovanje</b> — podatki shranjeni v EU" }
+    },
+    "cookies": {
+      "title": "Politika piškotkov",
+      "lead": "Katere piškotke uporabljamo in zakaj so vsi potrebni.",
+      "sec1": { "h": "Kaj so piškotki?", "p": "So majhne datoteke, shranjene v tvojem brskalniku. Uporabljamo jih, da si zapomnimo tvoje stanje (kaj imaš v generatorju), izmerimo vedenje spletnega mesta, obdelamo plačila in ti prikažemo ustrezne oglase." },
+      "sec2": { "h": "Vsi piškotki so obvezni za delovanje", "p": "Da bi spletno mesto popolnoma delovalo (ustvarjanje, plačilo, avtentikacija, dostava), potrebujemo vse spodaj navedene piškotke. Z uporabo spletnega mesta v celoti sprejemaš politiko piškotkov. Če se ne strinjaš, te prosimo, da spletnega mesta ne uporabljaš." },
+      "sec3": { "h": "Kategorije" },
+      "cat1": { "h": "1. Funkcionalni (seja, avtentikacija)", "b1": "<code>mc_guest_id</code> — tvoja seja brez računa. Trajanje: 1 leto.", "b2": "<code>mc_access_token</code> — ob prijavi te ohranja prijavljenega. Trajanje: 7 dni.", "b3": "<code>mc_cookie_consent</code> — tvoja potrditev, da si prebral politiko. Trajanje: trajno." },
+      "cat2": { "h": "2. Plačila (Stripe)", "b1": "<code>__stripe_mid</code>, <code>__stripe_sid</code> — odkrivanje goljufij in seja Stripe." },
+      "cat3": { "h": "3. Analitika", "b1": "<code>_ga</code>, <code>_ga_*</code> — Google Analytics 4 za merjenje prometa.", "b2": "<code>plausible_*</code> — analitika, prijazna zasebnosti (alternativa)." },
+      "cat4": { "h": "4. Marketing in remarketing", "b1": "<code>_fbp</code>, <code>fr</code> — Meta Pixel (Facebook/Instagram).", "b2": "<code>tt_*</code>, <code>_ttp</code> — TikTok Pixel." },
+      "sec4": { "h": "Kako jih izbrisati", "p": "Piškotke lahko kadar koli izbrišeš v nastavitvah svojega brskalnika (Chrome, Firefox, Safari). Pozor: po izbrisu nekaterih funkcij ne boš mogel več uporabljati (npr. ostati prijavljen, obdelava plačila)." }
+    }
   }
 }
