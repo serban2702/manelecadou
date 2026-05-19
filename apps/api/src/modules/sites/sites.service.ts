@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Site } from './site.entity';
+import { Site, SiteSampleEntry } from './site.entity';
 
 const CACHE_TTL_MS = 30_000;
 
@@ -97,6 +97,36 @@ export class SitesService {
 
   async remove(id: string): Promise<void> {
     await this.repo.delete({ id });
+    this.invalidateCache();
+  }
+
+  /**
+   * Setează o mostră audio (style sau voice) atomic, la nivel de DB, fără a
+   * încărca/rescrie restul JSON-ului `suno`. Folosit din `SiteSamplesService`
+   * pentru a evita race condition la generări concurente — o singură comandă
+   * Postgres `UPDATE` cu `jsonb` merge înseamnă că două commit-uri pe chei
+   * diferite NU se mai suprascriu reciproc (înainte: read-modify-write din
+   * memorie, last writer wins — pierdeai mostre dacă userul genera mai multe
+   * deodată).
+   */
+  async setSampleEntry(
+    siteId: string,
+    kind: 'style' | 'voice',
+    key: string,
+    entry: SiteSampleEntry,
+  ): Promise<void> {
+    const field = kind === 'style' ? 'styleSamples' : 'voiceSamples';
+    await this.repo.manager.query(
+      `UPDATE sites
+         SET suno = COALESCE(suno, '{}'::jsonb)
+                  || jsonb_build_object(
+                       $1::text,
+                       COALESCE(suno->$1, '{}'::jsonb)
+                         || jsonb_build_object($2::text, $3::jsonb)
+                     )
+       WHERE id = $4`,
+      [field, key, JSON.stringify(entry), siteId],
+    );
     this.invalidateCache();
   }
 }

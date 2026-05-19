@@ -46,6 +46,19 @@ export const SAMPLE_VOICES = [
 
 export type SampleKind = 'style' | 'voice';
 
+/** Un candidat Suno (Suno generează 2 piese per task). Userul alege una
+ *  în UI-ul admin prin SampleChooserDialog → POST /samples/commit. */
+export interface SampleCandidate {
+  audioUrl: string;
+  audioId?: string;
+  durationSec?: number;
+  coverUrl?: string;
+}
+
+export type GenerateOneResult =
+  | { reused: true; entry: SiteSampleEntry; candidates?: undefined; sunoTaskId?: undefined }
+  | { reused: false; entry?: undefined; candidates: SampleCandidate[]; sunoTaskId: string };
+
 interface InFlightKey {
   siteId: string;
   kind: SampleKind;
@@ -105,6 +118,14 @@ export class SiteSamplesService {
   /**
    * Generează (sau regenerează) o mostră. Sincron — așteaptă audio-ul finalizat.
    * Idempotent: dacă mostra există și regenerate=false, întoarce cea veche.
+   *
+   * IMPORTANT (refactor 2026-05): nu mai persistă entry-ul automat. Suno
+   * întoarce DOUĂ track-uri per task; userul alege una prin UI-ul admin
+   * (SampleChooserDialog) și apoi cheamă `commitChoice` care descarcă track-ul
+   * ales pe disc și-l persistă atomic. Astfel:
+   *   - userul ascultă ambele variante înainte să decidă,
+   *   - generările simultane nu se mai pot suprascrie (commit-ul folosește
+   *     UPDATE JSONB atomic, vezi SitesService.setSampleEntry).
    */
   async generateOne(
     siteId: string,
@@ -112,14 +133,14 @@ export class SiteSamplesService {
     key: string,
     regenerate: boolean,
     overrides?: SampleOverrides,
-  ): Promise<{ entry: SiteSampleEntry; reused: boolean }> {
+  ): Promise<GenerateOneResult> {
     this.validateKey(kind, key);
     const site = await this.sites.findById(siteId);
     if (!site) throw new NotFoundException('Site negăsit');
 
     const existing = readSample(site.suno, kind, key);
     if (existing && !regenerate && !overrides) {
-      return { entry: existing, reused: true };
+      return { reused: true, entry: existing };
     }
 
     const flight: InFlightKey = { siteId, kind, key };
@@ -134,24 +155,85 @@ export class SiteSamplesService {
       this.logger.log(`generate sample siteSlug=${site.slug} ${kind}=${key}`);
 
       const result = await this.suno.generate(input);
-      const track = result.tracks[0];
-      if (!track?.audioUrl) {
+      const tracks = (result.tracks ?? []).filter((t) => !!t.audioUrl);
+      if (tracks.length === 0) {
         throw new Error('Suno nu a întors niciun track audio');
       }
 
-      const audioUrl = await this.downloadAndStore(site, kind, key, track.audioUrl);
-      const entry: SiteSampleEntry = {
-        audioUrl,
-        generatedAt: new Date().toISOString(),
-        sunoTaskId: result.providerJobId,
-        sunoAudioId: track.audioId,
-      };
+      const candidates: SampleCandidate[] = tracks.map((t) => ({
+        audioUrl: t.audioUrl,
+        audioId: t.audioId,
+        durationSec: t.durationSec,
+        coverUrl: t.coverUrl,
+      }));
 
-      await this.persist(site, kind, key, entry);
-      return { entry, reused: false };
+      return { reused: false, candidates, sunoTaskId: result.providerJobId };
     } finally {
       this.inFlight.delete(fk);
     }
+  }
+
+  /**
+   * Finalizează o mostră generată anterior: userul a ales un candidate din
+   * dialogul de selecție → descărcăm acel track de pe Suno pe discul nostru
+   * și-l persistăm atomic în `site.suno.styleSamples[key]` / `voiceSamples[key]`.
+   *
+   * Persistarea folosește un singur UPDATE Postgres cu merge JSONB — sigur
+   * pentru cazul în care două commit-uri pe chei diferite vin în paralel.
+   */
+  async commitChoice(
+    siteId: string,
+    kind: SampleKind,
+    key: string,
+    choice: { audioUrl: string; audioId?: string; sunoTaskId: string; durationSec?: number },
+  ): Promise<{ entry: SiteSampleEntry }> {
+    this.validateKey(kind, key);
+    if (!choice?.audioUrl?.trim()) {
+      throw new BadRequestException('audioUrl lipsă');
+    }
+    if (!choice?.sunoTaskId?.trim()) {
+      throw new BadRequestException('sunoTaskId lipsă');
+    }
+    const site = await this.sites.findById(siteId);
+    if (!site) throw new NotFoundException('Site negăsit');
+
+    const localUrl = await this.downloadAndStore(site, kind, key, choice.audioUrl);
+    const entry: SiteSampleEntry = {
+      audioUrl: localUrl,
+      generatedAt: new Date().toISOString(),
+      sunoTaskId: choice.sunoTaskId,
+      sunoAudioId: choice.audioId,
+    };
+    await this.sites.setSampleEntry(siteId, kind, key, entry);
+    this.logger.log(
+      `commit sample siteSlug=${site.slug} ${kind}=${key} audioId=${choice.audioId ?? '—'}`,
+    );
+    return { entry };
+  }
+
+  /**
+   * Helper intern pentru bulk-generate: generează + auto-commit pe primul
+   * candidat. Folosit doar din `generateAll` (nu vrem să blocăm flux-ul bulk
+   * pe alegerea userului — operațiunea „Generează toate mostrele lipsă" e
+   * tip „fill in the gaps" și userul poate regenera ulterior orice mostră
+   * cu alegere manuală).
+   */
+  private async generateAndAutoCommit(
+    siteId: string,
+    kind: SampleKind,
+    key: string,
+    regenerate: boolean,
+    overrides?: SampleOverrides,
+  ): Promise<void> {
+    const r = await this.generateOne(siteId, kind, key, regenerate, overrides);
+    if (r.reused) return;
+    const pick = r.candidates[0];
+    await this.commitChoice(siteId, kind, key, {
+      audioUrl: pick.audioUrl,
+      audioId: pick.audioId,
+      sunoTaskId: r.sunoTaskId,
+      durationSec: pick.durationSec,
+    });
   }
 
   /**
@@ -204,9 +286,9 @@ export class SiteSamplesService {
       for (const t of targets) {
         const fk = this.flightKey({ siteId, ...t });
         try {
-          // generateOne re-adăugă fk în set; îl scoatem ca să-i lase logica internă
+          // generateAndAutoCommit re-adăugă fk în set; îl scoatem ca să-i lase logica internă
           this.inFlight.delete(fk);
-          await this.generateOne(siteId, t.kind, t.key, regenerate);
+          await this.generateAndAutoCommit(siteId, t.kind, t.key, regenerate);
         } catch (err) {
           this.logger.warn(`bulk sample ${t.kind}=${t.key}: ${(err as Error).message}`);
           this.inFlight.delete(fk);
@@ -340,7 +422,7 @@ export class SiteSamplesService {
       // Marker în loc de sunoTaskId, ca să știm că e upload manual.
       sunoTaskId: `manual-upload:${originalName.slice(0, 80)}`,
     };
-    await this.persist(site, kind, key, entry);
+    await this.sites.setSampleEntry(siteId, kind, key, entry);
     this.logger.log(`upload sample siteSlug=${site.slug} ${kind}=${key} bytes=${fileBuffer.length}`);
     return { entry };
   }
@@ -419,21 +501,6 @@ export class SiteSamplesService {
     // Cache-bust ca browser-ul să reîncarce mostra după regenerare.
     const v = Date.now();
     return `${apiUrl}/uploads/site-samples/${site.slug}/${fileName}?v=${v}`;
-  }
-
-  private async persist(
-    site: Site,
-    kind: SampleKind,
-    key: string,
-    entry: SiteSampleEntry,
-  ): Promise<void> {
-    const suno: SiteSuno = { ...(site.suno ?? {}) };
-    if (kind === 'style') {
-      suno.styleSamples = { ...(suno.styleSamples ?? {}), [key]: entry };
-    } else {
-      suno.voiceSamples = { ...(suno.voiceSamples ?? {}), [key]: entry };
-    }
-    await this.sites.update(site.id, { suno });
   }
 
   /**

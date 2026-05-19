@@ -156,6 +156,26 @@ export class AdminSitesController {
 
   @Patch(':id')
   async update(@Param('id') id: string, @Body() body: Partial<Site>) {
+    // Mostrele audio (suno.styleSamples / suno.voiceSamples) sunt gestionate
+    // EXCLUSIV prin /samples/* — orice payload care le-ar suprascrie din PATCH-ul
+    // generic e blocat aici. Altfel, dacă userul ținea formularul deschis în
+    // timp ce o generare în curs salva o mostră nouă, save-ul de la „Salvează
+    // modificările" trimitea înapoi `suno.styleSamples` stale și ștergea mostra
+    // proaspăt persistată. Acum: păstrăm valorile curente din DB pentru aceste
+    // două sub-câmpuri, indiferent ce trimite clientul.
+    if (body.suno && typeof body.suno === 'object') {
+      const current = await this.sites.findById(id);
+      const incoming = body.suno as Partial<Site['suno']> & {
+        styleSamples?: unknown;
+        voiceSamples?: unknown;
+      };
+      const { styleSamples: _ss, voiceSamples: _vs, ...sunoSafe } = incoming;
+      body.suno = {
+        ...(sunoSafe as Site['suno']),
+        styleSamples: current?.suno?.styleSamples ?? {},
+        voiceSamples: current?.suno?.voiceSamples ?? {},
+      };
+    }
     const updated = await this.sites.update(id, body);
     return this.serializeFull(updated);
   }
@@ -298,6 +318,40 @@ export class AdminSiteSamplesController {
         }
       : undefined;
     const result = await this.samples.generateOne(id, body.kind, body.key, !!body.regenerate, overrides);
+    // Două forme posibile:
+    //  - reused=true → întoarcem entry-ul existent (UI-ul nu deschide popup),
+    //  - reused=false → întoarcem candidații (Suno generează 2 piese); userul
+    //    alege una în SampleChooserDialog → POST /samples/commit.
+    return { ok: true, ...result };
+  }
+
+  /** Finalizează generarea: userul a ales un track din SampleChooserDialog.
+   *  Descărcăm acel mp3 pe disc și-l persistăm atomic (UPDATE JSONB partial). */
+  @Post('commit')
+  @HttpCode(200)
+  async commit(
+    @Param('id') id: string,
+    @Body() body: {
+      kind: SampleKind;
+      key: string;
+      audioUrl: string;
+      audioId?: string;
+      sunoTaskId: string;
+      durationSec?: number;
+    },
+  ) {
+    if (!body?.kind || !body?.key) {
+      throw new BadRequestException('kind și key sunt obligatorii');
+    }
+    if (!body?.audioUrl || !body?.sunoTaskId) {
+      throw new BadRequestException('audioUrl și sunoTaskId sunt obligatorii');
+    }
+    const result = await this.samples.commitChoice(id, body.kind, body.key, {
+      audioUrl: body.audioUrl,
+      audioId: body.audioId,
+      sunoTaskId: body.sunoTaskId,
+      durationSec: body.durationSec,
+    });
     return { ok: true, ...result };
   }
 

@@ -48,6 +48,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { useSpaNavigate } from '@/lib/spa-router';
+import {
+  SampleChooserDialog,
+  type PendingChoice,
+} from '@/components/site/sample-chooser-dialog';
+import type { SampleCandidateDto } from '@/lib/api/sites.api';
 
 const LOCALES = ['ro', 'bg', 'sr', 'tr', 'el', 'hr', 'sl', 'bs', 'sq', 'mk', 'hu', 'en'];
 const CURRENCIES = ['RON', 'EUR', 'USD', 'BGN', 'RSD', 'TRY', 'HUF', 'GBP'];
@@ -804,7 +809,23 @@ function CategoriesTab({
   onSavePartial: (patch: Partial<SiteDto>) => Promise<void>;
 }) {
   const { toast } = useToast();
-  const [busyKey, setBusyKey] = useState<string | null>(null);
+  // Mai multe rânduri pot fi în generare simultan — fiecare apariție afișează
+  // spinner pe propriul card. Înainte era un singur `busyKey: string | null`
+  // și pierdeam vizibilitatea celorlalte generări concurente.
+  const [busyKeys, setBusyKeys] = useState<Set<string>>(() => new Set());
+  // Coadă locală de alegere — fiecare generare finalizată produce un dialog
+  // de selecție Suno (2 variante). Userul alege pe rând. Index 0 = dialogul
+  // curent activ; restul așteaptă.
+  const [pendingChoices, setPendingChoices] = useState<PendingChoice[]>([]);
+
+  const markBusy = useCallback((token: string, on: boolean) => {
+    setBusyKeys((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(token);
+      else next.delete(token);
+      return next;
+    });
+  }, []);
 
   // Pre-completare din seed-data: dacă DB returnează liste goale, populăm
   // local form-ul cu valorile default (cele care apar oricum pe site-ul public
@@ -859,6 +880,13 @@ function CategoriesTab({
   const styleSample = (key: string) => samples?.styles.find((s) => s.key === key) ?? null;
   const voiceSample = (key: string) => samples?.voices.find((s) => s.key === key) ?? null;
 
+  function entryLabel(kind: 'style' | 'voice', key: string): string {
+    if (kind === 'style') {
+      return form.styles?.find((s) => s.id === key)?.nm || key;
+    }
+    return form.voices?.find((v) => v.id === key)?.nm || key;
+  }
+
   async function generateOne(
     kind: 'style' | 'voice',
     key: string,
@@ -877,27 +905,47 @@ function CategoriesTab({
       vocalGender?: 'm' | 'f';
     },
   ) {
-    setBusyKey(`${kind}-${key}`);
+    const token = `${kind}-${key}`;
+    markBusy(token, true);
     if (samples) {
       onSamplesChange(updateSampleLocal(samples, kind, key, (e) => ({ ...e, generating: true })));
     }
     try {
-      await SitesApi.generateSample(siteId, { kind, key, regenerate, ...(overrides ?? {}) });
-      toast({ variant: 'success', title: 'Mostra generată', description: `${kind}=${key}` });
-      const fresh = await SitesApi.listSamples(siteId);
-      onSamplesChange(fresh);
+      const res = await SitesApi.generateSample(siteId, { kind, key, regenerate, ...(overrides ?? {}) });
+      if (res.reused) {
+        toast({ variant: 'success', title: 'Mostra există deja', description: `${kind}=${key}` });
+        const fresh = await SitesApi.listSamples(siteId);
+        onSamplesChange(fresh);
+      } else {
+        // Adăugăm în coada de alegere — dialogul se va deschide automat.
+        const choice: PendingChoice = {
+          queueId: `${kind}-${key}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          kind,
+          key,
+          label: entryLabel(kind, key),
+          candidates: res.candidates,
+          sunoTaskId: res.sunoTaskId,
+        };
+        setPendingChoices((prev) => [...prev, choice]);
+        toast({
+          variant: 'success',
+          title: 'Mostra generată — alege varianta',
+          description: `${kind}=${key} · ${res.candidates.length} variante`,
+        });
+      }
     } catch (err) {
       toast({ variant: 'destructive', title: 'Eroare generare', description: (err as Error).message });
       if (samples) {
         onSamplesChange(updateSampleLocal(samples, kind, key, (e) => ({ ...e, generating: false })));
       }
     } finally {
-      setBusyKey(null);
+      markBusy(token, false);
     }
   }
 
   async function uploadSample(kind: 'style' | 'voice', key: string, file: File) {
-    setBusyKey(`${kind}-${key}`);
+    const token = `${kind}-${key}`;
+    markBusy(token, true);
     try {
       await SitesApi.uploadSample(siteId, kind, key, file);
       const fresh = await SitesApi.listSamples(siteId);
@@ -906,7 +954,46 @@ function CategoriesTab({
     } catch (err) {
       toast({ variant: 'destructive', title: 'Upload eșuat', description: (err as Error).message });
     } finally {
-      setBusyKey(null);
+      markBusy(token, false);
+    }
+  }
+
+  async function handleChoose(choice: PendingChoice, candidate: SampleCandidateDto) {
+    try {
+      await SitesApi.commitSampleChoice(siteId, {
+        kind: choice.kind,
+        key: choice.key,
+        audioUrl: candidate.audioUrl,
+        audioId: candidate.audioId,
+        sunoTaskId: choice.sunoTaskId,
+        durationSec: candidate.durationSec,
+      });
+      toast({
+        variant: 'success',
+        title: 'Mostra salvată',
+        description: `${choice.kind}=${choice.key}`,
+      });
+      const fresh = await SitesApi.listSamples(siteId);
+      onSamplesChange(fresh);
+      // Scoatem din coadă DUPĂ ce a reușit — așa, pe eroare, dialogul rămâne
+      // deschis și userul poate reîncerca cu același set de candidați.
+      setPendingChoices((prev) => prev.filter((c) => c.queueId !== choice.queueId));
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: 'Eroare la salvare',
+        description: (err as Error).message,
+      });
+      throw err;
+    }
+  }
+
+  function handleSkip(choice: PendingChoice) {
+    setPendingChoices((prev) => prev.filter((c) => c.queueId !== choice.queueId));
+    if (samples) {
+      onSamplesChange(
+        updateSampleLocal(samples, choice.kind, choice.key, (e) => ({ ...e, generating: false })),
+      );
     }
   }
 
@@ -1099,7 +1186,7 @@ function CategoriesTab({
                 total={styles.length}
                 entry={s}
                 sample={styleSample(s.id)}
-                busy={busyKey === `style-${s.id}`}
+                busy={busyKeys.has(`style-${s.id}`)}
                 voiceKeys={voices.map((v) => v.id)}
                 site={form}
                 siteId={siteId}
@@ -1137,7 +1224,7 @@ function CategoriesTab({
                 total={voices.length}
                 entry={v}
                 sample={voiceSample(v.id)}
-                busy={busyKey === `voice-${v.id}`}
+                busy={busyKeys.has(`voice-${v.id}`)}
                 voiceKeys={voices.map((x) => x.id)}
                 site={form}
                 siteId={siteId}
@@ -1187,6 +1274,17 @@ function CategoriesTab({
           </div>
         )}
       </SubSection>
+
+      {/* Coadă secvențială de alegere între cele 2 variante Suno per generare.
+          Se deschide automat când o generare finalizează; după ce userul alege
+          (sau renunță), urmează automat dialogul pentru următoarea generare
+          finalizată din coadă. */}
+      <SampleChooserDialog
+        current={pendingChoices[0] ?? null}
+        remaining={Math.max(0, pendingChoices.length - 1)}
+        onChoose={handleChoose}
+        onSkip={handleSkip}
+      />
     </div>
   );
 }

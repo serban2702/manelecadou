@@ -185,6 +185,22 @@ export interface SamplesListDto {
   voices: SampleStatusDto[];
 }
 
+/** Un track candidat returnat de Suno — userul alege unul în UI înainte ca
+ *  mostra să fie persistată pe site. */
+export interface SampleCandidateDto {
+  audioUrl: string;
+  audioId?: string;
+  durationSec?: number;
+  coverUrl?: string;
+}
+
+/** Răspunsul endpoint-ului /samples/generate:
+ *  - reused=true ⇒ mostra deja există și nu s-a cerut regenerare → entry-ul vechi
+ *  - reused=false ⇒ Suno a generat 2 piese; userul alege una via /samples/commit */
+export type GenerateSampleResponse =
+  | { ok: true; reused: true; entry: SampleEntryDto }
+  | { ok: true; reused: false; candidates: SampleCandidateDto[]; sunoTaskId: string };
+
 export const SitesApi = {
   list: () => http.get<SiteDto[]>('/admin/sites'),
   get: (id: string) => http.get<SiteDto>(`/admin/sites/${id}`),
@@ -214,10 +230,28 @@ export const SitesApi = {
     },
   ) =>
     // Suno polling takes up to 6 min — overriding default 30s timeout. 8 min ca să avem buffer.
-    http.post<{ ok: true; entry: SampleEntryDto; reused: boolean }>(
+    http.post<GenerateSampleResponse>(
       `/admin/sites/${id}/samples/generate`,
       body,
       { timeout: 8 * 60_000 },
+    ),
+  /** Finalizează o generare: userul a ales un track din cele 2 candidate.
+   *  Backend-ul descarcă mp3-ul ales pe disc și salvează entry-ul atomic. */
+  commitSampleChoice: (
+    id: string,
+    body: {
+      kind: 'style' | 'voice';
+      key: string;
+      audioUrl: string;
+      audioId?: string;
+      sunoTaskId: string;
+      durationSec?: number;
+    },
+  ) =>
+    http.post<{ ok: true; entry: SampleEntryDto }>(
+      `/admin/sites/${id}/samples/commit`,
+      body,
+      { timeout: 60_000 },
     ),
   previewSampleLyrics: (
     id: string,
