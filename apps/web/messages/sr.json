@@ -443,5 +443,22 @@
     "next": "Sledeće →",
     "pageOf": "Strana {current} / {total}",
     "ctaMake": "🎤 Napravi svoju pesmu sada"
+  },
+  "roulette": {
+    "title": "Точак среће",
+    "subtitle": "1 бесплатно окретање сваких 7 дана. Попусти од {tier1} до {tier3} или шанса за БЕСПЛАТНУ песму!",
+    "ghinion": "Несрећа",
+    "gratis": "БЕСПЛАТНО!",
+    "discountWin": "Освојио си {amount} попуста!",
+    "codeLabel": "Твој код",
+    "copyButton": "Копирај",
+    "useAtGenerate": "Користи при генерисању",
+    "close": "Затвори",
+    "availableAgainOn": "Точак је поново доступан {date}.",
+    "availableAgainSoon": "Точак ће ускоро бити поново доступан.",
+    "spinning": "Окреће се...",
+    "spinButton": "Заврти точак",
+    "cooldownError": "Већ си користио точак. Покушај опет за 7 дана.",
+    "genericError": "Грешка. Покушај опет."
   }
 }

@@ -441,5 +441,22 @@
     "next": "Următoare →",
     "pageOf": "Pagina {current} / {total}",
     "ctaMake": "🎤 Fă maneaua ta acum"
+  },
+  "roulette": {
+    "title": "Roata Norocului",
+    "subtitle": "1 spin gratis la 7 zile. Reduceri de {tier1}–{tier3} sau șansă de manea GRATIS!",
+    "ghinion": "Ghinion",
+    "gratis": "GRATIS!",
+    "discountWin": "Ai câștigat {amount} reducere!",
+    "codeLabel": "Codul tău",
+    "copyButton": "Copiază",
+    "useAtGenerate": "Folosesc la generare",
+    "close": "Închide",
+    "availableAgainOn": "Roata e disponibilă din nou pe {date}.",
+    "availableAgainSoon": "Roata e disponibilă din nou curând.",
+    "spinning": "Se învârte...",
+    "spinButton": "Învârte roata",
+    "cooldownError": "Ai folosit deja roata. Încearcă peste 7 zile.",
+    "genericError": "Eroare. Încearcă din nou."
   }
 }

@@ -349,13 +349,24 @@ export const api = {
     }),
 
   roulettePrizes: () =>
-    request<Array<{ idx: number; weight: number; label: string; kind: 'none' | 'discount' }>>(
-      '/roulette/prizes',
-    ),
+    request<Array<{
+      idx: number;
+      weight: number;
+      prizeKey: 'ghinion' | 'tier1' | 'tier2' | 'tier3' | 'gratis';
+      kind: 'none' | 'discount';
+      discountCents: number | null;
+      currency: string;
+    }>>('/roulette/prizes'),
   rouletteStatus: () =>
     request<{ ok: boolean; nextSpinAt?: string }>('/roulette/status'),
   rouletteSpin: (email?: string) =>
-    request<{ prizeIndex: number; prizeLabel: string; code?: string | null; discountCents?: number }>(
+    request<{
+      prizeIndex: number;
+      prizeKey: 'ghinion' | 'tier1' | 'tier2' | 'tier3' | 'gratis';
+      code?: string | null;
+      discountCents?: number;
+      currency?: string;
+    }>(
       '/roulette/spin',
       {
         method: 'POST',

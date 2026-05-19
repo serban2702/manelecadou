@@ -443,5 +443,22 @@
     "next": "Naslednje →",
     "pageOf": "Stran {current} / {total}",
     "ctaMake": "🎤 Naredi svojo pesem zdaj"
+  },
+  "roulette": {
+    "title": "Kolo sreče",
+    "subtitle": "1 brezplačno vrtenje vsakih 7 dni. Popusti od {tier1} do {tier3} ali možnost za BREZPLAČNO pesem!",
+    "ghinion": "Nesreča",
+    "gratis": "BREZPLAČNO!",
+    "discountWin": "Osvojil si {amount} popusta!",
+    "codeLabel": "Tvoja koda",
+    "copyButton": "Kopiraj",
+    "useAtGenerate": "Uporabi pri ustvarjanju",
+    "close": "Zapri",
+    "availableAgainOn": "Kolo je spet na voljo {date}.",
+    "availableAgainSoon": "Kolo bo kmalu spet na voljo.",
+    "spinning": "Vrti se...",
+    "spinButton": "Zavrti kolo",
+    "cooldownError": "Že si uporabil kolo. Poskusi spet čez 7 dni.",
+    "genericError": "Napaka. Poskusi spet."
   }
 }

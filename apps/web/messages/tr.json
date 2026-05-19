@@ -443,5 +443,22 @@
     "next": "Sonraki →",
     "pageOf": "Sayfa {current} / {total}",
     "ctaMake": "🎤 Şarkını şimdi yap"
+  },
+  "roulette": {
+    "title": "Şans Çarkı",
+    "subtitle": "7 günde 1 ücretsiz çevirme. {tier1}-{tier3} arası indirim veya ÜCRETSİZ şarkı şansı!",
+    "ghinion": "Şanssızlık",
+    "gratis": "ÜCRETSİZ!",
+    "discountWin": "{amount} indirim kazandın!",
+    "codeLabel": "Kodun",
+    "copyButton": "Kopyala",
+    "useAtGenerate": "Oluştururken kullan",
+    "close": "Kapat",
+    "availableAgainOn": "Çark {date} tarihinde tekrar kullanılabilir.",
+    "availableAgainSoon": "Çark yakında tekrar kullanılabilir olacak.",
+    "spinning": "Dönüyor...",
+    "spinButton": "Çarkı çevir",
+    "cooldownError": "Çarkı zaten kullandın. 7 gün sonra tekrar dene.",
+    "genericError": "Hata. Tekrar dene."
   }
 }

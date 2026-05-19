@@ -443,5 +443,22 @@
     "next": "Sljedeće →",
     "pageOf": "Stranica {current} / {total}",
     "ctaMake": "🎤 Napravi svoju pjesmu sada"
+  },
+  "roulette": {
+    "title": "Kotač sreće",
+    "subtitle": "1 besplatno vrtnja svakih 7 dana. Popusti od {tier1} do {tier3} ili šansa za BESPLATNU pjesmu!",
+    "ghinion": "Nesreća",
+    "gratis": "BESPLATNO!",
+    "discountWin": "Osvojio si {amount} popusta!",
+    "codeLabel": "Tvoj kod",
+    "copyButton": "Kopiraj",
+    "useAtGenerate": "Iskoristi pri generiranju",
+    "close": "Zatvori",
+    "availableAgainOn": "Kotač je ponovno dostupan {date}.",
+    "availableAgainSoon": "Kotač će uskoro biti ponovno dostupan.",
+    "spinning": "Vrti se...",
+    "spinButton": "Zavrti kotač",
+    "cooldownError": "Već si iskoristio kotač. Pokušaj ponovno za 7 dana.",
+    "genericError": "Greška. Pokušaj ponovno."
   }
 }

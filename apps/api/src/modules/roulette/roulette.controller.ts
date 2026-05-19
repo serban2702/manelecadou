@@ -22,8 +22,8 @@ export class RouletteController {
   constructor(private readonly svc: RouletteService) {}
 
   @Get('prizes')
-  prizes() {
-    return this.svc.getPrizes();
+  prizes(@CurrentSiteId() siteId: string | null) {
+    return this.svc.getPrizes(siteId);
   }
 
   @Get('status')
