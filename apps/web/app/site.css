@@ -120,6 +120,34 @@
   }
 }
 
+/* Tags inline pentru galeria de manele (stil + eveniment) */
+.lb-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(241,200,77,0.08);
+  color: var(--gold-2);
+  border: 1px solid rgba(241,200,77,0.18);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* Leaderboard: 1 col mobile, 2 cols desktop (5 + 5) */
+.lb-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 900px) {
+  .lb-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+    align-items: start;
+  }
+}
+
 /* Sticky CTA mobile only */
 @media (min-width: 900px) {
   .sticky-cta { display: none; }

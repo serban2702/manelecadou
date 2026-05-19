@@ -342,6 +342,15 @@ export class Site {
   demoEnabled!: boolean;
 
   /**
+   * Sursă pentru pagina /top:
+   *  - 'seed' → date hardcoded (manele demo placeholder, până ai destui useri)
+   *  - 'live' → agregare din `generations` (cele mai vizualizate manele finalizate)
+   * Switch din admin când ai destule generări reale.
+   */
+  @Column({ type: 'varchar', length: 8, default: 'seed' })
+  topSource!: 'seed' | 'live';
+
+  /**
    * Stiluri muzicale disponibile pe acest site (carduri din /studio).
    * Dacă goală, web folosește lista hardcoded din `seed-data.ts` (12 stiluri RO).
    */

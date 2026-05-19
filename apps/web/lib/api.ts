@@ -152,6 +152,7 @@ export interface RecentDto {
   style: string;
   occasion: string;
   recipientName: string;
+  senderName?: string | null;
   voiceArtist: string;
   audioUrl: string | null;
   coverUrl: string | null;
@@ -269,6 +270,23 @@ export const api = {
       `/generations/public${qs.toString() ? '?' + qs.toString() : ''}`,
     );
   },
+  topList: (period: 'week' | 'month' | 'all' = 'week', limit = 5) =>
+    request<{
+      source: 'seed' | 'live';
+      items:
+        | null
+        | Array<{
+            rk: number;
+            id: string;
+            ttl: string;
+            by: string;
+            pl: string;
+            playsRaw: number;
+            voice: string;
+            style: string;
+            occasion: string;
+          }>;
+    }>(`/public/top?period=${period}&limit=${limit}`),
   retryGeneration: (id: string) =>
     request<GenerationDto>(`/generations/${id}/retry`, { method: 'POST' }),
   unlockGeneration: (id: string, paymentId: string) =>

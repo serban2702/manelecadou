@@ -86,6 +86,58 @@
       "⭐ 4.9/5 — 12.483 gerçek yorum"
     ]
   },
+  "liveFeed": {
+    "items": [
+      {
+        "em": "🎉",
+        "av": "AM",
+        "tx": "<b>Ahmet M.</b> az önce <b>Ayşe</b> için bir şarkı yaptı",
+        "when": "birkaç saniye önce"
+      },
+      {
+        "em": "🔥",
+        "av": "GP",
+        "tx": "<b>Gökhan P.</b> düğün için bir şarkı sipariş etti",
+        "when": "12 sn önce"
+      },
+      {
+        "em": "💃",
+        "av": "MS",
+        "tx": "<b>Merve S.</b> patronuna sürpriz yaptı",
+        "when": "28 sn önce"
+      },
+      {
+        "em": "🎂",
+        "av": "İK",
+        "tx": "<b>İbrahim K.</b> annesinin doğum günü için bir şarkı yaptı",
+        "when": "41 sn önce"
+      },
+      {
+        "em": "😂",
+        "av": "CV",
+        "tx": "<b>Can V.</b> iş arkadaşını roastladı",
+        "when": "1 dk önce"
+      },
+      {
+        "em": "❤️",
+        "av": "EL",
+        "tx": "<b>Elif L.</b> bir aşk ilanı sipariş etti",
+        "when": "2 dk önce"
+      },
+      {
+        "em": "🍷",
+        "av": "DR",
+        "tx": "<b>Deniz R.</b> kirvelik için bir şarkı yaptı",
+        "when": "3 dk önce"
+      },
+      {
+        "em": "👶",
+        "av": "AT",
+        "tx": "<b>Aslı T.</b> bebek kutlaması için şarkı sipariş etti",
+        "when": "4 dk önce"
+      }
+    ]
+  },
   "smecher": {
     "tag": "🎯 Oyun — 30 saniye",
     "title": "Ne kadar kabadayısın?",
@@ -277,12 +329,29 @@
     },
     "side": {
       "offer": "Teklif",
+      "whyTitle": "Neden manele hediye?",
+      "whyBullet1": "🎯 AI ile yazılmış sözler, ikinci AI ile doğrulanmış",
+      "whyBullet2": "🎤 2 ses versiyonu, en iyisini seçiyorsun",
+      "whyBullet3": "📧 E-postaya <2 dakikada teslim",
+      "whyBullet4": "💰 Demo ücretsiz — sadece tamamını istersen ödersin",
+      "howTitle": "Nasıl çalışır?",
+      "howStep1Title": "Seçiyorsun",
+      "howStep1Body": "Stil, ortam, isim, ses — birkaç tık.",
+      "howStep2Title": "AI yazar + söyler",
+      "howStep2Body": "AI ile sözleri ve seçilen sesle 2 parça oluşturuyoruz.",
+      "howStep3Title": "Dinliyorsun ve ödüyorsun",
+      "howStep3Body": "Ücretsiz 30s demo. Beğendin mi? Tam sürümün kilidini açıyorsun.",
       "giftSomeone": "🎁 Birine hediye"
     },
     "top": {
       "badge": "★ Haftanın en iyileri",
-      "title": "Ülke ne dinliyor",
-      "sub": "Son 7 günün en çok dinlenen AI şarkıları."
+      "title": "Haftanın en iyileri",
+      "sub": "Son 7 günün en çok dinlenen 10 şarkısı, dinleme ve paylaşımlara göre sıralandı."
+    },
+    "smecherSection": {
+      "badge": "🎯 Oyun — 30 saniye sürer",
+      "title": "Ne kadar havalısın?",
+      "sub": "5 kısa soruyu cevapla ve sonucu gör. Bonus: sana uygun şarkıyı öneririz."
     },
     "testi": {
       "badge": "★★★★★ 4.9 / 12.483 yorum",
@@ -332,5 +401,47 @@
     "whyBullet2": "🎤 2 ses versiyonu, en iyisini seçiyorsun",
     "whyBullet3": "📧 E-postaya <2 dakikada teslim",
     "whyBullet4": "💰 Demo ücretsiz — sadece tamamını istersen ödersin"
+  },
+  "chat": {
+    "openAria": "Sohbeti aç",
+    "closeAria": "Sohbeti kapat",
+    "hintLabel": "Bizimle sohbet",
+    "headerTitle": "{brand} destek",
+    "headerSub": "Birkaç dakika içinde yanıtlıyoruz",
+    "greeting": "Selam! Bize her şeyi yaz — soru, sorun, fikir.",
+    "emailHint": "İpucu: e-postanı generator sayfasında bırak ki sana e-postayla da cevap verelim.",
+    "adminLabel": "Yönetici",
+    "placeholder": "Bir mesaj yaz..."
+  },
+  "topPage": {
+    "flag": "Top Türkiye",
+    "title": "En sert manele",
+    "sub": "Ülke AI'ya ne yükledi. Dinlenmelere ve paylaşımlara göre sıralama.",
+    "periodWeek": "Bu hafta",
+    "periodMonth": "Bu ay",
+    "periodAll": "Tüm zamanlar",
+    "cta": "Sen de bir manele top'a koy",
+    "empty": "Henüz top'ta manele yok. İlk sen ol!"
+  },
+  "ascultaPage": {
+    "flag": "🎧 Şarkı galerisi",
+    "title": "Şarkı dinle",
+    "sub": "Platformda üretilen son şarkılar. Stile veya etkinliğe göre filtrele.",
+    "filterStyle": "Stil",
+    "filterOccasion": "Etkinlik",
+    "all": "Tümü",
+    "reset": "✕ Filtreleri sıfırla",
+    "loading": "Yükleniyor…",
+    "countOne": "{count} şarkı bulundu",
+    "countMany": "{count} şarkı bulundu",
+    "for": "İçin",
+    "from": "Gönderen",
+    "plays": "{count} dinleme",
+    "empty": "Bu filtrelerle şarkı bulamadık.",
+    "emptyCta": "🎤 İlk şarkıyı yap",
+    "prev": "← Önceki",
+    "next": "Sonraki →",
+    "pageOf": "Sayfa {current} / {total}",
+    "ctaMake": "🎤 Şarkını şimdi yap"
   }
 }

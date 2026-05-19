@@ -705,6 +705,19 @@ function StatusTab({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto) => 
           value={form.demoEnabled ?? true}
           onChange={(v) => setForm({ ...form, demoEnabled: v })}
         />
+        <Field label="Sursă date /top">
+          <select
+            value={form.topSource ?? 'seed'}
+            onChange={(e) => setForm({ ...form, topSource: e.target.value as 'seed' | 'live' })}
+            className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
+          >
+            <option value="seed">Seed (demo placeholder)</option>
+            <option value="live">Live (din generări reale)</option>
+          </select>
+          <p className="text-[11px] text-muted-foreground mt-1">
+            Comută pe „Live" după ce ai destule manele generate de useri. „Seed" afișează lista hardcoded din web app.
+          </p>
+        </Field>
       </Section>
 
       {(form.maintenanceMode || form.hiddenMode) && (

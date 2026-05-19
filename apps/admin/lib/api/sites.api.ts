@@ -71,6 +71,8 @@ export interface SiteDto {
   ipWhitelist: string[];
   /** Toggle: dacă false, plata se face ÎNAINTE de generare (skip demo gratuit 30s). */
   demoEnabled: boolean;
+  /** Sursa datelor pentru pagina /top: 'seed' (date demo) sau 'live' (agregare din generations). */
+  topSource: 'seed' | 'live';
   /** Categorii / stiluri muzicale per site (carduri /studio). */
   styles: SiteStyleEntry[];
   /** Voci / artiști per site. */

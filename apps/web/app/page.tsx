@@ -127,21 +127,24 @@ export default function HomePage() {
 
         <Ticker />
 
-        {/* TOP & ȘMECHER */}
+        {/* TOP — full width */}
         <section className="band" id="top">
           <div className="band-head">
             <div className="ek">{tHome('top.badge')}</div>
             <h2 className="gold-text">{tHome('top.title')}</h2>
             <p>{tHome('top.sub')}</p>
           </div>
-          <div className="split-2">
-            <div>
-              <Leaderboard />
-            </div>
-            <div>
-              <Smecher />
-            </div>
+          <Leaderboard />
+        </section>
+
+        {/* ȘMECHER — full width */}
+        <section className="band" id="smecher">
+          <div className="band-head">
+            <div className="ek">{tHome('smecherSection.badge')}</div>
+            <h2 className="gold-text">{tHome('smecherSection.title')}</h2>
+            <p>{tHome('smecherSection.sub')}</p>
           </div>
+          <Smecher />
         </section>
 
         {/* TESTIMONIALS */}

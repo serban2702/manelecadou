@@ -5,8 +5,10 @@ import {
   Param,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { GenerationsService } from './generations.service';
 import { CreateGenerationDto } from './dto/create-generation.dto';
@@ -18,6 +20,58 @@ import {
   AuthedRequestUser,
 } from '../../common/decorators';
 import { OptionalJwtAuthGuard } from '../../common/jwt.guard';
+
+/**
+ * Endpoint public pentru pagina /top. Întoarce `{ source, items }`:
+ *  - `source: 'seed'` → items=null; web app folosește lista hardcoded din seed-data.
+ *  - `source: 'live'` → items = top după viewCount, agregat din `generations`.
+ * Comutarea seed/live se face din admin (per-site, câmp `topSource`).
+ */
+@Controller('public/top')
+export class PublicTopController {
+  constructor(private readonly svc: GenerationsService) {}
+
+  @SkipThrottle({ short: true, medium: true, long: true })
+  @Get()
+  async top(
+    @Req() req: Request,
+    @CurrentSiteId() siteId: string | null,
+    @Query('period') period?: 'week' | 'month' | 'all',
+    @Query('limit') limit?: string,
+  ) {
+    const source: 'seed' | 'live' = req.site?.topSource === 'live' ? 'live' : 'seed';
+    if (source === 'seed') {
+      return { source, items: null as null };
+    }
+    const items = await this.svc.listTop({
+      siteId,
+      period,
+      limit: limit ? Number(limit) : 5,
+    });
+    return {
+      source,
+      items: items.map((g, idx) => ({
+        rk: idx + 1,
+        id: g.id,
+        ttl: g.recipientName
+          ? `Manea pentru ${g.recipientName}`
+          : `Manea #${g.id.slice(0, 6)}`,
+        by: g.voiceArtist,
+        pl: formatPlays(g.viewCount),
+        playsRaw: g.viewCount,
+        voice: g.voiceArtist,
+        style: g.style,
+        occasion: g.occasion,
+      })),
+    };
+  }
+}
+
+function formatPlays(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
 
 @Controller('generations')
 export class GenerationsController {
@@ -71,8 +125,10 @@ export class GenerationsController {
         style: g.style,
         occasion: g.occasion,
         recipientName: g.recipientName,
+        // "De la cine" — dedicație publică, nume scurt (truncat defensiv).
+        // Mesajul propriu-zis (g.message) și emailul NU sunt expuse niciodată.
+        senderName: g.dedication ? g.dedication.slice(0, 64) : null,
         voiceArtist: g.voiceArtist,
-        // Listă publică — doar demo, niciodată full.
         audioUrl: g.demoAudioUrl,
         coverUrl: g.coverUrl,
         viewCount: g.viewCount,

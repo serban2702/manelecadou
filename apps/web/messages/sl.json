@@ -86,6 +86,58 @@
       "⭐ 4.9/5 — 12.483 resničnih ocen"
     ]
   },
+  "liveFeed": {
+    "items": [
+      {
+        "em": "🎉",
+        "av": "AM",
+        "tx": "<b>Andrej M.</b> je pravkar naredil pesem za <b>Mojco</b>",
+        "when": "pred nekaj sekundami"
+      },
+      {
+        "em": "🔥",
+        "av": "GP",
+        "tx": "<b>Gašper P.</b> je naročil poročno pesem",
+        "when": "pred 12 sek"
+      },
+      {
+        "em": "💃",
+        "av": "MS",
+        "tx": "<b>Maja S.</b> je presenetila šefa",
+        "when": "pred 28 sek"
+      },
+      {
+        "em": "🎂",
+        "av": "IK",
+        "tx": "<b>Iztok K.</b> je naredil pesem za mamin rojstni dan",
+        "when": "pred 41 sek"
+      },
+      {
+        "em": "😂",
+        "av": "KV",
+        "tx": "<b>Klemen V.</b> je naredil roast sodelavcu",
+        "when": "pred 1 min"
+      },
+      {
+        "em": "❤️",
+        "av": "EL",
+        "tx": "<b>Eva L.</b> je naročila ljubezensko izpoved",
+        "when": "pred 2 min"
+      },
+      {
+        "em": "🍷",
+        "av": "DR",
+        "tx": "<b>Domen R.</b> je naredil pesem za botrstvo",
+        "when": "pred 3 min"
+      },
+      {
+        "em": "👶",
+        "av": "AT",
+        "tx": "<b>Ana T.</b> je naročila pesem za krst",
+        "when": "pred 4 min"
+      }
+    ]
+  },
   "smecher": {
     "tag": "🎯 Igra — 30 sekund",
     "title": "Kako velik frajer si?",
@@ -277,12 +329,29 @@
     },
     "side": {
       "offer": "Ponudba",
+      "whyTitle": "Zakaj manele kot darilo?",
+      "whyBullet1": "🎯 Besedilo z AI, preverjeno z drugim AI",
+      "whyBullet2": "🎤 2 zvočni različici, izbereš najboljšo",
+      "whyBullet3": "📧 Dostava na e-pošto v <2 minutah",
+      "whyBullet4": "💰 Demo brezplačno — plačaš le, če želiš vse",
+      "howTitle": "Kako deluje?",
+      "howStep1Title": "Izbereš",
+      "howStep1Body": "Slog, priložnost, ime, glas — nekaj klikov.",
+      "howStep2Title": "AI piše + poje",
+      "howStep2Body": "Z AI generiramo besedilo in 2 pesmi z izbranim glasom.",
+      "howStep3Title": "Poslušaš in plačaš",
+      "howStep3Body": "Brezplačni demo 30s. Ti je všeč? Odkleneš polno različico.",
       "giftSomeone": "🎁 Darilo nekomu"
     },
     "top": {
       "badge": "★ Top tedna",
-      "title": "Kaj posluša Balkan",
-      "sub": "Najbolj poslušane AI pesmi v zadnjih 7 dneh."
+      "title": "Top tedna",
+      "sub": "10 najbolj poslušanih pesmi v zadnjih 7 dneh, razvrščene po predvajanjih in deljenjih."
+    },
+    "smecherSection": {
+      "badge": "🎯 Igra — 30 sekund",
+      "title": "Kako velik frajer si?",
+      "sub": "Odgovori na 5 hitrih vprašanj in odkrij razsodbo. Bonus: priporočimo ti pravo pesem."
     },
     "testi": {
       "badge": "★★★★★ 4.9 / 12.483 ocen",
@@ -332,5 +401,47 @@
     "whyBullet2": "🎤 2 zvočni različici, izbereš najboljšo",
     "whyBullet3": "📧 Dostava na e-pošto v <2 minutah",
     "whyBullet4": "💰 Demo brezplačno — plačaš le, če želiš vse"
+  },
+  "chat": {
+    "openAria": "Odpri klepet",
+    "closeAria": "Zapri klepet",
+    "hintLabel": "Klepet z nami",
+    "headerTitle": "Podpora {brand}",
+    "headerSub": "Odgovorimo v nekaj minutah",
+    "greeting": "Živjo! Piši nam karkoli — vprašanje, težavo, idejo.",
+    "emailHint": "Nasvet: pusti svoj e-poštni naslov na strani generatorja, da ti odgovorimo tudi po e-pošti.",
+    "adminLabel": "Skrbnik",
+    "placeholder": "Napiši sporočilo..."
+  },
+  "topPage": {
+    "flag": "Top Slovenija",
+    "title": "Najboljše manele",
+    "sub": "Kaj je država dala v AI. Razvrstitev po poslušanjih in delitvah.",
+    "periodWeek": "Ta teden",
+    "periodMonth": "Ta mesec",
+    "periodAll": "Vseh časov",
+    "cta": "Daj še ti manele v top",
+    "empty": "V topu še ni manele. Bodi prvi!"
+  },
+  "ascultaPage": {
+    "flag": "🎧 Galerija pesmi",
+    "title": "Poslušaj pesmi",
+    "sub": "Zadnje pesmi, ustvarjene na platformi. Filtriraj po stilu ali dogodku.",
+    "filterStyle": "Stil",
+    "filterOccasion": "Dogodek",
+    "all": "Vse",
+    "reset": "✕ Ponastavi filtre",
+    "loading": "Nalaganje…",
+    "countOne": "{count} najdena pesem",
+    "countMany": "{count} najdenih pesmi",
+    "for": "Za",
+    "from": "Od",
+    "plays": "{count} predvajanj",
+    "empty": "Nismo našli pesmi s temi filtri.",
+    "emptyCta": "🎤 Naredi prvo pesem",
+    "prev": "← Prejšnje",
+    "next": "Naslednje →",
+    "pageOf": "Stran {current} / {total}",
+    "ctaMake": "🎤 Naredi svojo pesem zdaj"
   }
 }

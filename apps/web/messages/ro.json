@@ -85,6 +85,58 @@
       "⭐ 4.9/5 — 12.483 review-uri reale"
     ]
   },
+  "liveFeed": {
+    "items": [
+      {
+        "em": "🎉",
+        "av": "AM",
+        "tx": "<b>Andrei M.</b> tocmai a făcut o manea pentru <b>Mihaela</b>",
+        "when": "acum câteva secunde"
+      },
+      {
+        "em": "🔥",
+        "av": "GP",
+        "tx": "<b>Gabi P.</b> a comandat o manea de nuntă",
+        "when": "acum 12 sec"
+      },
+      {
+        "em": "💃",
+        "av": "MS",
+        "tx": "<b>Maria S.</b> i-a făcut surpriză șefului",
+        "when": "acum 28 sec"
+      },
+      {
+        "em": "🎂",
+        "av": "IC",
+        "tx": "<b>Ionuț C.</b> a făcut manea pentru ziua mamei",
+        "when": "acum 41 sec"
+      },
+      {
+        "em": "😂",
+        "av": "CV",
+        "tx": "<b>Cristi V.</b> i-a făcut roast colegului",
+        "when": "acum 1 min"
+      },
+      {
+        "em": "❤️",
+        "av": "EL",
+        "tx": "<b>Elena L.</b> a comandat o declarație de dragoste",
+        "when": "acum 2 min"
+      },
+      {
+        "em": "🍷",
+        "av": "DR",
+        "tx": "<b>Dan R.</b> a făcut o manea de cumătrie",
+        "when": "acum 3 min"
+      },
+      {
+        "em": "👶",
+        "av": "AT",
+        "tx": "<b>Alina T.</b> a comandat manea de botez",
+        "when": "acum 4 min"
+      }
+    ]
+  },
   "smecher": {
     "tag": "🎯 Joc — durează 30 sec",
     "title": "Cât de șmecher ești?",
@@ -291,8 +343,13 @@
     },
     "top": {
       "badge": "★ Top săptămână",
-      "title": "Ce a băgat țara",
-      "sub": "Cele mai ascultate manele AI din ultimele 7 zile."
+      "title": "Topul săptămânii",
+      "sub": "Cele mai ascultate 10 manele din ultimele 7 zile, clasate după redări și share-uri."
+    },
+    "smecherSection": {
+      "badge": "🎯 Joc — durează 30 sec",
+      "title": "Cât de șmecher ești?",
+      "sub": "Răspunde la 5 întrebări rapide și află verdictul. Bonus: îți recomandăm maneaua potrivită."
     },
     "testi": {
       "badge": "★★★★★ 4.9 / 12.483 review-uri",
@@ -342,5 +399,47 @@
     "whyBullet2": "🎤 2 versiuni audio, alegi pe cea mai tare",
     "whyBullet3": "📧 Livrate pe email în <2 minute",
     "whyBullet4": "💰 Demo gratis — plătești doar dacă vrei tot"
+  },
+  "chat": {
+    "openAria": "Deschide chat",
+    "closeAria": "Închide chat",
+    "hintLabel": "Chat cu noi",
+    "headerTitle": "Suport {brand}",
+    "headerSub": "Răspundem în câteva minute",
+    "greeting": "Salut! Scrie-ne orice — întrebare, problemă, idee.",
+    "emailHint": "Tip: lasă-ți email-ul pe pagina de generator ca să-ți răspundem și pe email.",
+    "adminLabel": "Admin",
+    "placeholder": "Scrie un mesaj..."
+  },
+  "topPage": {
+    "flag": "Top România",
+    "title": "Cele mai tari manele",
+    "sub": "Ce a băgat țara la AI. Ranking pe baza ascultărilor și a share-urilor.",
+    "periodWeek": "Săptămâna asta",
+    "periodMonth": "Luna asta",
+    "periodAll": "Tot timpul",
+    "cta": "Bagă și tu o manea în top",
+    "empty": "Încă nu sunt manele în top. Fii primul!"
+  },
+  "ascultaPage": {
+    "flag": "🎧 Galerie manele",
+    "title": "Ascultă manele",
+    "sub": "Ultimele manele generate pe platformă. Filtrează după stil sau eveniment.",
+    "filterStyle": "Stil",
+    "filterOccasion": "Eveniment",
+    "all": "Toate",
+    "reset": "✕ Resetează filtrele",
+    "loading": "Se încarcă…",
+    "countOne": "{count} manea găsită",
+    "countMany": "{count} manele găsite",
+    "for": "Pentru",
+    "from": "De la",
+    "plays": "{count} ascultări",
+    "empty": "Nu am găsit manele cu filtrele astea.",
+    "emptyCta": "🎤 Fă prima manea",
+    "prev": "← Anterioare",
+    "next": "Următoare →",
+    "pageOf": "Pagina {current} / {total}",
+    "ctaMake": "🎤 Fă maneaua ta acum"
   }
 }

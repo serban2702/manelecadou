@@ -86,6 +86,58 @@
       "⭐ 4.9/5 — 12.483 stvarne recenzije"
     ]
   },
+  "liveFeed": {
+    "items": [
+      {
+        "em": "🎉",
+        "av": "AM",
+        "tx": "<b>Aleksandar M.</b> upravo je napravio pesmu za <b>Milicu</b>",
+        "when": "pre nekoliko sekundi"
+      },
+      {
+        "em": "🔥",
+        "av": "GP",
+        "tx": "<b>Goran P.</b> naručio je pesmu za svadbu",
+        "when": "pre 12 sek"
+      },
+      {
+        "em": "💃",
+        "av": "MS",
+        "tx": "<b>Marija S.</b> iznenadila je šefa",
+        "when": "pre 28 sek"
+      },
+      {
+        "em": "🎂",
+        "av": "IK",
+        "tx": "<b>Ivan K.</b> napravio je pesmu za majčin rođendan",
+        "when": "pre 41 sek"
+      },
+      {
+        "em": "😂",
+        "av": "KV",
+        "tx": "<b>Kristijan V.</b> napravio je roast kolegi",
+        "when": "pre 1 min"
+      },
+      {
+        "em": "❤️",
+        "av": "JL",
+        "tx": "<b>Jelena L.</b> naručila je ljubavnu izjavu",
+        "when": "pre 2 min"
+      },
+      {
+        "em": "🍷",
+        "av": "DR",
+        "tx": "<b>Dušan R.</b> napravio je pesmu za kumstvo",
+        "when": "pre 3 min"
+      },
+      {
+        "em": "👶",
+        "av": "AT",
+        "tx": "<b>Ana T.</b> naručila je pesmu za krštenje",
+        "when": "pre 4 min"
+      }
+    ]
+  },
   "smecher": {
     "tag": "🎯 Igra — traje 30 sek",
     "title": "Koliko si frajer?",
@@ -277,12 +329,29 @@
     },
     "side": {
       "offer": "Ponuda",
+      "whyTitle": "Zašto manele na poklon?",
+      "whyBullet1": "🎯 Tekst pisan sa AI, proveren drugim AI-jem",
+      "whyBullet2": "🎤 2 audio verzije, biraš najbolju",
+      "whyBullet3": "📧 Stiže na mejl za <2 minuta",
+      "whyBullet4": "💰 Demo besplatno — plaćaš samo ako želiš celo",
+      "howTitle": "Kako funkcioniše?",
+      "howStep1Title": "Biraš",
+      "howStep1Body": "Stil, povod, ime, glas — par klikova.",
+      "howStep2Title": "AI piše + peva",
+      "howStep2Body": "Generišemo tekst sa AI i 2 pesme izabranim glasom.",
+      "howStep3Title": "Slušaš i plaćaš",
+      "howStep3Body": "Besplatan demo 30s. Sviđa ti se? Otključavaš punu verziju.",
       "giftSomeone": "🎁 Poklon za nekoga"
     },
     "top": {
       "badge": "★ Top sedmice",
-      "title": "Šta sluša Balkan",
-      "sub": "Najslušanije AI pesme u poslednjih 7 dana."
+      "title": "Top sedmice",
+      "sub": "10 najslušanijih pesama u poslednjih 7 dana, rangirano po slušanjima i deljenjima."
+    },
+    "smecherSection": {
+      "badge": "🎯 Igra — traje 30 sek",
+      "title": "Koliki si frajer?",
+      "sub": "Odgovori na 5 brzih pitanja i otkrij presudu. Bonus: preporučujemo ti pravu pesmu."
     },
     "testi": {
       "badge": "★★★★★ 4.9 / 12.483 recenzija",
@@ -332,5 +401,47 @@
     "whyBullet2": "🎤 2 audio verzije, biraš najbolju",
     "whyBullet3": "📧 Stiže na mejl za <2 minuta",
     "whyBullet4": "💰 Demo besplatno — plaćaš samo ako želiš celo"
+  },
+  "chat": {
+    "openAria": "Otvori chat",
+    "closeAria": "Zatvori chat",
+    "hintLabel": "Chat sa nama",
+    "headerTitle": "Podrška {brand}",
+    "headerSub": "Odgovaramo za par minuta",
+    "greeting": "Hej! Piši nam bilo šta — pitanje, problem, ideja.",
+    "emailHint": "Savet: ostavi mejl na stranici generatora da ti odgovorimo i na mejl.",
+    "adminLabel": "Admin",
+    "placeholder": "Napiši poruku..."
+  },
+  "topPage": {
+    "flag": "Top Srbija",
+    "title": "Najjače manele",
+    "sub": "Šta je zemlja ubacila u AI. Rang po slušanjima i deljenjima.",
+    "periodWeek": "Ove nedelje",
+    "periodMonth": "Ovog meseca",
+    "periodAll": "Sva vremena",
+    "cta": "Ubaci i ti manele u top",
+    "empty": "Još nema manela u topu. Budi prvi!"
+  },
+  "ascultaPage": {
+    "flag": "🎧 Galerija pesama",
+    "title": "Slušaj pesme",
+    "sub": "Poslednje pesme generisane na platformi. Filtriraj po stilu ili događaju.",
+    "filterStyle": "Stil",
+    "filterOccasion": "Događaj",
+    "all": "Sve",
+    "reset": "✕ Resetuj filtere",
+    "loading": "Učitavanje…",
+    "countOne": "{count} pronađena pesma",
+    "countMany": "{count} pronađenih pesama",
+    "for": "Za",
+    "from": "Od",
+    "plays": "{count} slušanja",
+    "empty": "Nismo pronašli pesme sa tim filterima.",
+    "emptyCta": "🎤 Napravi prvu pesmu",
+    "prev": "← Prethodne",
+    "next": "Sledeće →",
+    "pageOf": "Strana {current} / {total}",
+    "ctaMake": "🎤 Napravi svoju pesmu sada"
   }
 }

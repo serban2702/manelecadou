@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations, useLocale } from 'next-intl';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/providers';
 import { useChatSocket } from '@/lib/chat-socket';
@@ -10,6 +11,8 @@ import { useSite } from '@/lib/site-context';
 export function ChatWidget() {
   const { ready, email } = useSession();
   const site = useSite();
+  const t = useTranslations('chat');
+  const locale = useLocale();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -64,7 +67,7 @@ export function ChatWidget() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          aria-label="Deschide chat"
+          aria-label={t('openAria')}
           style={{
             position: 'fixed', right: 18, bottom: 18, zIndex: 50,
             width: 58, height: 58, borderRadius: '50%',
@@ -74,7 +77,7 @@ export function ChatWidget() {
             display: 'grid', placeItems: 'center', fontSize: 26,
           }}
           data-hint="true"
-          data-hint-label="Chat cu noi"
+          data-hint-label={t('hintLabel')}
         >
           💬
           {unread > 0 && (
@@ -122,15 +125,15 @@ export function ChatWidget() {
           >
             <div>
               <div className="serif gold-text" style={{ fontSize: 14, fontWeight: 900 }}>
-                💬 Suport {site.name}
+                💬 {t('headerTitle', { brand: site.name })}
               </div>
               <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.5)' }}>
-                Răspundem în câteva minute
+                {t('headerSub')}
               </div>
             </div>
             <button
               onClick={() => setOpen(false)}
-              aria-label="Închide chat"
+              aria-label={t('closeAria')}
               style={{
                 background: 'transparent', border: 'none',
                 color: 'rgba(255,245,220,0.5)', cursor: 'pointer', fontSize: 22,
@@ -156,10 +159,10 @@ export function ChatWidget() {
                 }}
               >
                 <div style={{ fontSize: 32, marginBottom: 8 }}>👋</div>
-                Salut! Scrie-ne orice — întrebare, problemă, idee.
+                {t('greeting')}
                 {!email && (
                   <div style={{ marginTop: 10, fontSize: 11, color: 'rgba(255,245,220,0.35)' }}>
-                    Tip: lasă-ți email-ul pe pagina de generator ca să-ți răspundem și pe email.
+                    {t('emailHint')}
                   </div>
                 )}
               </div>
@@ -188,7 +191,7 @@ export function ChatWidget() {
                 >
                   {m.authorRole === 'admin' && (
                     <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--gold)', marginBottom: 2, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                      👑 Admin
+                      👑 {t('adminLabel')}
                     </div>
                   )}
                   {m.body}
@@ -201,7 +204,7 @@ export function ChatWidget() {
                       textAlign: 'right',
                     }}
                   >
-                    {new Date(m.createdAt).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(m.createdAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
               );
@@ -226,7 +229,7 @@ export function ChatWidget() {
                   send();
                 }
               }}
-              placeholder="Scrie un mesaj..."
+              placeholder={t('placeholder')}
               rows={1}
               style={{
                 flex: 1,

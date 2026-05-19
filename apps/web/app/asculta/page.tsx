@@ -3,64 +3,65 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { SiteShell } from '@/components/SiteShell';
 import { api } from '@/lib/api';
 import { OCC, STYLES, VOICES } from '@/lib/seed-data';
 import { ManeaPlayer } from '@/components/ManeaPlayer';
 
-type Period = 'week' | 'month' | 'all';
-type Sort = 'recent' | 'popular';
-
-const PAGE_SIZE = 24;
+const PAGE_SIZE = 30;
+const MAX_TOTAL = 300;
 
 export default function AsculaPage() {
+  const t = useTranslations('ascultaPage');
+  const tStyles = useTranslations('styles');
+  const tOcc = useTranslations('occasions');
   const [styleId, setStyleId] = useState('');
   const [occasion, setOccasion] = useState('');
-  const [voice, setVoice] = useState('');
-  const [period, setPeriod] = useState<Period>('all');
-  const [sort, setSort] = useState<Sort>('recent');
   const [page, setPage] = useState(0);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['gallery', styleId, occasion, voice, period, sort, page],
+    queryKey: ['gallery', styleId, occasion, page],
     queryFn: () =>
       api.publicGenerations({
         style: styleId || undefined,
         occasion: occasion || undefined,
-        voice: voice || undefined,
-        period,
-        sort,
+        period: 'all',
+        sort: 'recent',
         limit: PAGE_SIZE,
         offset: page * PAGE_SIZE,
       }),
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
   });
 
   function clearFilters() {
     setStyleId('');
     setOccasion('');
-    setVoice('');
-    setPeriod('all');
-    setSort('recent');
     setPage(0);
   }
 
-  const total = data?.total ?? 0;
+  const totalRaw = data?.total ?? 0;
+  const total = Math.min(totalRaw, MAX_TOTAL);
   const items = data?.items ?? [];
-  const hasFilters = !!styleId || !!occasion || !!voice || period !== 'all' || sort !== 'recent';
+  const hasFilters = !!styleId || !!occasion;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const styleLabel = (id: string) => {
+    try { return tStyles(`${id}.nm`); } catch { return STYLES.find((s) => s.id === id)?.nm ?? id; }
+  };
+  const occLabel = (id: string) => {
+    try { return tOcc(id); } catch { return OCC.find((o) => o.id === id)?.nm ?? id; }
+  };
 
   return (
     <SiteShell>
       <div className="site-main">
-        <section className="hero-wrap" style={{ padding: '20px 0 6px' }}>
-          <div className="hero-flag">🎧 Galerie & live feed</div>
-          <h1 className="gold-text">Ascultă manele</h1>
-          <p className="sub-lead">
-            Manele generate de AI — filtrează după stil, ocazie, voce. Sortează după cele mai noi sau cele mai populare.
-          </p>
+        <section className="hero-wrap" style={{ padding: '20px 0 6px', textAlign: 'center' }}>
+          <div className="hero-flag">{t('flag')}</div>
+          <h1 className="gold-text">{t('title')}</h1>
+          <p className="sub-lead">{t('sub')}</p>
         </section>
 
-        {/* Filtre */}
         <section className="band" style={{ marginTop: 20 }}>
           <div
             style={{
@@ -73,73 +74,60 @@ export default function AsculaPage() {
               marginBottom: 18,
             }}
           >
-            <FilterRow label="Stil">
-              <Chip active={!styleId} onClick={() => { setStyleId(''); setPage(0); }}>Toate</Chip>
+            <FilterRow label={t('filterStyle')}>
+              <Chip active={!styleId} onClick={() => { setStyleId(''); setPage(0); }}>{t('all')}</Chip>
               {STYLES.map((s) => (
                 <Chip key={s.id} active={styleId === s.id} onClick={() => { setStyleId(s.id); setPage(0); }}>
-                  {s.em} {s.nm}
+                  {s.em} {styleLabel(s.id)}
                 </Chip>
               ))}
             </FilterRow>
-            <FilterRow label="Ocazie">
-              <Chip active={!occasion} onClick={() => { setOccasion(''); setPage(0); }}>Toate</Chip>
+            <FilterRow label={t('filterOccasion')}>
+              <Chip active={!occasion} onClick={() => { setOccasion(''); setPage(0); }}>{t('all')}</Chip>
               {OCC.map((o) => (
                 <Chip key={o.id} active={occasion === o.id} onClick={() => { setOccasion(o.id); setPage(0); }}>
-                  {o.em} {o.nm}
+                  {o.em} {occLabel(o.id)}
                 </Chip>
               ))}
             </FilterRow>
-            <FilterRow label="Voce">
-              <Chip active={!voice} onClick={() => { setVoice(''); setPage(0); }}>Toate</Chip>
-              {VOICES.map((v) => (
-                <Chip key={v.id} active={voice === v.id} onClick={() => { setVoice(v.id); setPage(0); }}>
-                  {v.nm}
-                </Chip>
-              ))}
-            </FilterRow>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                <span style={{ fontSize: 11, color: 'rgba(255,245,220,0.5)', alignSelf: 'center', marginRight: 4 }}>Perioadă:</span>
-                {(['week', 'month', 'all'] as const).map((p) => (
-                  <Chip key={p} active={period === p} onClick={() => { setPeriod(p); setPage(0); }}>
-                    {p === 'week' ? 'Săpt.' : p === 'month' ? 'Luna' : 'Tot'}
-                  </Chip>
-                ))}
-                <span style={{ fontSize: 11, color: 'rgba(255,245,220,0.5)', alignSelf: 'center', marginLeft: 12, marginRight: 4 }}>Sort:</span>
-                <Chip active={sort === 'recent'} onClick={() => { setSort('recent'); setPage(0); }}>Recente</Chip>
-                <Chip active={sort === 'popular'} onClick={() => { setSort('popular'); setPage(0); }}>Populare</Chip>
-              </div>
-              {hasFilters && (
+            {hasFilters && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button
                   onClick={clearFilters}
                   style={{
                     background: 'transparent', border: '1px solid var(--line)',
                     color: 'rgba(255,245,220,0.6)', padding: '6px 12px',
                     borderRadius: 999, fontSize: 12, cursor: 'pointer',
+                    fontFamily: 'inherit',
                   }}
                 >
-                  ✕ Resetează
+                  {t('reset')}
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           <div style={{ fontSize: 12, color: 'rgba(255,245,220,0.5)', marginBottom: 14 }}>
-            {isLoading ? 'Se încarcă...' : `${total} manele găsite`}
+            {isLoading
+              ? t('loading')
+              : total === 1
+                ? t('countOne', { count: total })
+                : t('countMany', { count: total })}
           </div>
 
           {items.length === 0 && !isLoading ? (
             <div style={{ textAlign: 'center', padding: 36 }}>
-              <p className="ld">Nu s-a găsit nimic cu filtrele astea. Încearcă să le resetezi.</p>
+              <p className="ld">{t('empty')}</p>
               <Link href="/studio" className="btn btn-gold" style={{ textDecoration: 'none', marginTop: 14 }}>
-                🎤 Fă prima ta manea
+                {t('emptyCta')}
               </Link>
             </div>
           ) : (
             <div className="demo-grid">
               {items.map((r) => {
                 const voiceNm = VOICES.find((v) => v.id === r.voiceArtist)?.nm ?? r.voiceArtist;
-                const styleNm = STYLES.find((s) => s.id === r.style)?.nm ?? r.style;
+                const styleNm = styleLabel(r.style);
+                const occNm = occLabel(r.occasion);
                 return (
                   <Link
                     href={`/m/${r.id}`}
@@ -148,27 +136,59 @@ export default function AsculaPage() {
                     style={{ textDecoration: 'none', flexDirection: 'column', alignItems: 'stretch' }}
                   >
                     <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
-                      <div style={{
-                        width: 56, height: 56, borderRadius: '50%', flexShrink: 0,
-                        background: 'radial-gradient(circle at 35% 35%, #2a1a04 6%, #1a0a0a 12%, #0a0606 24%, #2a1a04 64%)',
-                        border: '1px solid var(--gold-deep)',
-                      }} />
+                      <div
+                        style={{
+                          width: 56, height: 56, borderRadius: '50%', flexShrink: 0,
+                          background:
+                            'radial-gradient(circle at 35% 35%, #2a1a04 6%, #1a0a0a 12%, #0a0606 24%, #2a1a04 64%)',
+                          border: '1px solid var(--gold-deep)',
+                        }}
+                      />
                       <div className="meta" style={{ flex: 1, minWidth: 0 }}>
-                        <div className="nm" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Pentru {r.recipientName}</div>
-                        <div className="by">{voiceNm} · {styleNm}</div>
-                        <div style={{ fontSize: 10, color: 'rgba(255,245,220,0.4)', marginTop: 2 }}>
-                          ▶ {r.viewCount ?? 0} ascultări
+                        <div
+                          className="nm"
+                          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        >
+                          {t('for')} {r.recipientName}
+                        </div>
+                        {r.senderName && (
+                          <div
+                            className="by"
+                            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          >
+                            {t('from')} {r.senderName}
+                          </div>
+                        )}
+                        <div
+                          style={{
+                            display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4,
+                          }}
+                        >
+                          <span className="lb-tag">{styleNm}</span>
+                          <span className="lb-tag">{occNm}</span>
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: 'rgba(255,245,220,0.4)',
+                            marginTop: 4,
+                          }}
+                        >
+                          {voiceNm} · {t('plays', { count: (r as { viewCount?: number }).viewCount ?? 0 })}
                         </div>
                       </div>
                     </div>
-                    {r.audioUrl && <div onClick={(e) => e.preventDefault()}><ManeaPlayer audioUrl={r.audioUrl} compact /></div>}
+                    {r.audioUrl && (
+                      <div onClick={(e) => e.preventDefault()}>
+                        <ManeaPlayer audioUrl={r.audioUrl} compact />
+                      </div>
+                    )}
                   </Link>
                 );
               })}
             </div>
           )}
 
-          {/* Paginare */}
           {total > PAGE_SIZE && (
             <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 24 }}>
               <button
@@ -177,10 +197,10 @@ export default function AsculaPage() {
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 style={{ opacity: page === 0 ? 0.4 : 1 }}
               >
-                ← Anterioare
+                {t('prev')}
               </button>
               <span style={{ alignSelf: 'center', fontSize: 12, color: 'rgba(255,245,220,0.6)' }}>
-                {page + 1} / {Math.ceil(total / PAGE_SIZE)}
+                {t('pageOf', { current: page + 1, total: totalPages })}
               </span>
               <button
                 className="btn btn-ghost btn-sm"
@@ -188,7 +208,7 @@ export default function AsculaPage() {
                 onClick={() => setPage((p) => p + 1)}
                 style={{ opacity: (page + 1) * PAGE_SIZE >= total ? 0.4 : 1 }}
               >
-                Următoare →
+                {t('next')}
               </button>
             </div>
           )}
@@ -196,7 +216,7 @@ export default function AsculaPage() {
 
         <section className="band" style={{ textAlign: 'center' }}>
           <Link href="/studio" className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
-            🎤 Fă maneaua ta acum — 29,99 lei
+            {t('ctaMake')}
           </Link>
         </section>
       </div>
@@ -207,7 +227,16 @@ export default function AsculaPage() {
 function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.5)', marginBottom: 6, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <div
+        style={{
+          fontSize: 11,
+          color: 'rgba(255,245,220,0.5)',
+          marginBottom: 6,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+        }}
+      >
         {label}
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{children}</div>
@@ -215,7 +244,15 @@ function FilterRow({ label, children }: { label: string; children: React.ReactNo
   );
 }
 
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function Chip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <button
       onClick={onClick}

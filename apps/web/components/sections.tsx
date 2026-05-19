@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Ic } from './icons';
 import { toast } from './Toaster';
-import { DEMOS, FEED, TESTI, TOP } from '@/lib/seed-data';
+import { DEMOS, FEED as FEED_FALLBACK, TESTI, TOP } from '@/lib/seed-data';
 import { siteSupportEmail, siteUrl } from '@/lib/site-shared';
 import { useSite } from '@/lib/site-context';
 
@@ -149,19 +149,25 @@ export function NowPlaying({ playing, onClose }: { playing: string; onClose: () 
 
 export function Leaderboard() {
   const [playing, setPlaying] = useState<number | null>(null);
+  const mid = Math.ceil(TOP.length / 2);
+  const cols = [TOP.slice(0, mid), TOP.slice(mid)];
   return (
-    <div className="lb">
-      {TOP.map((t) => (
-        <div key={t.rk} className={`lb-row ${t.rk === 1 ? 'top1' : ''}`}>
-          <div className="rk">{t.rk === 1 ? '👑' : `#${t.rk}`}</div>
-          <div className="info">
-            <div className="ttl">{t.ttl}</div>
-            <div className="by">{t.by}</div>
-          </div>
-          <div className="pl">▶ {t.pl}</div>
-          <button className="play-rk" onClick={() => setPlaying(playing === t.rk ? null : t.rk)}>
-            {playing === t.rk ? <Ic.Pause s={11} /> : <Ic.Play s={11} />}
-          </button>
+    <div className="lb-grid">
+      {cols.map((col, ci) => (
+        <div key={ci} className="lb">
+          {col.map((t) => (
+            <div key={t.rk} className={`lb-row ${t.rk === 1 ? 'top1' : ''}`}>
+              <div className="rk">{t.rk === 1 ? '👑' : `#${t.rk}`}</div>
+              <div className="info">
+                <div className="ttl">{t.ttl}</div>
+                <div className="by">{t.by}</div>
+              </div>
+              <div className="pl">▶ {t.pl}</div>
+              <button className="play-rk" onClick={() => setPlaying(playing === t.rk ? null : t.rk)}>
+                {playing === t.rk ? <Ic.Pause s={11} /> : <Ic.Play s={11} />}
+              </button>
+            </div>
+          ))}
         </div>
       ))}
     </div>
@@ -237,10 +243,6 @@ export function Smecher() {
 
   return (
     <div className="smc">
-      <div className="s-head" style={{ marginBottom: 14 }}>
-        <div className="ek">{t('tag')}</div>
-        <h2 className="gold-text" style={{ fontSize: 18 }}>{t('title')}</h2>
-      </div>
       <div className="smc-meter">
         <div className="smc-needle" style={{ left: `${pct}%` }}></div>
       </div>
@@ -304,13 +306,23 @@ function SmcQ({ q, opts, val, onSet }: { q: string; opts: string[]; val: number 
 }
 
 export function LiveFeed() {
-  type Pop = { id: number; em: string; av: string; tx: string; when: string; out?: boolean };
+  type FeedItem = { em: string; av: string; tx: string; when: string };
+  type Pop = FeedItem & { id: number; out?: boolean };
+  const t = useTranslations('liveFeed');
+  const items = useMemo<FeedItem[]>(() => {
+    const raw = t.raw('items');
+    return Array.isArray(raw) && raw.length ? (raw as FeedItem[]) : (FEED_FALLBACK as FeedItem[]);
+  }, [t]);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
   const [pops, setPops] = useState<Pop[]>([]);
   const idx = useRef(0);
 
   useEffect(() => {
     const intv = setInterval(() => {
-      const item = FEED[idx.current % FEED.length];
+      const list = itemsRef.current;
+      if (!list.length) return;
+      const item = list[idx.current % list.length];
       idx.current++;
       const id = Math.random();
       setPops((p) => [...p, { ...item, id }]);

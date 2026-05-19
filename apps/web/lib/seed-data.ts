@@ -63,6 +63,11 @@ export const TOP = [
   { rk: 3, ttl: 'Bă fine, ești tare', by: 'Țicu Diamante', pl: '7.1K' },
   { rk: 4, ttl: 'Pentru Geta de la birou', by: 'Mariana Trandafir', pl: '5.6K' },
   { rk: 5, ttl: 'Cumătrie la Gigi', by: 'Nicu Mercedes', pl: '4.3K' },
+  { rk: 6, ttl: 'Aniversare pentru tata', by: 'Sandu Privighetoarea', pl: '3.8K' },
+  { rk: 7, ttl: 'Surpriză pentru iubita mea', by: 'Vali de la Pitești', pl: '3.2K' },
+  { rk: 8, ttl: 'Botezul lui Mateiaș', by: 'Costel Biju', pl: '2.7K' },
+  { rk: 9, ttl: 'Pentru cumnatul de pe șantier', by: 'Marian Cobzaru', pl: '2.1K' },
+  { rk: 10, ttl: 'Frate, ești pe val', by: 'Adi Șampanie', pl: '1.8K' },
 ];
 
 export const FEED = [

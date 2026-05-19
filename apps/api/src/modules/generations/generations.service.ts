@@ -201,7 +201,7 @@ export class GenerationsService {
       qb.orderBy('g.createdAt', 'DESC');
     }
 
-    const limit = Math.min(Math.max(opts.limit ?? 24, 1), 60);
+    const limit = Math.min(Math.max(opts.limit ?? 24, 1), 300);
     const offset = Math.max(opts.offset ?? 0, 0);
     qb.take(limit).skip(offset);
 
@@ -211,6 +211,33 @@ export class GenerationsService {
 
   async incrementViewCount(id: string): Promise<void> {
     await this.repo.increment({ id }, 'viewCount', 1);
+  }
+
+  /**
+   * Top tracks pentru pagina /top — agregare după viewCount în fereastra cerută.
+   * Doar generări `succeeded` care sunt vizibile public (full sau demo deblocat).
+   */
+  async listTop(opts: {
+    siteId: string | null;
+    period?: 'week' | 'month' | 'all';
+    limit?: number;
+  }): Promise<Generation[]> {
+    const qb = this.repo
+      .createQueryBuilder('g')
+      .where('g.status = :status', { status: 'succeeded' })
+      .andWhere('(g.type = :full OR g.paidUnlocked = true)', { full: 'full' });
+    if (opts.siteId) qb.andWhere('g."siteId" = :siteId', { siteId: opts.siteId });
+    if (opts.period === 'week') {
+      qb.andWhere('g."createdAt" >= NOW() - INTERVAL \'7 days\'');
+    } else if (opts.period === 'month') {
+      qb.andWhere('g."createdAt" >= NOW() - INTERVAL \'30 days\'');
+    }
+    const limit = Math.min(Math.max(opts.limit ?? 5, 1), 50);
+    return qb
+      .orderBy('g.viewCount', 'DESC')
+      .addOrderBy('g."createdAt"', 'DESC')
+      .take(limit)
+      .getMany();
   }
 
   /**
