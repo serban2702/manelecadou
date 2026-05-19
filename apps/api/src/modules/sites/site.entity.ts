@@ -228,6 +228,28 @@ export interface SiteOccasionEntry {
   i18n?: Record<string, { nm?: string }>;
 }
 
+/**
+ * Testimonial afișat pe pagina principală (secțiunea „Ce zic clienții"). Editabil
+ * din admin per-site. Default = `[]`; web app cade pe lista hardcoded din
+ * `seed-data.ts` (TESTI) dacă acest array e gol.
+ */
+export interface SiteTestimonialEntry {
+  /** ID stabil (uuid sau slug) — folosit ca React key. */
+  id: string;
+  /** 1..5. Afișat ca `★` repetat. */
+  stars: number;
+  /** Textul recenziei. */
+  quote: string;
+  /** Numele afișat (ex. „Costel B."). */
+  name: string;
+  /** Rol / locație (ex. „Buzău", „client din 2024"). */
+  role: string;
+  /** 1-3 caractere afișate ca avatar (ex. „CB"). */
+  avatar: string;
+  /** Override traduceri per locale. Cheia = locale ("ro", "bg", ...). */
+  i18n?: Record<string, { quote?: string; name?: string; role?: string }>;
+}
+
 @Entity({ name: 'sites' })
 export class Site {
   @PrimaryGeneratedColumn('uuid')
@@ -370,6 +392,13 @@ export class Site {
    */
   @Column({ type: 'jsonb', default: () => `'[]'::jsonb` })
   occasions!: SiteOccasionEntry[];
+
+  /**
+   * Testimoniale afișate pe pagina principală. Editabile per-site din admin.
+   * Dacă goală, web app folosește lista hardcoded din `seed-data.ts` (TESTI).
+   */
+  @Column({ type: 'jsonb', default: () => `'[]'::jsonb` })
+  testimonials!: SiteTestimonialEntry[];
 
   /**
    * Mesaj custom pentru pagina de mentenanță, JSON cu cheie = locale.

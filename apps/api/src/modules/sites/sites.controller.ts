@@ -20,13 +20,19 @@ export class PublicSiteController {
 
   /**
    * Listă de țări disponibile pentru selector-ul din topbar.
-   * Pentru fiecare locale activ + ne-hidden, întoarce site-ul cel mai vechi
-   * (după createdAt). O singură intrare per țară — click → redirect la domeniul ei.
+   * Pentru fiecare locale, întoarce site-ul cel mai vechi (după createdAt) care
+   * e `active && !hiddenMode && !maintenanceMode` — EXCEPȚIE: dacă IP-ul
+   * clientului e în `ipWhitelist`-ul site-ului, restricțiile sunt sărite
+   * (același comportament ca middleware-ul de maintenance/hidden).
    */
   @Get('countries')
-  async countries() {
+  async countries(@Req() req: Request) {
     const all = await this.sites.listAll();
-    const visible = all.filter((s) => s.active && !s.hiddenMode);
+    const clientIp = extractClientIp(req);
+    const visible = all.filter((s) => {
+      if (isIpWhitelisted(clientIp, s.ipWhitelist ?? [])) return true;
+      return s.active && !s.hiddenMode && !s.maintenanceMode;
+    });
     const oldestByLocale = new Map<string, Site>();
     for (const s of visible) {
       const existing = oldestByLocale.get(s.locale);
@@ -71,6 +77,7 @@ export class PublicSiteController {
       styles: site.styles ?? [],
       voices: site.voices ?? [],
       occasions: site.occasions ?? [],
+      testimonials: site.testimonials ?? [],
       // Mostrele audio (URL public) — citite de /studio pentru carduri-le ►.
       styleSamples: site.suno?.styleSamples ?? {},
       voiceSamples: site.suno?.voiceSamples ?? {},
@@ -88,6 +95,23 @@ export class PublicSiteController {
       }),
     };
   }
+}
+
+/**
+ * Match exact sau prefix-wildcard ("192.168.*"). Echivalent cu helper-ul
+ * `isIpWhitelisted` din `apps/web/lib/site-shared.ts` — duplicat aici fiindcă
+ * API-ul nu importă cod din workspace-ul web.
+ */
+function isIpWhitelisted(clientIp: string | null, whitelist: string[]): boolean {
+  if (!clientIp || !whitelist || whitelist.length === 0) return false;
+  const ip = clientIp.trim();
+  for (const raw of whitelist) {
+    const entry = (raw ?? '').trim();
+    if (!entry) continue;
+    if (entry === ip) return true;
+    if (entry.endsWith('*') && ip.startsWith(entry.slice(0, -1))) return true;
+  }
+  return false;
 }
 
 function extractClientIp(req: Request): string | null {
@@ -179,6 +203,7 @@ export class AdminSitesController {
       styles: s.styles ?? [],
       voices: s.voices ?? [],
       occasions: s.occasions ?? [],
+      testimonials: s.testimonials ?? [],
       notes: s.notes,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,

@@ -16,6 +16,7 @@ import {
   RefreshCcw,
   RotateCcw,
   Sparkles,
+  Star,
   Trash2,
   Upload,
   Wand2,
@@ -29,6 +30,7 @@ import {
   type SiteOccasionEntry,
   type SiteSampleDefaults,
   type SiteStyleEntry,
+  type SiteTestimonialEntry,
   type SiteVoiceEntry,
   ALL_SITES,
   getSelectedSiteId,
@@ -523,6 +525,8 @@ function BrandSeoTab({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto) =
           />
         </Field>
       </Section>
+
+      <TestimonialsSection form={form} setForm={setForm} />
 
       <Section title="Social">
         <Field label="Instagram URL">
@@ -1796,6 +1800,149 @@ function EmptyHint({ kind }: { kind: string }) {
         Apasă „Adaugă" pentru a customiza.
       </CardContent>
     </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Testimoniale (afișate pe pagina principală — secțiunea „Ce zic clienții")
+// ─────────────────────────────────────────────────────────────────────────────
+
+function TestimonialsSection({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto) => void }) {
+  const list = form.testimonials ?? [];
+
+  function update(idx: number, patch: Partial<SiteTestimonialEntry>) {
+    const next = list.map((t, i) => (i === idx ? { ...t, ...patch } : t));
+    setForm({ ...form, testimonials: next });
+  }
+
+  function add() {
+    const next: SiteTestimonialEntry = {
+      id: `t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      stars: 5,
+      quote: '',
+      name: '',
+      role: '',
+      avatar: '',
+    };
+    setForm({ ...form, testimonials: [...list, next] });
+  }
+
+  function remove(idx: number) {
+    const next = list.filter((_, i) => i !== idx);
+    setForm({ ...form, testimonials: next });
+  }
+
+  function move(idx: number, dir: -1 | 1) {
+    const target = idx + dir;
+    if (target < 0 || target >= list.length) return;
+    const next = [...list];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setForm({ ...form, testimonials: next });
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground">Testimoniale</div>
+            <div className="text-[11px] text-muted-foreground">
+              Afișate pe pagina principală. Gol = fallback la lista default din cod.
+            </div>
+          </div>
+          <Button size="sm" variant="outline" onClick={add}>
+            <Plus className="h-4 w-4" />
+            Adaugă
+          </Button>
+        </div>
+
+        {list.length === 0 ? (
+          <div className="text-sm text-muted-foreground text-center py-6 border border-dashed rounded-md">
+            Niciun testimonial. Apasă „Adaugă" pentru primul.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {list.map((t, idx) => (
+              <div key={t.id} className="border border-border rounded-lg p-3 space-y-2 bg-secondary/20">
+                <div className="flex items-start gap-2">
+                  <div className="flex-1 grid grid-cols-1 sm:grid-cols-12 gap-2">
+                    <div className="sm:col-span-2">
+                      <Label className="text-[10px] uppercase">Stele</Label>
+                      <StarsPicker value={t.stars} onChange={(v) => update(idx, { stars: v })} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label className="text-[10px] uppercase">Avatar</Label>
+                      <Input
+                        value={t.avatar}
+                        maxLength={3}
+                        onChange={(e) => update(idx, { avatar: e.target.value.toUpperCase().slice(0, 3) })}
+                        placeholder="CB"
+                      />
+                    </div>
+                    <div className="sm:col-span-4">
+                      <Label className="text-[10px] uppercase">Nume</Label>
+                      <Input
+                        value={t.name}
+                        onChange={(e) => update(idx, { name: e.target.value })}
+                        placeholder="Costel B."
+                      />
+                    </div>
+                    <div className="sm:col-span-4">
+                      <Label className="text-[10px] uppercase">Rol / locație</Label>
+                      <Input
+                        value={t.role}
+                        onChange={(e) => update(idx, { role: e.target.value })}
+                        placeholder="Buzău"
+                      />
+                    </div>
+                    <div className="sm:col-span-12">
+                      <Label className="text-[10px] uppercase">Quote</Label>
+                      <Textarea
+                        value={t.quote}
+                        onChange={(e) => update(idx, { quote: e.target.value })}
+                        rows={2}
+                        placeholder='"Frate, șeful a plâns. Mărire de salariu garantată."'
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <Button size="sm" variant="ghost" onClick={() => move(idx, -1)} disabled={idx === 0} title="Sus">
+                      <ChevronUp className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => move(idx, 1)} disabled={idx === list.length - 1} title="Jos">
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => remove(idx)} title="Șterge">
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function StarsPicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex items-center gap-0.5 h-9 px-2 border border-border rounded-md bg-background">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          onClick={() => onChange(n)}
+          className="p-0.5 hover:scale-110 transition-transform"
+          title={`${n} stele`}
+        >
+          <Star
+            className={`h-4 w-4 ${n <= value ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground'}`}
+          />
+        </button>
+      ))}
+    </div>
   );
 }
 

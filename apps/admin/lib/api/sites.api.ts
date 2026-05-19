@@ -79,6 +79,8 @@ export interface SiteDto {
   voices: SiteVoiceEntry[];
   /** Ocazii (zile naștere, nuntă, etc.) per site. */
   occasions: SiteOccasionEntry[];
+  /** Testimoniale afișate pe pagina principală. Gol = fallback la seed-data.ts. */
+  testimonials: SiteTestimonialEntry[];
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -153,6 +155,16 @@ export interface SiteOccasionEntry {
   nm: string;
   ic?: SiteIconConfig;
   i18n?: Record<string, { nm?: string }>;
+}
+
+export interface SiteTestimonialEntry {
+  id: string;
+  stars: number;
+  quote: string;
+  name: string;
+  role: string;
+  avatar: string;
+  i18n?: Record<string, { quote?: string; name?: string; role?: string }>;
 }
 
 export interface SampleEntryDto {

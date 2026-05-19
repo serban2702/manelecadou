@@ -62,6 +62,8 @@ export interface SiteConfig {
   styles?: SiteStyleEntry[];
   voices?: SiteVoiceEntry[];
   occasions?: SiteOccasionEntry[];
+  /** Testimoniale per site. Goale = fallback la TESTI din seed-data.ts. */
+  testimonials?: SiteTestimonialEntry[];
   /**
    * Mostre audio (URL public) per stil/voce — folosite de butoanele ► din /studio.
    * Cheia = id-ul stilului ('clasic', 'modern', ...) sau al vocii ('adi', 'florinel', ...).
@@ -104,6 +106,16 @@ export interface SiteOccasionEntry {
   nm: string;
   ic?: SiteIconConfig;
   i18n?: Record<string, { nm?: string }>;
+}
+
+export interface SiteTestimonialEntry {
+  id: string;
+  stars: number;
+  quote: string;
+  name: string;
+  role: string;
+  avatar: string;
+  i18n?: Record<string, { quote?: string; name?: string; role?: string }>;
 }
 
 /**

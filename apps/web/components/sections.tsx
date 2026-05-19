@@ -175,10 +175,36 @@ export function Leaderboard() {
 }
 
 export function Testimonials() {
+  const site = useSite();
+  const locale = site.locale;
+
+  // Folosește testimonialele configurate per-site dacă există, altfel fallback
+  // la lista hardcoded din seed-data.ts (TESTI — formatul vechi).
+  const items = (site.testimonials ?? []).length > 0
+    ? (site.testimonials ?? []).map((t) => {
+        const tr = t.i18n?.[locale] ?? {};
+        return {
+          key: t.id,
+          stars: Math.max(0, Math.min(5, t.stars ?? 5)),
+          q: tr.quote ?? t.quote,
+          nm: tr.name ?? t.name,
+          rl: tr.role ?? t.role,
+          av: t.avatar,
+        };
+      })
+    : TESTI.map((t, i) => ({
+        key: `seed-${i}`,
+        stars: t.stars,
+        q: t.q,
+        nm: t.nm,
+        rl: t.rl,
+        av: t.av,
+      }));
+
   return (
     <div className="testi-scroll">
-      {TESTI.map((t, i) => (
-        <div key={i} className="testi-card">
+      {items.map((t) => (
+        <div key={t.key} className="testi-card">
           <div className="stars">{'★'.repeat(t.stars)}</div>
           <div className="q">{t.q}</div>
           <div className="who">
