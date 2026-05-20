@@ -66,7 +66,8 @@
       "confidentialitate": "Zasebnost",
       "cookies": "Piškotki",
       "contact": "Kontakt",
-      "faq": "Pogosta vprašanja"
+      "faq": "Pogosta vprašanja",
+      "articles": "Članki"
     },
     "badges": {
       "ssl": "🔒 SSL zaščiteno",
@@ -936,5 +937,21 @@
     "tooltipSingular": "Doslej si generiral {count} pesem",
     "tooltipPlural": "Doslej si generiral {count} pesmi",
     "label": "Moje pesmi"
+  },
+  "articlesPage": {
+    "title": "Članki in vodniki",
+    "lead": "Vse, kar moraš vedeti, da narediš najboljšo pesem-darilo.",
+    "metaTitle": "Članki in vodniki",
+    "metaDescription": "Ideje za darila, vodniki in primeri prilagojenih pesmi. Vse, kar moraš vedeti, preden narediš svojo pesem-darilo.",
+    "emptyState": "Članki se pripravljajo — vrni se kmalu.",
+    "ctaMake": "🎤 Naredi svojo pesem — {price}",
+    "categories": {
+      "ocazii": "🎉 Priložnosti",
+      "destinatari": "👤 Za koga",
+      "stiluri": "🎤 Glasbeni slogi",
+      "cadou": "🎁 Ideje za darilo",
+      "cum-functioneaza": "⚙️ Kako deluje",
+      "long-tail": "📚 Vodniki"
+    }
   }
 }

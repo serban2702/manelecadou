@@ -65,7 +65,8 @@
       "confidentialitate": "Confidențialitate",
       "cookies": "Cookies",
       "contact": "Contact",
-      "faq": "FAQ"
+      "faq": "FAQ",
+      "articles": "Articole"
     },
     "badges": {
       "ssl": "🔒 SSL securizat",
@@ -934,5 +935,21 @@
     "tooltipSingular": "Ai generat {count} manea până acum",
     "tooltipPlural": "Ai generat {count} manele până acum",
     "label": "Manelele mele"
+  },
+  "articlesPage": {
+    "title": "Articole & ghiduri",
+    "lead": "Tot ce trebuie să știi ca să faci cea mai tare manea cadou.",
+    "metaTitle": "Articole & ghiduri",
+    "metaDescription": "Idei de cadou, ghiduri și exemple de manele personalizate. Tot ce trebuie să știi înainte să-ți faci propria manea cadou.",
+    "emptyState": "Articolele se construiesc — revino în curând.",
+    "ctaMake": "🎤 Fă propria manea — {price}",
+    "categories": {
+      "ocazii": "🎉 Ocazii",
+      "destinatari": "👤 Pentru cine",
+      "stiluri": "🎤 Stiluri muzicale",
+      "cadou": "🎁 Idei de cadou",
+      "cum-functioneaza": "⚙️ Cum funcționează",
+      "long-tail": "📚 Ghiduri"
+    }
   }
 }

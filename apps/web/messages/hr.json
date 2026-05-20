@@ -66,7 +66,8 @@
       "confidentialitate": "Privatnost",
       "cookies": "Kolačići",
       "contact": "Kontakt",
-      "faq": "FAQ"
+      "faq": "FAQ",
+      "articles": "Članci"
     },
     "badges": {
       "ssl": "🔒 SSL zaštićeno",
@@ -936,5 +937,21 @@
     "tooltipSingular": "Generirao si {count} pjesmu do sada",
     "tooltipPlural": "Generirao si {count} pjesama do sada",
     "label": "Moje pjesme"
+  },
+  "articlesPage": {
+    "title": "Članci i vodiči",
+    "lead": "Sve što trebaš znati da napraviš najbolju pjesmu-poklon.",
+    "metaTitle": "Članci i vodiči",
+    "metaDescription": "Ideje za poklone, vodiči i primjeri prilagođenih pjesama. Sve što trebaš znati prije nego što napraviš svoju pjesmu-poklon.",
+    "emptyState": "Članci se rade — vrati se uskoro.",
+    "ctaMake": "🎤 Napravi svoju pjesmu — {price}",
+    "categories": {
+      "ocazii": "🎉 Prigode",
+      "destinatari": "👤 Za koga",
+      "stiluri": "🎤 Glazbeni stilovi",
+      "cadou": "🎁 Ideje za poklon",
+      "cum-functioneaza": "⚙️ Kako funkcionira",
+      "long-tail": "📚 Vodiči"
+    }
   }
 }

@@ -21,14 +21,14 @@ export type PrizeKey = 'ghinion' | 'tier1' | 'tier2' | 'tier3' | 'gratis';
  * weight = probabilitate proporțională. Suma nu trebuie să fie 100 — pickWeighted
  * normalizează intern.
  *
- * NOTĂ business: tier3 (echivalentul 20 lei) și gratis (manea 100% gratis) au
- * weight 0 → nu pot pica niciodată. Le păstrăm pe wheel pentru atracție vizuală,
- * dar matematic sunt inactive.
+ * NOTĂ business: doar `ghinion` (nimic) și `tier1` (cel mai mic discount) sunt
+ * active matematic. tier2, tier3 și gratis au weight 0 → nu pot pica niciodată.
+ * Le păstrăm pe wheel pentru atracție vizuală, dar utilizatorul nu le va lua.
  */
 const PRIZES = [
   { idx: 0, weight: 50, prizeKey: 'ghinion' as PrizeKey, kind: 'none' as const },
   { idx: 1, weight: 25, prizeKey: 'tier1' as PrizeKey, kind: 'discount' as const },
-  { idx: 2, weight: 15, prizeKey: 'tier2' as PrizeKey, kind: 'discount' as const },
+  { idx: 2, weight: 0, prizeKey: 'tier2' as PrizeKey, kind: 'discount' as const },
   { idx: 3, weight: 0, prizeKey: 'tier3' as PrizeKey, kind: 'discount' as const },
   { idx: 4, weight: 0, prizeKey: 'gratis' as PrizeKey, kind: 'discount' as const },
 ];

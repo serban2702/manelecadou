@@ -66,7 +66,8 @@
       "confidentialitate": "Gizlilik",
       "cookies": "Çerezler",
       "contact": "İletişim",
-      "faq": "SSS"
+      "faq": "SSS",
+      "articles": "Makaleler"
     },
     "badges": {
       "ssl": "🔒 SSL güvenli",
@@ -936,5 +937,21 @@
     "tooltipSingular": "Şimdiye kadar {count} şarkı ürettin",
     "tooltipPlural": "Şimdiye kadar {count} şarkı ürettin",
     "label": "Şarkılarım"
+  },
+  "articlesPage": {
+    "title": "Makaleler ve rehberler",
+    "lead": "En iyi hediye şarkıyı yapmak için bilmen gereken her şey.",
+    "metaTitle": "Makaleler ve rehberler",
+    "metaDescription": "Hediye fikirleri, rehberler ve kişiselleştirilmiş şarkı örnekleri. Kendi hediye şarkını yapmadan önce bilmen gereken her şey.",
+    "emptyState": "Makaleler hazırlanıyor — yakında geri dön.",
+    "ctaMake": "🎤 Kendi şarkını yap — {price}",
+    "categories": {
+      "ocazii": "🎉 Vesileler",
+      "destinatari": "👤 Kim için",
+      "stiluri": "🎤 Müzik tarzları",
+      "cadou": "🎁 Hediye fikirleri",
+      "cum-functioneaza": "⚙️ Nasıl çalışır",
+      "long-tail": "📚 Rehberler"
+    }
   }
 }

@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
+import { getTranslations } from 'next-intl/server';
 import { SiteShell } from '@/components/SiteShell';
 import { getSiteConfig, siteUrl } from '@/lib/site-config';
+import { formatPrice } from '@/lib/site-shared';
 
 const API_INTERNAL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
 
@@ -19,15 +21,6 @@ interface SeoListPayload {
   categories: string[];
   items: SeoPageSummary[];
 }
-
-const CATEGORY_LABELS: Record<string, string> = {
-  ocazii: '🎉 Ocazii',
-  destinatari: '👤 Pentru cine',
-  stiluri: '🎤 Stiluri muzicale',
-  cadou: '🎁 Idei de cadou',
-  'cum-functioneaza': '⚙️ Cum funcționează',
-  'long-tail': '📚 Ghiduri',
-};
 
 async function fetchPages(): Promise<SeoListPayload | null> {
   try {
@@ -47,9 +40,10 @@ async function fetchPages(): Promise<SeoListPayload | null> {
 export async function generateMetadata(): Promise<Metadata> {
   const site = await getSiteConfig();
   const baseUrl = siteUrl(site);
+  const t = await getTranslations('articlesPage');
   return {
-    title: { absolute: `Articole & ghiduri — ${site.name}` },
-    description: `Idei de cadou, ghiduri și exemple de manele personalizate. Tot ce trebuie să știi înainte să-ți faci propria manea cadou.`,
+    title: { absolute: `${t('metaTitle')} — ${site.name}` },
+    description: t('metaDescription'),
     alternates: { canonical: `${baseUrl}/articole` },
   };
 }
@@ -57,6 +51,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function ArticoleHubPage() {
   const data = await fetchPages();
   const site = await getSiteConfig();
+  const t = await getTranslations('articlesPage');
   const items = data?.items ?? [];
 
   // grupare pe categorie
@@ -69,21 +64,21 @@ export default async function ArticoleHubPage() {
     <SiteShell>
       <main style={{ maxWidth: 1100, margin: '40px auto', padding: '0 20px' }}>
         <h1 className="gold-text serif" style={{ fontSize: 34, textAlign: 'center' }}>
-          Articole & ghiduri
+          {t('title')}
         </h1>
         <p className="ld" style={{ textAlign: 'center', marginTop: 4, marginBottom: 32 }}>
-          Tot ce trebuie să știi ca să faci cea mai tare manea cadou.
+          {t('lead')}
         </p>
 
         {items.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 40, opacity: 0.6 }}>
-            Articolele se construiesc — revino în curând.
+            {t('emptyState')}
           </div>
         ) : (
           Object.entries(grouped).map(([cat, pages]) => (
             <section key={cat} style={{ marginBottom: 40 }}>
               <h2 style={{ fontFamily: 'Cinzel, serif', color: 'var(--gold-2)', marginBottom: 14 }}>
-                {CATEGORY_LABELS[cat] ?? cat}
+                {(() => { try { return t(`categories.${cat}` as any); } catch { return cat; } })()}
               </h2>
               <div
                 style={{
@@ -127,7 +122,7 @@ export default async function ArticoleHubPage() {
 
         <div style={{ textAlign: 'center', marginTop: 40, padding: 24, borderTop: '1px solid var(--line)' }}>
           <Link href="/studio" className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
-            🎤 Fă propria manea — {(site.basePriceCents / 100).toFixed(2)} {site.currency}
+            {t('ctaMake', { price: formatPrice(site, site.basePriceCents) })}
           </Link>
         </div>
       </main>
