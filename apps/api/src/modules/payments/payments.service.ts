@@ -123,6 +123,73 @@ export class PaymentsService {
     };
   }
 
+  /**
+   * Bypass total al Stripe Checkout când un cod promo acoperă 100% din preț.
+   * Util pentru:
+   *   - testare internă: admin emite cod 100% off ca să genereze demouri fără
+   *     să se taie real pe cardul lui;
+   *   - cadouri „free" către prieteni / influenceri etc.
+   *
+   * Comportament: salvăm Payment direct cu status='paid' amount=0, queue-ăm
+   * generation-ul (sau îl marcăm unlocked pentru flow-ul demo→unlock), redempt
+   * codul promo și returnăm URL-ul success — frontend va naviga direct acolo.
+   */
+  private async createFreeCheckout(args: {
+    input: CheckoutInput;
+    baseTotal: number;
+    promoCodeId: string;
+    promoCode: string;
+    site: Site;
+  }): Promise<{ url: string; paymentId: string }> {
+    const { input, baseTotal, promoCodeId, promoCode, site } = args;
+
+    const payment = await this.repo.save(
+      this.repo.create({
+        provider: 'free',
+        providerSessionId: `free:${promoCode}:${baseTotal}`,
+        amount: 0,
+        currency: site.currency,
+        status: 'paid',
+        userId: input.userId,
+        guestId: input.guestId,
+        siteId: site.id,
+      }),
+    );
+
+    // markPaidAndQueue acoperă ambele flow-uri: dacă generation e 'pending' o
+    // queue-ează, dacă e 'succeeded' (demo) îi setează paidUnlocked=true.
+    if (input.generationId) {
+      try {
+        await this.generations.markPaidAndQueue(input.generationId, payment.id);
+      } catch (err) {
+        this.logger.error(`free-checkout markPaidAndQueue failed: ${(err as Error).message}`);
+      }
+    }
+
+    try {
+      await this.promo.redeem({
+        promoCodeId,
+        siteId: site.id,
+        email: input.email ?? null,
+        userId: input.userId,
+        guestId: input.guestId,
+        paymentId: payment.id,
+        appliedDiscountCents: baseTotal,
+      });
+    } catch (err) {
+      this.logger.warn(`free-checkout promo.redeem failed: ${(err as Error).message}`);
+    }
+
+    const siteUrl = this.siteAppUrl(site);
+    const successPath = input.generationId
+      ? `/m/${input.generationId}?paymentId=${payment.id}&success=1`
+      : `/checkout/success?paymentId=${payment.id}`;
+    this.logger.log(
+      `Free checkout: payment=${payment.id} generation=${input.generationId ?? '-'} promo=${promoCode} (${baseTotal} cents)`,
+    );
+    return { url: `${siteUrl}${successPath}`, paymentId: payment.id };
+  }
+
   async createCheckoutSession(input: CheckoutInput): Promise<{ url: string; paymentId: string }> {
     const stripe = await this.getStripe();
     if (!stripe) throw new ServiceUnavailableException('Stripe not configured');
@@ -134,8 +201,7 @@ export class PaymentsService {
     if (input.promoCode) {
       const v = await this.promo.validate(input.promoCode, input.email, baseTotal, site.id);
       if (v.ok && v.appliedDiscountCents) {
-        // Stripe cere minim 50 cents la total — capăm discount-ul ca să rămână >= 50
-        appliedDiscountCents = Math.min(v.appliedDiscountCents, Math.max(0, baseTotal - 50));
+        appliedDiscountCents = v.appliedDiscountCents;
         promoCodeId = v.promoCodeId;
       } else {
         this.logger.warn(
@@ -143,6 +209,22 @@ export class PaymentsService {
         );
       }
     }
+
+    // Promo 100% off → sărim cu totul peste Stripe Checkout. Salvăm payment
+    // direct ca 'paid' amount=0, unlock-uim generation-ul / queue-ăm-l (pentru
+    // pay-first), redempt-uim codul și returnăm URL-ul de success.
+    if (appliedDiscountCents >= baseTotal && promoCodeId) {
+      return this.createFreeCheckout({
+        input,
+        baseTotal,
+        promoCodeId,
+        promoCode: input.promoCode!,
+        site,
+      });
+    }
+
+    // Cap discount-ul la baseTotal - 50 ca să rămână peste minimul Stripe (50 cents).
+    appliedDiscountCents = Math.min(appliedDiscountCents, Math.max(0, baseTotal - 50));
     const total = Math.max(50, baseTotal - appliedDiscountCents);
 
     const payment = await this.repo.save(
