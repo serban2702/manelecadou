@@ -21,8 +21,7 @@
   "nav": {
     "asculta": "Άκου",
     "studio": "Φτιάξε τραγούδι",
-    "top": "Top",
-    "cadou": "Δώρο",
+    "top": "Κορυφαία",
     "intra": "Είσοδος",
     "cont": "Ο λογαριασμός μου"
   },
@@ -340,8 +339,7 @@
       "howStep2Title": "Το AI γράφει + τραγουδά",
       "howStep2Body": "Δημιουργούμε τους στίχους με AI και 2 κομμάτια με την επιλεγμένη φωνή.",
       "howStep3Title": "Ακούς & πληρώνεις",
-      "howStep3Body": "Δωρεάν demo 30s. Σου αρέσει; Ξεκλειδώνεις την πλήρη έκδοση.",
-      "giftSomeone": "🎁 Δώρο σε κάποιον"
+      "howStep3Body": "Δωρεάν demo 30s. Σου αρέσει; Ξεκλειδώνεις την πλήρη έκδοση."
     },
     "top": {
       "badge": "★ Top εβδομάδας",
@@ -493,8 +491,8 @@
       "sec3": { "h": "Κατηγορίες" },
       "cat1": { "h": "1. Λειτουργικά (συνεδρία, ταυτοποίηση)", "b1": "<code>mc_guest_id</code> — η συνεδρία σου χωρίς λογαριασμό. Διάρκεια: 1 έτος.", "b2": "<code>mc_access_token</code> — κατά τη σύνδεση, σε κρατά συνδεδεμένο. Διάρκεια: 7 ημέρες.", "b3": "<code>mc_cookie_consent</code> — η επιβεβαίωσή σου ότι έχεις διαβάσει την πολιτική. Διάρκεια: μόνιμη." },
       "cat2": { "h": "2. Πληρωμές (Stripe)", "b1": "<code>__stripe_mid</code>, <code>__stripe_sid</code> — εντοπισμός απάτης και συνεδρία Stripe." },
-      "cat3": { "h": "3. Analytics", "b1": "<code>_ga</code>, <code>_ga_*</code> — Google Analytics 4 για μέτρηση επισκεψιμότητας.", "b2": "<code>plausible_*</code> — analytics φιλικά προς το απόρρητο (εναλλακτικά)." },
-      "cat4": { "h": "4. Marketing & remarketing", "b1": "<code>_fbp</code>, <code>fr</code> — Meta Pixel (Facebook/Instagram).", "b2": "<code>tt_*</code>, <code>_ttp</code> — TikTok Pixel." },
+      "cat3": { "h": "3. Στατιστικά", "b1": "<code>_ga</code>, <code>_ga_*</code> — Google Analytics 4 για μέτρηση επισκεψιμότητας.", "b2": "<code>plausible_*</code> — στατιστικά φιλικά προς το απόρρητο (εναλλακτικά)." },
+      "cat4": { "h": "4. Μάρκετινγκ & επαναστόχευση", "b1": "<code>_fbp</code>, <code>fr</code> — Meta Pixel (Facebook/Instagram).", "b2": "<code>tt_*</code>, <code>_ttp</code> — TikTok Pixel." },
       "sec4": { "h": "Πώς να τα διαγράψεις", "p": "Μπορείς ανά πάσα στιγμή να διαγράψεις τα cookies από τις ρυθμίσεις του browser σου (Chrome, Firefox, Safari). Προσοχή: μετά τη διαγραφή, δεν θα μπορείς πλέον να χρησιμοποιείς ορισμένες λειτουργίες (π.χ. να παραμένεις συνδεδεμένος, να γίνεται επεξεργασία πληρωμής)." }
     }
   }
