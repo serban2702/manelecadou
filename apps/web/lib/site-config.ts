@@ -39,12 +39,16 @@ export const getSiteConfig = cache(async (): Promise<SiteConfig> => {
   try {
     const h = await headers();
     const host = h.get('x-forwarded-host') || h.get('host') || '';
-    const res = await fetch(`${API_INTERNAL}/api/public/site`, {
+    // Includem host-ul ca query param ca să fie parte din cheia de cache Next —
+    // altfel toate domeniile lovesc același URL și primul răspuns e servit pentru
+    // toate (cache poisoning între tenants: ex. BG primește configul GR).
+    const url = `${API_INTERNAL}/api/public/site?host=${encodeURIComponent(host)}`;
+    const res = await fetch(url, {
       headers: {
         'Host': host,
         'X-Forwarded-Host': host,
       },
-      next: { revalidate: 30, tags: ['site-config'] },
+      next: { revalidate: 30, tags: [`site-config:${host}`] },
     });
     if (!res.ok) return fallback;
     return (await res.json()) as SiteConfig;
