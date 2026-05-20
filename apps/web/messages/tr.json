@@ -405,7 +405,9 @@
       "voiceHint": "Sesi dinle",
       "errCompleteFirst": "Önce stil, vesile ve ismi doldur.",
       "errTooManySuggestions": "Çok fazla öneri. Bir dakika sonra dene.",
-      "errAiFallback": "AI ile üretemedim, yedek bir öneri koydum."
+      "errAiFallback": "AI ile üretemedim, yedek bir öneri koydum.",
+      "defaultDraft": "{name}, bu şarkı senin için yazıldı,\nkafanda, dudaklarında ve ruhunda kalsın.\nSen unutulmayacak biriydin,\nve bunu yüksek sesle söyleyen bir parça hak ediyorsun.",
+      "defaultDraftYou": "senin için biri"
     },
     "step4": {
       "title": "4. Hediye ve Premium",

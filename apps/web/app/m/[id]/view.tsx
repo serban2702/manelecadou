@@ -101,8 +101,8 @@ function ShareGenerationViewInner() {
   if (!g) return <main style={{ padding: 40, textAlign: 'center' }}><p className="ld">{t('loading')}</p></main>;
 
   const isPaid = g.type === 'full' || g.paidUnlocked;
-  const styleNm = (() => { try { return tStyles(`${g.style}.nm`); } catch { return STYLES.find((s) => s.id === g.style)?.nm ?? g.style; } })();
-  const occNm = (() => { try { return tOcc(g.occasion); } catch { return OCC.find((o) => o.id === g.occasion)?.nm ?? g.occasion; } })();
+  const styleNm = (tStyles as any).has?.(`${g.style}.nm`) ? tStyles(`${g.style}.nm` as any) : (STYLES.find((s) => s.id === g.style)?.nm ?? g.style);
+  const occNm = (tOcc as any).has?.(g.occasion) ? tOcc(g.occasion as any) : (OCC.find((o) => o.id === g.occasion)?.nm ?? g.occasion);
   const voiceNm = VOICES.find((v) => v.id === g.voiceArtist)?.nm ?? g.voiceArtist;
 
   return (

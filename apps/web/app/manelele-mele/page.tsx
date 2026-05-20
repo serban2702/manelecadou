@@ -87,8 +87,8 @@ function GenerationRow({ g }: { g: GenerationDto }) {
   const t = useTranslations('myGens');
   const tStyles = useTranslations('styles');
   const tOcc = useTranslations('occasions');
-  const styleNm = (() => { try { return tStyles(`${g.style}.nm`); } catch { return STYLES.find((s) => s.id === g.style)?.nm ?? g.style; } })();
-  const occNm = (() => { try { return tOcc(g.occasion); } catch { return OCC.find((o) => o.id === g.occasion)?.nm ?? g.occasion; } })();
+  const styleNm = (tStyles as any).has?.(`${g.style}.nm`) ? tStyles(`${g.style}.nm` as any) : (STYLES.find((s) => s.id === g.style)?.nm ?? g.style);
+  const occNm = (tOcc as any).has?.(g.occasion) ? tOcc(g.occasion as any) : (OCC.find((o) => o.id === g.occasion)?.nm ?? g.occasion);
   const voiceNm = VOICES.find((v) => v.id === g.voiceArtist)?.nm ?? g.voiceArtist;
   const statusLabel = (() => { try { return t(`status.${g.status}`); } catch { return g.status; } })();
   const color = STATUS_COLOR[g.status] ?? { color: '#ccc', bg: 'rgba(255,255,255,0.08)' };

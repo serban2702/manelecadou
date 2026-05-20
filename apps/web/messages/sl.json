@@ -405,7 +405,9 @@
       "voiceHint": "Poslušaj glas",
       "errCompleteFirst": "Najprej izpolni slog, priložnost in ime.",
       "errTooManySuggestions": "Preveč predlogov. Poskusi čez minuto.",
-      "errAiFallback": "Nisem uspel generirati z AI, dal sem rezervni predlog."
+      "errAiFallback": "Nisem uspel generirati z AI, dal sem rezervni predlog.",
+      "defaultDraft": "{name}, ta pesem je napisana zate,\nda ti ostane v glavi, na ustnicah in v duši.\nSi eden tistih, ki jih ne pozabiš,\nin zaslužiš si pesem, ki to glasno pove.",
+      "defaultDraftYou": "tebe"
     },
     "step4": {
       "title": "4. Darilo in Premium",

@@ -39,6 +39,12 @@ export function setAccessToken(token: string | null) {
 }
 
 function getCurrentLocale(): string {
+  if (typeof window !== 'undefined') {
+    // SiteProvider stash-uiește locale-ul site-ului curent (prioritar — un
+    // domeniu = o limbă; cookie e secundar pentru cazuri cu switcher).
+    const fromSite = (window as unknown as { __SITE_LOCALE__?: string }).__SITE_LOCALE__;
+    if (fromSite) return fromSite;
+  }
   if (typeof document !== 'undefined') {
     const m = document.cookie.match(/(?:^|;\s*)NEXT_LOCALE=([^;]+)/);
     if (m) return decodeURIComponent(m[1]);

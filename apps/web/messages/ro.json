@@ -403,7 +403,9 @@
       "voiceHint": "Ascultă vocea",
       "errCompleteFirst": "Completează stilul, ocazia și numele întâi.",
       "errTooManySuggestions": "Prea multe sugestii. Încearcă peste un minut.",
-      "errAiFallback": "Nu am putut genera cu AI, am pus o sugestie de rezervă."
+      "errAiFallback": "Nu am putut genera cu AI, am pus o sugestie de rezervă.",
+      "defaultDraft": "{name}, manaua asta e scrisă pentru tine,\nsă-ți rămână-n cap, pe buze și-n suflet.\nEști dintre ăia pe care nu-i uiți o viață,\nși meriți o piesă care să-ți spună asta tare.",
+      "defaultDraftYou": "tine"
     },
     "step4": {
       "title": "4. Cadou & Premium",

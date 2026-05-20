@@ -405,7 +405,9 @@
       "voiceHint": "Slušaj glas",
       "errCompleteFirst": "Prvo popuni stil, priliku i ime.",
       "errTooManySuggestions": "Previše prijedloga. Pokušaj za minutu.",
-      "errAiFallback": "Nisam uspio generirati sa AI, stavio sam rezervni prijedlog."
+      "errAiFallback": "Nisam uspio generirati sa AI, stavio sam rezervni prijedlog.",
+      "defaultDraft": "{name}, ova pjesma je napisana za tebe,\nda ti ostane u glavi, na usnama i u duši.\nTi si od onih koje ne zaboravljaš,\ni zaslužuješ pjesmu koja to glasno govori.",
+      "defaultDraftYou": "tebe"
     },
     "step4": {
       "title": "4. Poklon i Premium",

@@ -233,11 +233,15 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   // Auto-fill mesaj la prima trecere prin step 2 dacă msg e gol
   useEffect(() => {
     if (step === 2 && !autoFilled && !data.msg && (data.style || data.occ)) {
-      const sug = suggestMessage(data.style, data.occ, data.name);
+      // Pentru RO folosim SAMPLES variate cu hint de stil (mai colorat).
+      // Pentru alte locale, folosim template-ul localizat din messages.
+      const sug = site.locale === 'ro'
+        ? suggestMessage(data.style, data.occ, data.name)
+        : tGen('step3.defaultDraft', { name: (data.name || tGen('step3.defaultDraftYou')).trim() });
       setData((d) => ({ ...d, msg: sug }));
       setAutoFilled(true);
     }
-  }, [step, autoFilled, data.msg, data.style, data.occ, data.name]);
+  }, [step, autoFilled, data.msg, data.style, data.occ, data.name, site.locale, tGen]);
 
   const [maxVisited, setMaxVisited] = useState(0);
   useEffect(() => {
@@ -767,10 +771,12 @@ function StyleStep({ data, upd, playing, onPlay, styles }: any & { styles: Style
           const isP = playing === `style-${s.id}`;
           let nm = s.nm;
           let ds = s.ds;
-          // Folosim i18n din next-intl doar pentru cheile din seed-data; pentru
-          // stiluri custom (per-site) traducerile sunt deja inline în obiect.
-          try { nm = tStyles(`${s.id}.nm`); } catch { /* fallback */ }
-          try { ds = tStyles(`${s.id}.ds`); } catch { /* fallback */ }
+          // Folosim i18n din next-intl DOAR dacă cheia există efectiv (seed-data).
+          // Pentru stiluri custom per-site, traducerile sunt deja rezolvate în
+          // siteStylesToOptions și ajung în s.nm / s.ds — nu vrem să suprascriem
+          // cu literalul "styles.<id>.nm" returnat de next-intl pe miss.
+          if ((tStyles as any).has?.(`${s.id}.nm`)) nm = tStyles(`${s.id}.nm` as any);
+          if ((tStyles as any).has?.(`${s.id}.ds`)) ds = tStyles(`${s.id}.ds` as any);
           return (
             <div key={s.id} role="button" tabIndex={0} className={`style-pick ${data.style === s.id ? 'on' : ''}`} onClick={() => upd('style', s.id)}>
               <span className="em">{s.ic ? <SiteIcon ic={s.ic} em={s.em} size={24} /> : s.em}</span>
@@ -805,7 +811,7 @@ function OccStep({ data, upd, occasions }: any & { occasions: Array<{ id: string
       <div className="occ-list">
         {occasions.map((o: { id: string; em: string; nm: string; ic?: any }) => {
           let nm = o.nm;
-          try { nm = tOcc(o.id); } catch { /* fallback */ }
+          if ((tOcc as any).has?.(o.id)) nm = tOcc(o.id as any);
           return (
           <button key={o.id} className={`occ-pick ${data.occ === o.id ? 'on' : ''}`} onClick={() => upd('occ', o.id)}>
             <span className="em">{o.ic ? <SiteIcon ic={o.ic} em={o.em} size={22} /> : o.em}</span>
@@ -861,6 +867,7 @@ function siteVoicesToOptions(
 // ============ STEP 3 — Detalii + Voce + Versuri ============
 function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Array<{ id: string; nm: string; tg: string; av: string }> }) {
   const tg = useTranslations('generator');
+  const site = useSite();
   const [showLyricsEditor, setShowLyricsEditor] = useState(!!data.customLyrics);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
@@ -881,13 +888,19 @@ function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Arr
         dedication: data.dedic ? String(data.dedic) : undefined,
         voiceArtist: data.voice ? String(data.voice) : undefined,
         currentDraft: data.msg && String(data.msg).trim() ? String(data.msg) : undefined,
+        // Forțăm locale-ul site-ului — cookie-ul NEXT_LOCALE poate lipsi pe site-uri
+        // unde un domeniu = o limbă (caz în care nu există switcher).
+        locale: site.locale,
       });
       upd('msg', res.message);
     } catch (e) {
       if (e instanceof ApiError && e.status === 429) {
         setSuggestError(tg('step3.errTooManySuggestions'));
       } else {
-        upd('msg', suggestMessage(data.style, data.occ, data.name));
+        const fallback = site.locale === 'ro'
+          ? suggestMessage(data.style, data.occ, data.name)
+          : tg('step3.defaultDraft', { name: (data.name || tg('step3.defaultDraftYou')).trim() });
+        upd('msg', fallback);
         setSuggestError(tg('step3.errAiFallback'));
       }
     } finally {
