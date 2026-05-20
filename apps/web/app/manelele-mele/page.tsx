@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { SiteShell } from '@/components/SiteShell';
 import { api, type GenerationDto } from '@/lib/api';
 import { STYLES, VOICES, OCC } from '@/lib/seed-data';
+import { useSite } from '@/lib/site-context';
 
 const STATUS_COLOR: Record<string, { color: string; bg: string }> = {
   queued:           { color: '#ffd680', bg: 'rgba(241,200,77,0.12)' },
@@ -87,9 +88,27 @@ function GenerationRow({ g }: { g: GenerationDto }) {
   const t = useTranslations('myGens');
   const tStyles = useTranslations('styles');
   const tOcc = useTranslations('occasions');
-  const styleNm = (tStyles as any).has?.(`${g.style}.nm`) ? tStyles(`${g.style}.nm` as any) : (STYLES.find((s) => s.id === g.style)?.nm ?? g.style);
-  const occNm = (tOcc as any).has?.(g.occasion) ? tOcc(g.occasion as any) : (OCC.find((o) => o.id === g.occasion)?.nm ?? g.occasion);
-  const voiceNm = VOICES.find((v) => v.id === g.voiceArtist)?.nm ?? g.voiceArtist;
+  const site = useSite();
+  const adminStyle = site.styles?.find((s) => s.id === g.style);
+  const adminOcc = site.occasions?.find((o) => o.id === g.occasion);
+  const adminVoice = site.voices?.find((v) => v.id === g.voiceArtist);
+  const styleNm =
+    adminStyle?.i18n?.[site.locale]?.nm ||
+    adminStyle?.nm ||
+    ((tStyles as any).has?.(`${g.style}.nm`) ? tStyles(`${g.style}.nm` as any) : null) ||
+    STYLES.find((s) => s.id === g.style)?.nm ||
+    g.style;
+  const occNm =
+    adminOcc?.i18n?.[site.locale]?.nm ||
+    adminOcc?.nm ||
+    ((tOcc as any).has?.(g.occasion) ? tOcc(g.occasion as any) : null) ||
+    OCC.find((o) => o.id === g.occasion)?.nm ||
+    g.occasion;
+  const voiceNm =
+    adminVoice?.i18n?.[site.locale]?.nm ||
+    adminVoice?.nm ||
+    VOICES.find((v) => v.id === g.voiceArtist)?.nm ||
+    g.voiceArtist;
   const statusLabel = (() => { try { return t(`status.${g.status}`); } catch { return g.status; } })();
   const color = STATUS_COLOR[g.status] ?? { color: '#ccc', bg: 'rgba(255,255,255,0.08)' };
   const isPaid = g.type === 'full' || g.paidUnlocked;

@@ -101,9 +101,28 @@ function ShareGenerationViewInner() {
   if (!g) return <main style={{ padding: 40, textAlign: 'center' }}><p className="ld">{t('loading')}</p></main>;
 
   const isPaid = g.type === 'full' || g.paidUnlocked;
-  const styleNm = (tStyles as any).has?.(`${g.style}.nm`) ? tStyles(`${g.style}.nm` as any) : (STYLES.find((s) => s.id === g.style)?.nm ?? g.style);
-  const occNm = (tOcc as any).has?.(g.occasion) ? tOcc(g.occasion as any) : (OCC.find((o) => o.id === g.occasion)?.nm ?? g.occasion);
-  const voiceNm = VOICES.find((v) => v.id === g.voiceArtist)?.nm ?? g.voiceArtist;
+  // Lookup chain: admin-defined config per site (cu i18n localizare) → seed-data
+  //               → traduceri next-intl (pentru seed-data ids) → literal id.
+  const adminStyle = site.styles?.find((s) => s.id === g.style);
+  const adminOcc = site.occasions?.find((o) => o.id === g.occasion);
+  const adminVoice = site.voices?.find((v) => v.id === g.voiceArtist);
+  const styleNm =
+    adminStyle?.i18n?.[site.locale]?.nm ||
+    adminStyle?.nm ||
+    ((tStyles as any).has?.(`${g.style}.nm`) ? tStyles(`${g.style}.nm` as any) : null) ||
+    STYLES.find((s) => s.id === g.style)?.nm ||
+    g.style;
+  const occNm =
+    adminOcc?.i18n?.[site.locale]?.nm ||
+    adminOcc?.nm ||
+    ((tOcc as any).has?.(g.occasion) ? tOcc(g.occasion as any) : null) ||
+    OCC.find((o) => o.id === g.occasion)?.nm ||
+    g.occasion;
+  const voiceNm =
+    adminVoice?.i18n?.[site.locale]?.nm ||
+    adminVoice?.nm ||
+    VOICES.find((v) => v.id === g.voiceArtist)?.nm ||
+    g.voiceArtist;
 
   return (
     <main style={{ maxWidth: 600, margin: '40px auto', padding: 20 }}>
