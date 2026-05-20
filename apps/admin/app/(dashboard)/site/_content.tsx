@@ -1507,9 +1507,9 @@ function CategoryRow({
               <Button
                 size="sm"
                 variant={sample?.entry ? 'outline' : 'default'}
-                onClick={() => onGenerate?.(!!sample?.entry)}
+                onClick={() => submitGenerate(!!sample?.entry)}
                 disabled={busy || sample?.generating}
-                title={sample?.entry ? 'Regenerează rapid' : 'Generează rapid'}
+                title={sample?.entry ? 'Regenerează cu opțiunile salvate' : 'Generează cu opțiunile salvate'}
               >
                 {busy || sample?.generating ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
