@@ -151,7 +151,24 @@ export class SiteSamplesService {
     this.inFlight.add(fk);
 
     try {
-      const input = this.buildInput(site, kind, key, overrides);
+      // Rezolvăm lyrics ÎNAINTE de buildInput — dacă userul nu a furnizat
+      // versuri custom, rulăm același pipeline writer+critic ca la comenzile
+      // reale ale clienților (20-28 rânduri, Suno tags), ca mostrele să aibă
+      // aceeași calitate și durată ca o piesă reală (~2-3 min). Înainte se
+      // folosea `buildDemoLyrics` (6 rânduri) → piese de ~40s.
+      const lyrics = overrides?.lyrics?.trim()
+        ? overrides.lyrics.trim()
+        : await this.resolveSampleLyrics(site, kind, key, {
+            voiceKey: overrides?.voice,
+            recipientName: overrides?.recipientName,
+            customStylePrompt: overrides?.customStylePrompt,
+            dedication: overrides?.dedication,
+            style: overrides?.style,
+            occasion: overrides?.occasion,
+            message: overrides?.message,
+            tipAmount: overrides?.tipAmount,
+          });
+      const input = this.buildInput(site, kind, key, overrides, lyrics);
       this.logger.log(`generate sample siteSlug=${site.slug} ${kind}=${key}`);
 
       const result = await this.suno.generate(input);
@@ -305,11 +322,9 @@ export class SiteSamplesService {
     site: Site,
     kind: SampleKind,
     key: string,
-    overrides?: SampleOverrides,
+    overrides: SampleOverrides | undefined,
+    lyrics: string,
   ): SunoGenerateInput {
-    // Lyrics — override > demo locale-aware. Pentru locale fără demo dedicate, cădem pe RO.
-    const lyrics = overrides?.lyrics?.trim() || buildDemoLyrics(site.locale);
-
     // Voice mapping: site.voices[].sunoVoice > suno.voiceMap > id-ul cheii.
     // Pentru style sample, vocea default e 'adi' (sau prima din site.voices).
     const fallbackVoice = site.voices?.[0]?.id ?? 'adi';
@@ -352,12 +367,14 @@ export class SiteSamplesService {
     // să aibă valoarea veche când mostra e generată. Override-ul rezolvă asta.
     const voiceCfg = site.voices?.find((v) => v.id === voiceKey);
     const vocalGender = overrides?.vocalGender ?? voiceCfg?.gender ?? undefined;
-    // Premium = 'full' (~60-90s) vs demo (~20s). Mostra de admin rămâne scurtă
-    // pentru cost, dar respectă flag-ul dacă userul vrea audio mai bun.
-    const premium = !!overrides?.premium;
+    // Mostrele rulează ca piese full (lyrics 20-28 rânduri din writer + critic),
+    // ca să iasă ~2-3 min — aceeași calitate / durată ca o comandă reală.
+    // Toggle-ul `premium` din UI rămâne ca metadata (nu mai afectează durata,
+    // pentru că Suno în customMode generează după lungimea promptului, nu după
+    // `durationSec`). Lăsăm flag-ul transmis pentru audit/log.
     const base: SunoGenerateInput = {
-      type: premium ? 'full' : 'demo',
-      durationSec: premium ? 60 : 20,
+      type: 'full',
+      durationSec: 90,
       style: effectiveStyle,
       occasion: overrides?.occasion?.trim() || 'altul',
       recipientName: overrides?.recipientName?.trim() || '',
@@ -445,12 +462,38 @@ export class SiteSamplesService {
     this.validateKey(kind, key);
     const site = await this.sites.findById(siteId);
     if (!site) throw new NotFoundException('Site negăsit');
+    const lyrics = await this.resolveSampleLyrics(site, kind, key, opts);
+    return { lyrics };
+  }
 
+  /**
+   * Generează lyrics complete (writer + critic) pentru o mostră — exact
+   * același pipeline folosit de comenzile reale ale clienților. Output:
+   * 20-28 rânduri cu Suno tags ([Intro], [Verse], [Chorus], [Bridge], [Outro]).
+   *
+   * Folosit din `generateOne` (când userul nu a furnizat lyrics custom) ȘI
+   * din `previewLyrics` (butonul „Generează cu AI" din admin). Garantăm că
+   * mostrele au aceeași calitate și durată ca o piesă reală (~2-3 min).
+   */
+  private async resolveSampleLyrics(
+    site: Site,
+    kind: SampleKind,
+    key: string,
+    opts?: {
+      recipientName?: string;
+      voiceKey?: string;
+      customStylePrompt?: string;
+      dedication?: string;
+      style?: string;
+      occasion?: string;
+      message?: string;
+      tipAmount?: number;
+    },
+  ): Promise<string> {
     const fallbackStyle = site.styles?.[0]?.id ?? 'clasic';
     const styleId = kind === 'style' ? key : (opts?.style?.trim() || fallbackStyle);
     const voiceKey = opts?.voiceKey ?? (kind === 'voice' ? key : (site.voices?.[0]?.id ?? 'adi'));
     const voiceArtist = site.suno?.voiceMap?.[voiceKey] ?? voiceKey;
-    // Hint stil: override custom (din UI) > stylePromptMap[key] din site > nimic.
     const styleHint =
       opts?.customStylePrompt?.trim() || site.suno?.stylePromptMap?.[styleId] || undefined;
 
@@ -474,7 +517,7 @@ export class SiteSamplesService {
     };
     const draft = await this.lyrics.writeDraft(baseInput);
     const refined = await this.lyrics.refineDraft(baseInput, draft);
-    return { lyrics: refined };
+    return refined;
   }
 
   private async downloadAndStore(
@@ -642,52 +685,3 @@ function readSample(
   return kind === 'style' ? suno.styleSamples?.[key] : suno.voiceSamples?.[key];
 }
 
-/** Lyrics scurte (~4 rânduri) pentru o mostră demo de 15-20s, fără destinatar.
- *  Locale-aware: BG → bulgară, RS → sârbă, TR → turcă, etc. Fallback: RO. */
-function buildDemoLyrics(locale: string): string {
-  const intro = '[Intro: oriental synth taksim, accordion doina]';
-  const verse = '[Verse 1]';
-  const hook = '[Hook]';
-  const outro = '[Outro]';
-
-  const bodies: Record<string, string[]> = {
-    ro: [
-      'Hai să cânte muzica, să se audă,',
-      'Inima dansează, lumea se aprinde,',
-      '[Hook]',
-      'Of, of, of, ce frumos răsună,',
-      'Manea curge, totul se adună.',
-    ],
-    bg: [
-      'Хайде музиката да звучи, да се чува,',
-      'Сърцето танцува, светът се запалва,',
-      '[Hook]',
-      'Ой, ой, ой, колко хубаво звучи,',
-      'Чалга тече, всичко се събира.',
-    ],
-    sr: [
-      'Hajde da svira muzika, da se čuje,',
-      'Srce igra, svet se pali,',
-      '[Hook]',
-      'Oj, oj, oj, kako lepo zvoni,',
-      'Pesma teče, sve se skuplja.',
-    ],
-    tr: [
-      'Haydi müzik çalsın, duyulsun,',
-      'Kalp dans ediyor, dünya alev alıyor,',
-      '[Hook]',
-      'Of, of, of, ne güzel yankılanıyor,',
-      'Şarkı akıyor, her şey birleşiyor.',
-    ],
-    el: [
-      'Έλα να παίξει η μουσική, να ακουστεί,',
-      'Η καρδιά χορεύει, ο κόσμος ανάβει,',
-      '[Hook]',
-      'Ωχ, ωχ, ωχ, τι όμορφα αντηχεί,',
-      'Το τραγούδι κυλάει, όλα μαζεύονται.',
-    ],
-  };
-
-  const body = bodies[locale] ?? bodies.ro;
-  return [intro, verse, ...body.slice(0, 2), hook, ...body.slice(3), outro].join('\n');
-}

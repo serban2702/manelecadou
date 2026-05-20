@@ -229,11 +229,12 @@ export const SitesApi = {
       vocalGender?: 'm' | 'f';
     },
   ) =>
-    // Suno polling takes up to 6 min — overriding default 30s timeout. 8 min ca să avem buffer.
+    // Suno polling 8 min + writer + critic OpenAI (~1 min total) = până la 10 min.
+    // Lăsăm 12 min buffer.
     http.post<GenerateSampleResponse>(
       `/admin/sites/${id}/samples/generate`,
       body,
-      { timeout: 8 * 60_000 },
+      { timeout: 12 * 60_000 },
     ),
   /** Finalizează o generare: userul a ales un track din cele 2 candidate.
    *  Backend-ul descarcă mp3-ul ales pe disc și salvează entry-ul atomic. */

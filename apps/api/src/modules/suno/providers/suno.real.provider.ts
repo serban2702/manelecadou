@@ -167,8 +167,10 @@ export class SunoRealProvider extends SunoProvider {
     const taskId = submitJson.data.taskId;
     this.logger.log(`taskId=${taskId}, polling pentru audio finalizat`);
 
-    // Polling — max 6 min, la 8s
-    const deadline = Date.now() + 6 * 60_000;
+    // Polling — max 8 min, la 8s. Suno trece prin TEXT_SUCCESS → FIRST_SUCCESS
+    // → SUCCESS; a doua piesă uneori prinde a treia minute. 6 min era prea
+    // strict și pierdea ocazional generări care erau valide pe partea Suno.
+    const deadline = Date.now() + 8 * 60_000;
     let lastStatus = '';
     let lastPollJson: unknown = null;
     let lastPollStatus = 200;
@@ -258,9 +260,9 @@ export class SunoRealProvider extends SunoProvider {
       taskId,
       providerStatus: lastStatus || 'TIMEOUT',
       outcome: 'timeout',
-      errorMessage: `polling timeout after 6 minutes (last status: ${lastStatus || 'none'})`,
+      errorMessage: `polling timeout after 8 minutes (last status: ${lastStatus || 'none'})`,
     });
-    throw new Error(`Suno taskId=${taskId} polling timeout după 6 minute`);
+    throw new Error(`Suno taskId=${taskId} polling timeout după 8 minute`);
   }
 
   /**
