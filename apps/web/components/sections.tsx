@@ -49,6 +49,11 @@ export function PriceStrip() {
     .toString()
     .padStart(2, '0');
   const standardFormatted = (standardCents / 100).toFixed(2).replace('.', ',');
+  // Reducerea calculată din prețuri reale, nu hardcodată per locale — altfel
+  // se afișează „-23%" chiar și când prețul standard a fost schimbat din admin.
+  const discountPct = showStrike
+    ? Math.round(((standardCents - baseCents) / standardCents) * 100)
+    : 0;
 
   return (
     <div className="price-strip">
@@ -66,7 +71,7 @@ export function PriceStrip() {
         </div>
       </div>
       <div className="right">
-        <div className="save">{t('save')}</div>
+        <div className="save">{discountPct > 0 ? `-${discountPct}%` : t('save')}</div>
         <div style={{ fontSize: 10, color: 'rgba(255,245,220,0.5)', marginTop: 4 }}>{t('newAccount')}</div>
       </div>
     </div>
