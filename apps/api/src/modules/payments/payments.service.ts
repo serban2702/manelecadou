@@ -22,6 +22,13 @@ import { SettingsService } from '../settings/settings.service';
 import { GenerationsService } from '../generations/generations.service';
 import { CreateGenerationDto } from '../generations/dto/create-generation.dto';
 import { TiktokEventsService } from '../tiktok/tiktok-events.service';
+import {
+  productName as i18nProductName,
+  dedicationDescription as i18nDedicDesc,
+  giftProductName as i18nGiftProductName,
+  giftDescription as i18nGiftDesc,
+  stripeUiLocale,
+} from './stripe-i18n';
 
 interface CheckoutInput {
   userId: string | null;
@@ -154,7 +161,7 @@ export class PaymentsService {
       ? `/m/${input.generationId}?paymentId=${payment.id}&cancel=1`
       : `/checkout/cancel?paymentId=${payment.id}`;
 
-    const productName = site.stripe?.productName ?? site.name;
+    const brand = site.stripe?.productName ?? site.name;
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
       {
         quantity: 1,
@@ -162,11 +169,9 @@ export class PaymentsService {
           currency: site.currency.toLowerCase(),
           unit_amount: total,
           product_data: {
-            name: input.premium
-              ? `${productName} — Premium (90s, 2 versiuni)`
-              : `${productName} (90s, 2 versiuni)`,
+            name: i18nProductName(site.locale, brand, !!input.premium),
             description: input.tipAmount
-              ? `Include dedicație de ${input.tipAmount} ${site.currency} în versuri.`
+              ? i18nDedicDesc(site.locale, input.tipAmount, site.currency)
               : undefined,
           },
         },
@@ -175,12 +180,11 @@ export class PaymentsService {
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
+      locale: stripeUiLocale(site.locale),
       line_items: lineItems,
       success_url: `${siteUrl}${successPath}`,
       cancel_url: `${siteUrl}${cancelPath}`,
       expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
-      // Colectăm telefonul ca să crească EMQ score-ul pentru TikTok / Meta
-      // server-side tracking (hash-uit înainte de trimitere).
       phone_number_collection: { enabled: true },
       metadata: {
         paymentId: payment.id,
@@ -305,16 +309,11 @@ export class PaymentsService {
     );
 
     const siteUrl = this.siteAppUrl(site);
-    const productName = site.stripe?.productName ?? site.name;
-    const tierName =
-      input.tier === 'single'
-        ? `${productName}`
-        : input.tier === 'pack3'
-          ? `${productName} — pachet 3`
-          : `${productName} — pachet 10`;
+    const brand = site.stripe?.productName ?? site.name;
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
+      locale: stripeUiLocale(site.locale),
       customer_email: input.email,
       line_items: [
         {
@@ -323,8 +322,8 @@ export class PaymentsService {
             currency: site.currency.toLowerCase(),
             unit_amount: total,
             product_data: {
-              name: `🎁 ${tierName} (cod cadou)`,
-              description: 'Cod cadou trimis pe email — îl folosești tu sau îl dai cui vrei.',
+              name: i18nGiftProductName(site.locale, brand, input.tier),
+              description: i18nGiftDesc(site.locale),
             },
           },
         },
