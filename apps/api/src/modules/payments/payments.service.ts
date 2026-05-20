@@ -129,17 +129,21 @@ export class PaymentsService {
     const site = input.site;
 
     const baseTotal = this.siteTotal(site, input.tipAmount ?? 0, !!input.premium);
-    let total = baseTotal;
     let promoCodeId: string | undefined;
     let appliedDiscountCents = 0;
     if (input.promoCode) {
       const v = await this.promo.validate(input.promoCode, input.email, baseTotal, site.id);
       if (v.ok && v.appliedDiscountCents) {
-        total = Math.max(50, baseTotal - v.appliedDiscountCents); // min 0,50 din motive Stripe
+        // Stripe cere minim 50 cents la total — capăm discount-ul ca să rămână >= 50
+        appliedDiscountCents = Math.min(v.appliedDiscountCents, Math.max(0, baseTotal - 50));
         promoCodeId = v.promoCodeId;
-        appliedDiscountCents = v.appliedDiscountCents;
+      } else {
+        this.logger.warn(
+          `Promo ${input.promoCode} revalidare backend a eșuat: ${v.ok ? 'no-discount' : v.reason ?? 'unknown'}`,
+        );
       }
     }
+    const total = Math.max(50, baseTotal - appliedDiscountCents);
 
     const payment = await this.repo.save(
       this.repo.create({
@@ -162,12 +166,19 @@ export class PaymentsService {
       : `/checkout/cancel?paymentId=${payment.id}`;
 
     const brand = site.stripe?.productName ?? site.name;
+    // Trimitem la Stripe prețul ÎNTREG (baseTotal) și aplicăm discount-ul ca
+    // un Coupon Stripe. Asta face ca în UI-ul Stripe Checkout userul să vadă:
+    //   produs: 5.99 €
+    //   −promo: −1.00 €
+    //   total : 4.99 €
+    // Altfel (când dădeam unit_amount = discounted) se vedea doar prețul final
+    // fără context de reducere.
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
       {
         quantity: 1,
         price_data: {
           currency: site.currency.toLowerCase(),
-          unit_amount: total,
+          unit_amount: baseTotal,
           product_data: {
             name: i18nProductName(site.locale, brand, !!input.premium),
             description: input.tipAmount
@@ -178,10 +189,30 @@ export class PaymentsService {
       },
     ];
 
+    let discounts: Stripe.Checkout.SessionCreateParams.Discount[] | undefined;
+    if (appliedDiscountCents > 0) {
+      try {
+        const coupon = await stripe.coupons.create({
+          amount_off: appliedDiscountCents,
+          currency: site.currency.toLowerCase(),
+          duration: 'once',
+          name: input.promoCode ? `Promo ${input.promoCode}` : 'Reducere',
+          max_redemptions: 1,
+        });
+        discounts = [{ coupon: coupon.id }];
+      } catch (err) {
+        this.logger.warn(`Nu am putut crea cupon Stripe: ${(err as Error).message}`);
+        // fallback: aplicăm discount-ul direct pe unit_amount ca să nu pierdem
+        // reducerea utilizatorului final.
+        lineItems[0].price_data!.unit_amount = total;
+      }
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       locale: stripeUiLocale(site.locale),
       line_items: lineItems,
+      discounts,
       success_url: `${siteUrl}${successPath}`,
       cancel_url: `${siteUrl}${cancelPath}`,
       expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
