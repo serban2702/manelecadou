@@ -6,6 +6,8 @@ import { MailService } from './mail.service';
 import { ImapService } from './imap.service';
 import { MailMessage } from './entities/mail-message.entity';
 import { renderBrandedEmail } from '../../mailer/templates/templates';
+import { brandingFromSite } from '../../mailer/branding';
+import { SitesService } from '../sites/sites.service';
 
 export interface SendReplyInput {
   inReplyToId: string;
@@ -24,6 +26,7 @@ export class MailSendService {
   constructor(
     private readonly mail: MailService,
     private readonly imap: ImapService,
+    private readonly sites: SitesService,
   ) {}
 
   async sendReply(input: SendReplyInput): Promise<MailMessage> {
@@ -36,12 +39,14 @@ export class MailSendService {
     const cc = input.cc && input.cc.length ? input.cc : [];
     if (!to.length) throw new Error('Nu există destinatar pentru răspuns');
 
+    const site = acc.siteId ? await this.sites.findById(acc.siteId) : null;
     const branded = renderBrandedEmail({
       subject,
       bodyHtml: input.htmlBody,
       signatureHtml: acc.signatureHtml ?? null,
       fromName: acc.fromName,
-      locale: 'ro',
+      locale: site?.locale ?? 'ro',
+      branding: brandingFromSite(site),
     });
     const inlinedHtml = juice(branded);
     const plain = htmlToText(inlinedHtml, { wordwrap: 100, selectors: [{ selector: 'a', options: { hideLinkHrefIfSameAsText: true } }] });

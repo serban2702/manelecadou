@@ -18,6 +18,7 @@ import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { Generation } from '../generations/generation.entity';
 import { MailerService } from '../../mailer/mailer.module';
 import { magicLinkTemplate, adminGdprRequestTemplate } from '../../mailer/templates/templates';
+import { brandingFromSite } from '../../mailer/branding';
 import { SitesService } from '../sites/sites.service';
 
 @Injectable()
@@ -78,7 +79,12 @@ export class AuthService {
       ? await this.users.findByEmail(normalizedEmail, siteId)
       : null;
     const userLocale = locale || existingUser?.locale || site?.locale || 'ro';
-    const tpl = magicLinkTemplate({ loginUrl: link, ttlMinutes: ttlMin, locale: userLocale });
+    const tpl = magicLinkTemplate({
+      loginUrl: link,
+      ttlMinutes: ttlMin,
+      locale: userLocale,
+      branding: brandingFromSite(site),
+    });
     await this.mailer.send({
       to: normalizedEmail,
       subject: tpl.subject,
@@ -218,12 +224,14 @@ export class AuthService {
       return { ok: true };
     }
 
+    const userSite = user.siteId ? await this.sites.findById(user.siteId) : null;
     const tpl = adminGdprRequestTemplate({
       userEmail: user.email,
       userId: user.id,
       type,
       reason,
       locale: 'ro',
+      branding: brandingFromSite(userSite),
     });
     for (const adminEmail of adminEmails) {
       await this.mailer.send({

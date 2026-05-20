@@ -14,6 +14,10 @@ export interface SiteBrand {
   ogImageUrl?: string;
   tagline?: string;
   faviconUrl?: string;
+  /** Banner 600x200px folosit în headerul email-urilor tranzacționale.
+   *  Dacă lipsește, template-ul folosește logoUrl (dacă există) sau bannerul
+   *  default Manele Cadou de pe site-ul mamă. */
+  emailBannerUrl?: string;
 }
 
 export interface SiteSeo {

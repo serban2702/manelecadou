@@ -7,12 +7,14 @@ import { GiftCodesController, AdminGiftCodesController } from './gift-codes.cont
 import { AuthModule } from '../auth/auth.module';
 import { MailerModule } from '../../mailer/mailer.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { SitesModule } from '../sites/sites.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([GiftCode, User]),
     AuthModule,
     MailerModule,
+    SitesModule,
     forwardRef(() => PaymentsModule),
   ],
   providers: [GiftCodesService],

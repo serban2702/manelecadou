@@ -22,6 +22,7 @@ import { AdminGuard } from '../../common/admin.guard';
 import { AuthModule } from '../auth/auth.module';
 import { KbModule } from '../kb/kb.module';
 import { OpenAiModule } from '../../openai/openai.module';
+import { SitesModule } from '../sites/sites.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { OpenAiModule } from '../../openai/openai.module';
     AuthModule,
     KbModule,
     OpenAiModule,
+    SitesModule,
   ],
   providers: [
     MailService,

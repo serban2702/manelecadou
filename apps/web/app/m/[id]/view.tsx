@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { api, ApiError, resolveMediaUrl, type GenerationDto } from '@/lib/api';
 import { track } from '@/lib/tracking';
 import { ManeaPlayer } from '@/components/ManeaPlayer';
@@ -19,6 +20,9 @@ export default function ShareGenerationView() {
 }
 
 function ShareGenerationViewInner() {
+  const t = useTranslations('mViewPage');
+  const tStyles = useTranslations('styles');
+  const tOcc = useTranslations('occasions');
   const params = useParams<{ id: string }>();
   const search = useSearchParams();
   const site = useSite();
@@ -33,7 +37,7 @@ function ShareGenerationViewInner() {
       const fresh = await api.getGeneration(params.id);
       setG(fresh);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Eroare necunoscută');
+      setError(e instanceof Error ? e.message : t('errUnknown'));
     }
   }
 
@@ -41,7 +45,6 @@ function ShareGenerationViewInner() {
     refresh();
   }, [params.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ViewContent — exact o dată pe încărcarea unei manele.
   useEffect(() => {
     if (!g || viewTrackedRef.current) return;
     viewTrackedRef.current = true;
@@ -74,7 +77,6 @@ function ShareGenerationViewInner() {
       try {
         await api.unlockGeneration(params.id, paymentId);
         await refresh();
-        // CompletePayment — trimis o singură dată per paymentId.
         if (paid && !purchaseTrackedRef.current) {
           purchaseTrackedRef.current = true;
           track('Purchase', {
@@ -83,12 +85,11 @@ function ShareGenerationViewInner() {
             content_type: 'product',
             value: paid.amount / 100,
             currency: paid.currency,
-            // event_id = paymentId → dedup cu Events API server-side.
             event_id: paymentId,
           });
         }
       } catch (e) {
-        setError('Nu am putut debloca după plată: ' + (e as Error).message);
+        setError(`${t('unlockFailed')} ${(e as Error).message}`);
       } finally {
         setUnlocking(false);
         window.history.replaceState({}, '', `/m/${params.id}`);
@@ -97,11 +98,11 @@ function ShareGenerationViewInner() {
   }, [search, params.id, unlocking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error) return <main style={{ padding: 40, textAlign: 'center' }}><p>{error}</p></main>;
-  if (!g) return <main style={{ padding: 40, textAlign: 'center' }}><p className="ld">Se încarcă...</p></main>;
+  if (!g) return <main style={{ padding: 40, textAlign: 'center' }}><p className="ld">{t('loading')}</p></main>;
 
   const isPaid = g.type === 'full' || g.paidUnlocked;
-  const styleNm = STYLES.find((s) => s.id === g.style)?.nm ?? g.style;
-  const occNm = OCC.find((o) => o.id === g.occasion)?.nm ?? g.occasion;
+  const styleNm = (() => { try { return tStyles(`${g.style}.nm`); } catch { return STYLES.find((s) => s.id === g.style)?.nm ?? g.style; } })();
+  const occNm = (() => { try { return tOcc(g.occasion); } catch { return OCC.find((o) => o.id === g.occasion)?.nm ?? g.occasion; } })();
   const voiceNm = VOICES.find((v) => v.id === g.voiceArtist)?.nm ?? g.voiceArtist;
 
   return (
@@ -110,15 +111,15 @@ function ShareGenerationViewInner() {
         display: 'inline-block', marginBottom: 14, fontSize: 12,
         color: 'var(--gold)', textDecoration: 'none',
       }}>
-        ← Manelele mele
+        {t('backToMine')}
       </Link>
 
-      <h1 className="gold-text serif" style={{ fontSize: 28 }}>"Pentru {g.recipientName}"</h1>
+      <h1 className="gold-text serif" style={{ fontSize: 28 }}>{`"${t('forSomeone', { name: g.recipientName })}"`}</h1>
       <p className="ld" style={{ marginTop: 4 }}>
-        {styleNm} · {occNm} · voce: {voiceNm}
+        {styleNm} · {occNm} · {t('voiceLabel')}: {voiceNm}
       </p>
       {g.dedication && (
-        <p className="ld" style={{ marginTop: 2, fontSize: 13 }}>de la {g.dedication}</p>
+        <p className="ld" style={{ marginTop: 2, fontSize: 13 }}>{t('fromSomeone', { from: g.dedication })}</p>
       )}
       <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <span style={{
@@ -126,13 +127,13 @@ function ShareGenerationViewInner() {
           background: isPaid ? 'rgba(62,224,126,0.15)' : 'rgba(241,200,77,0.15)',
           color: isPaid ? '#bff5d2' : '#f1c84d', fontWeight: 600,
         }}>
-          {isPaid ? '✓ Deblocată — versiuni complete (90s)' : '🔒 Demo — preview 30s'}
+          {isPaid ? t('unlockedBadge') : t('demoBadge')}
         </span>
         <span style={{
           fontSize: 11, padding: '3px 10px', borderRadius: 999,
           background: 'rgba(255,255,255,0.05)', color: 'rgba(255,245,220,0.6)',
         }}>
-          Status: {g.status}
+          {t('statusLabel')} {g.status}
         </span>
       </div>
 
@@ -141,18 +142,16 @@ function ShareGenerationViewInner() {
           marginTop: 14, padding: 12, borderRadius: 8,
           background: 'rgba(241,200,77,0.1)', border: '1px solid rgba(241,200,77,0.4)',
         }}>
-          ✨ Confirmăm plata...
+          {t('confirmingPayment')}
         </div>
       )}
 
-      {/* Două versiuni audio. Fișierul demo (30s + fade-out) e generat fizic
-          pe backend, deci playerul nu trebuie să mai trunchieze nimic în UI. */}
       {g.audioUrl && (
         <div style={{ marginTop: 16 }}>
           <ManeaPlayer
             audioUrl={resolveMediaUrl(g.audioUrl)!}
-            title="Versiunea 1"
-            subtitle={isPaid ? 'completă' : 'demo 30s'}
+            title={t('version1')}
+            subtitle={isPaid ? t('full') : t('demo30')}
           />
         </div>
       )}
@@ -160,13 +159,12 @@ function ShareGenerationViewInner() {
         <div style={{ marginTop: 12 }}>
           <ManeaPlayer
             audioUrl={resolveMediaUrl(g.bonusAudioUrl)!}
-            title="Versiunea 2 🎁 (cadou)"
-            subtitle={isPaid ? 'completă' : 'demo 30s'}
+            title={t('version2')}
+            subtitle={isPaid ? t('full') : t('demo30')}
           />
         </div>
       )}
 
-      {/* Paywall — doar dacă e demo neplătit + audio gata */}
       {!isPaid && g.status === 'succeeded' && g.audioUrl && (
         <PaywallSection generationId={g.id} onUnlocked={refresh} />
       )}
@@ -174,7 +172,7 @@ function ShareGenerationViewInner() {
       {g.lyrics && (
         <details style={{ marginTop: 18 }}>
           <summary style={{ fontSize: 13, color: 'var(--gold)', cursor: 'pointer', fontWeight: 600 }}>
-            📝 Vezi versurile
+            {t('lyricsToggle')}
           </summary>
           <pre style={{
             whiteSpace: 'pre-wrap', marginTop: 10, color: 'var(--gold-2)',
@@ -188,6 +186,8 @@ function ShareGenerationViewInner() {
 }
 
 function PaywallSection({ generationId, onUnlocked }: { generationId: string; onUnlocked: () => void }) {
+  const t = useTranslations('mViewPage');
+  const tg = useTranslations('generator');
   const site = useSite();
   const fmt = (cents: number) => formatPrice(site, cents);
   const [submittingPay, setSubmittingPay] = useState(false);
@@ -199,6 +199,18 @@ function PaywallSection({ generationId, onUnlocked }: { generationId: string; on
 
   const basePrice = site.basePriceCents;
   const finalTotal = Math.max(0, basePrice - (promoApplied?.discountCents ?? 0));
+
+  function translatePromoReason(reason: string | undefined): string {
+    switch (reason) {
+      case 'invalid': return tg('promo.errInvalid');
+      case 'expired': return tg('promo.errExpired');
+      case 'not_yet_valid': return tg('promo.errNotYet');
+      case 'used_up': return tg('promo.errUsedUp');
+      case 'wrong_email': return tg('promo.errWrongEmail');
+      case 'empty': return tg('promo.errEmpty');
+      default: return tg('promo.errGeneric');
+    }
+  }
 
   async function applyPromo() {
     if (!promoCode.trim()) return;
@@ -212,7 +224,7 @@ function PaywallSection({ generationId, onUnlocked }: { generationId: string; on
         setPromoError(translatePromoReason(r.reason));
       }
     } catch {
-      setPromoError('Eroare validare. Încearcă din nou.');
+      setPromoError(t('errCheckout'));
     } finally {
       setValidatingPromo(false);
     }
@@ -235,7 +247,7 @@ function PaywallSection({ generationId, onUnlocked }: { generationId: string; on
       });
       window.location.href = url;
     } catch (e) {
-      setPayError(e instanceof ApiError ? e.message : 'Eroare la inițierea plății');
+      setPayError(e instanceof ApiError ? e.message : t('errCheckout'));
       setSubmittingPay(false);
     }
   }
@@ -247,10 +259,10 @@ function PaywallSection({ generationId, onUnlocked }: { generationId: string; on
       border: '1px solid var(--gold)',
     }}>
       <h3 style={{ marginTop: 0, fontSize: 18, color: 'var(--gold-2)' }}>
-        🔓 Deblochează versiunile complete (90s × 2)
+        {t('paywallTitle')}
       </h3>
       <p className="ld" style={{ fontSize: 13, marginTop: 4 }}>
-        Plătește o singură dată — primești pe email ambele versiuni complete, fără limita de 30s.
+        {t('paywallSub')}
       </p>
 
       {promoApplied && (
@@ -260,15 +272,15 @@ function PaywallSection({ generationId, onUnlocked }: { generationId: string; on
           fontSize: 13,
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Preț</span>
+            <span>{t('priceLine')}</span>
             <span>{fmt(basePrice)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--green)', marginTop: 4 }}>
-            <span>Promo <code>{promoApplied.code}</code></span>
+            <span>{tg('step5PayFirst.promoLine')} <code>{promoApplied.code}</code></span>
             <span>−{fmt(promoApplied.discountCents)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.1)', fontWeight: 700 }}>
-            <span>Total</span>
+            <span>{t('totalLine')}</span>
             <span className="gold-text">{fmt(finalTotal)}</span>
           </div>
         </div>
@@ -286,10 +298,10 @@ function PaywallSection({ generationId, onUnlocked }: { generationId: string; on
         }}
       >
         {submittingPay
-          ? 'Te ducem la plată...'
+          ? t('checkoutLoading')
           : promoApplied
-            ? `🔒 Deblochează — ${fmt(finalTotal)}`
-            : '🔒 Deblochează — vezi prețul la checkout'}
+            ? t('unlockCta', { amount: fmt(finalTotal) })
+            : t('unlockCtaNoPrice')}
       </button>
 
       {payError && (
@@ -301,7 +313,7 @@ function PaywallSection({ generationId, onUnlocked }: { generationId: string; on
           <div style={{ display: 'flex', gap: 6 }}>
             <input
               type="text"
-              placeholder="Cod promo?"
+              placeholder={tg('step5PayFirst.promoPlaceholder')}
               value={promoCode}
               onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoError(null); }}
               style={{
@@ -318,7 +330,7 @@ function PaywallSection({ generationId, onUnlocked }: { generationId: string; on
               className="btn btn-ghost btn-sm"
               style={{ padding: '8px 14px', fontSize: 13 }}
             >
-              {validatingPromo ? '...' : 'Aplică'}
+              {validatingPromo ? t('applying') : t('applyPromo')}
             </button>
           </div>
         ) : (
@@ -331,7 +343,7 @@ function PaywallSection({ generationId, onUnlocked }: { generationId: string; on
               textDecoration: 'underline',
             }}
           >
-            ✕ Elimină promo
+            {t('removePromo')}
           </button>
         )}
         {promoError && <div style={{ marginTop: 6, fontSize: 12, color: '#ff8888' }}>{promoError}</div>}
@@ -342,19 +354,8 @@ function PaywallSection({ generationId, onUnlocked }: { generationId: string; on
   );
 }
 
-function translatePromoReason(reason: string | undefined): string {
-  switch (reason) {
-    case 'invalid': return 'Cod invalid sau dezactivat.';
-    case 'expired': return 'Cod expirat.';
-    case 'not_yet_valid': return 'Cod neactivat încă.';
-    case 'used_up': return 'Cod folosit complet.';
-    case 'wrong_email': return 'Cod restricționat la alt email.';
-    case 'empty': return 'Introdu un cod.';
-    default: return 'Cod nevalid.';
-  }
-}
-
 function PaywallGiftCode({ generationId, onUnlocked }: { generationId: string; onUnlocked: () => void }) {
+  const tg = useTranslations('generator');
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -371,10 +372,10 @@ function PaywallGiftCode({ generationId, onUnlocked }: { generationId: string; o
       const msg = e instanceof ApiError ? (e.body as { message?: string })?.message : (e as Error).message;
       const reason = msg || 'unknown';
       setError(
-        reason === 'invalid' ? 'Cod invalid sau dezactivat.' :
-        reason === 'expired' ? 'Cod expirat.' :
-        reason === 'used_up' ? 'Cod folosit complet.' :
-        'Cod nevalid.',
+        reason === 'invalid' ? tg('gift.errInvalid') :
+        reason === 'expired' ? tg('gift.errExpired') :
+        reason === 'used_up' ? tg('gift.errUsedUp') :
+        tg('gift.errGeneric'),
       );
       setSubmitting(false);
     }
@@ -391,7 +392,7 @@ function PaywallGiftCode({ generationId, onUnlocked }: { generationId: string; o
           fontFamily: 'inherit',
         }}
       >
-        🎟️ Ai cod cadou? Apasă să-l folosești
+        {tg('gift.openCta')}
       </button>
     );
   }
@@ -401,7 +402,7 @@ function PaywallGiftCode({ generationId, onUnlocked }: { generationId: string; o
       <div style={{ display: 'flex', gap: 6 }}>
         <input
           type="text"
-          placeholder="GIFT-XXXXXXXX"
+          placeholder={tg('gift.placeholder')}
           value={code}
           onChange={(e) => { setCode(e.target.value.toUpperCase()); setError(null); }}
           style={{
@@ -416,7 +417,7 @@ function PaywallGiftCode({ generationId, onUnlocked }: { generationId: string; o
           className="btn btn-gold"
           style={{ padding: '8px 14px', fontSize: 13 }}
         >
-          {submitting ? '...' : 'Aplică'}
+          {submitting ? tg('gift.applying') : tg('gift.applyCta')}
         </button>
       </div>
       {error && <div style={{ marginTop: 6, fontSize: 12, color: '#ff8888' }}>{error}</div>}

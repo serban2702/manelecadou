@@ -2,22 +2,23 @@
 
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { SiteShell } from '@/components/SiteShell';
 import { api, type GenerationDto } from '@/lib/api';
 import { STYLES, VOICES, OCC } from '@/lib/seed-data';
 
-const STATUS_BADGE: Record<string, { label: string; color: string; bg: string }> = {
-  queued:           { label: 'În așteptare',  color: '#ffd680', bg: 'rgba(241,200,77,0.12)' },
-  writing_lyrics:   { label: 'Scriem versuri', color: '#ffd680', bg: 'rgba(241,200,77,0.12)' },
-  checking_lyrics:  { label: 'Verificăm versuri', color: '#ffd680', bg: 'rgba(241,200,77,0.12)' },
-  generating_audio: { label: 'Se cântă',       color: '#ffd680', bg: 'rgba(241,200,77,0.12)' },
-  succeeded:        { label: 'Gata',           color: '#bff5d2', bg: 'rgba(62,224,126,0.12)' },
-  failed:           { label: 'Eșuat',          color: '#ffd6e6', bg: 'rgba(255,45,126,0.18)' },
+const STATUS_COLOR: Record<string, { color: string; bg: string }> = {
+  queued:           { color: '#ffd680', bg: 'rgba(241,200,77,0.12)' },
+  writing_lyrics:   { color: '#ffd680', bg: 'rgba(241,200,77,0.12)' },
+  checking_lyrics:  { color: '#ffd680', bg: 'rgba(241,200,77,0.12)' },
+  generating_audio: { color: '#ffd680', bg: 'rgba(241,200,77,0.12)' },
+  succeeded:        { color: '#bff5d2', bg: 'rgba(62,224,126,0.12)' },
+  failed:           { color: '#ffd6e6', bg: 'rgba(255,45,126,0.18)' },
 };
 
-function fmtDate(iso: string): string {
+function fmtDate(iso: string, locale: string): string {
   try {
-    return new Date(iso).toLocaleDateString('ro-RO', {
+    return new Date(iso).toLocaleDateString(locale, {
       day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
   } catch {
@@ -26,12 +27,12 @@ function fmtDate(iso: string): string {
 }
 
 export default function ManeleleMelePage() {
+  const t = useTranslations('myGens');
   const { data, isLoading, error } = useQuery({
     queryKey: ['my-generations'],
     queryFn: api.listGenerations,
     refetchInterval: (q) => {
       const items = q.state.data;
-      // dacă e ceva în lucru, refetch la 5s
       const inFlight = items?.some(
         (g) => g.status !== 'succeeded' && g.status !== 'failed',
       );
@@ -42,24 +43,19 @@ export default function ManeleleMelePage() {
   return (
     <SiteShell hideStickyCta>
       <div className="inner-page">
-        <h1 className="gold-text">🎵 Manelele mele</h1>
-        <p className="lead">
-          Toate piesele pe care le-ai generat — demouri și complete. Click pe oricare ca să asculți și
-          (dacă e demo) să o deblochezi.
-        </p>
+        <h1 className="gold-text">{t('title')}</h1>
+        <p className="lead">{t('lead')}</p>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12, marginBottom: 22 }}>
           <Link href="/studio" className="btn btn-gold" style={{ textDecoration: 'none' }}>
-            🎤 Fă încă o manea
+            {t('ctaMake')}
           </Link>
         </div>
 
-        {isLoading && <p className="ld">Se încarcă manelele tale...</p>}
+        {isLoading && <p className="ld">{t('loading')}</p>}
 
         {error && (
-          <p style={{ color: '#ff8888' }}>
-            Nu am putut încărca lista. Încearcă din nou peste un moment.
-          </p>
+          <p style={{ color: '#ff8888' }}>{t('errLoad')}</p>
         )}
 
         {data && data.length === 0 && (
@@ -68,9 +64,9 @@ export default function ManeleleMelePage() {
             background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(241,200,77,0.3)',
             borderRadius: 12,
           }}>
-            <p>N-ai generat încă nicio manea.</p>
+            <p>{t('empty')}</p>
             <Link href="/studio" className="btn btn-gold" style={{ textDecoration: 'none', marginTop: 10 }}>
-              🎤 Fă prima manea
+              {t('ctaFirst')}
             </Link>
           </div>
         )}
@@ -88,10 +84,14 @@ export default function ManeleleMelePage() {
 }
 
 function GenerationRow({ g }: { g: GenerationDto }) {
-  const styleNm = STYLES.find((s) => s.id === g.style)?.nm ?? g.style;
-  const occNm = OCC.find((o) => o.id === g.occasion)?.nm ?? g.occasion;
+  const t = useTranslations('myGens');
+  const tStyles = useTranslations('styles');
+  const tOcc = useTranslations('occasions');
+  const styleNm = (() => { try { return tStyles(`${g.style}.nm`); } catch { return STYLES.find((s) => s.id === g.style)?.nm ?? g.style; } })();
+  const occNm = (() => { try { return tOcc(g.occasion); } catch { return OCC.find((o) => o.id === g.occasion)?.nm ?? g.occasion; } })();
   const voiceNm = VOICES.find((v) => v.id === g.voiceArtist)?.nm ?? g.voiceArtist;
-  const status = STATUS_BADGE[g.status] ?? { label: g.status, color: '#ccc', bg: 'rgba(255,255,255,0.08)' };
+  const statusLabel = (() => { try { return t(`status.${g.status}`); } catch { return g.status; } })();
+  const color = STATUS_COLOR[g.status] ?? { color: '#ccc', bg: 'rgba(255,255,255,0.08)' };
   const isPaid = g.type === 'full' || g.paidUnlocked;
   const isPlayable = g.status === 'succeeded' && !!g.audioUrl;
 
@@ -113,44 +113,44 @@ function GenerationRow({ g }: { g: GenerationDto }) {
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--gold-2)' }}>
-              Pentru {g.recipientName}
+              {t('forSomeone', { name: g.recipientName })}
             </span>
             <span style={{
               fontSize: 11, padding: '2px 8px', borderRadius: 999,
-              background: status.bg, color: status.color, fontWeight: 600,
+              background: color.bg, color: color.color, fontWeight: 600,
             }}>
-              {status.label}
+              {statusLabel}
             </span>
             {isPaid ? (
               <span style={{
                 fontSize: 11, padding: '2px 8px', borderRadius: 999,
                 background: 'rgba(62,224,126,0.15)', color: '#bff5d2', fontWeight: 600,
               }}>
-                ✓ Deblocată
+                {t('unlockedBadge')}
               </span>
             ) : g.type === 'demo' ? (
               <span style={{
                 fontSize: 11, padding: '2px 8px', borderRadius: 999,
                 background: 'rgba(241,200,77,0.15)', color: '#f1c84d', fontWeight: 600,
               }}>
-                🔒 Demo (30s)
+                {t('demoBadge')}
               </span>
             ) : null}
           </div>
           <div style={{ fontSize: 12, color: 'rgba(255,245,220,0.55)', marginTop: 4 }}>
-            {styleNm} · {occNm} · voce: {voiceNm}
+            {styleNm} · {occNm} · {t('voiceLabel')}: {voiceNm}
           </div>
           {g.dedication && (
             <div style={{ fontSize: 12, color: 'rgba(255,245,220,0.45)', marginTop: 2 }}>
-              de la {g.dedication}
+              {t('fromSomeone', { from: g.dedication })}
             </div>
           )}
           <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.4)', marginTop: 6 }}>
-            {fmtDate(g.createdAt)}
+            {fmtDate(g.createdAt, 'en-GB')}
           </div>
         </div>
         <div style={{ alignSelf: 'center', fontSize: 13, color: 'var(--gold)', whiteSpace: 'nowrap' }}>
-          {isPlayable ? (isPaid ? 'Ascultă →' : 'Ascultă demo / Deblochează →') : 'Detalii →'}
+          {isPlayable ? (isPaid ? t('listen') : t('listenUnlock')) : t('details')}
         </div>
       </div>
     </Link>

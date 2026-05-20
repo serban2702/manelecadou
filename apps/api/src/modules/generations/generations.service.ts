@@ -18,6 +18,7 @@ import { Payment } from '../payments/payment.entity';
 import { CreateGenerationDto } from './dto/create-generation.dto';
 import { MailerService } from '../../mailer/mailer.module';
 import { paymentSuccessTemplate } from '../../mailer/templates/templates';
+import { brandingFromSite } from '../../mailer/branding';
 import { SitesService } from '../sites/sites.service';
 
 export const GENERATIONS_QUEUE = 'generations';
@@ -425,6 +426,7 @@ export class GenerationsService {
         generationLink: link,
         recipientName: gen.recipientName,
         locale: site?.locale ?? gen.locale ?? 'ro',
+        branding: brandingFromSite(site),
       });
       await this.mailer.send({
         to: email,

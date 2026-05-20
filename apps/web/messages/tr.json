@@ -368,14 +368,185 @@
     "steps": [
       "Stil",
       "Vesile",
-      "Detay",
+      "Detaylar",
       "Hediye",
       "Demo",
-      "Aç"
+      "Kilidi aç"
     ],
-    "step1Title": "1. Ne tür şarkı?",
-    "step1Sub": "Her stilin nasıl olduğunu duymak için ▶ bas.",
-    "stepPattern": "Adım {current} / {total}"
+    "stepsPayFirst": [
+      "Stil",
+      "Vesile",
+      "Detaylar",
+      "Hediye",
+      "Öde"
+    ],
+    "step1Title": "1. Nasıl bir şarkı?",
+    "step1Sub": "Her stilin nasıl olduğunu dinlemek için ▶'ye bas.",
+    "stepPattern": "Adım {current} / {total}",
+    "styleHint": "Stil",
+    "step2Title": "2. Hangi vesileyle?",
+    "step2Sub": "Birini seç. Sözleri ona göre uyarlarız.",
+    "step3": {
+      "title": "3. Detaylar, ses ve (opsiyonel) senin sözlerin",
+      "sub": "Ne kadar net olursan, o kadar iyi çıkar.",
+      "nameLabel": "Kişinin adı",
+      "namePlaceholder": "örn. Ahmet, Ayşe, patron Mehmet...",
+      "messageLabel": "Senin mesajın (max 600)",
+      "messageSuggesting": "✨ Öneriyorum…",
+      "messageNewSuggestion": "✨ Yeni öneri",
+      "messagePlaceholder": "örn. Mutlu yıllar patron! Allah versin yılbaşı ikramiyesi alalım...",
+      "dedicLabel": "İsteğe bağlı ithaf (kimden)",
+      "dedicPlaceholder": "Ahmet ve ekipten",
+      "lyricsLabel": "📝 Sözleri sen mi yazmak istiyorsun?",
+      "lyricsActive": "✓ aktif",
+      "lyricsActivate": "Aktifleştir",
+      "lyricsPlaceholder": "İstersen sözleri buraya yaz. Boş bırak = AI sözleri mesaja göre yazar.\n\nNakarat:\n...\nKıta:\n...",
+      "voicesTitle": "🎤 Hangi sanatçı sana şarkı söylesin?",
+      "voiceHint": "Sesi dinle",
+      "errCompleteFirst": "Önce stil, vesile ve ismi doldur.",
+      "errTooManySuggestions": "Çok fazla öneri. Bir dakika sonra dene.",
+      "errAiFallback": "AI ile üretemedim, yedek bir öneri koydum."
+    },
+    "step4": {
+      "title": "4. Hediye ve Premium",
+      "sub": "Onu deviresin diye sözlere ne kadar koyalım? (%5 ek ücret, üst sınır 50 TL.)",
+      "tipNone": "Yok",
+      "tipUnit": "{amount} TL",
+      "customLabel": "Ya da istediğin kadar koy (1.000.000.000 TL'ye kadar 😅)",
+      "customActive": "✓ aktif",
+      "customBtn": "Özel",
+      "customPlaceholder": "örn. 1500",
+      "customSurcharge": "Ek ücret: +{amount} TL (%5, üst sınır 50 TL).",
+      "premiumTitle": "Premium Şarkı",
+      "premiumRecommended": "ÖNERİLEN",
+      "premiumDesc": "🎤 4× üstün ses kalitesi · 🔥 AI master ile işlenmiş ses · ⚡ Profesyonel miks",
+      "baseLine": "Temel şarkı (90s × 2)",
+      "premiumLine": "👑 Premium yükseltme",
+      "tipSurchargeLine": "İthaf ek ücreti ({amount} TL × %5, üst sınır 50)",
+      "totalUnlock": "Kilidi açma toplam",
+      "demoFooter": "🎁 Ücretsiz demoyu bir sonraki adımda alıyorsun. Ödeme dinledikten SONRA yapılır."
+    },
+    "step5Demo": {
+      "title": "5. Ücretsiz demo (30s)",
+      "sub": "Önce 30 saniyelik ücretsiz bir demo üretiriz. Beğenirsen tam şarkıyı (90s × 2) açarsın.",
+      "emailLabel": "📧 E-posta adresin (zorunlu — şarkıyı buraya gönderiyoruz)",
+      "emailPlaceholder": "sen@email.com",
+      "emailHint": "Sadece teslimat için kullanılır. Spam yok.",
+      "emailSentTo": "✓ Şarkıyı şu adrese gönderiyoruz:",
+      "submitting": "Gönderiliyor...",
+      "submitCta": "🎁 30s ücretsiz demo üret",
+      "submitHint": "Ücretsiz demo üret"
+    },
+    "step5PayFirst": {
+      "title": "5. Şarkıyı üretmek için öde",
+      "sub": "Şarkın (90s × 2 versiyon) ödeme onaylandığı ANDA üretilir. Sonucu e-postaya gönderir ve ~3 dakika sonra burada da görebilirsin.",
+      "emailLabel": "📧 E-posta adresin (zorunlu)",
+      "emailSentTo": "✓ Şarkıyı şu adrese gönderiyoruz:",
+      "completeLine": "Tam şarkı (90s × 2)",
+      "tipLine": "İthaf ek ücreti {amount} {currency}",
+      "promoLine": "Promo:",
+      "totalLabel": "Toplam",
+      "promoPlaceholder": "Promo kodu?",
+      "promoApply": "Uygula",
+      "promoActive": "✓ Promo",
+      "promoDiscount": "indirim",
+      "promoValidationError": "Doğrulama hatası. Tekrar dene.",
+      "payingCta": "Ödeme açılıyor...",
+      "payCta": "💳 {amount} öde ve üret",
+      "payHint": "Şimdi öde"
+    },
+    "live": {
+      "succeededTitle": "🎉 Demo hazır!",
+      "failedTitle": "Bir şeyler ters gitti...",
+      "workingTitle": "Şarkı hazırlanıyor...",
+      "techDetails": "Teknik detaylar (destek için)",
+      "lyricsVerified": "✓ Sözler AI tarafından doğrulandı",
+      "lyricsDraft": "✏️ Taslak (kontrol ediliyor...)",
+      "twoVersionsTitle": "🎤 Sana 2 versiyon yaptım — ikisi de hediye:",
+      "version1": "Versiyon 1",
+      "version2Gift": "Versiyon 2 🎁",
+      "listenWhileWaiting": "🎧 Beklerken başkalarının ürettiği şarkıları dinle",
+      "noPublicYet": "Henüz herkese açık şarkı üretilmedi.",
+      "forSomeone": "{name} için",
+      "status": {
+        "pending": "Her şeyi hazırlıyoruz...",
+        "queued": "Sıraya alındı, birazdan başlıyoruz",
+        "writing_lyrics": "AI söz yazarı sözleri yazıyor... 🎤",
+        "checking_lyrics": "AI editör kafiyeyi kontrol ediyor... ✍️",
+        "generating_audio": "Stüdyo akordiyonu akort ediyor... 🎻",
+        "running": "Tamamlanıyor...",
+        "succeeded": "✓ Şarkı hazır!",
+        "failed": "Bir şeyler ters gitti"
+      },
+      "humanizeFail": {
+        "default": "Üretim başarısız oldu. Tekrar dene — sorun devam ederse sohbette bize yaz.",
+        "noMessage": "Üretim hata mesajı olmadan başarısız oldu. Birkaç dakika sonra tekrar dene.",
+        "sensitive": "Mesajın, müzik sağlayıcının reddettiği kelimeler içeriyor. Hassas kelimeler olmadan yeniden yaz ve tekrar dene.",
+        "timeout": "Üretim maksimum süreyi aştı. Müzik stüdyosu şu an çok yoğun — birkaç dakika sonra tekrar dene.",
+        "notConfigured": "Ses üretim servisi yapılandırılmamış. Ekip bilgilendirildi.",
+        "credit": "Müzik stüdyosunun kredisi bitti. Ekip bilgilendirildi — hemen ilgileniyoruz.",
+        "rate": "Şu an müzik stüdyosuna çok fazla istek var. Bir dakika sonra tekrar dene.",
+        "network": "Müzik stüdyosuyla bağlantı koptu. Bir dakika sonra tekrar dene.",
+        "sunoFailed": "Müzik stüdyosu üretimi reddetti. Mesajı yeniden yaz (daha kısa, gerçek ünlü isim olmadan) ve tekrar dene."
+      }
+    },
+    "step6": {
+      "waiting": "Demo bekleniyor...",
+      "failedTitle": "Bir şeyler ters gitti...",
+      "techDetails": "Teknik detaylar (destek için)",
+      "againBtnGhost": "← Yeni başlat",
+      "unlockedTitle": "✓ Tam şarkı açıldı!",
+      "unlockedSub": "Tam versiyonlar (90s) e-postana geliyor.",
+      "version1Full": "Versiyon 1 (tam)",
+      "version2Full": "Versiyon 2 (tam)",
+      "againCta": "+ Bir şarkı daha yap",
+      "title": "6. Tam şarkıyı aç",
+      "sub": "Demoyu dinledin. Şimdi e-postaya gönderilen 2 tam versiyon (her biri 90s) alıyorsun.",
+      "replayTitle": "🔊 Demoyu tekrar dinle (30s)",
+      "tipLine": "İthaf ek ücreti {amount} TL",
+      "payingCta": "Ödeme açılıyor...",
+      "unlockCta": "🔓 Aç — {amount}",
+      "payHint": "Şimdi öde",
+      "laterCta": "Sonra — bir demo daha yapıyorum"
+    },
+    "gift": {
+      "openCta": "🎟️ Hediye kodun var mı? Kullanmak için bas",
+      "placeholder": "GIFT-XXXXXXXX",
+      "applyCta": "Kullan",
+      "applying": "...",
+      "errInvalid": "Geçersiz veya devre dışı kod.",
+      "errExpired": "Kodun süresi dolmuş.",
+      "errUsedUp": "Kod tamamen kullanıldı.",
+      "errGeneric": "Geçersiz kod."
+    },
+    "retry": {
+      "retrying": "🔄 Üretimi yeniden deniyorum...",
+      "cta": "🔄 Tekrar dene",
+      "limitReached": "Bu demo için 3 yeniden deneme sınırına ulaştın. Yeni bir şarkı başlat.",
+      "alreadyRunning": "Üretim zaten devam ediyor — birkaç saniye bekle.",
+      "generic": "Bilinmeyen hata. Tekrar dene."
+    },
+    "promo": {
+      "errInvalid": "Geçersiz veya devre dışı kod.",
+      "errExpired": "Kodun süresi dolmuş.",
+      "errNotYet": "Kod henüz aktif değil.",
+      "errUsedUp": "Kod tamamen kullanıldı.",
+      "errWrongEmail": "Kod başka bir e-postaya kısıtlı.",
+      "errEmpty": "Bir kod gir.",
+      "errGeneric": "Geçersiz kod."
+    },
+    "humanError": {
+      "duplicate": "Yinelenen istek — birkaç saniye sonra tekrar dene.",
+      "emailRequired": "Şarkıyı göndermemiz için e-posta gir.",
+      "paymentRequired": "Tam şarkı (90s) için ödeme gerekli.",
+      "unknown": "Bilinmeyen hata.",
+      "emailInvalid": "Şarkıyı göndermemiz için geçerli bir e-posta gir.",
+      "emailSaveFailed": "E-postayı kaydedemedim. Tekrar dene.",
+      "generic": "Üretim hatası. Tekrar dene.",
+      "stripeNotConfigured": "Ödemeler henüz aktif değil. .env'de STRIPE_SECRET_KEY ayarla.",
+      "stripeShort": "Ödemeler henüz aktif değil.",
+      "checkoutFailed": "Ödemeyi açamadım. Tekrar dene."
+    }
   },
   "giftMini": {
     "title": "Kod al, birine ver",
@@ -465,37 +636,303 @@
     "terms": {
       "title": "Şartlar ve Koşullar",
       "lastUpdate": "Son güncelleme: 1 Mayıs 2026",
-      "sec1": { "h": "1. Sözleşme tarafları", "p": "Bu site ({domain}) <b>{legalName}</b>{regSuffix}{addressSuffix} tarafından işletilmektedir.", "regSuffix": ", Ticaret Sicili'ne {regCom} numarası ile kayıtlı, Vergi numarası {cui}", "addressSuffix": ", {address} adresinde mukim" },
-      "sec2": { "h": "2. Hizmet hakkında", "p1": "Yapay zeka ile manele üretim hizmeti sunuyoruz. Sen stili, vesileyi, mesajı ve sesi giriyorsun — biz sana otomatik olarak üretilmiş 1-2 MP3 ses dosyası teslim ediyoruz.", "p2": "<b>Önemli:</b> tüm sesler sentetiktir (AI). Sanatçı isimleri (Florinel de Aur, Adi Șampanie vb.) kurgusal ve parodidir. Yaşayan veya hayatını kaybetmiş gerçek sanatçıları temsil etmiyoruz." },
-      "sec3": { "h": "3. Fiyatlar ve ödemeler", "b1": "Ücretsiz demo: 30 saniye, hesap/oturum başına 1 adet.", "b2": "Tam manele: <b>{fullPrice}</b> (KDV dahil).", "b3": "İthaf ek ücreti: sözlerde geçen tutarın %10'u, üst sınır 150 TL (yalnızca TL için).", "b4": "Ödemeler Stripe üzerinden işlenir — kart bilgilerini saklamıyoruz." },
-      "sec4": { "h": "4. Kullanım hakları", "p": "Manele kişisel kullanımın için sana aittir: dinleyebilir, indirebilir, TikTok'ta paylaşabilir, Story'ye koyabilirsin. Ticari kullanım için (ücretli reklamlar, YouTube monetizasyonu vb.) bizimle <a>{email}</a> adresinden iletişime geç." },
-      "sec5": { "h": "5. Yasak içerik", "intro": "Şu içeriklerle manele üretmiyoruz:", "b1": "Irkçı, etnik veya dini hakaretler", "b2": "Tehdit veya şiddete çağrı", "b3": "Müstehcen cinsel içerik", "b4": "Kimlik hırsızlığı (gerçek bir kişinin rızası olmadan taklit edilmesi)", "out": "Uygun olmayan talepler için üretimi reddetme ve ödemeyi iade etme hakkımızı saklı tutarız." },
-      "sec6": { "h": "6. İade", "p": "6502 sayılı Tüketicinin Korunması Hakkında Kanun'un 15. maddesi (mesafeli sözleşmelerden cayma hakkının istisnaları — dijital içerik) uyarınca, kişiselleştirilmiş dijital ürünler (senin için özel üretilen maneleler gibi) teslimattan sonra <b>iade edilemez</b>. İstisna: manelede teknik bir kusur varsa, ücretsiz olarak yeniden üretiriz veya talep üzerine ödemeyi iade ederiz." },
-      "sec7": { "h": "7. Sorumluluğun sınırlandırılması", "p": "AI, niyetinle uyuşmayan sözler üretebilir. Sözleri kamuya açık olarak paylaşmadan önce okumanı rica ederiz. Manelenin uygun olmayan bağlamlarda kullanılmasından doğan dolaylı zararlardan sorumlu değiliz." },
-      "sec8": { "h": "8. Uyuşmazlıklar", "p": "Uyuşmazlıklar dostane yollarla çözülür. Başarısız olunması halinde yetki Türk mahkemelerine aittir. Tüketiciler için: Ticaret Bakanlığı Tüketicinin Korunması ve Piyasa Gözetimi Genel Müdürlüğü — <a>tuketici.ticaret.gov.tr</a>." }
+      "sec1": {
+        "h": "1. Sözleşme tarafları",
+        "p": "Bu site ({domain}) <b>{legalName}</b>{regSuffix}{addressSuffix} tarafından işletilmektedir.",
+        "regSuffix": ", Ticaret Sicili'ne {regCom} numarası ile kayıtlı, Vergi numarası {cui}",
+        "addressSuffix": ", {address} adresinde mukim"
+      },
+      "sec2": {
+        "h": "2. Hizmet hakkında",
+        "p1": "Yapay zeka ile manele üretim hizmeti sunuyoruz. Sen stili, vesileyi, mesajı ve sesi giriyorsun — biz sana otomatik olarak üretilmiş 1-2 MP3 ses dosyası teslim ediyoruz.",
+        "p2": "<b>Önemli:</b> tüm sesler sentetiktir (AI). Sanatçı isimleri (Florinel de Aur, Adi Șampanie vb.) kurgusal ve parodidir. Yaşayan veya hayatını kaybetmiş gerçek sanatçıları temsil etmiyoruz."
+      },
+      "sec3": {
+        "h": "3. Fiyatlar ve ödemeler",
+        "b1": "Ücretsiz demo: 30 saniye, hesap/oturum başına 1 adet.",
+        "b2": "Tam manele: <b>{fullPrice}</b> (KDV dahil).",
+        "b3": "İthaf ek ücreti: sözlerde geçen tutarın %10'u, üst sınır 150 TL (yalnızca TL için).",
+        "b4": "Ödemeler Stripe üzerinden işlenir — kart bilgilerini saklamıyoruz."
+      },
+      "sec4": {
+        "h": "4. Kullanım hakları",
+        "p": "Manele kişisel kullanımın için sana aittir: dinleyebilir, indirebilir, TikTok'ta paylaşabilir, Story'ye koyabilirsin. Ticari kullanım için (ücretli reklamlar, YouTube monetizasyonu vb.) bizimle <a>{email}</a> adresinden iletişime geç."
+      },
+      "sec5": {
+        "h": "5. Yasak içerik",
+        "intro": "Şu içeriklerle manele üretmiyoruz:",
+        "b1": "Irkçı, etnik veya dini hakaretler",
+        "b2": "Tehdit veya şiddete çağrı",
+        "b3": "Müstehcen cinsel içerik",
+        "b4": "Kimlik hırsızlığı (gerçek bir kişinin rızası olmadan taklit edilmesi)",
+        "out": "Uygun olmayan talepler için üretimi reddetme ve ödemeyi iade etme hakkımızı saklı tutarız."
+      },
+      "sec6": {
+        "h": "6. İade",
+        "p": "6502 sayılı Tüketicinin Korunması Hakkında Kanun'un 15. maddesi (mesafeli sözleşmelerden cayma hakkının istisnaları — dijital içerik) uyarınca, kişiselleştirilmiş dijital ürünler (senin için özel üretilen maneleler gibi) teslimattan sonra <b>iade edilemez</b>. İstisna: manelede teknik bir kusur varsa, ücretsiz olarak yeniden üretiriz veya talep üzerine ödemeyi iade ederiz."
+      },
+      "sec7": {
+        "h": "7. Sorumluluğun sınırlandırılması",
+        "p": "AI, niyetinle uyuşmayan sözler üretebilir. Sözleri kamuya açık olarak paylaşmadan önce okumanı rica ederiz. Manelenin uygun olmayan bağlamlarda kullanılmasından doğan dolaylı zararlardan sorumlu değiliz."
+      },
+      "sec8": {
+        "h": "8. Uyuşmazlıklar",
+        "p": "Uyuşmazlıklar dostane yollarla çözülür. Başarısız olunması halinde yetki Türk mahkemelerine aittir. Tüketiciler için: Ticaret Bakanlığı Tüketicinin Korunması ve Piyasa Gözetimi Genel Müdürlüğü — <a>tuketici.ticaret.gov.tr</a>."
+      }
     },
     "privacy": {
       "title": "Gizlilik Politikası",
       "lead": "Verilerini nasıl işliyoruz (GDPR uyumlu).",
-      "sec1": { "h": "1. Verileri kim topluyor", "p": "Veri sorumlusu <b>{legalName}</b>{cuiSuffix}'dir. Her türlü soru veya GDPR talebi (erişim, silme, taşınabilirlik) için: <a>{dpoEmail}</a>.", "cuiSuffix": ", Vergi numarası {cui}" },
-      "sec2": { "h": "2. Hangi verileri topluyoruz", "b1": "<b>E-posta adresin</b> — maneleni teslim etmek ve kimlik doğrulaması için.", "b2": "<b>Misafir oturum kimliği</b> (anonim UUID) — localStorage'da, hesap olmadan durumunu hatırlamamıza yardımcı olur.", "b3": "<b>Talep içeriği</b> (alıcı adı, mesaj, stil) — yalnızca maneleni üretmek için kullanılır.", "b4": "<b>Teknik veriler</b> (IP, tarayıcı, zaman damgası) — güvenlik ve kötüye kullanımın önlenmesi için.", "b5": "<b>Ödemeler</b> — Stripe kartı işler. Biz yalnızca durumu (paid/failed) ve tutarı görürüz." },
-      "sec3": { "h": "3. Hangi amaçla kullanıyoruz", "b1": "Hizmetin sunulması (manele üretimi + e-posta).", "b2": "Teknik destek ve sorulara yanıt.", "b3": "Kişisel veri içermeyen toplu istatistikler.", "b4": "Kötüye kullanımla mücadele (rate-limit, ban).", "out": "Verilerini satmıyoruz. Asla." },
-      "sec4": { "h": "4. Ne kadar süre saklıyoruz", "b1": "Manele + talep: üretimden itibaren 12 ay, sonra silinir.", "b2": "Hesap e-postası: hesap silinmesini talep edene kadar.", "b3": "Mali belgeler (faturalar): 10 yıl (yasal yükümlülük)." },
-      "sec5": { "h": "5. Haklarınız", "intro": "GDPR uyarınca şu haklara sahipsiniz:", "b1": "Verilerinize erişim (tam dışa aktarım)", "b2": "Düzeltme (e-posta vb. düzeltilmesi)", "b3": "Silme („unutulma hakkı\")", "b4": "Taşınabilirlik (makine tarafından okunabilir formatta dışa aktarım)", "b5": "İşlemeye itiraz", "b6": "KVKK'ya şikayet — <a>kvkk.gov.tr</a>" },
-      "sec6": { "h": "6. Cookies", "p": "Detaylar için <a>Cookies sayfasına</a> bakın." },
-      "sec7": { "h": "7. Üçüncü taraf sağlayıcılar", "b1": "<b>Stripe</b> — ödeme işleme", "b2": "<b>Uzmanlaşmış AI sağlayıcıları</b> — ses ve şarkı sözü üretimi (GDPR m. 28 uyarınca alt veri işleyenler)", "b3": "<b>Hosting</b> — veriler AB'de saklanır" }
+      "sec1": {
+        "h": "1. Verileri kim topluyor",
+        "p": "Veri sorumlusu <b>{legalName}</b>{cuiSuffix}'dir. Her türlü soru veya GDPR talebi (erişim, silme, taşınabilirlik) için: <a>{dpoEmail}</a>.",
+        "cuiSuffix": ", Vergi numarası {cui}"
+      },
+      "sec2": {
+        "h": "2. Hangi verileri topluyoruz",
+        "b1": "<b>E-posta adresin</b> — maneleni teslim etmek ve kimlik doğrulaması için.",
+        "b2": "<b>Misafir oturum kimliği</b> (anonim UUID) — localStorage'da, hesap olmadan durumunu hatırlamamıza yardımcı olur.",
+        "b3": "<b>Talep içeriği</b> (alıcı adı, mesaj, stil) — yalnızca maneleni üretmek için kullanılır.",
+        "b4": "<b>Teknik veriler</b> (IP, tarayıcı, zaman damgası) — güvenlik ve kötüye kullanımın önlenmesi için.",
+        "b5": "<b>Ödemeler</b> — Stripe kartı işler. Biz yalnızca durumu (paid/failed) ve tutarı görürüz."
+      },
+      "sec3": {
+        "h": "3. Hangi amaçla kullanıyoruz",
+        "b1": "Hizmetin sunulması (manele üretimi + e-posta).",
+        "b2": "Teknik destek ve sorulara yanıt.",
+        "b3": "Kişisel veri içermeyen toplu istatistikler.",
+        "b4": "Kötüye kullanımla mücadele (rate-limit, ban).",
+        "out": "Verilerini satmıyoruz. Asla."
+      },
+      "sec4": {
+        "h": "4. Ne kadar süre saklıyoruz",
+        "b1": "Manele + talep: üretimden itibaren 12 ay, sonra silinir.",
+        "b2": "Hesap e-postası: hesap silinmesini talep edene kadar.",
+        "b3": "Mali belgeler (faturalar): 10 yıl (yasal yükümlülük)."
+      },
+      "sec5": {
+        "h": "5. Haklarınız",
+        "intro": "GDPR uyarınca şu haklara sahipsiniz:",
+        "b1": "Verilerinize erişim (tam dışa aktarım)",
+        "b2": "Düzeltme (e-posta vb. düzeltilmesi)",
+        "b3": "Silme („unutulma hakkı\")",
+        "b4": "Taşınabilirlik (makine tarafından okunabilir formatta dışa aktarım)",
+        "b5": "İşlemeye itiraz",
+        "b6": "KVKK'ya şikayet — <a>kvkk.gov.tr</a>"
+      },
+      "sec6": {
+        "h": "6. Cookies",
+        "p": "Detaylar için <a>Cookies sayfasına</a> bakın."
+      },
+      "sec7": {
+        "h": "7. Üçüncü taraf sağlayıcılar",
+        "b1": "<b>Stripe</b> — ödeme işleme",
+        "b2": "<b>Uzmanlaşmış AI sağlayıcıları</b> — ses ve şarkı sözü üretimi (GDPR m. 28 uyarınca alt veri işleyenler)",
+        "b3": "<b>Hosting</b> — veriler AB'de saklanır"
+      }
     },
     "cookies": {
       "title": "Çerez Politikası",
       "lead": "Hangi çerezleri kullanıyoruz ve neden hepsi gerekli.",
-      "sec1": { "h": "Çerezler nedir?", "p": "Tarayıcında saklanan küçük dosyalardır. Durumunu hatırlamak (generatorda ne olduğunu), sitenin nasıl davrandığını ölçmek, ödemeleri işlemek ve sana alakalı reklamlar göstermek için kullanıyoruz." },
-      "sec2": { "h": "Tüm çerezler işlevsellik için zorunludur", "p": "Sitenin tam olarak çalışması için (üretim, ödeme, kimlik doğrulama, teslimat), aşağıda listelenen tüm çerezlere ihtiyacımız var. Siteyi kullanarak çerez politikasını tamamen kabul etmiş olursun. Kabul etmiyorsan, lütfen siteyi kullanma." },
-      "sec3": { "h": "Kategoriler" },
-      "cat1": { "h": "1. İşlevsel (oturum, kimlik doğrulama)", "b1": "<code>mc_guest_id</code> — hesap olmadan oturumun. Süre: 1 yıl.", "b2": "<code>mc_access_token</code> — giriş yaptığında seni oturumda tutar. Süre: 7 gün.", "b3": "<code>mc_cookie_consent</code> — politikayı okuduğuna dair onayın. Süre: kalıcı." },
-      "cat2": { "h": "2. Ödemeler (Stripe)", "b1": "<code>__stripe_mid</code>, <code>__stripe_sid</code> — dolandırıcılık tespiti ve Stripe oturumu." },
-      "cat3": { "h": "3. Analytics", "b1": "<code>_ga</code>, <code>_ga_*</code> — trafik ölçümü için Google Analytics 4.", "b2": "<code>plausible_*</code> — gizlilik dostu analytics (alternatif)." },
-      "cat4": { "h": "4. Marketing ve remarketing", "b1": "<code>_fbp</code>, <code>fr</code> — Meta Pixel (Facebook/Instagram).", "b2": "<code>tt_*</code>, <code>_ttp</code> — TikTok Pixel." },
-      "sec4": { "h": "Nasıl silebilirsin", "p": "Çerezleri istediğin zaman tarayıcı ayarlarından (Chrome, Firefox, Safari) silebilirsin. Dikkat: silme sonrasında bazı özellikleri kullanamayabilirsin (örn. oturumda kalma, ödeme işleme)." }
+      "sec1": {
+        "h": "Çerezler nedir?",
+        "p": "Tarayıcında saklanan küçük dosyalardır. Durumunu hatırlamak (generatorda ne olduğunu), sitenin nasıl davrandığını ölçmek, ödemeleri işlemek ve sana alakalı reklamlar göstermek için kullanıyoruz."
+      },
+      "sec2": {
+        "h": "Tüm çerezler işlevsellik için zorunludur",
+        "p": "Sitenin tam olarak çalışması için (üretim, ödeme, kimlik doğrulama, teslimat), aşağıda listelenen tüm çerezlere ihtiyacımız var. Siteyi kullanarak çerez politikasını tamamen kabul etmiş olursun. Kabul etmiyorsan, lütfen siteyi kullanma."
+      },
+      "sec3": {
+        "h": "Kategoriler"
+      },
+      "cat1": {
+        "h": "1. İşlevsel (oturum, kimlik doğrulama)",
+        "b1": "<code>mc_guest_id</code> — hesap olmadan oturumun. Süre: 1 yıl.",
+        "b2": "<code>mc_access_token</code> — giriş yaptığında seni oturumda tutar. Süre: 7 gün.",
+        "b3": "<code>mc_cookie_consent</code> — politikayı okuduğuna dair onayın. Süre: kalıcı."
+      },
+      "cat2": {
+        "h": "2. Ödemeler (Stripe)",
+        "b1": "<code>__stripe_mid</code>, <code>__stripe_sid</code> — dolandırıcılık tespiti ve Stripe oturumu."
+      },
+      "cat3": {
+        "h": "3. Analytics",
+        "b1": "<code>_ga</code>, <code>_ga_*</code> — trafik ölçümü için Google Analytics 4.",
+        "b2": "<code>plausible_*</code> — gizlilik dostu analytics (alternatif)."
+      },
+      "cat4": {
+        "h": "4. Marketing ve remarketing",
+        "b1": "<code>_fbp</code>, <code>fr</code> — Meta Pixel (Facebook/Instagram).",
+        "b2": "<code>tt_*</code>, <code>_ttp</code> — TikTok Pixel."
+      },
+      "sec4": {
+        "h": "Nasıl silebilirsin",
+        "p": "Çerezleri istediğin zaman tarayıcı ayarlarından (Chrome, Firefox, Safari) silebilirsin. Dikkat: silme sonrasında bazı özellikleri kullanamayabilirsin (örn. oturumda kalma, ödeme işleme)."
+      }
     }
+  },
+  "myGens": {
+    "title": "🎵 Şarkılarım",
+    "lead": "Ürettiğin tüm parçalar — demolar ve tamlar. Dinlemek için herhangi birine tıkla ve (demo ise) kilidini aç.",
+    "ctaMake": "🎤 Bir tane daha yap",
+    "loading": "Şarkıların yükleniyor...",
+    "errLoad": "Listeyi yükleyemedim. Birazdan tekrar dene.",
+    "empty": "Henüz hiç şarkı üretmedin.",
+    "ctaFirst": "🎤 İlk şarkını yap",
+    "forSomeone": "{name} için",
+    "fromSomeone": "{from} adına",
+    "voiceLabel": "ses",
+    "unlockedBadge": "✓ Açıldı",
+    "demoBadge": "🔒 Demo (30s)",
+    "listen": "Dinle →",
+    "listenUnlock": "Demoyu dinle / Aç →",
+    "details": "Detaylar →",
+    "status": {
+      "queued": "Beklemede",
+      "writing_lyrics": "Sözleri yazıyoruz",
+      "checking_lyrics": "Sözleri kontrol ediyoruz",
+      "generating_audio": "Söyleniyor",
+      "succeeded": "Hazır",
+      "failed": "Başarısız"
+    }
+  },
+  "contactPage": {
+    "title": "İletişim",
+    "lead": "Hey, bize yaz. İş günlerinde 24 saat içinde cevap veriyoruz.",
+    "writeUs": "Bize yaz",
+    "sent": "✓ Mesaj gönderildi. Bıraktığın e-postadan seninle iletişime geçeceğiz.",
+    "emailLabel": "E-posta",
+    "emailPlaceholder": "sen@email.com",
+    "subjectLabel": "Konu",
+    "subjectPlaceholder": "örn. Şarkıyla ilgili sorun",
+    "messageLabel": "Mesaj",
+    "messagePlaceholder": "Bize ne olduğunu anlat...",
+    "send": "Gönder",
+    "details": "Detaylar",
+    "emailGeneral": "Genel e-posta",
+    "emailSupport": "Teknik destek",
+    "emailBusiness": "Ticari / B2B",
+    "companyTitle": "Şirket bilgileri"
+  },
+  "faqPage": {
+    "title": "Sık sorulan sorular",
+    "lead": "İlk şarkını yapmadan önce bilmek istediğin her şey.",
+    "moreQuestions": "Başka sorun var mı?",
+    "writeUs": "Bize yaz",
+    "items": [
+      {
+        "q": "Şarkıyı almam ne kadar sürer?",
+        "a": "Ücretsiz demo (30s) ~60-90 saniyede hazır. Tam şarkı (90s × 2 versiyon) ödemeden sonra ~2 dakikada hazır."
+      },
+      {
+        "q": "Sesler gerçek mi? Sanatçı mı?",
+        "a": "Hayır. Tüm sesler AI ile üretilmiş ve parodiktir. Sanatçı isimleri hayalidir. Gerçek sanatçıları temsil etmiyoruz."
+      },
+      {
+        "q": "Şarkıyı TikTok / Instagram'da kullanabilir miyim?",
+        "a": "Evet. Şarkı sana özel yapıldı, kişisel kullanım hakkın var. Ticari kullanım için bize ulaş."
+      },
+      {
+        "q": "Neden 2 versiyon alıyorum?",
+        "a": "AI stüdyomuz istek başına 2 şarkı üretir. İkisini de hediye alıyorsun — daha çok hangisini beğendiysen onu seç."
+      },
+      {
+        "q": "Sözleri kendim yazabilir miyim?",
+        "a": "Evet! Stüdyoda 3. adımda \"Sözleri sen yaz\" seçeneğini açıp metni giriyorsun. AI stüdyosu tam yazdığını söyler."
+      },
+      {
+        "q": "İthaf ek ücreti nedir?",
+        "a": "Sözlerde \"ithaf 1000 TL\" görünmesini istiyorsan, ek %10 ödüyorsun, üst sınır 150 TL. Para sadece sembolik, gerçekten aktarılmaz."
+      },
+      {
+        "q": "Şarkıyı nasıl alırım?",
+        "a": "E-posta ile. Şarkıya link + indirilebilir MP3'ler. Link /m/:id sayfasında aktif kalır."
+      },
+      {
+        "q": "Para iadesi alabilir miyim?",
+        "a": "Yasaya göre, özelleştirilmiş dijital ürünler teslimattan sonra iade edilmez. Ama şarkı teknik olarak iyi değilse (bozuk ses, kesik söz), ücretsiz başka yaparız."
+      },
+      {
+        "q": "Neyle ödüyorum?",
+        "a": "Stripe üzerinden banka kartıyla. Gelecekte: Apple Pay, Google Pay."
+      }
+    ]
+  },
+  "loginPage": {
+    "title": "Hesaba gir",
+    "sub": "Sana e-postayla link gönderiyoruz. Tıkla → giriş yaptın. Parola yok.",
+    "sentTo": "Sana şu adrese link gönderdik:",
+    "sentHint": "Gelen kutunu kontrol et.",
+    "emailLabel": "E-posta",
+    "emailPlaceholder": "sen@email.com",
+    "submitting": "Gönderiliyor...",
+    "submit": "Giriş linki gönder",
+    "errGeneric": "Gönderim hatası.",
+    "verifyTitle": "Giriş yapıyoruz...",
+    "verifyHint": "Bir saniye...",
+    "verifyMissing": "Token eksik.",
+    "verifyUnknown": "Bilinmeyen hata"
+  },
+  "contPage": {
+    "loading": "Yükleniyor...",
+    "title": "Hesabın",
+    "adminBadge": "ADMIN",
+    "makeManea": "🎤 Şarkı yap",
+    "logout": "Çıkış",
+    "gdprTitle": "📦 Verilerin (GDPR)",
+    "gdprBody": "GDPR'a göre, hakkındaki tüm verilerimizin ihracını veya hesabın tamamen silinmesini talep etme hakkın var. Talepler ekip tarafından maksimum 30 günde manuel olarak işlenir.",
+    "reasonLabel": "Sebep (opsiyonel)",
+    "reasonPlaceholder": "örn. hizmeti artık kullanmıyorum",
+    "errGeneric": "Hata. Tekrar dene.",
+    "submittedExport": "✓ İhraç talebi kaydedildi. Max 30 gün içinde e-postayla seninle iletişime geçeceğiz.",
+    "submittedDelete": "✓ Silme talebi kaydedildi. Max 30 gün içinde e-postayla seninle iletişime geçeceğiz.",
+    "submitting": "Gönderiliyor...",
+    "exportCta": "📥 Veri ihracı talep et",
+    "deleteCta": "🗑️ Hesap silme talep et",
+    "deleteTitle": "Hesabı siliyor musun?",
+    "deleteDesc": "Silme talebi, ekip işledikten sonra geri alınamaz (max 30 gün).",
+    "deleteConfirm": "Silme talep et",
+    "exportTitle": "Veri ihracı talep et?",
+    "exportDesc": "Ekibimiz, verilerinin arşiviyle max 30 gün içinde e-posta üzerinden seninle iletişime geçecek.",
+    "exportConfirm": "İhraç talep et",
+    "footer": "Detaylar şu sayfada:",
+    "privacy": "Gizlilik"
+  },
+  "mViewPage": {
+    "errUnknown": "Bilinmeyen hata",
+    "loading": "Yükleniyor...",
+    "backToMine": "← Şarkılarım",
+    "forSomeone": "{name} için",
+    "voiceLabel": "ses",
+    "fromSomeone": "{from} adına",
+    "unlockedBadge": "✓ Açıldı — tam versiyonlar (90s)",
+    "demoBadge": "🔒 Demo — 30s önizleme",
+    "statusLabel": "Durum:",
+    "confirmingPayment": "✨ Ödemeyi onaylıyoruz...",
+    "version1": "Versiyon 1",
+    "version2": "Versiyon 2 🎁 (hediye)",
+    "full": "tam",
+    "demo30": "demo 30s",
+    "unlockFailed": "Ödemeden sonra açamadım:",
+    "lyricsToggle": "📝 Sözleri gör",
+    "paywallTitle": "🔓 Tam versiyonların kilidini aç (90s × 2)",
+    "paywallSub": "Tek seferlik öde — e-postaya her iki tam versiyon gelir, 30s sınırı olmadan.",
+    "priceLine": "Fiyat",
+    "totalLine": "Toplam",
+    "checkoutLoading": "Seni ödemeye götürüyoruz...",
+    "unlockCta": "🔒 Aç — {amount}",
+    "unlockCtaNoPrice": "🔒 Aç — fiyatı ödemede gör",
+    "errCheckout": "Ödeme başlatma hatası",
+    "removePromo": "✕ Promoyu kaldır",
+    "applying": "...",
+    "applyPromo": "Uygula"
+  },
+  "cursorHint": {
+    "default": "Buraya bas"
+  },
+  "myGensCounter": {
+    "tooltipSingular": "Şimdiye kadar {count} şarkı ürettin",
+    "tooltipPlural": "Şimdiye kadar {count} şarkı ürettin",
+    "label": "Şarkılarım"
   }
 }

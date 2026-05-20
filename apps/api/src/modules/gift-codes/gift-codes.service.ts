@@ -12,6 +12,9 @@ import { GiftCode, GiftTier, TIER_PRICES_RON, TIER_USES } from './gift-code.enti
 import { User } from '../users/user.entity';
 import { MailerService } from '../../mailer/mailer.module';
 import { giftCodeTemplate } from '../../mailer/templates/templates';
+import { brandingFromSite } from '../../mailer/branding';
+import { dict } from '../../mailer/i18n/strings';
+import { SitesService } from '../sites/sites.service';
 
 const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -25,6 +28,7 @@ export class GiftCodesService {
     private readonly config: ConfigService,
     private readonly mailer: MailerService,
     private readonly dataSource: DataSource,
+    private readonly sites: SitesService,
   ) {}
 
   generateCode(): string {
@@ -78,17 +82,23 @@ export class GiftCodesService {
     );
 
     if (input.purchasedByEmail) {
-      const appUrl = this.config.get<string>('APP_URL') ?? 'http://localhost:1500';
+      // Locale prioritate: user.locale → site.locale → 'ro'. Branding și URL-ul
+      // de redeem vin tot din site (ca să rămână pe domeniul tenantului).
+      const site = input.siteId ? await this.sites.findById(input.siteId) : null;
+      const buyer = input.purchasedByUserId
+        ? await this.users.findOne({ where: { id: input.purchasedByUserId } })
+        : null;
+      const locale = buyer?.locale || site?.locale || 'ro';
+      const branding = brandingFromSite(site);
+      const baseUrl = branding?.siteUrl ?? this.config.get<string>('APP_URL') ?? 'http://localhost:1500';
+      const d = dict(locale);
       const tpl = giftCodeTemplate({
         code: created.code,
-        redeemUrl: `${appUrl}/cadou/redeem?code=${encodeURIComponent(created.code)}`,
-        validUntil: created.validUntil.toLocaleDateString('ro-RO'),
-        tier:
-          input.tier === 'single'
-            ? '1 manea'
-            : input.tier === 'pack3'
-            ? '3 manele'
-            : '10 manele',
+        redeemUrl: `${baseUrl}/cadou/redeem?code=${encodeURIComponent(created.code)}`,
+        validUntil: created.validUntil.toLocaleDateString(d.dateLocale),
+        tier: d.giftTiers[input.tier],
+        locale,
+        branding,
       });
       try {
         await this.mailer.send({
@@ -96,6 +106,7 @@ export class GiftCodesService {
           subject: tpl.subject,
           html: tpl.html,
           text: tpl.text,
+          from: site?.fromEmail ?? undefined,
         });
       } catch (err) {
         this.logger.warn(`Failed to email gift code ${created.code}: ${(err as Error).message}`);

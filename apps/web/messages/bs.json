@@ -367,15 +367,186 @@
   "generator": {
     "steps": [
       "Stil",
-      "Povod",
+      "Prilika",
       "Detalji",
       "Poklon",
       "Demo",
       "Otključaj"
     ],
-    "step1Title": "1. Kakvu pjesmu?",
+    "stepsPayFirst": [
+      "Stil",
+      "Prilika",
+      "Detalji",
+      "Poklon",
+      "Plati"
+    ],
+    "step1Title": "1. Kakva vrsta pjesme?",
     "step1Sub": "Pritisni ▶ da čuješ kako zvuči svaki stil.",
-    "stepPattern": "Korak {current} od {total}"
+    "stepPattern": "Korak {current} od {total}",
+    "styleHint": "Stil",
+    "step2Title": "2. Za koju priliku?",
+    "step2Sub": "Izaberi jednu. Prilagodićemo tekst.",
+    "step3": {
+      "title": "3. Detalji, glas i (opciono) tvoj tekst",
+      "sub": "Što konkretnije, to bolje zvuči.",
+      "nameLabel": "Ime osobe",
+      "namePlaceholder": "npr. Adnan, Edina, šef Mirsad...",
+      "messageLabel": "Tvoja poruka (max 600)",
+      "messageSuggesting": "✨ Predlažem…",
+      "messageNewSuggestion": "✨ Novi prijedlog",
+      "messagePlaceholder": "npr. Sretan rođendan, šefe! Daj Bože da dobijemo bajramski bonus...",
+      "dedicLabel": "Posveta opciono (od koga)",
+      "dedicPlaceholder": "od Adnana i ekipe",
+      "lyricsLabel": "📝 Hoćeš sam napisati tekst?",
+      "lyricsActive": "✓ aktivno",
+      "lyricsActivate": "Aktiviraj",
+      "lyricsPlaceholder": "Napiši tekst ovdje ako želiš. Ostavi prazno = AI piše tekst na osnovu poruke.\n\nRefren:\n...\nStrofa:\n...",
+      "voicesTitle": "🎤 Koji izvođač da ti pjeva?",
+      "voiceHint": "Slušaj glas",
+      "errCompleteFirst": "Prvo popuni stil, priliku i ime.",
+      "errTooManySuggestions": "Previše prijedloga. Pokušaj za minutu.",
+      "errAiFallback": "Nisam uspio generirati sa AI, stavio sam rezervni prijedlog."
+    },
+    "step4": {
+      "title": "4. Poklon i Premium",
+      "sub": "Koliko ćeš mu staviti u tekst da ga oboriš s nogu? (Doplata 5%, plafon 50 KM.)",
+      "tipNone": "Bez",
+      "tipUnit": "{amount} KM",
+      "customLabel": "Ili stavi koliko hoćeš (do 1.000.000.000 KM 😅)",
+      "customActive": "✓ aktivno",
+      "customBtn": "Po izboru",
+      "customPlaceholder": "npr. 1500",
+      "customSurcharge": "Doplata: +{amount} KM (5%, plafon 50).",
+      "premiumTitle": "Premium Pjesma",
+      "premiumRecommended": "PREPORUČENO",
+      "premiumDesc": "🎤 4× bolji audio · 🔥 Glas obrađen sa AI master · ⚡ Profesionalni miks",
+      "baseLine": "Osnovna pjesma (90s × 2)",
+      "premiumLine": "👑 Premium nadogradnja",
+      "tipSurchargeLine": "Doplata posveta ({amount} KM × 5%, plafon 50)",
+      "totalUnlock": "Ukupno za otključavanje",
+      "demoFooter": "🎁 Besplatni demo dobivaš na sljedećem koraku. Plaćaš NAKON što ga čuješ."
+    },
+    "step5Demo": {
+      "title": "5. Besplatni demo (30s)",
+      "sub": "Prvo generiramo besplatni demo od 30s. Ako ti se svidi, otključavaš cijelu pjesmu (90s × 2).",
+      "emailLabel": "📧 Tvoj email (obavezno — šaljemo pjesmu ovdje)",
+      "emailPlaceholder": "ti@email.ba",
+      "emailHint": "Koristi se samo za dostavu. Bez spama.",
+      "emailSentTo": "✓ Šaljemo pjesmu na",
+      "submitting": "Šalje se...",
+      "submitCta": "🎁 Generiraj besplatan demo 30s",
+      "submitHint": "Generiraj besplatan demo"
+    },
+    "step5PayFirst": {
+      "title": "5. Plati da se generira pjesma",
+      "sub": "Tvoja pjesma (90s × 2 verzije) se generira U MOMENTU kada se plaćanje potvrdi. Šaljemo rezultat na email i vidiš ga i ovdje za ~3 minuta.",
+      "emailLabel": "📧 Tvoj email (obavezno)",
+      "emailSentTo": "✓ Šaljemo pjesmu na",
+      "completeLine": "Cijela pjesma (90s × 2)",
+      "tipLine": "Doplata posveta {amount} {currency}",
+      "promoLine": "Promo:",
+      "totalLabel": "Ukupno",
+      "promoPlaceholder": "Promo kod?",
+      "promoApply": "Primijeni",
+      "promoActive": "✓ Promo",
+      "promoDiscount": "popust",
+      "promoValidationError": "Greška u validaciji. Pokušaj ponovo.",
+      "payingCta": "Otvara se plaćanje...",
+      "payCta": "💳 Plati {amount} i generiraj",
+      "payHint": "Plati sada"
+    },
+    "live": {
+      "succeededTitle": "🎉 Demo gotov!",
+      "failedTitle": "Nešto nije išlo...",
+      "workingTitle": "Sprema se pjesma...",
+      "techDetails": "Tehnički detalji (za podršku)",
+      "lyricsVerified": "✓ Tekst provjeren od AI",
+      "lyricsDraft": "✏️ Skica (provjerava se...)",
+      "twoVersionsTitle": "🎤 Napravio sam ti 2 verzije — obje poklon za tebe:",
+      "version1": "Verzija 1",
+      "version2Gift": "Verzija 2 🎁",
+      "listenWhileWaiting": "🎧 Slušaj pjesme drugih dok čekaš",
+      "noPublicYet": "Još nema javnih pjesama.",
+      "forSomeone": "Za {name}",
+      "status": {
+        "pending": "Pripremamo sve...",
+        "queued": "U redu, uskoro počinjemo",
+        "writing_lyrics": "AI tekstopisac piše tekst... 🎤",
+        "checking_lyrics": "AI urednik provjerava rimu... ✍️",
+        "generating_audio": "Studio štima harmoniku... 🎻",
+        "running": "Finalizira se...",
+        "succeeded": "✓ Pjesma gotova!",
+        "failed": "Nešto nije išlo"
+      },
+      "humanizeFail": {
+        "default": "Generiranje nije uspjelo. Pokušaj ponovo — ako se nastavi, piši nam na chat.",
+        "noMessage": "Generiranje nije uspjelo bez poruke o grešci. Pokušaj ponovo za nekoliko minuta.",
+        "sensitive": "Tvoja poruka sadrži riječi koje muzički provajder odbija. Preformuliraj je bez osjetljivih riječi i pokušaj ponovo.",
+        "timeout": "Generiranje je prešlo maksimalno vrijeme. Muzički studio je vrlo zauzet sada — pokušaj ponovo za nekoliko minuta.",
+        "notConfigured": "Servis za generiranje zvuka nije konfiguriran. Tim je obaviješten.",
+        "credit": "Muzički studio je ostao bez kredita. Tim je obaviješten — bavimo se odmah.",
+        "rate": "Previše zahtjeva prema muzičkom studiju. Pokušaj ponovo za minutu.",
+        "network": "Veza s muzičkim studijem je pala. Pokušaj ponovo za minutu.",
+        "sunoFailed": "Muzički studio je odbio generiranje. Preformuliraj poruku (kraće, bez stvarnih poznatih imena) i pokušaj ponovo."
+      }
+    },
+    "step6": {
+      "waiting": "Čeka se demo...",
+      "failedTitle": "Nešto nije išlo...",
+      "techDetails": "Tehnički detalji (za podršku)",
+      "againBtnGhost": "← Pokreni novu",
+      "unlockedTitle": "✓ Cijela pjesma otključana!",
+      "unlockedSub": "Pune verzije (90s) ti stižu na email.",
+      "version1Full": "Verzija 1 (puna)",
+      "version2Full": "Verzija 2 (puna)",
+      "againCta": "+ Napravi još jednu pjesmu",
+      "title": "6. Otključaj cijelu pjesmu",
+      "sub": "Demo si čuo. Sada dobivaš 2 pune verzije (po 90s) poslane na email.",
+      "replayTitle": "🔊 Ponovno slušaj demo (30s)",
+      "tipLine": "Doplata posveta {amount} KM",
+      "payingCta": "Otvara se plaćanje...",
+      "unlockCta": "🔓 Otključaj — {amount}",
+      "payHint": "Plati sada",
+      "laterCta": "Kasnije — radim još jedan demo"
+    },
+    "gift": {
+      "openCta": "🎟️ Imaš poklon kod? Pritisni da ga iskoristiš",
+      "placeholder": "GIFT-XXXXXXXX",
+      "applyCta": "Iskoristi",
+      "applying": "...",
+      "errInvalid": "Nevažeći ili deaktivirani kod.",
+      "errExpired": "Kod je istekao.",
+      "errUsedUp": "Kod je potpuno iskorišten.",
+      "errGeneric": "Nevažeći kod."
+    },
+    "retry": {
+      "retrying": "🔄 Ponavljam generiranje...",
+      "cta": "🔄 Pokušaj ponovo",
+      "limitReached": "Dosegao si limit od 3 pokušaja za ovaj demo. Pokreni novu pjesmu.",
+      "alreadyRunning": "Generiranje je već u toku — sačekaj nekoliko sekundi.",
+      "generic": "Nepoznata greška. Pokušaj ponovo."
+    },
+    "promo": {
+      "errInvalid": "Nevažeći ili deaktivirani kod.",
+      "errExpired": "Kod je istekao.",
+      "errNotYet": "Kod još nije aktivan.",
+      "errUsedUp": "Kod je potpuno iskorišten.",
+      "errWrongEmail": "Kod je ograničen na drugi email.",
+      "errEmpty": "Unesi kod.",
+      "errGeneric": "Nevažeći kod."
+    },
+    "humanError": {
+      "duplicate": "Duplikat zahtjeva — pokušaj ponovo za nekoliko sekundi.",
+      "emailRequired": "Unesi email da ti pošaljemo pjesmu.",
+      "paymentRequired": "Za cijelu pjesmu (90s) potrebno je plaćanje.",
+      "unknown": "Nepoznata greška.",
+      "emailInvalid": "Unesi važeći email da ti pošaljemo pjesmu.",
+      "emailSaveFailed": "Nisam uspio sačuvati email. Pokušaj ponovo.",
+      "generic": "Greška u generiranju. Pokušaj ponovo.",
+      "stripeNotConfigured": "Plaćanja još nisu aktivirana. Postavi STRIPE_SECRET_KEY u .env.",
+      "stripeShort": "Plaćanja još nisu aktivirana.",
+      "checkoutFailed": "Nisam uspio otvoriti plaćanje. Pokušaj ponovo."
+    }
   },
   "giftMini": {
     "title": "Kupuješ kod, daješ ga nekome",
@@ -465,37 +636,303 @@
     "terms": {
       "title": "Uslovi korištenja",
       "lastUpdate": "Posljednje ažuriranje: 1. maj 2026.",
-      "sec1": { "h": "1. Ugovorne strane", "p": "Ovu stranicu ({domain}) vodi <b>{legalName}</b>{regSuffix}{addressSuffix}.", "regSuffix": ", upisana u Sudski registar pod brojem {regCom}, JIB {cui}", "addressSuffix": ", sa sjedištem u {address}" },
-      "sec2": { "h": "2. O usluzi", "p1": "Nudimo uslugu generisanja manele pomoću vještačke inteligencije. Ti unosiš stil, povod, poruku i glas — mi ti vraćamo 1-2 MP3 audio numere generisane automatski.", "p2": "<b>Važno:</b> svi glasovi su sintetički (AI). Imena izvođača (Florinel de Aur, Adi Šampanjac, itd.) su izmišljena i parodijska. Ne predstavljamo stvarne izvođače, žive ili preminule." },
-      "sec3": { "h": "3. Cijene i plaćanja", "b1": "Besplatan demo: 30 sekundi, 1 po nalogu/sesiji.", "b2": "Kompletna manela: <b>{fullPrice}</b> (PDV uključen).", "b3": "Doplata za posvetu: 10% od iznosa spomenutog u stihovima, ograničena na 150 KM (samo za KM).", "b4": "Plaćanja se obrađuju putem Stripe-a — ne pohranjujemo podatke o kartici." },
-      "sec4": { "h": "4. Prava korištenja", "p": "Manela pripada tebi za ličnu upotrebu: možeš je slušati, preuzeti, postaviti na TikTok ili Story. Za komercijalnu upotrebu (plaćene reklame, monetizacija YouTube-a, itd.) kontaktiraj nas na <a>{email}</a>." },
-      "sec5": { "h": "5. Zabranjen sadržaj", "intro": "Ne generišemo manele sa:", "b1": "Rasnim, etničkim ili vjerskim uvredama", "b2": "Prijetnjama ili pozivima na nasilje", "b3": "Eksplicitnim seksualnim sadržajem", "b4": "Ukradenim identitetom (oponašanje stvarne osobe bez saglasnosti)", "out": "Zadržavamo pravo da odbijemo generisanje i vratimo novac za zahtjeve koji nisu u skladu." },
-      "sec6": { "h": "6. Povrat", "p": "Prema Zakonu o zaštiti potrošača u BiH (izuzeća od prava na odustanak za digitalni sadržaj prilagođen potrošaču), prilagođeni digitalni proizvodi (kao što su tvoje jedinstvene manele) <b>ne mogu se vratiti</b> nakon isporuke. Izuzetak: ako manela ima tehnički nedostatak, regenerisat ćemo je besplatno ili vratiti novac na zahtjev." },
-      "sec7": { "h": "7. Ograničenje odgovornosti", "p": "AI može generisati stihove koji nisu u skladu sa tvojom namjerom. Molimo te da pročitaš stihove prije nego ih javno podijeliš. Nismo odgovorni za posrednu štetu nastalu korištenjem manele u neprikladnom kontekstu." },
-      "sec8": { "h": "8. Sporovi", "p": "Sporovi se rješavaju mirnim putem. U slučaju neuspjeha, nadležnost pripada sudovima Bosne i Hercegovine. Za potrošače: Ombudsmen za zaštitu potrošača BiH — <a>ozp.gov.ba</a>." }
+      "sec1": {
+        "h": "1. Ugovorne strane",
+        "p": "Ovu stranicu ({domain}) vodi <b>{legalName}</b>{regSuffix}{addressSuffix}.",
+        "regSuffix": ", upisana u Sudski registar pod brojem {regCom}, JIB {cui}",
+        "addressSuffix": ", sa sjedištem u {address}"
+      },
+      "sec2": {
+        "h": "2. O usluzi",
+        "p1": "Nudimo uslugu generisanja manele pomoću vještačke inteligencije. Ti unosiš stil, povod, poruku i glas — mi ti vraćamo 1-2 MP3 audio numere generisane automatski.",
+        "p2": "<b>Važno:</b> svi glasovi su sintetički (AI). Imena izvođača (Florinel de Aur, Adi Šampanjac, itd.) su izmišljena i parodijska. Ne predstavljamo stvarne izvođače, žive ili preminule."
+      },
+      "sec3": {
+        "h": "3. Cijene i plaćanja",
+        "b1": "Besplatan demo: 30 sekundi, 1 po nalogu/sesiji.",
+        "b2": "Kompletna manela: <b>{fullPrice}</b> (PDV uključen).",
+        "b3": "Doplata za posvetu: 10% od iznosa spomenutog u stihovima, ograničena na 150 KM (samo za KM).",
+        "b4": "Plaćanja se obrađuju putem Stripe-a — ne pohranjujemo podatke o kartici."
+      },
+      "sec4": {
+        "h": "4. Prava korištenja",
+        "p": "Manela pripada tebi za ličnu upotrebu: možeš je slušati, preuzeti, postaviti na TikTok ili Story. Za komercijalnu upotrebu (plaćene reklame, monetizacija YouTube-a, itd.) kontaktiraj nas na <a>{email}</a>."
+      },
+      "sec5": {
+        "h": "5. Zabranjen sadržaj",
+        "intro": "Ne generišemo manele sa:",
+        "b1": "Rasnim, etničkim ili vjerskim uvredama",
+        "b2": "Prijetnjama ili pozivima na nasilje",
+        "b3": "Eksplicitnim seksualnim sadržajem",
+        "b4": "Ukradenim identitetom (oponašanje stvarne osobe bez saglasnosti)",
+        "out": "Zadržavamo pravo da odbijemo generisanje i vratimo novac za zahtjeve koji nisu u skladu."
+      },
+      "sec6": {
+        "h": "6. Povrat",
+        "p": "Prema Zakonu o zaštiti potrošača u BiH (izuzeća od prava na odustanak za digitalni sadržaj prilagođen potrošaču), prilagođeni digitalni proizvodi (kao što su tvoje jedinstvene manele) <b>ne mogu se vratiti</b> nakon isporuke. Izuzetak: ako manela ima tehnički nedostatak, regenerisat ćemo je besplatno ili vratiti novac na zahtjev."
+      },
+      "sec7": {
+        "h": "7. Ograničenje odgovornosti",
+        "p": "AI može generisati stihove koji nisu u skladu sa tvojom namjerom. Molimo te da pročitaš stihove prije nego ih javno podijeliš. Nismo odgovorni za posrednu štetu nastalu korištenjem manele u neprikladnom kontekstu."
+      },
+      "sec8": {
+        "h": "8. Sporovi",
+        "p": "Sporovi se rješavaju mirnim putem. U slučaju neuspjeha, nadležnost pripada sudovima Bosne i Hercegovine. Za potrošače: Ombudsmen za zaštitu potrošača BiH — <a>ozp.gov.ba</a>."
+      }
     },
     "privacy": {
       "title": "Politika privatnosti",
       "lead": "Kako tretiramo tvoje podatke (u skladu sa GDPR).",
-      "sec1": { "h": "1. Ko prikuplja podatke", "p": "Voditelj obrade podataka je <b>{legalName}</b>{cuiSuffix}. Za bilo kakvo pitanje ili GDPR zahtjev (pristup, brisanje, prenosivost): <a>{dpoEmail}</a>.", "cuiSuffix": ", JIB {cui}" },
-      "sec2": { "h": "2. Koje podatke prikupljamo", "b1": "<b>Tvoj email</b> — za isporuku manele i za autentifikaciju.", "b2": "<b>ID gost sesije</b> (anonimni UUID) — u localStorage-u, pomaže nam da zapamtimo tvoje stanje bez naloga.", "b3": "<b>Sadržaj zahtjeva</b> (ime primaoca, poruka, stil) — koristi se samo za generisanje tvoje manele.", "b4": "<b>Tehnički podaci</b> (IP, browser, vremenska oznaka) — za sigurnost i sprečavanje zloupotrebe.", "b5": "<b>Plaćanja</b> — Stripe obrađuje karticu. Mi vidimo samo status (paid/failed) i iznos." },
-      "sec3": { "h": "3. Za šta ih koristimo", "b1": "Isporuka usluge (generisanje manele + email).", "b2": "Tehnička podrška i odgovori na pitanja.", "b3": "Agregirane statistike, bez ličnih podataka.", "b4": "Borba protiv zloupotrebe (rate-limit, ban).", "out": "Ne prodajemo tvoje podatke. Nikada." },
-      "sec4": { "h": "4. Koliko ih čuvamo", "b1": "Manela + zahtjev: 12 mjeseci od generisanja, zatim se brišu.", "b2": "Email naloga: dok ne zatražiš brisanje naloga.", "b3": "Fiskalni dokumenti (fakture): 10 godina (zakonska obaveza)." },
-      "sec5": { "h": "5. Tvoja prava", "intro": "Prema GDPR-u, imaš pravo na:", "b1": "Pristup tvojim podacima (kompletan izvoz)", "b2": "Ispravku (korekcija emaila, itd.)", "b3": "Brisanje („pravo na zaborav\")", "b4": "Prenosivost (izvoz u machine-readable formatu)", "b5": "Prigovor na obradu", "b6": "Žalba Agenciji za zaštitu ličnih podataka u BiH (AZLP) — <a>azlp.ba</a>" },
-      "sec6": { "h": "6. Cookies", "p": "Pogledaj detalje na <a>stranici Cookies</a>." },
-      "sec7": { "h": "7. Treći pružatelji usluga", "b1": "<b>Stripe</b> — obrada plaćanja", "b2": "<b>Specijalizovani AI pružatelji</b> — generisanje audio i stihova (pod-obrađivači prema GDPR čl. 28)", "b3": "<b>Hosting</b> — podaci pohranjeni u EU" }
+      "sec1": {
+        "h": "1. Ko prikuplja podatke",
+        "p": "Voditelj obrade podataka je <b>{legalName}</b>{cuiSuffix}. Za bilo kakvo pitanje ili GDPR zahtjev (pristup, brisanje, prenosivost): <a>{dpoEmail}</a>.",
+        "cuiSuffix": ", JIB {cui}"
+      },
+      "sec2": {
+        "h": "2. Koje podatke prikupljamo",
+        "b1": "<b>Tvoj email</b> — za isporuku manele i za autentifikaciju.",
+        "b2": "<b>ID gost sesije</b> (anonimni UUID) — u localStorage-u, pomaže nam da zapamtimo tvoje stanje bez naloga.",
+        "b3": "<b>Sadržaj zahtjeva</b> (ime primaoca, poruka, stil) — koristi se samo za generisanje tvoje manele.",
+        "b4": "<b>Tehnički podaci</b> (IP, browser, vremenska oznaka) — za sigurnost i sprečavanje zloupotrebe.",
+        "b5": "<b>Plaćanja</b> — Stripe obrađuje karticu. Mi vidimo samo status (paid/failed) i iznos."
+      },
+      "sec3": {
+        "h": "3. Za šta ih koristimo",
+        "b1": "Isporuka usluge (generisanje manele + email).",
+        "b2": "Tehnička podrška i odgovori na pitanja.",
+        "b3": "Agregirane statistike, bez ličnih podataka.",
+        "b4": "Borba protiv zloupotrebe (rate-limit, ban).",
+        "out": "Ne prodajemo tvoje podatke. Nikada."
+      },
+      "sec4": {
+        "h": "4. Koliko ih čuvamo",
+        "b1": "Manela + zahtjev: 12 mjeseci od generisanja, zatim se brišu.",
+        "b2": "Email naloga: dok ne zatražiš brisanje naloga.",
+        "b3": "Fiskalni dokumenti (fakture): 10 godina (zakonska obaveza)."
+      },
+      "sec5": {
+        "h": "5. Tvoja prava",
+        "intro": "Prema GDPR-u, imaš pravo na:",
+        "b1": "Pristup tvojim podacima (kompletan izvoz)",
+        "b2": "Ispravku (korekcija emaila, itd.)",
+        "b3": "Brisanje („pravo na zaborav\")",
+        "b4": "Prenosivost (izvoz u machine-readable formatu)",
+        "b5": "Prigovor na obradu",
+        "b6": "Žalba Agenciji za zaštitu ličnih podataka u BiH (AZLP) — <a>azlp.ba</a>"
+      },
+      "sec6": {
+        "h": "6. Cookies",
+        "p": "Pogledaj detalje na <a>stranici Cookies</a>."
+      },
+      "sec7": {
+        "h": "7. Treći pružatelji usluga",
+        "b1": "<b>Stripe</b> — obrada plaćanja",
+        "b2": "<b>Specijalizovani AI pružatelji</b> — generisanje audio i stihova (pod-obrađivači prema GDPR čl. 28)",
+        "b3": "<b>Hosting</b> — podaci pohranjeni u EU"
+      }
     },
     "cookies": {
       "title": "Politika kolačića",
       "lead": "Koje kolačiće koristimo i zašto su svi neophodni.",
-      "sec1": { "h": "Šta su kolačići?", "p": "To su mali fajlovi koji se pohranjuju u tvom browser-u. Koristimo ih da zapamtimo tvoje stanje (šta imaš u generatoru), da mjerimo kako se sajt ponaša, da obradimo plaćanja i da ti prikažemo relevantne reklame." },
-      "sec2": { "h": "Svi kolačići su obavezni za funkcionalnost", "p": "Da bi sajt potpuno funkcionisao (generisanje, plaćanje, autentifikacija, isporuka), potrebni su nam svi kolačići navedeni ispod. Korištenjem sajta u potpunosti prihvataš politiku kolačića. Ako se ne slažeš, molimo te da ne koristiš sajt." },
-      "sec3": { "h": "Kategorije" },
-      "cat1": { "h": "1. Funkcionalni (sesija, autentifikacija)", "b1": "<code>mc_guest_id</code> — tvoja sesija bez naloga. Trajanje: 1 godina.", "b2": "<code>mc_access_token</code> — pri prijavi, drži te autentifikovanim. Trajanje: 7 dana.", "b3": "<code>mc_cookie_consent</code> — tvoja potvrda da si pročitao politiku. Trajanje: trajno." },
-      "cat2": { "h": "2. Plaćanja (Stripe)", "b1": "<code>__stripe_mid</code>, <code>__stripe_sid</code> — detekcija prevara i Stripe sesija." },
-      "cat3": { "h": "3. Analytics", "b1": "<code>_ga</code>, <code>_ga_*</code> — Google Analytics 4 za mjerenje prometa.", "b2": "<code>plausible_*</code> — privacy-friendly analytics (alternativno)." },
-      "cat4": { "h": "4. Marketing i remarketing", "b1": "<code>_fbp</code>, <code>fr</code> — Meta Pixel (Facebook/Instagram).", "b2": "<code>tt_*</code>, <code>_ttp</code> — TikTok Pixel." },
-      "sec4": { "h": "Kako ih možeš obrisati", "p": "U bilo kojem trenutku možeš obrisati kolačiće iz postavki tvog browser-a (Chrome, Firefox, Safari). Pažnja: nakon brisanja, nećeš moći koristiti određene funkcije (npr. ostati prijavljen, obrada plaćanja)." }
+      "sec1": {
+        "h": "Šta su kolačići?",
+        "p": "To su mali fajlovi koji se pohranjuju u tvom browser-u. Koristimo ih da zapamtimo tvoje stanje (šta imaš u generatoru), da mjerimo kako se sajt ponaša, da obradimo plaćanja i da ti prikažemo relevantne reklame."
+      },
+      "sec2": {
+        "h": "Svi kolačići su obavezni za funkcionalnost",
+        "p": "Da bi sajt potpuno funkcionisao (generisanje, plaćanje, autentifikacija, isporuka), potrebni su nam svi kolačići navedeni ispod. Korištenjem sajta u potpunosti prihvataš politiku kolačića. Ako se ne slažeš, molimo te da ne koristiš sajt."
+      },
+      "sec3": {
+        "h": "Kategorije"
+      },
+      "cat1": {
+        "h": "1. Funkcionalni (sesija, autentifikacija)",
+        "b1": "<code>mc_guest_id</code> — tvoja sesija bez naloga. Trajanje: 1 godina.",
+        "b2": "<code>mc_access_token</code> — pri prijavi, drži te autentifikovanim. Trajanje: 7 dana.",
+        "b3": "<code>mc_cookie_consent</code> — tvoja potvrda da si pročitao politiku. Trajanje: trajno."
+      },
+      "cat2": {
+        "h": "2. Plaćanja (Stripe)",
+        "b1": "<code>__stripe_mid</code>, <code>__stripe_sid</code> — detekcija prevara i Stripe sesija."
+      },
+      "cat3": {
+        "h": "3. Analytics",
+        "b1": "<code>_ga</code>, <code>_ga_*</code> — Google Analytics 4 za mjerenje prometa.",
+        "b2": "<code>plausible_*</code> — privacy-friendly analytics (alternativno)."
+      },
+      "cat4": {
+        "h": "4. Marketing i remarketing",
+        "b1": "<code>_fbp</code>, <code>fr</code> — Meta Pixel (Facebook/Instagram).",
+        "b2": "<code>tt_*</code>, <code>_ttp</code> — TikTok Pixel."
+      },
+      "sec4": {
+        "h": "Kako ih možeš obrisati",
+        "p": "U bilo kojem trenutku možeš obrisati kolačiće iz postavki tvog browser-a (Chrome, Firefox, Safari). Pažnja: nakon brisanja, nećeš moći koristiti određene funkcije (npr. ostati prijavljen, obrada plaćanja)."
+      }
     }
+  },
+  "myGens": {
+    "title": "🎵 Moje pjesme",
+    "lead": "Sve pjesme koje si generirao — demoi i pune. Klikni bilo koju za slušanje i (ako je demo) otključavanje.",
+    "ctaMake": "🎤 Napravi još jednu",
+    "loading": "Učitavam tvoje pjesme...",
+    "errLoad": "Nisam mogao učitati listu. Pokušaj ponovo za trenutak.",
+    "empty": "Još nisi generirao nijednu pjesmu.",
+    "ctaFirst": "🎤 Napravi prvu pjesmu",
+    "forSomeone": "Za {name}",
+    "fromSomeone": "od {from}",
+    "voiceLabel": "glas",
+    "unlockedBadge": "✓ Otključana",
+    "demoBadge": "🔒 Demo (30s)",
+    "listen": "Slušaj →",
+    "listenUnlock": "Slušaj demo / Otključaj →",
+    "details": "Detalji →",
+    "status": {
+      "queued": "Na čekanju",
+      "writing_lyrics": "Pišemo tekst",
+      "checking_lyrics": "Provjeravamo tekst",
+      "generating_audio": "Pjeva se",
+      "succeeded": "Gotovo",
+      "failed": "Neuspješno"
+    }
+  },
+  "contactPage": {
+    "title": "Kontakt",
+    "lead": "Hej, piši nam. Odgovaramo za 24h radnim danima.",
+    "writeUs": "Piši nam",
+    "sent": "✓ Poruka je poslana. Kontaktirat ćemo te na ostavljeni email.",
+    "emailLabel": "Email",
+    "emailPlaceholder": "ti@email.ba",
+    "subjectLabel": "Predmet",
+    "subjectPlaceholder": "npr. Problem s pjesmom",
+    "messageLabel": "Poruka",
+    "messagePlaceholder": "Reci nam šta se desilo...",
+    "send": "Pošalji",
+    "details": "Detalji",
+    "emailGeneral": "Opći email",
+    "emailSupport": "Tehnička podrška",
+    "emailBusiness": "Poslovno / B2B",
+    "companyTitle": "Podaci o firmi"
+  },
+  "faqPage": {
+    "title": "Često postavljana pitanja",
+    "lead": "Sve što želiš znati prije nego što napraviš prvu pjesmu.",
+    "moreQuestions": "Imaš još pitanja?",
+    "writeUs": "Piši nam",
+    "items": [
+      {
+        "q": "Koliko traje dok dobijem pjesmu?",
+        "a": "Besplatni demo (30s) gotov je za ~60-90 sekundi. Cijela pjesma (90s × 2 verzije) gotova je za ~2 minuta nakon plaćanja."
+      },
+      {
+        "q": "Jesu li glasovi pravi? Jesu li umjetnici?",
+        "a": "Ne. Svi glasovi su generirani s AI i parodični su. Imena izvođača su izmišljena. Ne predstavljamo prave umjetnike."
+      },
+      {
+        "q": "Mogu li koristiti pjesmu na TikTok / Instagram?",
+        "a": "Da. Pjesma je napravljena posebno za tebe, imaš prava na ličnu upotrebu. Za komercijalnu upotrebu, kontaktiraj nas."
+      },
+      {
+        "q": "Zašto dobivam 2 verzije?",
+        "a": "Naš AI studio generira 2 pjesme po zahtjevu. Dobivaš obje na poklon — izaberi onu koja ti se više sviđa."
+      },
+      {
+        "q": "Mogu li sam napisati tekst?",
+        "a": "Da! Na koraku 3 u studiju aktiviraš opciju \"Napiši tekst\" i unosiš tekst. AI studio pjeva tačno ono što si napisao."
+      },
+      {
+        "q": "Šta je doplata za posvetu?",
+        "a": "Ako želiš da se pojavi \"posveta 1000 KM\" u tekstu, plaćaš dodatno 10% od sume, plafon 150 KM. Novac je samo simboličan, ne prebacuje se stvarno."
+      },
+      {
+        "q": "Kako dobivam pjesmu?",
+        "a": "Putem emaila. Link prema pjesmi + MP3 za skidanje. Link ostaje aktivan na stranici /m/:id."
+      },
+      {
+        "q": "Mogu li dobiti povrat novca?",
+        "a": "Prema zakonu, prilagođeni digitalni proizvodi se ne vraćaju nakon dostave. Ali ako pjesma nije tehnički u redu (loš zvuk, isječen tekst), radimo drugu besplatno."
+      },
+      {
+        "q": "Čime plaćam?",
+        "a": "Bankovnom karticom putem Stripe-a. U budućnosti: Apple Pay, Google Pay."
+      }
+    ]
+  },
+  "loginPage": {
+    "title": "Prijavi se",
+    "sub": "Šaljemo ti link na email. Klikni link → prijavljen si. Bez lozinke.",
+    "sentTo": "Poslali smo ti link na",
+    "sentHint": "Provjeri inbox.",
+    "emailLabel": "Email",
+    "emailPlaceholder": "ti@email.ba",
+    "submitting": "Šalje se...",
+    "submit": "Pošalji link za prijavu",
+    "errGeneric": "Greška pri slanju.",
+    "verifyTitle": "Prijavljujemo te...",
+    "verifyHint": "Trenutak...",
+    "verifyMissing": "Token nedostaje.",
+    "verifyUnknown": "Nepoznata greška"
+  },
+  "contPage": {
+    "loading": "Učitava se...",
+    "title": "Tvoj račun",
+    "adminBadge": "ADMIN",
+    "makeManea": "🎤 Napravi pjesmu",
+    "logout": "Odjava",
+    "gdprTitle": "📦 Tvoji podaci (GDPR)",
+    "gdprBody": "Imaš pravo, prema GDPR-u, zatražiti izvoz svih naših podataka o tebi ili potpuno brisanje računa. Zahtjevi se obrađuju ručno od tima u roku od najviše 30 dana.",
+    "reasonLabel": "Razlog (opciono)",
+    "reasonPlaceholder": "npr. više ne koristim uslugu",
+    "errGeneric": "Greška. Pokušaj ponovo.",
+    "submittedExport": "✓ Zahtjev za izvoz je registriran. Kontaktirat ćemo te emailom u roku od najviše 30 dana.",
+    "submittedDelete": "✓ Zahtjev za brisanje je registriran. Kontaktirat ćemo te emailom u roku od najviše 30 dana.",
+    "submitting": "Šalje se...",
+    "exportCta": "📥 Zatraži izvoz podataka",
+    "deleteCta": "🗑️ Zatraži brisanje računa",
+    "deleteTitle": "Brišeš račun?",
+    "deleteDesc": "Zahtjev za brisanje je nepovratan kad ga tim obradi (max 30 dana).",
+    "deleteConfirm": "Zatraži brisanje",
+    "exportTitle": "Zatraži izvoz podataka?",
+    "exportDesc": "Naš tim će te kontaktirati emailom u roku od max 30 dana s arhivom tvojih podataka.",
+    "exportConfirm": "Zatraži izvoz",
+    "footer": "Detalji na stranici",
+    "privacy": "Privatnost"
+  },
+  "mViewPage": {
+    "errUnknown": "Nepoznata greška",
+    "loading": "Učitava se...",
+    "backToMine": "← Moje pjesme",
+    "forSomeone": "Za {name}",
+    "voiceLabel": "glas",
+    "fromSomeone": "od {from}",
+    "unlockedBadge": "✓ Otključana — pune verzije (90s)",
+    "demoBadge": "🔒 Demo — pregled 30s",
+    "statusLabel": "Status:",
+    "confirmingPayment": "✨ Potvrđujemo plaćanje...",
+    "version1": "Verzija 1",
+    "version2": "Verzija 2 🎁 (poklon)",
+    "full": "puna",
+    "demo30": "demo 30s",
+    "unlockFailed": "Nisam mogao otključati nakon plaćanja:",
+    "lyricsToggle": "📝 Vidi tekst",
+    "paywallTitle": "🔓 Otključaj pune verzije (90s × 2)",
+    "paywallSub": "Plati jednom — dobivaš na email obje pune verzije, bez ograničenja od 30s.",
+    "priceLine": "Cijena",
+    "totalLine": "Ukupno",
+    "checkoutLoading": "Vodimo te na plaćanje...",
+    "unlockCta": "🔒 Otključaj — {amount}",
+    "unlockCtaNoPrice": "🔒 Otključaj — vidi cijenu na checkoutu",
+    "errCheckout": "Greška pri pokretanju plaćanja",
+    "removePromo": "✕ Ukloni promo",
+    "applying": "...",
+    "applyPromo": "Primijeni"
+  },
+  "cursorHint": {
+    "default": "Pritisni ovdje"
+  },
+  "myGensCounter": {
+    "tooltipSingular": "Generirao si {count} pjesmu do sada",
+    "tooltipPlural": "Generirao si {count} pjesama do sada",
+    "label": "Moje pjesme"
   }
 }

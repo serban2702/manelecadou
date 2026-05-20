@@ -463,6 +463,13 @@ function BrandSeoTab({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto) =
             onChange={(e) => setForm({ ...form, brand: { ...form.brand, faviconUrl: e.target.value } })}
           />
         </Field>
+        <Field label="Email banner URL (600×200, opțional)">
+          <Input
+            value={form.brand?.emailBannerUrl ?? ''}
+            onChange={(e) => setForm({ ...form, brand: { ...form.brand, emailBannerUrl: e.target.value } })}
+            placeholder="Lasă gol = folosește logo URL; gol și acolo = banner Manele Cadou implicit"
+          />
+        </Field>
       </Section>
 
       <Section title="SEO">

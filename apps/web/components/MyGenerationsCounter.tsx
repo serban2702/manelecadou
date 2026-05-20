@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 
 interface CounterResponse {
@@ -15,6 +16,7 @@ interface CounterResponse {
  * Refresh la 30s + la mount + când fereastra revine în focus.
  */
 export function MyGenerationsCounter() {
+  const t = useTranslations('myGensCounter');
   const [data, setData] = useState<CounterResponse | null>(null);
 
   useEffect(() => {
@@ -51,7 +53,7 @@ export function MyGenerationsCounter() {
     <Link
       href="/manelele-mele"
       className="my-gens-counter"
-      title={`Ai generat ${data.count} ${data.count === 1 ? 'manea' : 'manele'} până acum`}
+      title={t(data.count === 1 ? 'tooltipSingular' : 'tooltipPlural', { count: data.count })}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -72,7 +74,7 @@ export function MyGenerationsCounter() {
       <span style={{ fontSize: 14 }}>🎵</span>
       <span>
         <span style={{ fontVariantNumeric: 'tabular-nums' }}>{data.count}</span>
-        <span style={{ marginLeft: 6, opacity: 0.85, fontWeight: 500 }}>Manelele mele</span>
+        <span style={{ marginLeft: 6, opacity: 0.85, fontWeight: 500 }}>{t('label')}</span>
       </span>
     </Link>
   );

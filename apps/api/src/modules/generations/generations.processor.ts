@@ -13,6 +13,7 @@ import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { User } from '../users/user.entity';
 import { MailerService } from '../../mailer/mailer.module';
 import { generationReadyTemplate } from '../../mailer/templates/templates';
+import { brandingFromSite } from '../../mailer/branding';
 import { SitesService } from '../sites/sites.service';
 import { AudioProcessorService } from './audio-processor.service';
 
@@ -170,17 +171,18 @@ export class GenerationsProcessor extends WorkerHost {
     }
     if (!email) return;
 
-    const appUrl = this.config.get<string>('APP_URL') ?? 'http://localhost:1500';
-    const link = `${appUrl}/m/${gen.id}`;
-
     // Folosim locale-ul site-ului dacă există (mail-ul e în limba brand-ului).
     const site = gen.siteId ? await this.sites.findById(gen.siteId) : null;
+    const branding = brandingFromSite(site);
+    const baseUrl = branding?.siteUrl ?? this.config.get<string>('APP_URL') ?? 'http://localhost:1500';
+    const link = `${baseUrl}/m/${gen.id}`;
     const tpl = generationReadyTemplate({
       recipientName: gen.recipientName,
       type: gen.type,
       link,
       audioUrl: gen.audioUrl,
       locale: site?.locale ?? gen.locale ?? 'ro',
+      branding,
     });
     await this.mailer.send({
       to: email,

@@ -299,14 +299,14 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     if (!session.email) {
       const candidate = emailDraft.trim();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
-        setError('Introdu un email valid ca să-ți trimitem maneaua.');
+        setError(tGen('humanError.emailInvalid'));
         return;
       }
       try {
         await api.setGuestEmail(candidate);
         await session.refresh();
       } catch {
-        setError('Nu am putut salva email-ul. Încearcă din nou.');
+        setError(tGen('humanError.emailSaveFailed'));
         return;
       }
     }
@@ -328,7 +328,7 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
       setGenerationId(created.id);
       await session.refresh();
     } catch (e) {
-      setError(e instanceof ApiError ? humanError(e) : 'Eroare la generare. Încearcă din nou.');
+      setError(e instanceof ApiError ? humanError(e, tGen) : tGen('humanError.generic'));
     } finally {
       setSubmitting(false);
     }
@@ -357,8 +357,8 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 503
-          ? 'Plățile nu sunt încă activate. Setează STRIPE_SECRET_KEY în .env.'
-          : 'Nu s-a putut deschide plata. Încearcă din nou.',
+          ? tGen('humanError.stripeNotConfigured')
+          : tGen('humanError.checkoutFailed'),
       );
       setSubmitting(false);
     }
@@ -371,14 +371,14 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     if (!session.email) {
       const candidate = emailDraft.trim();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
-        setError('Introdu un email valid ca să-ți trimitem maneaua.');
+        setError(tGen('humanError.emailInvalid'));
         return;
       }
       try {
         await api.setGuestEmail(candidate);
         await session.refresh();
       } catch {
-        setError('Nu am putut salva email-ul. Încearcă din nou.');
+        setError(tGen('humanError.emailSaveFailed'));
         return;
       }
     }
@@ -414,8 +414,8 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 503
-          ? 'Plățile nu sunt încă activate.'
-          : 'Nu s-a putut deschide plata. Încearcă din nou.',
+          ? tGen('humanError.stripeShort')
+          : tGen('humanError.checkoutFailed'),
       );
       setSubmitting(false);
     }
@@ -548,9 +548,8 @@ function Stepper({
   totalSteps: number;
 }) {
   const tg = useTranslations('generator');
-  const stepNamesRaw = tg.raw('steps') as string[] | undefined;
-  // Acceptăm doar dacă i18n returnează exact numărul corect de etichete.
-  // Altfel folosim fallback hardcoded — diferit pentru flow demo vs pay-first.
+  const key = totalSteps === 5 ? 'stepsPayFirst' : 'steps';
+  const stepNamesRaw = tg.raw(key) as string[] | undefined;
   const fallback = totalSteps === 5 ? STEP_NAMES_PAYFIRST_FALLBACK : STEP_NAMES_FALLBACK;
   const stepNames = Array.isArray(stepNamesRaw) && stepNamesRaw.length === totalSteps
     ? stepNamesRaw
@@ -677,18 +676,21 @@ function Stepper({
   );
 }
 
-function humanError(e: ApiError): string {
-  if (e.status === 409) return 'Cerere duplicat — încearcă din nou peste câteva secunde.';
+type TFn = (key: string, values?: Record<string, string | number>) => string;
+
+function humanError(e: ApiError, t: TFn): string {
+  if (e.status === 409) return t('humanError.duplicate');
   if (e.status === 403) {
     const code = (e.body as { message?: string })?.message;
-    if (code === 'email_required') return 'Introdu email-ul ca să-ți trimitem maneaua.';
-    return 'Pentru manea completă (90s) e nevoie de plată.';
+    if (code === 'email_required') return t('humanError.emailRequired');
+    return t('humanError.paymentRequired');
   }
-  return e.message ?? 'Eroare necunoscută.';
+  return e.message ?? t('humanError.unknown');
 }
 
 function RetryGenerationButton({ generationId }: { generationId: string }) {
   const qc = useQueryClient();
+  const tg = useTranslations('generator');
   const [retrying, setRetrying] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -697,20 +699,19 @@ function RetryGenerationButton({ generationId }: { generationId: string }) {
     setErr(null);
     try {
       await api.retryGeneration(generationId);
-      // forțează polling-ul să reia (status -> 'queued', refetchInterval activ).
       await qc.invalidateQueries({ queryKey: ['generation', generationId] });
     } catch (e) {
       if (e instanceof ApiError) {
         const reason = (e.body as { message?: string })?.message;
         if (reason === 'retry_limit_reached') {
-          setErr('Ai atins limita de 3 reîncercări pentru acest demo. Pornește unul nou.');
+          setErr(tg('retry.limitReached'));
         } else if (reason === 'already_running') {
-          setErr('Generarea e deja în curs — așteaptă câteva secunde.');
+          setErr(tg('retry.alreadyRunning'));
         } else {
           setErr(e.message);
         }
       } else {
-        setErr('Eroare necunoscută. Încearcă din nou.');
+        setErr(tg('retry.generic'));
       }
       setRetrying(false);
     }
@@ -731,7 +732,7 @@ function RetryGenerationButton({ generationId }: { generationId: string }) {
           cursor: retrying ? 'wait' : 'pointer',
         }}
       >
-        {retrying ? '🔄 Reîncerc generarea...' : '🔄 Încearcă din nou'}
+        {retrying ? tg('retry.retrying') : tg('retry.cta')}
       </button>
       {err && (
         <div style={{ marginTop: 8, fontSize: 12, color: '#ff8888' }}>{err}</div>
@@ -740,31 +741,17 @@ function RetryGenerationButton({ generationId }: { generationId: string }) {
   );
 }
 
-function humanizeGenError(err: string | null | undefined): string {
-  if (!err) return 'Generarea a eșuat fără un mesaj de eroare. Încearcă din nou peste câteva minute.';
+function humanizeGenError(err: string | null | undefined, t: TFn): string {
+  if (!err) return t('live.humanizeFail.noMessage');
   const e = err.toLowerCase();
-  if (e.includes('sensitive_word') || e.includes('sensitive word')) {
-    return 'Mesajul tău conține cuvinte pe care providerul de muzică le respinge. Reformulează-l fără cuvinte sensibile și încearcă din nou.';
-  }
-  if (e.includes('timeout')) {
-    return 'Generarea a depășit timpul maxim. Studio-ul de muzică e foarte aglomerat acum — mai încearcă peste câteva minute.';
-  }
-  if (e.includes('not configured') || e.includes('suno_api_key')) {
-    return 'Serviciul de generare audio nu este configurat. Echipa a fost notificată.';
-  }
-  if (e.includes('credit') || e.includes('insufficient') || e.includes('quota')) {
-    return 'Studio-ul de muzică a rămas fără credite. Echipa a fost notificată — ne ocupăm imediat.';
-  }
-  if (e.includes('429') || e.includes('rate')) {
-    return 'Prea multe cereri spre studio-ul de muzică acum. Mai încearcă peste un minut.';
-  }
-  if (e.includes('network') || e.includes('econnreset') || e.includes('etimedout')) {
-    return 'Conexiunea cu studio-ul de muzică a căzut. Mai încearcă peste un minut.';
-  }
-  if (e.startsWith('suno failed:')) {
-    return 'Studio-ul de muzică a respins generarea. Reformulează mesajul (mai scurt, fără nume reale celebre) și încearcă din nou.';
-  }
-  return 'Generarea a eșuat. Încearcă din nou — dacă persistă, scrie-ne pe chat.';
+  if (e.includes('sensitive_word') || e.includes('sensitive word')) return t('live.humanizeFail.sensitive');
+  if (e.includes('timeout')) return t('live.humanizeFail.timeout');
+  if (e.includes('not configured') || e.includes('suno_api_key')) return t('live.humanizeFail.notConfigured');
+  if (e.includes('credit') || e.includes('insufficient') || e.includes('quota')) return t('live.humanizeFail.credit');
+  if (e.includes('429') || e.includes('rate')) return t('live.humanizeFail.rate');
+  if (e.includes('network') || e.includes('econnreset') || e.includes('etimedout')) return t('live.humanizeFail.network');
+  if (e.startsWith('suno failed:')) return t('live.humanizeFail.sunoFailed');
+  return t('live.humanizeFail.default');
 }
 
 // ============ STEP 1 ============
@@ -794,7 +781,7 @@ function StyleStep({ data, upd, playing, onPlay, styles }: any & { styles: Style
               <button
                 className={`play-it ${isP ? 'playing' : ''}`}
                 onClick={(e) => { e.stopPropagation(); onPlay(`style-${s.id}`); }}
-                {...(idx === 0 ? { 'data-hint': 'true', 'data-hint-label': 'Style' } : {})}
+                {...(idx === 0 ? { 'data-hint': 'true', 'data-hint-label': tg('styleHint') } : {})}
               >
                 {isP ? <Ic.Pause s={11} /> : <Ic.Play s={11} />}
               </button>
@@ -810,10 +797,11 @@ function StyleStep({ data, upd, playing, onPlay, styles }: any & { styles: Style
 // ============ STEP 2 ============
 function OccStep({ data, upd, occasions }: any & { occasions: Array<{ id: string; em: string; nm: string }> }) {
   const tOcc = useTranslations('occasions');
+  const tg = useTranslations('generator');
   return (
     <>
-      <h3>2. Pentru ce ocazie?</h3>
-      <p className="ld">Alege una. Adaptăm versurile.</p>
+      <h3>{tg('step2Title')}</h3>
+      <p className="ld">{tg('step2Sub')}</p>
       <div className="occ-list">
         {occasions.map((o: { id: string; em: string; nm: string; ic?: any }) => {
           let nm = o.nm;
@@ -872,6 +860,7 @@ function siteVoicesToOptions(
 
 // ============ STEP 3 — Detalii + Voce + Versuri ============
 function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Array<{ id: string; nm: string; tg: string; av: string }> }) {
+  const tg = useTranslations('generator');
   const [showLyricsEditor, setShowLyricsEditor] = useState(!!data.customLyrics);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
@@ -879,7 +868,7 @@ function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Arr
   async function regenSuggestion() {
     if (suggesting) return;
     if (!data.style || !data.occ || !data.name) {
-      setSuggestError('Completează stilul, ocazia și numele întâi.');
+      setSuggestError(tg('step3.errCompleteFirst'));
       return;
     }
     setSuggesting(true);
@@ -896,10 +885,10 @@ function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Arr
       upd('msg', res.message);
     } catch (e) {
       if (e instanceof ApiError && e.status === 429) {
-        setSuggestError('Prea multe sugestii. Încearcă peste un minut.');
+        setSuggestError(tg('step3.errTooManySuggestions'));
       } else {
         upd('msg', suggestMessage(data.style, data.occ, data.name));
-        setSuggestError('Nu am putut genera cu AI, am pus o sugestie de rezervă.');
+        setSuggestError(tg('step3.errAiFallback'));
       }
     } finally {
       setSuggesting(false);
@@ -908,18 +897,18 @@ function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Arr
 
   return (
     <>
-      <h3>3. Detalii, voce și (opțional) versurile tale</h3>
-      <p className="ld">Cu cât mai concret, cu atât mai tare iese.</p>
+      <h3>{tg('step3.title')}</h3>
+      <p className="ld">{tg('step3.sub')}</p>
 
       <div className="field">
-        <label>Numele persoanei</label>
-        <input type="text" placeholder="ex. Costel, Mariana, șefu' Florin..."
+        <label>{tg('step3.nameLabel')}</label>
+        <input type="text" placeholder={tg('step3.namePlaceholder')}
           value={data.name} onChange={(e) => upd('name', e.target.value)} maxLength={40} />
       </div>
 
       <div className="field">
         <label>
-          Mesajul tău (max 600)
+          {tg('step3.messageLabel')}
           <button
             type="button"
             onClick={regenSuggestion}
@@ -932,11 +921,11 @@ function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Arr
               opacity: suggesting ? 0.6 : 1,
             }}
           >
-            {suggesting ? '✨ Sugerez…' : '✨ Sugestie nouă'}
+            {suggesting ? tg('step3.messageSuggesting') : tg('step3.messageNewSuggestion')}
           </button>
         </label>
         <textarea
-          placeholder="ex. La mulți ani, șefule! Să dea Domnu' să luăm bonus de Crăciun..."
+          placeholder={tg('step3.messagePlaceholder')}
           value={data.msg} onChange={(e) => upd('msg', e.target.value)} maxLength={600} />
         <div className="cc">{data.msg.length}/600</div>
         {suggestError && (
@@ -945,14 +934,14 @@ function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Arr
       </div>
 
       <div className="field">
-        <label>Dedicație opțională (de la cine)</label>
-        <input type="text" placeholder="de la Andrei și echipa"
+        <label>{tg('step3.dedicLabel')}</label>
+        <input type="text" placeholder={tg('step3.dedicPlaceholder')}
           value={data.dedic} onChange={(e) => upd('dedic', e.target.value)} maxLength={40} />
       </div>
 
       <div className="field" style={{ marginTop: 6 }}>
         <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>📝 Vrei să scrii tu versurile?</span>
+          <span>{tg('step3.lyricsLabel')}</span>
           <button
             type="button"
             onClick={() => {
@@ -970,13 +959,13 @@ function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Arr
               border: '1px solid rgba(241,200,77,0.4)', borderRadius: 999, cursor: 'pointer',
             }}
           >
-            {showLyricsEditor ? '✓ activ' : 'Activează'}
+            {showLyricsEditor ? tg('step3.lyricsActive') : tg('step3.lyricsActivate')}
           </button>
         </label>
         {showLyricsEditor && (
           <>
             <textarea
-              placeholder={'Scrie aici versurile tale dacă vrei. Lasă gol = AI scrie versurile pe baza mesajului.\n\nRefren:\n...\nCuplet:\n...'}
+              placeholder={tg('step3.lyricsPlaceholder')}
               value={data.customLyrics}
               onChange={(e) => upd('customLyrics', e.target.value)}
               maxLength={4000}
@@ -987,7 +976,7 @@ function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Arr
         )}
       </div>
 
-      <h3 style={{ marginTop: 22 }}>🎤 Care artist îți cântă?</h3>
+      <h3 style={{ marginTop: 22 }}>{tg('step3.voicesTitle')}</h3>
       <div className="voice-list">
         {(voices as Array<{ id: string; nm: string; tg: string; av: string; ic?: any }>).map((v, idx) => {
           const isP = playing === `voice-${v.id}`;
@@ -1001,7 +990,7 @@ function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Arr
               <button
                 className={`play-it ${isP ? 'playing' : ''}`}
                 onClick={(e) => { e.stopPropagation(); onPlay(`voice-${v.id}`); }}
-                {...(idx === 0 ? { 'data-hint': 'true', 'data-hint-label': 'Ascultă vocea' } : {})}
+                {...(idx === 0 ? { 'data-hint': 'true', 'data-hint-label': tg('step3.voiceHint') } : {})}
               >
                 {isP ? <Ic.Pause s={11} /> : <Ic.Play s={11} />}
               </button>
@@ -1018,6 +1007,7 @@ const TIP_PRESETS = [0, 100, 250, 500, 1000, 2500];
 
 function DedicStep({ data, upd }: any) {
   const site = useSite();
+  const tg = useTranslations('generator');
   const { data: quote } = useQuery({
     queryKey: ['quote', data.tipAmount, data.premium],
     queryFn: () => api.priceQuote(data.tipAmount || 0, !!data.premium),
@@ -1027,8 +1017,8 @@ function DedicStep({ data, upd }: any) {
 
   return (
     <>
-      <h3>4. Cadou & Premium</h3>
-      <p className="ld">Cât îi pui în versuri, ca să-l dai pe spate? (Suprataxă 5%, plafon 50 lei.)</p>
+      <h3>{tg('step4.title')}</h3>
+      <p className="ld">{tg('step4.sub')}</p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
         {TIP_PRESETS.map((amt) => (
@@ -1039,7 +1029,7 @@ function DedicStep({ data, upd }: any) {
             style={{ padding: '12px 6px', textAlign: 'center' }}
           >
             <span className="nm" style={{ fontSize: 14, fontWeight: 800 }}>
-              {amt === 0 ? 'Fără' : `${amt} lei`}
+              {amt === 0 ? tg('step4.tipNone') : tg('step4.tipUnit', { amount: amt })}
             </span>
           </button>
         ))}
@@ -1047,7 +1037,7 @@ function DedicStep({ data, upd }: any) {
 
       <div className="field" style={{ marginTop: 14 }}>
         <label>
-          Sau pune cât vrei tu (până la 1.000.000.000 lei 😅)
+          {tg('step4.customLabel')}
           <button
             type="button"
             onClick={() => { setCustomMode(true); upd('tipAmount', 0); }}
@@ -1058,7 +1048,7 @@ function DedicStep({ data, upd }: any) {
               border: '1px solid rgba(241,200,77,0.3)', borderRadius: 999,
             }}
           >
-            {customMode ? '✓ activ' : 'Custom'}
+            {customMode ? tg('step4.customActive') : tg('step4.customBtn')}
           </button>
         </label>
         {customMode && (
@@ -1067,14 +1057,14 @@ function DedicStep({ data, upd }: any) {
             min={0}
             max={1_000_000_000}
             step={100}
-            placeholder="ex. 1500"
+            placeholder={tg('step4.customPlaceholder')}
             value={data.tipAmount || ''}
             onChange={(e) => upd('tipAmount', Math.max(0, Math.min(1_000_000_000, Number(e.target.value) || 0)))}
           />
         )}
         {customMode && data.tipAmount > 0 && (
           <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.5)', marginTop: 4 }}>
-            Suprataxă: +{Math.min(50, Math.round(data.tipAmount * 0.05))} lei (5% capped la 50 lei).
+            {tg('step4.customSurcharge', { amount: Math.min(50, Math.round(data.tipAmount * 0.05)) })}
           </div>
         )}
       </div>
@@ -1091,13 +1081,13 @@ function DedicStep({ data, upd }: any) {
         <div style={{ fontSize: 28 }}>👑</div>
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 800, color: 'var(--gold-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
-            Manea Premium
+            {tg('step4.premiumTitle')}
             <span style={{ fontSize: 10, padding: '2px 6px', background: 'var(--rose)', color: 'white', borderRadius: 999 }}>
-              RECOMANDAT
+              {tg('step4.premiumRecommended')}
             </span>
           </div>
           <div style={{ fontSize: 12, color: 'rgba(255,245,220,0.65)', marginTop: 4 }}>
-            🎤 Calitate audio 4x superioară · 🔥 Voce procesată cu AI master · ⚡ Mix profi
+            {tg('step4.premiumDesc')}
           </div>
         </div>
         <input type="checkbox" checked={data.premium} readOnly />
@@ -1109,29 +1099,29 @@ function DedicStep({ data, upd }: any) {
         border: '1px solid var(--line)',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(255,245,220,0.7)' }}>
-          <span>Manea de bază (90s × 2)</span>
+          <span>{tg('step4.baseLine')}</span>
           <span>{fmt(quote?.base ?? site.basePriceCents)}</span>
         </div>
         {(quote?.premiumExtra ?? 0) > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(255,245,220,0.7)', marginTop: 4 }}>
-            <span>👑 Upgrade Premium</span>
+            <span>{tg('step4.premiumLine')}</span>
             <span>+{fmt(quote?.premiumExtra ?? 0)}</span>
           </div>
         )}
         {(quote?.tipSurcharge ?? 0) > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(255,245,220,0.7)', marginTop: 4 }}>
-            <span>Suprataxă dedicație ({data.tipAmount} lei × 5%, plafon 50)</span>
+            <span>{tg('step4.tipSurchargeLine', { amount: data.tipAmount })}</span>
             <span>+{fmt(quote?.tipSurcharge ?? 0)}</span>
           </div>
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
-          <span style={{ fontWeight: 800 }}>Total la deblocare</span>
+          <span style={{ fontWeight: 800 }}>{tg('step4.totalUnlock')}</span>
           <span className="gold-text" style={{ fontWeight: 900, fontSize: 18 }}>
             {fmt(quote?.total ?? site.basePriceCents)}
           </span>
         </div>
         <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.4)', marginTop: 8 }}>
-          🎁 Demo-ul gratuit primesti acum la pasul următor. Plata se face DUPĂ ce-l asculți.
+          {tg('step4.demoFooter')}
         </div>
       </div>
     </>
@@ -1166,30 +1156,31 @@ function DemoStep({
     staleTime: 60_000,
   });
 
+  const tg = useTranslations('generator');
   if (!generation) {
     return (
       <>
-        <h3>5. Demo gratuit (30s)</h3>
-        <p className="ld">Generăm întâi un demo de 30s gratis. Dacă-ți place, deblochezi maneaua completă (90s × 2).</p>
+        <h3>{tg('step5Demo.title')}</h3>
+        <p className="ld">{tg('step5Demo.sub')}</p>
 
         {!email && (
           <div className="field" style={{ marginTop: 14 }}>
-            <label>📧 Email-ul tău (obligatoriu — îți trimitem maneaua aici)</label>
+            <label>{tg('step5Demo.emailLabel')}</label>
             <input
               type="email"
-              placeholder="tu@email.ro"
+              placeholder={tg('step5Demo.emailPlaceholder')}
               value={emailDraft}
               onChange={(e) => onEmailChange(e.target.value)}
               required
             />
             <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.5)', marginTop: 4 }}>
-              Folosit doar pentru livrare. Fără spam.
+              {tg('step5Demo.emailHint')}
             </div>
           </div>
         )}
         {email && (
           <div style={{ marginTop: 12, fontSize: 13, color: 'var(--gold-2)' }}>
-            ✓ Trimitem maneaua la <b>{email}</b>
+            {tg('step5Demo.emailSentTo')} <b>{email}</b>
           </div>
         )}
 
@@ -1201,9 +1192,9 @@ function DemoStep({
           disabled={submitting}
           style={{ marginTop: 16, opacity: submitting ? 0.4 : 1 }}
           data-hint={!submitting ? 'true' : undefined}
-          data-hint-label="Generează demo gratis"
+          data-hint-label={tg('step5Demo.submitHint')}
         >
-          {submitting ? 'Se trimite...' : '🎁 Generează demo gratis 30s'}
+          {submitting ? tg('step5Demo.submitting') : tg('step5Demo.submitCta')}
         </button>
       </>
     );
@@ -1247,6 +1238,7 @@ function PayFirstStep({
   setPromoError: (v: string | null) => void;
 }) {
   const site = useSite();
+  const tg = useTranslations('generator');
   const { data: quote } = useQuery({
     queryKey: ['quote', data.tipAmount, data.premium],
     queryFn: () => api.priceQuote(data.tipAmount || 0, !!data.premium),
@@ -1256,18 +1248,15 @@ function PayFirstStep({
 
   return (
     <>
-      <h3>5. Plătește pentru a genera maneaua</h3>
-      <p className="ld">
-        Maneaua ta (90s × 2 versiuni) se generează ÎN MOMENTUL în care plata e confirmată.
-        Trimitem rezultatul pe email și-l vezi și aici după ~3 minute.
-      </p>
+      <h3>{tg('step5PayFirst.title')}</h3>
+      <p className="ld">{tg('step5PayFirst.sub')}</p>
 
       {!email && (
         <div className="field" style={{ marginTop: 14 }}>
-          <label>📧 Email-ul tău (obligatoriu)</label>
+          <label>{tg('step5PayFirst.emailLabel')}</label>
           <input
             type="email"
-            placeholder="tu@email.ro"
+            placeholder={tg('step5Demo.emailPlaceholder')}
             value={emailDraft}
             onChange={(e) => onEmailChange(e.target.value)}
             required
@@ -1276,7 +1265,7 @@ function PayFirstStep({
       )}
       {email && (
         <div style={{ marginTop: 8, fontSize: 13, color: 'var(--gold-2)' }}>
-          ✓ Trimitem maneaua la <b>{email}</b>
+          {tg('step5PayFirst.emailSentTo')} <b>{email}</b>
         </div>
       )}
 
@@ -1286,29 +1275,29 @@ function PayFirstStep({
         border: '1px solid var(--gold)',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-          <span>Manea completă (90s × 2)</span>
+          <span>{tg('step5PayFirst.completeLine')}</span>
           <span>{fmt(quote?.base ?? site.basePriceCents)}</span>
         </div>
         {(quote?.premiumExtra ?? 0) > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
-            <span>👑 Upgrade Premium</span>
+            <span>{tg('step4.premiumLine')}</span>
             <span>+{fmt(quote?.premiumExtra ?? 0)}</span>
           </div>
         )}
         {(quote?.tipSurcharge ?? 0) > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
-            <span>Suprataxă dedicație {data.tipAmount} {site.currency}</span>
+            <span>{tg('step5PayFirst.tipLine', { amount: data.tipAmount, currency: site.currency })}</span>
             <span>+{fmt(quote?.tipSurcharge ?? 0)}</span>
           </div>
         )}
         {promoApplied && (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4, color: 'var(--green)' }}>
-            <span>Promo: <code>{promoApplied.code}</code></span>
+            <span>{tg('step5PayFirst.promoLine')} <code>{promoApplied.code}</code></span>
             <span>−{fmt(promoApplied.discountCents)}</span>
           </div>
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
-          <span style={{ fontWeight: 800 }}>Total</span>
+          <span style={{ fontWeight: 800 }}>{tg('step5PayFirst.totalLabel')}</span>
           <span className="gold-text" style={{ fontWeight: 900, fontSize: 22 }}>{fmt(finalTotal)}</span>
         </div>
       </div>
@@ -1319,7 +1308,7 @@ function PayFirstStep({
           <div style={{ display: 'flex', gap: 6 }}>
             <input
               type="text"
-              placeholder="Cod promo?"
+              placeholder={tg('step5PayFirst.promoPlaceholder')}
               value={promoCode}
               onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoError(null); }}
               style={{
@@ -1340,14 +1329,14 @@ function PayFirstStep({
                   if (r.ok && r.appliedDiscountCents) {
                     setPromoApplied({ code: promoCode.trim(), discountCents: r.appliedDiscountCents });
                   } else {
-                    setPromoError(translatePromoError(r.reason));
+                    setPromoError(translatePromoError(r.reason, tg));
                   }
                 } catch {
-                  setPromoError('Eroare validare. Încearcă din nou.');
+                  setPromoError(tg('step5PayFirst.promoValidationError'));
                 }
               }}
             >
-              Aplică
+              {tg('step5PayFirst.promoApply')}
             </button>
           </div>
         ) : (
@@ -1357,7 +1346,7 @@ function PayFirstStep({
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
             <span style={{ fontSize: 13, color: 'var(--green)' }}>
-              ✓ Promo <code>{promoApplied.code}</code> — discount {fmt(promoApplied.discountCents)}
+              {tg('step5PayFirst.promoActive')} <code>{promoApplied.code}</code> — {tg('step5PayFirst.promoDiscount')} {fmt(promoApplied.discountCents)}
             </span>
             <button
               onClick={() => { setPromoApplied(null); setPromoCode(''); }}
@@ -1376,27 +1365,29 @@ function PayFirstStep({
         disabled={submitting}
         style={{ marginTop: 14 }}
         data-hint="true"
-        data-hint-label="Plătește acum"
+        data-hint-label={tg('step5PayFirst.payHint')}
       >
-        {submitting ? 'Se deschide plata...' : `💳 Plătește ${fmt(finalTotal)} și generează`}
+        {submitting ? tg('step5PayFirst.payingCta') : tg('step5PayFirst.payCta', { amount: fmt(finalTotal) })}
       </button>
     </>
   );
 }
 
-const STATUS_LABEL: Record<GenStatus, { label: string; pct: number }> = {
-  pending:           { label: 'Pregătim totul...', pct: 5 },
-  queued:            { label: 'Pus la coadă, în curând începem',  pct: 12 },
-  writing_lyrics:    { label: 'Textierul AI scrie versurile... 🎤', pct: 30 },
-  checking_lyrics:   { label: 'Editorul AI verifică rima... ✍️', pct: 55 },
-  generating_audio:  { label: 'Studio-ul acordează acordeonul... 🎻', pct: 78 },
-  running:           { label: 'Se finalizează...', pct: 92 },
-  succeeded:         { label: '✓ Manea gata!', pct: 100 },
-  failed:            { label: 'Ceva n-a mers', pct: 100 },
+const STATUS_PCT: Record<GenStatus, number> = {
+  pending: 5,
+  queued: 12,
+  writing_lyrics: 30,
+  checking_lyrics: 55,
+  generating_audio: 78,
+  running: 92,
+  succeeded: 100,
+  failed: 100,
 };
 
 function GenerationLive({ generation, recent }: { generation: GenerationDto; recent: RecentDto[] }) {
-  const meta = STATUS_LABEL[generation.status];
+  const tg = useTranslations('generator');
+  const pct = STATUS_PCT[generation.status];
+  const statusLabel = tg(`live.status.${generation.status}`);
   const isPlaying = generation.status !== 'succeeded' && generation.status !== 'failed';
 
   const isFailed = generation.status === 'failed';
@@ -1405,18 +1396,18 @@ function GenerationLive({ generation, recent }: { generation: GenerationDto; rec
     <>
       <h3>
         {generation.status === 'succeeded'
-          ? '🎉 Demo gata!'
+          ? tg('live.succeededTitle')
           : isFailed
-            ? 'Ceva n-a mers...'
-            : 'Se gătește maneaua...'}
+            ? tg('live.failedTitle')
+            : tg('live.workingTitle')}
       </h3>
-      <p className="ld">{isFailed ? humanizeGenError(generation.error) : meta.label}</p>
+      <p className="ld">{isFailed ? humanizeGenError(generation.error, tg) : statusLabel}</p>
       {isFailed && (
         <>
           {generation.error && (
             <details style={{ marginTop: 8 }}>
               <summary style={{ fontSize: 11, color: 'rgba(255,245,220,0.4)', cursor: 'pointer' }}>
-                Detalii tehnice (pentru suport)
+                {tg('live.techDetails')}
               </summary>
               <pre style={{
                 marginTop: 6, fontSize: 11, padding: 10, borderRadius: 6,
@@ -1438,7 +1429,7 @@ function GenerationLive({ generation, recent }: { generation: GenerationDto; rec
       }}>
         <div
           style={{
-            width: `${meta.pct}%`,
+            width: `${pct}%`,
             height: '100%',
             background: generation.status === 'failed'
               ? 'var(--rose)'
@@ -1455,7 +1446,7 @@ function GenerationLive({ generation, recent }: { generation: GenerationDto; rec
           border: '1px solid rgba(241,200,77,0.2)',
         }}>
           <div style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
-            ✓ Versuri verificate de AI
+            {tg('live.lyricsVerified')}
           </div>
           <pre style={{ whiteSpace: 'pre-wrap', color: 'var(--gold-2)', fontSize: 13, lineHeight: 1.6 }}>
             {generation.lyrics}
@@ -1469,7 +1460,7 @@ function GenerationLive({ generation, recent }: { generation: GenerationDto; rec
           border: '1px dashed rgba(241,200,77,0.2)',
         }}>
           <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.5)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
-            ✏️ Ciornă (se verifică...)
+            {tg('live.lyricsDraft')}
           </div>
           <pre style={{ whiteSpace: 'pre-wrap', color: 'rgba(255,245,220,0.7)', fontSize: 12, lineHeight: 1.5 }}>
             {generation.lyricsDraft}
@@ -1482,15 +1473,15 @@ function GenerationLive({ generation, recent }: { generation: GenerationDto; rec
         return (
           <div style={{ marginTop: 18 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gold-2)', marginBottom: 8 }}>
-              🎤 Ți-am făcut 2 versiuni — ambele cadou pentru tine:
+              {tg('live.twoVersionsTitle')}
             </div>
             {generation.audioUrl && (
               <div style={{ marginBottom: 10 }}>
-                <ManeaPlayer audioUrl={generation.audioUrl} title="Versiunea 1" maxDurationSec={previewSec} />
+                <ManeaPlayer audioUrl={generation.audioUrl} title={tg('live.version1')} maxDurationSec={previewSec} />
               </div>
             )}
             {generation.bonusAudioUrl && (
-              <ManeaPlayer audioUrl={generation.bonusAudioUrl} title="Versiunea 2 🎁" maxDurationSec={previewSec} />
+              <ManeaPlayer audioUrl={generation.bonusAudioUrl} title={tg('live.version2Gift')} maxDurationSec={previewSec} />
             )}
           </div>
         );
@@ -1499,11 +1490,11 @@ function GenerationLive({ generation, recent }: { generation: GenerationDto; rec
       {isPlaying && (
         <div style={{ marginTop: 24 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,245,220,0.6)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
-            🎧 Ascultă manele generate de alții cât timp aștepți
+            {tg('live.listenWhileWaiting')}
           </div>
           <div style={{ display: 'grid', gap: 8, maxHeight: 280, overflowY: 'auto', paddingRight: 4 }}>
             {recent.length === 0 && (
-              <div style={{ fontSize: 12, color: 'rgba(255,245,220,0.4)' }}>Nu s-au generat încă manele publice.</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,245,220,0.4)' }}>{tg('live.noPublicYet')}</div>
             )}
             {recent.map((r) => (
               <div key={r.id} style={{
@@ -1519,7 +1510,7 @@ function GenerationLive({ generation, recent }: { generation: GenerationDto; rec
                 }}>♫</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, color: 'var(--gold-2)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    Pentru {r.recipientName}
+                    {tg('live.forSomeone', { name: r.recipientName })}
                   </div>
                   <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.5)' }}>
                     {r.style} · {r.voiceArtist}
@@ -1574,22 +1565,23 @@ function UnlockStep({
   email: string | null;
 }) {
   const site = useSite();
+  const tg = useTranslations('generator');
   const { data: quote } = useQuery({
     queryKey: ['quote', data.tipAmount, data.premium],
     queryFn: () => api.priceQuote(data.tipAmount || 0, !!data.premium),
   });
   const fmt = (cents: number) => formatPrice(site, cents);
 
-  if (!generation) return <p className="ld">Se așteaptă demo-ul...</p>;
+  if (!generation) return <p className="ld">{tg('step6.waiting')}</p>;
   if (generation.status === 'failed') {
     return (
       <>
-        <h3 style={{ color: 'var(--rose)' }}>Ceva n-a mers...</h3>
-        <p className="ld">{humanizeGenError(generation.error)}</p>
+        <h3 style={{ color: 'var(--rose)' }}>{tg('step6.failedTitle')}</h3>
+        <p className="ld">{humanizeGenError(generation.error, tg)}</p>
         {generation.error && (
           <details style={{ marginTop: 8 }}>
             <summary style={{ fontSize: 11, color: 'rgba(255,245,220,0.4)', cursor: 'pointer' }}>
-              Detalii tehnice (pentru suport)
+              {tg('step6.techDetails')}
             </summary>
             <pre style={{
               marginTop: 6, fontSize: 11, padding: 10, borderRadius: 6,
@@ -1602,7 +1594,7 @@ function UnlockStep({
           </details>
         )}
         <RetryGenerationButton generationId={generation.id} />
-        <button onClick={onAgain} className="btn btn-ghost" style={{ marginTop: 8 }}>← Pornește unul nou</button>
+        <button onClick={onAgain} className="btn btn-ghost" style={{ marginTop: 8 }}>{tg('step6.againBtnGhost')}</button>
       </>
     );
   }
@@ -1610,43 +1602,41 @@ function UnlockStep({
   if (generation.paidUnlocked) {
     return (
       <>
-        <h3 className="gold-text">✓ Manea completă deblocată!</h3>
-        <p className="ld">Versiunile complete (90s) îți sosesc pe email.</p>
+        <h3 className="gold-text">{tg('step6.unlockedTitle')}</h3>
+        <p className="ld">{tg('step6.unlockedSub')}</p>
         {generation.audioUrl && (
           <div style={{ marginTop: 14 }}>
-            <ManeaPlayer audioUrl={generation.audioUrl} title="Versiunea 1 (completă)" />
+            <ManeaPlayer audioUrl={generation.audioUrl} title={tg('step6.version1Full')} />
           </div>
         )}
         {generation.bonusAudioUrl && (
           <div style={{ marginTop: 10 }}>
-            <ManeaPlayer audioUrl={generation.bonusAudioUrl} title="Versiunea 2 (completă)" />
+            <ManeaPlayer audioUrl={generation.bonusAudioUrl} title={tg('step6.version2Full')} />
           </div>
         )}
-        <button onClick={onAgain} className="btn btn-ghost" style={{ marginTop: 16 }}>+ Fă încă o manea</button>
+        <button onClick={onAgain} className="btn btn-ghost" style={{ marginTop: 16 }}>{tg('step6.againCta')}</button>
       </>
     );
   }
 
   return (
     <>
-      <h3>6. Deblochează maneaua completă</h3>
-      <p className="ld">Demo-ul l-ai ascultat. Acum primești 2 versiuni complete (90s fiecare) trimise pe email.</p>
+      <h3>{tg('step6.title')}</h3>
+      <p className="ld">{tg('step6.sub')}</p>
 
-      {/* Reascultă demo-ul (preview 30s) chiar la pasul de unlock — userul nu trebuie
-          să se întoarcă la pasul 5 ca să-și amintească ce cumpără. */}
       {(generation.audioUrl || generation.bonusAudioUrl) && (
         <div style={{ marginTop: 14, padding: 12, borderRadius: 10,
           background: 'rgba(241,200,77,0.04)', border: '1px solid rgba(241,200,77,0.2)' }}>
           <div style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
-            🔊 Reascultă demo-ul (30s)
+            {tg('step6.replayTitle')}
           </div>
           {generation.audioUrl && (
             <div style={{ marginBottom: 8 }}>
-              <ManeaPlayer audioUrl={generation.audioUrl} title="Versiunea 1" maxDurationSec={30} />
+              <ManeaPlayer audioUrl={generation.audioUrl} title={tg('live.version1')} maxDurationSec={30} />
             </div>
           )}
           {generation.bonusAudioUrl && (
-            <ManeaPlayer audioUrl={generation.bonusAudioUrl} title="Versiunea 2 🎁" maxDurationSec={30} />
+            <ManeaPlayer audioUrl={generation.bonusAudioUrl} title={tg('live.version2Gift')} maxDurationSec={30} />
           )}
         </div>
       )}
@@ -1657,29 +1647,29 @@ function UnlockStep({
         border: '1px solid var(--gold)',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-          <span>Manea completă (90s × 2)</span>
+          <span>{tg('step5PayFirst.completeLine')}</span>
           <span>{fmt(quote?.base ?? site.basePriceCents)}</span>
         </div>
         {(quote?.premiumExtra ?? 0) > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
-            <span>👑 Upgrade Premium</span>
+            <span>{tg('step4.premiumLine')}</span>
             <span>+{fmt(quote?.premiumExtra ?? 0)}</span>
           </div>
         )}
         {(quote?.tipSurcharge ?? 0) > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
-            <span>Suprataxă dedicație {data.tipAmount} lei</span>
+            <span>{tg('step6.tipLine', { amount: data.tipAmount })}</span>
             <span>+{fmt(quote?.tipSurcharge ?? 0)}</span>
           </div>
         )}
         {promoApplied && (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4, color: 'var(--green)' }}>
-            <span>Promo: <code>{promoApplied.code}</code></span>
+            <span>{tg('step5PayFirst.promoLine')} <code>{promoApplied.code}</code></span>
             <span>−{fmt(promoApplied.discountCents)}</span>
           </div>
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
-          <span style={{ fontWeight: 800 }}>Total</span>
+          <span style={{ fontWeight: 800 }}>{tg('step5PayFirst.totalLabel')}</span>
           <span className="gold-text" style={{ fontWeight: 900, fontSize: 22 }}>
             {fmt(Math.max(0, (quote?.total ?? site.basePriceCents) - (promoApplied?.discountCents ?? 0)))}
           </span>
@@ -1692,7 +1682,7 @@ function UnlockStep({
           <div style={{ display: 'flex', gap: 6 }}>
             <input
               type="text"
-              placeholder="Cod promo?"
+              placeholder={tg('step5PayFirst.promoPlaceholder')}
               value={promoCode}
               onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoError(null); }}
               style={{
@@ -1719,14 +1709,14 @@ function UnlockStep({
                   if (r.ok && r.appliedDiscountCents) {
                     setPromoApplied({ code: promoCode.trim(), discountCents: r.appliedDiscountCents });
                   } else {
-                    setPromoError(translatePromoError(r.reason));
+                    setPromoError(translatePromoError(r.reason, tg));
                   }
                 } catch {
-                  setPromoError('Eroare validare. Încearcă din nou.');
+                  setPromoError(tg('step5PayFirst.promoValidationError'));
                 }
               }}
             >
-              Aplică
+              {tg('step5PayFirst.promoApply')}
             </button>
           </div>
         ) : (
@@ -1736,7 +1726,7 @@ function UnlockStep({
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
             <span style={{ fontSize: 13, color: 'var(--green)' }}>
-              ✓ Promo <code>{promoApplied.code}</code> — discount {fmt(promoApplied.discountCents)}
+              {tg('step5PayFirst.promoActive')} <code>{promoApplied.code}</code> — {tg('step5PayFirst.promoDiscount')} {fmt(promoApplied.discountCents)}
             </span>
             <button
               onClick={() => { setPromoApplied(null); setPromoCode(''); }}
@@ -1757,11 +1747,11 @@ function UnlockStep({
         disabled={submitting}
         style={{ marginTop: 14 }}
         data-hint="true"
-        data-hint-label="Plătește acum"
+        data-hint-label={tg('step6.payHint')}
       >
         {submitting
-          ? 'Se deschide plata...'
-          : `🔓 Deblochează — ${fmt(Math.max(0, (quote?.total ?? site.basePriceCents) - (promoApplied?.discountCents ?? 0)))}`}
+          ? tg('step6.payingCta')
+          : tg('step6.unlockCta', { amount: fmt(Math.max(0, (quote?.total ?? site.basePriceCents) - (promoApplied?.discountCents ?? 0))) })}
       </button>
 
       <GiftCodeUnlock generationId={generation.id} onUnlocked={onAgain /* refetch via parent */} />
@@ -1770,13 +1760,14 @@ function UnlockStep({
         background: 'transparent', border: 'none', color: 'rgba(255,245,220,0.5)',
         textDecoration: 'underline', fontSize: 12, marginTop: 14, cursor: 'pointer', display: 'block', textAlign: 'center', width: '100%',
       }}>
-        Mai târziu — fac încă un demo
+        {tg('step6.laterCta')}
       </button>
     </>
   );
 }
 
 function GiftCodeUnlock({ generationId, onUnlocked }: { generationId: string; onUnlocked: () => void }) {
+  const tg = useTranslations('generator');
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1788,16 +1779,15 @@ function GiftCodeUnlock({ generationId, onUnlocked }: { generationId: string; on
     setError(null);
     try {
       await api.unlockGenerationWithGift(generationId, code.trim());
-      // Trigger reload via window — cea mai sigură cale
       window.location.reload();
     } catch (e) {
       const msg = e instanceof ApiError ? (e.body as { message?: string })?.message : (e as Error).message;
       const reason = msg || 'unknown';
       setError(
-        reason === 'invalid' ? 'Cod invalid sau dezactivat.' :
-        reason === 'expired' ? 'Cod expirat.' :
-        reason === 'used_up' ? 'Cod folosit complet.' :
-        'Cod nevalid.',
+        reason === 'invalid' ? tg('gift.errInvalid') :
+        reason === 'expired' ? tg('gift.errExpired') :
+        reason === 'used_up' ? tg('gift.errUsedUp') :
+        tg('gift.errGeneric'),
       );
       setSubmitting(false);
     }
@@ -1814,7 +1804,7 @@ function GiftCodeUnlock({ generationId, onUnlocked }: { generationId: string; on
           fontFamily: 'inherit',
         }}
       >
-        🎟️ Ai cod cadou? Apasă să-l folosești
+        {tg('gift.openCta')}
       </button>
     );
   }
@@ -1824,7 +1814,7 @@ function GiftCodeUnlock({ generationId, onUnlocked }: { generationId: string; on
       <div style={{ display: 'flex', gap: 6 }}>
         <input
           type="text"
-          placeholder="GIFT-XXXXXXXX"
+          placeholder={tg('gift.placeholder')}
           value={code}
           onChange={(e) => { setCode(e.target.value.toUpperCase()); setError(null); }}
           style={{
@@ -1834,7 +1824,7 @@ function GiftCodeUnlock({ generationId, onUnlocked }: { generationId: string; on
           }}
         />
         <button className="btn btn-gold btn-sm" disabled={!code.trim() || submitting} onClick={apply}>
-          {submitting ? '...' : 'Folosește'}
+          {submitting ? tg('gift.applying') : tg('gift.applyCta')}
         </button>
       </div>
       {error && <div style={{ fontSize: 12, color: 'var(--rose)', marginTop: 6 }}>{error}</div>}
@@ -1842,15 +1832,15 @@ function GiftCodeUnlock({ generationId, onUnlocked }: { generationId: string; on
   );
 }
 
-function translatePromoError(reason: string | undefined): string {
+function translatePromoError(reason: string | undefined, t: TFn): string {
   switch (reason) {
-    case 'invalid': return 'Cod invalid sau dezactivat.';
-    case 'expired': return 'Cod expirat.';
-    case 'not_yet_valid': return 'Cod neactivat încă.';
-    case 'used_up': return 'Cod folosit complet.';
-    case 'wrong_email': return 'Cod restricționat la alt email.';
-    case 'empty': return 'Introdu un cod.';
-    default: return 'Cod nevalid.';
+    case 'invalid': return t('promo.errInvalid');
+    case 'expired': return t('promo.errExpired');
+    case 'not_yet_valid': return t('promo.errNotYet');
+    case 'used_up': return t('promo.errUsedUp');
+    case 'wrong_email': return t('promo.errWrongEmail');
+    case 'empty': return t('promo.errEmpty');
+    default: return t('promo.errGeneric');
   }
 }
 

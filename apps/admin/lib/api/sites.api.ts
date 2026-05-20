@@ -24,6 +24,8 @@ export interface SiteDto {
     ogImageUrl?: string;
     tagline?: string;
     faviconUrl?: string;
+    /** URL absolut spre bannerul folosit în headerul email-urilor (600×200). */
+    emailBannerUrl?: string;
   };
   seo: { title?: string; description?: string; keywords?: string };
   analytics: { ga4Id?: string; metaPixelId?: string; tiktokPixelId?: string };

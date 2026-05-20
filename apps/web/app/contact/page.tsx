@@ -1,11 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { SiteShell } from '@/components/SiteShell';
 import { useSite } from '@/lib/site-context';
 import { siteSupportEmail } from '@/lib/site-shared';
 
 export default function ContactPage() {
+  const t = useTranslations('contactPage');
   const site = useSite();
   const support = siteSupportEmail(site);
   const tech = site.companyInfo?.legalName ? `tech@${site.domain}` : support;
@@ -16,18 +18,18 @@ export default function ContactPage() {
   return (
     <SiteShell>
       <div className="inner-page">
-        <h1 className="gold-text">Contact</h1>
-        <p className="lead">Bă fine, scrie-ne. Răspundem în 24h în zilele lucrătoare.</p>
+        <h1 className="gold-text">{t('title')}</h1>
+        <p className="lead">{t('lead')}</p>
 
         <div className="split-2" style={{ marginTop: 12 }}>
           <div>
-            <h2>Scrie-ne</h2>
+            <h2>{t('writeUs')}</h2>
             {sent ? (
               <div style={{
                 padding: 16, borderRadius: 10,
                 border: '1px solid var(--gold)', background: 'rgba(241,200,77,0.06)',
               }}>
-                ✓ Mesajul a fost trimis. Te contactăm la email-ul lăsat.
+                {t('sent')}
               </div>
             ) : (
               <form
@@ -35,30 +37,30 @@ export default function ContactPage() {
                 style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
               >
                 <div className="field">
-                  <label>Email</label>
-                  <input type="email" required placeholder="tu@email.ro" />
+                  <label>{t('emailLabel')}</label>
+                  <input type="email" required placeholder={t('emailPlaceholder')} />
                 </div>
                 <div className="field">
-                  <label>Subiect</label>
-                  <input type="text" required placeholder="ex. Problemă cu o manea" />
+                  <label>{t('subjectLabel')}</label>
+                  <input type="text" required placeholder={t('subjectPlaceholder')} />
                 </div>
                 <div className="field">
-                  <label>Mesaj</label>
-                  <textarea required style={{ minHeight: 140 }} placeholder="Spune-ne ce s-a întâmplat..." />
+                  <label>{t('messageLabel')}</label>
+                  <textarea required style={{ minHeight: 140 }} placeholder={t('messagePlaceholder')} />
                 </div>
-                <button className="btn btn-gold btn-lg">Trimite</button>
+                <button className="btn btn-gold btn-lg">{t('send')}</button>
               </form>
             )}
           </div>
           <div>
-            <h2>Detalii</h2>
-            <p><b>Email general</b><br /><a href={`mailto:${support}`} style={{ color: 'var(--gold)' }}>{support}</a></p>
-            <p><b>Suport tehnic</b><br /><a href={`mailto:${tech}`} style={{ color: 'var(--gold)' }}>{tech}</a></p>
-            <p><b>Comercial / B2B</b><br /><a href={`mailto:${business}`} style={{ color: 'var(--gold)' }}>{business}</a></p>
+            <h2>{t('details')}</h2>
+            <p><b>{t('emailGeneral')}</b><br /><a href={`mailto:${support}`} style={{ color: 'var(--gold)' }}>{support}</a></p>
+            <p><b>{t('emailSupport')}</b><br /><a href={`mailto:${tech}`} style={{ color: 'var(--gold)' }}>{tech}</a></p>
+            <p><b>{t('emailBusiness')}</b><br /><a href={`mailto:${business}`} style={{ color: 'var(--gold)' }}>{business}</a></p>
 
             {(company.legalName || company.cui || company.address) && (
               <>
-                <h2 style={{ marginTop: 24 }}>Date firmă</h2>
+                <h2 style={{ marginTop: 24 }}>{t('companyTitle')}</h2>
                 <p style={{ fontSize: 13 }}>
                   {company.legalName && <>{company.legalName}<br /></>}
                   {(company.cui || company.regCom) && (

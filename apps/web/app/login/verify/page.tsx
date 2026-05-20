@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/providers';
 
@@ -14,6 +15,7 @@ export default function VerifyPage() {
 }
 
 function VerifyPageInner() {
+  const t = useTranslations('loginPage');
   const params = useSearchParams();
   const router = useRouter();
   const session = useSession();
@@ -22,7 +24,7 @@ function VerifyPageInner() {
   useEffect(() => {
     const token = params.get('token');
     if (!token) {
-      setError('Token lipsă.');
+      setError(t('verifyMissing'));
       return;
     }
     (async () => {
@@ -31,7 +33,7 @@ function VerifyPageInner() {
         await session.setToken(accessToken);
         router.replace('/');
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Eroare necunoscută');
+        setError(e instanceof Error ? e.message : t('verifyUnknown'));
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -39,8 +41,8 @@ function VerifyPageInner() {
 
   return (
     <main style={{ maxWidth: 420, margin: '60px auto', padding: 24 }}>
-      <h1 className="gold-text serif" style={{ fontSize: 24, marginBottom: 12 }}>Te logăm...</h1>
-      {error ? <p style={{ color: 'var(--rose)' }}>{error}</p> : <p className="ld">Un moment...</p>}
+      <h1 className="gold-text serif" style={{ fontSize: 24, marginBottom: 12 }}>{t('verifyTitle')}</h1>
+      {error ? <p style={{ color: 'var(--rose)' }}>{error}</p> : <p className="ld">{t('verifyHint')}</p>}
     </main>
   );
 }

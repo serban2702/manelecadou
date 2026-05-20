@@ -56,6 +56,13 @@ type Dict = {
     button: string;
     text: (code: string, until: string, url: string) => string;
   };
+  giftTiers: {
+    single: string;
+    pack3: string;
+    pack10: string;
+  };
+  /** Cod de localizare pentru `Date.toLocaleDateString(...)` (ex. 'ro-RO', 'bg-BG'). */
+  dateLocale: string;
   gdpr: {
     subject: (action: string, email: string) => string;
     title: (action: string) => string;
@@ -136,6 +143,8 @@ const RO: Dict = {
     text: (action, email, id, type, reason) =>
       `Cerere GDPR ${action} de la ${email} (${id}). Tip: ${type}.${reason ? ' Motiv: ' + reason : ''}`,
   },
+  giftTiers: { single: '1 manea', pack3: '3 manele', pack10: '10 manele' },
+  dateLocale: 'ro-RO',
 };
 
 // Pentru celelalte limbi păstrăm fallback la RO până la traducerea email-urilor;
@@ -196,6 +205,8 @@ const BG: Dict = {
     text: (code, until, url) => `Подаръчен код: ${code} (валиден до ${until}). Използвай на ${url}`,
   },
   gdpr: RO.gdpr,
+  giftTiers: { single: '1 манеле', pack3: '3 манелета', pack10: '10 манелета' },
+  dateLocale: 'bg-BG',
 };
 
 const TR: Dict = {
@@ -251,6 +262,8 @@ const TR: Dict = {
     text: (code, until, url) => `Hediye kodu: ${code} (${until} tarihine kadar). Kullanım: ${url}`,
   },
   gdpr: RO.gdpr,
+  giftTiers: { single: '1 şarkı', pack3: '3 şarkı', pack10: '10 şarkı' },
+  dateLocale: 'tr-TR',
 };
 
 const EL: Dict = {
@@ -306,6 +319,8 @@ const EL: Dict = {
     text: (code, until, url) => `Κωδικός δώρου: ${code} (έως ${until}). Χρήση στο ${url}`,
   },
   gdpr: RO.gdpr,
+  giftTiers: { single: '1 τραγούδι', pack3: '3 τραγούδια', pack10: '10 τραγούδια' },
+  dateLocale: 'el-GR',
 };
 
 const SR: Dict = {
@@ -361,9 +376,16 @@ const SR: Dict = {
     text: (code, until, url) => `Poklon kod: ${code} (važi do ${until}). Iskoristi na ${url}`,
   },
   gdpr: RO.gdpr,
+  giftTiers: { single: '1 pesma', pack3: '3 pesme', pack10: '10 pesama' },
+  dateLocale: 'sr-RS',
 };
 
-const HR: Dict = { ...SR, footer: { ...SR.footer, termsLink: 'Uvjeti', privacyLink: 'Privatnost', contactLink: 'Kontakt' } };
+const HR: Dict = {
+  ...SR,
+  footer: { ...SR.footer, termsLink: 'Uvjeti', privacyLink: 'Privatnost', contactLink: 'Kontakt' },
+  giftTiers: { single: '1 pjesma', pack3: '3 pjesme', pack10: '10 pjesama' },
+  dateLocale: 'hr-HR',
+};
 const SL: Dict = {
   ...RO,
   footer: {
@@ -386,8 +408,14 @@ const SL: Dict = {
   paymentSuccess: SR.paymentSuccess,
   giftCode: SR.giftCode,
   gdpr: RO.gdpr,
+  giftTiers: { single: '1 pesem', pack3: '3 pesmi', pack10: '10 pesmi' },
+  dateLocale: 'sl-SI',
 };
-const BS: Dict = { ...SR };
+const BS: Dict = {
+  ...SR,
+  giftTiers: { single: '1 pjesma', pack3: '3 pjesme', pack10: '10 pjesama' },
+  dateLocale: 'bs-BA',
+};
 
 const DICTS: Record<EmailLocale, Dict> = { ro: RO, bg: BG, sr: SR, tr: TR, el: EL, hr: HR, sl: SL, bs: BS };
 

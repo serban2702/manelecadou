@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 
 interface Pos {
   x: number;
@@ -12,8 +13,10 @@ const HINT_INTERVAL_MS = 6500;
 const VISIBLE_MS = 2200;
 
 export function CursorHint() {
+  const t = useTranslations('cursorHint');
   const [pos, setPos] = useState<Pos | null>(null);
   const [pressed, setPressed] = useState(false);
+  const defaultLabel = t('default');
 
   useEffect(() => {
     let alive = true;
@@ -34,7 +37,7 @@ export function CursorHint() {
       const rect = el.getBoundingClientRect();
       const x = rect.left + rect.width / 2;
       const y = rect.top + rect.height / 2;
-      const label = el.getAttribute('data-hint-label') ?? 'Apasă aici';
+      const label = el.getAttribute('data-hint-label') ?? defaultLabel;
       setPos({ x, y, label });
       setPressed(false);
 

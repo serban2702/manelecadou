@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { SiteShell } from '@/components/SiteShell';
 import { confirmDialog } from '@/components/ConfirmDialog';
 import { useSession } from '@/lib/providers';
@@ -11,6 +12,7 @@ import { useSite } from '@/lib/site-context';
 import { getLegalPath } from '@/lib/legal-slugs';
 
 export default function ContPage() {
+  const t = useTranslations('contPage');
   const router = useRouter();
   const session = useSession();
   const site = useSite();
@@ -30,15 +32,15 @@ export default function ContPage() {
     const ok = await confirmDialog(
       type === 'delete'
         ? {
-            title: 'Ștergi contul?',
-            description: 'Cererea de ștergere e ireversibilă odată procesată de echipă (în maxim 30 zile).',
-            confirmText: 'Cere ștergere',
+            title: t('deleteTitle'),
+            description: t('deleteDesc'),
+            confirmText: t('deleteConfirm'),
             variant: 'destructive',
           }
         : {
-            title: 'Cere export al datelor?',
-            description: 'Echipa noastră te va contacta pe email în maxim 30 zile cu arhiva datelor tale.',
-            confirmText: 'Cere export',
+            title: t('exportTitle'),
+            description: t('exportDesc'),
+            confirmText: t('exportConfirm'),
           },
     );
     if (!ok) return;
@@ -49,7 +51,7 @@ export default function ContPage() {
       setSubmitted(type);
       setReason('');
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Eroare. Încearcă din nou.');
+      setError(e instanceof ApiError ? e.message : t('errGeneric'));
     } finally {
       setSubmitting(null);
     }
@@ -58,7 +60,7 @@ export default function ContPage() {
   if (!session.ready || !session.user) {
     return (
       <SiteShell hideStickyCta>
-        <div className="inner-page"><p className="lead">Se încarcă...</p></div>
+        <div className="inner-page"><p className="lead">{t('loading')}</p></div>
       </SiteShell>
     );
   }
@@ -66,38 +68,35 @@ export default function ContPage() {
   return (
     <SiteShell hideStickyCta>
       <div className="inner-page">
-        <h1 className="gold-text">Contul tău</h1>
+        <h1 className="gold-text">{t('title')}</h1>
         <p className="lead">
           {session.user.email}
           {session.user.role === 'admin' && (
             <span style={{ marginLeft: 8, padding: '2px 8px', background: 'var(--gold)', color: '#2a1a04', borderRadius: 999, fontSize: 11, fontWeight: 800 }}>
-              ADMIN
+              {t('adminBadge')}
             </span>
           )}
         </p>
 
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>
           <Link href="/studio" className="btn btn-gold" style={{ textDecoration: 'none' }}>
-            🎤 Fă o manea
+            {t('makeManea')}
           </Link>
           <button
             className="btn btn-ghost"
             onClick={() => { session.logout(); router.replace('/'); }}
           >
-            Logout
+            {t('logout')}
           </button>
         </div>
 
-        <h2>📦 Datele tale (GDPR)</h2>
-        <p>
-          Ai dreptul, conform GDPR, să ceri exportul tuturor datelor noastre despre tine sau ștergerea
-          completă a contului. Cererile sunt procesate manual de echipă în maxim 30 zile.
-        </p>
+        <h2>{t('gdprTitle')}</h2>
+        <p>{t('gdprBody')}</p>
 
         <div className="field" style={{ marginTop: 14 }}>
-          <label>Motiv (opțional)</label>
+          <label>{t('reasonLabel')}</label>
           <textarea
-            placeholder="ex. nu mai folosesc serviciul"
+            placeholder={t('reasonPlaceholder')}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             maxLength={400}
@@ -119,8 +118,7 @@ export default function ContPage() {
             background: 'rgba(62,224,126,0.12)', border: '1px solid rgba(62,224,126,0.4)',
             color: '#bff5d2', fontSize: 13,
           }}>
-            ✓ Cererea de {submitted === 'export' ? 'export' : 'ștergere'} a fost înregistrată.
-            Te contactăm pe email în maxim 30 zile.
+            {submitted === 'export' ? t('submittedExport') : t('submittedDelete')}
           </div>
         )}
 
@@ -130,7 +128,7 @@ export default function ContPage() {
             disabled={!!submitting}
             onClick={() => submit('export')}
           >
-            {submitting === 'export' ? 'Se trimite...' : '📥 Cere export date'}
+            {submitting === 'export' ? t('submitting') : t('exportCta')}
           </button>
           <button
             className="btn btn-ghost"
@@ -138,12 +136,12 @@ export default function ContPage() {
             onClick={() => submit('delete')}
             style={{ borderColor: 'rgba(255,45,126,0.4)', color: '#ff6cb0' }}
           >
-            {submitting === 'delete' ? 'Se trimite...' : '🗑️ Cere ștergere cont'}
+            {submitting === 'delete' ? t('submitting') : t('deleteCta')}
           </button>
         </div>
 
         <p style={{ marginTop: 24, fontSize: 12, color: 'rgba(255,245,220,0.5)' }}>
-          Detalii pe pagina <Link href={privacyHref} style={{ color: 'var(--gold)' }}>Confidențialitate</Link>.
+          {t('footer')} <Link href={privacyHref} style={{ color: 'var(--gold)' }}>{t('privacy')}</Link>.
         </p>
       </div>
     </SiteShell>
