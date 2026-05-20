@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
+import { useSite } from '@/lib/site-context';
+import { getPagePath } from '@/lib/page-slugs';
 
 interface CounterResponse {
   count: number;
@@ -17,6 +19,7 @@ interface CounterResponse {
  */
 export function MyGenerationsCounter() {
   const t = useTranslations('myGensCounter');
+  const site = useSite();
   const [data, setData] = useState<CounterResponse | null>(null);
 
   useEffect(() => {
@@ -51,7 +54,7 @@ export function MyGenerationsCounter() {
 
   return (
     <Link
-      href="/manelele-mele"
+      href={getPagePath(site.locale, 'manelele-mele')}
       className="my-gens-counter"
       title={t(data.count === 1 ? 'tooltipSingular' : 'tooltipPlural', { count: data.count })}
       style={{

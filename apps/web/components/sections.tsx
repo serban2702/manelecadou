@@ -8,6 +8,7 @@ import { DEMOS, FEED as FEED_FALLBACK, TESTI, TOP } from '@/lib/seed-data';
 import { siteSupportEmail, siteUrl } from '@/lib/site-shared';
 import { useSite } from '@/lib/site-context';
 import { getLegalPath } from '@/lib/legal-slugs';
+import { getPagePath } from '@/lib/page-slugs';
 
 export function Hero({ onGen, onListen }: { onGen: () => void; onListen: () => void }) {
   const t = useTranslations('hero');
@@ -463,9 +464,9 @@ export function Footer() {
         <a href={getLegalPath(site.locale, 'terms')}>{t('links.termeni')}</a>
         <a href={getLegalPath(site.locale, 'privacy')}>{t('links.confidentialitate')}</a>
         <a href={getLegalPath(site.locale, 'cookies')}>{t('links.cookies')}</a>
-        <a href="/contact">{t('links.contact')}</a>
-        <a href="/faq">{t('links.faq')}</a>
-        <a href="/articole">{t('links.articles')}</a>
+        <a href={getPagePath(site.locale, 'contact')}>{t('links.contact')}</a>
+        <a href={getPagePath(site.locale, 'faq')}>{t('links.faq')}</a>
+        <a href={getPagePath(site.locale, 'articole')}>{t('links.articles')}</a>
         {site.locale === 'ro' && (
           <>
             <a href="https://anpc.ro" target="_blank" rel="noopener noreferrer">ANPC</a>

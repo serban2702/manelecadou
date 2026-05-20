@@ -10,6 +10,7 @@ import { useSession } from '@/lib/providers';
 import { api, ApiError } from '@/lib/api';
 import { useSite } from '@/lib/site-context';
 import { getLegalPath } from '@/lib/legal-slugs';
+import { getPagePath } from '@/lib/page-slugs';
 
 export default function ContPage() {
   const t = useTranslations('contPage');
@@ -24,7 +25,7 @@ export default function ContPage() {
 
   useEffect(() => {
     if (session.ready && !session.user) {
-      router.replace('/login');
+      router.replace(getPagePath(site.locale, 'login'));
     }
   }, [session.ready, session.user, router]);
 
@@ -79,7 +80,7 @@ export default function ContPage() {
         </p>
 
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>
-          <Link href="/studio" className="btn btn-gold" style={{ textDecoration: 'none' }}>
+          <Link href={getPagePath(site.locale, 'studio')} className="btn btn-gold" style={{ textDecoration: 'none' }}>
             {t('makeManea')}
           </Link>
           <button

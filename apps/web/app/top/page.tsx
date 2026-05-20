@@ -7,12 +7,16 @@ import { useTranslations } from 'next-intl';
 import { SiteShell } from '@/components/SiteShell';
 import { TOP, VOICES } from '@/lib/seed-data';
 import { api } from '@/lib/api';
+import { useSite } from '@/lib/site-context';
+import { getPagePath } from '@/lib/page-slugs';
 
 type Period = 'week' | 'month' | 'all';
 
 export default function TopPage() {
   const t = useTranslations('topPage');
   const tVoices = useTranslations('voices');
+  const site = useSite();
+  const studio = getPagePath(site.locale, 'studio');
   const [period, setPeriod] = useState<Period>('week');
 
   const { data } = useQuery({
@@ -91,7 +95,7 @@ export default function TopPage() {
         </section>
 
         <section className="band" style={{ textAlign: 'center' }}>
-          <Link href="/studio" className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
+          <Link href={studio} className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
             🎤 {t('cta')}
           </Link>
         </section>

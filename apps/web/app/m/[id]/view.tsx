@@ -10,6 +10,7 @@ import { ManeaPlayer } from '@/components/ManeaPlayer';
 import { STYLES, VOICES, OCC } from '@/lib/seed-data';
 import { useSite } from '@/lib/site-context';
 import { formatPrice } from '@/lib/site-shared';
+import { getPagePath } from '@/lib/page-slugs';
 
 export default function ShareGenerationView() {
   return (
@@ -126,7 +127,7 @@ function ShareGenerationViewInner() {
 
   return (
     <main style={{ maxWidth: 600, margin: '40px auto', padding: 20 }}>
-      <Link href="/manelele-mele" style={{
+      <Link href={getPagePath(site.locale, 'manelele-mele')} style={{
         display: 'inline-block', marginBottom: 14, fontSize: 12,
         color: 'var(--gold)', textDecoration: 'none',
       }}>

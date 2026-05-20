@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import { Edit3, FileText, RefreshCw, Save, Sparkles, Trash2, ExternalLink } from 'lucide-react';
-import { SeoPagesApi, type AdminSeoPage } from '@/lib/api';
+import { SeoPagesApi, type AdminSeoPage, type SeoBulkJob } from '@/lib/api';
 import { useAsync } from '@/lib/hooks/use-async';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -45,9 +45,57 @@ export default function SeoPagesContent() {
   const { toast } = useToast();
   const { data: pages, loading, refetch } = useAsync(() => SeoPagesApi.list(), []);
   const { data: templates } = useAsync(() => SeoPagesApi.templates(), []);
-  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkJob, setBulkJob] = useState<SeoBulkJob | null>(null);
   const [regenSlug, setRegenSlug] = useState<string | null>(null);
   const [editing, setEditing] = useState<AdminSeoPage | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // La mount: dacă există deja un job rulând pe server (pornit din alt tab /
+  // refresh), îl pickăm și pornim polling-ul automat.
+  useEffect(() => {
+    SeoPagesApi.regenerateStatus()
+      .then((j) => {
+        if ('total' in j && j.status === 'running') {
+          setBulkJob(j);
+          startPolling();
+        }
+      })
+      .catch(() => {});
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function startPolling() {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const j = await SeoPagesApi.regenerateStatus();
+        if (!('total' in j)) {
+          // status 'idle' — job-ul a fost curățat (puțin probabil mid-run)
+          if (pollRef.current) clearInterval(pollRef.current);
+          setBulkJob(null);
+          return;
+        }
+        setBulkJob(j);
+        if (j.status !== 'running') {
+          if (pollRef.current) clearInterval(pollRef.current);
+          toast({
+            title: j.status === 'done' ? 'Generare gata' : 'Eroare',
+            description:
+              j.status === 'done'
+                ? `${j.created} create, ${j.updated} actualizate, ${j.skipped} sărite, ${j.failed.length} eșuate`
+                : j.errorMessage ?? 'Job eșuat',
+            variant: j.status === 'done' ? 'default' : 'destructive',
+          });
+          await refetch();
+        }
+      } catch (err) {
+        if (pollRef.current) clearInterval(pollRef.current);
+      }
+    }, 3000);
+  }
 
   async function runBulk(regenerate: boolean) {
     const label = regenerate
@@ -55,27 +103,23 @@ export default function SeoPagesContent() {
       : 'Generăm DOAR paginile lipsă';
     const ok = await confirmDialog({
       title: `Sigur?`,
-      description: `${label}. Folosește OpenAI — costă ~3-5$ pentru 50 pagini. Durează 3-5 minute.`,
+      description: `${label}. Folosește OpenAI — costă ~3-5$ pentru 50 pagini. Durează 3-5 minute. Poți închide pagina — job-ul continuă în background.`,
     });
     if (!ok) return;
-    setBulkRunning(true);
     try {
-      const result = await SeoPagesApi.regenerateAll({ regenerate });
-      toast({
-        title: 'Generare gata',
-        description: `${result.created} create, ${result.updated} actualizate, ${result.skipped} sărite, ${result.failed.length} eșuate`,
-      });
-      await refetch();
+      const initial = await SeoPagesApi.regenerateAll({ regenerate });
+      setBulkJob(initial);
+      startPolling();
     } catch (err) {
       toast({
         variant: 'destructive',
         title: 'Eroare',
         description: (err as Error).message,
       });
-    } finally {
-      setBulkRunning(false);
     }
   }
+
+  const bulkRunning = bulkJob?.status === 'running';
 
   async function regenOne(slug: string) {
     setRegenSlug(slug);
@@ -127,7 +171,9 @@ export default function SeoPagesContent() {
       <div className="mb-4 flex flex-wrap gap-2">
         <Button onClick={() => runBulk(false)} disabled={bulkRunning} variant="default">
           <Sparkles className="h-4 w-4" />
-          {bulkRunning ? 'Se generează...' : `Generează lipsă (${missingTemplates.length})`}
+          {bulkRunning
+            ? `Generează ${bulkJob!.processed}/${bulkJob!.total}...`
+            : `Generează lipsă (${missingTemplates.length})`}
         </Button>
         <Button
           onClick={() => runBulk(true)}
@@ -142,6 +188,27 @@ export default function SeoPagesContent() {
           {pages?.length ?? 0} / {templates?.length ?? 50} existente
         </div>
       </div>
+      {bulkJob && (
+        <div className="mb-4 rounded-md border border-border bg-muted/30 p-3 text-xs">
+          <div className="flex justify-between mb-1">
+            <span>
+              Status: <b>{bulkJob.status}</b> · {bulkJob.processed}/{bulkJob.total} procesate
+            </span>
+            <span className="text-muted-foreground">
+              {bulkJob.created} create · {bulkJob.updated} actualizate · {bulkJob.skipped} sărite · {bulkJob.failed.length} eșuate
+            </span>
+          </div>
+          <div className="h-1 w-full rounded bg-border overflow-hidden">
+            <div
+              className="h-full bg-primary transition-all"
+              style={{ width: `${Math.round((bulkJob.processed / Math.max(1, bulkJob.total)) * 100)}%` }}
+            />
+          </div>
+          {bulkJob.errorMessage && (
+            <div className="mt-2 text-destructive">{bulkJob.errorMessage}</div>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <Skeleton className="h-72 w-full" />

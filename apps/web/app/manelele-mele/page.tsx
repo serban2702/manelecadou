@@ -7,6 +7,7 @@ import { SiteShell } from '@/components/SiteShell';
 import { api, type GenerationDto } from '@/lib/api';
 import { STYLES, VOICES, OCC } from '@/lib/seed-data';
 import { useSite } from '@/lib/site-context';
+import { getPagePath } from '@/lib/page-slugs';
 
 const STATUS_COLOR: Record<string, { color: string; bg: string }> = {
   queued:           { color: '#ffd680', bg: 'rgba(241,200,77,0.12)' },
@@ -29,6 +30,8 @@ function fmtDate(iso: string, locale: string): string {
 
 export default function ManeleleMelePage() {
   const t = useTranslations('myGens');
+  const site = useSite();
+  const studio = getPagePath(site.locale, 'studio');
   const { data, isLoading, error } = useQuery({
     queryKey: ['my-generations'],
     queryFn: api.listGenerations,
@@ -48,7 +51,7 @@ export default function ManeleleMelePage() {
         <p className="lead">{t('lead')}</p>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12, marginBottom: 22 }}>
-          <Link href="/studio" className="btn btn-gold" style={{ textDecoration: 'none' }}>
+          <Link href={studio} className="btn btn-gold" style={{ textDecoration: 'none' }}>
             {t('ctaMake')}
           </Link>
         </div>
@@ -66,7 +69,7 @@ export default function ManeleleMelePage() {
             borderRadius: 12,
           }}>
             <p>{t('empty')}</p>
-            <Link href="/studio" className="btn btn-gold" style={{ textDecoration: 'none', marginTop: 10 }}>
+            <Link href={studio} className="btn btn-gold" style={{ textDecoration: 'none', marginTop: 10 }}>
               {t('ctaFirst')}
             </Link>
           </div>

@@ -83,6 +83,19 @@ export interface AdminSeoPage {
   updatedAt: string;
 }
 
+export interface SeoBulkJob {
+  status: 'running' | 'done' | 'error';
+  total: number;
+  processed: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  failed: string[];
+  startedAt: number;
+  endedAt?: number;
+  errorMessage?: string;
+}
+
 export interface SeoSlugTemplate {
   slug: string;
   category: string;
@@ -97,13 +110,12 @@ export class SeoPagesApi {
   static templates(): Promise<SeoSlugTemplate[]> {
     return http.get('/admin/seo-pages/templates');
   }
-  static regenerateAll(opts: { regenerate?: boolean } = {}): Promise<{
-    created: number;
-    updated: number;
-    skipped: number;
-    failed: string[];
-  }> {
+  static regenerateAll(opts: { regenerate?: boolean } = {}): Promise<SeoBulkJob> {
+    // Endpoint-ul răspunde 202 imediat — job-ul rulează în background pe API.
     return http.post('/admin/seo-pages/regenerate-all', opts);
+  }
+  static regenerateStatus(): Promise<SeoBulkJob | { status: 'idle' }> {
+    return http.get('/admin/seo-pages/regenerate-status');
   }
   static regenerateOne(slug: string): Promise<AdminSeoPage> {
     return http.post(`/admin/seo-pages/${slug}/regenerate`);

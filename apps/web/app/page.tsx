@@ -15,6 +15,8 @@ import {
 } from '@/components/sections';
 import { Generator } from '@/components/Generator';
 import { Ic } from '@/components/icons';
+import { useSite } from '@/lib/site-context';
+import { getPagePath } from '@/lib/page-slugs';
 
 export default function HomePage() {
   const [playing, setPlaying] = useState<string | null>(null);
@@ -22,6 +24,9 @@ export default function HomePage() {
   const tHero = useTranslations('hero');
   const tHome = useTranslations('home');
   const tCommon = useTranslations('common');
+  const site = useSite();
+  const studio = getPagePath(site.locale, 'studio');
+  const asculta = getPagePath(site.locale, 'asculta');
 
   return (
     <SiteShell>
@@ -54,7 +59,7 @@ export default function HomePage() {
           </p>
           <div className="cta-row">
             <Link
-              href="/studio"
+              href={studio}
               className="btn btn-gold btn-lg"
               style={{ textDecoration: 'none' }}
               data-hint="true"
@@ -62,7 +67,7 @@ export default function HomePage() {
             >
               {tCommon('ctaMakeManea')}
             </Link>
-            <Link href="/asculta" className="btn btn-ghost" style={{ textDecoration: 'none' }}>
+            <Link href={asculta} className="btn btn-ghost" style={{ textDecoration: 'none' }}>
               <Ic.Play s={14} /> {tCommon('ctaListen')}
             </Link>
           </div>
@@ -168,7 +173,7 @@ export default function HomePage() {
             <NowPlaying playing={playing} onClose={() => setPlaying(null)} />
           )}
           <div style={{ textAlign: 'center', marginTop: 18 }}>
-            <Link href="/asculta" className="btn btn-ghost" style={{ textDecoration: 'none' }}>
+            <Link href={asculta} className="btn btn-ghost" style={{ textDecoration: 'none' }}>
               {tHome('listen.viewAll')}
             </Link>
           </div>

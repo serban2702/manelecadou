@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { SiteShell } from '@/components/SiteShell';
+import { useSite } from '@/lib/site-context';
+import { getPagePath } from '@/lib/page-slugs';
 
 interface FaqItem { q: string; a: string }
 
@@ -11,6 +13,7 @@ export default function FaqPage() {
   const t = useTranslations('faqPage');
   const items = (t.raw('items') as FaqItem[]) ?? [];
   const [open, setOpen] = useState<number | null>(0);
+  const site = useSite();
 
   const faqJsonLd = {
     '@context': 'https://schema.org',
@@ -70,7 +73,7 @@ export default function FaqPage() {
 
         <div style={{ marginTop: 32, textAlign: 'center' }}>
           <p>{t('moreQuestions')}</p>
-          <Link href="/contact" className="btn btn-ghost" style={{ textDecoration: 'none', marginTop: 12 }}>
+          <Link href={getPagePath(site.locale, 'contact')} className="btn btn-ghost" style={{ textDecoration: 'none', marginTop: 12 }}>
             {t('writeUs')}
           </Link>
         </div>

@@ -12,6 +12,7 @@ import { CountrySwitcher } from './CountrySwitcher';
 import { MyGenerationsCounter } from './MyGenerationsCounter';
 import { useSession } from '@/lib/providers';
 import { useSite } from '@/lib/site-context';
+import { getPagePath } from '@/lib/page-slugs';
 
 export function SiteShell({ children, hideStickyCta }: { children: ReactNode; hideStickyCta?: boolean }) {
   const pathname = usePathname();
@@ -27,9 +28,9 @@ export function SiteShell({ children, hideStickyCta }: { children: ReactNode; hi
   const [rouletteOpen, setRouletteOpen] = useState(false);
 
   const NAV = [
-    { href: '/asculta', label: tNav('asculta') },
-    { href: '/studio', label: tNav('studio') },
-    { href: '/top', label: tNav('top') },
+    { href: getPagePath(site.locale, 'asculta'), label: tNav('asculta') },
+    { href: getPagePath(site.locale, 'studio'), label: tNav('studio') },
+    { href: getPagePath(site.locale, 'top'), label: tNav('top') },
   ];
 
   useEffect(() => {
@@ -89,11 +90,11 @@ export function SiteShell({ children, hideStickyCta }: { children: ReactNode; hi
             <CountrySwitcher />
             <LangSwitcher />
             {session.user ? (
-              <Link href="/cont" className="lang-btn" style={{ textDecoration: 'none' }}>
+              <Link href={getPagePath(site.locale, 'cont')} className="lang-btn" style={{ textDecoration: 'none' }}>
                 👤 {session.user.email.split('@')[0]}
               </Link>
             ) : (
-              <Link href="/login" className="lang-btn" style={{ textDecoration: 'none' }}>
+              <Link href={getPagePath(site.locale, 'login')} className="lang-btn" style={{ textDecoration: 'none' }}>
                 {tNav('intra')}
               </Link>
             )}
@@ -129,7 +130,7 @@ export function SiteShell({ children, hideStickyCta }: { children: ReactNode; hi
 
       {!hideStickyCta && (
         <div className="sticky-cta">
-          <Link href="/studio" className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
+          <Link href={getPagePath(site.locale, 'studio')} className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
             {tCommon('ctaMakeManea')}
           </Link>
         </div>

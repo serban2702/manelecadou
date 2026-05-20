@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isIpWhitelisted } from '@/lib/site-shared';
-import { resolveLegalCanonical } from '@/lib/legal-slugs';
+import { resolveCanonicalPath } from '@/lib/page-slugs';
 
 const API_INTERNAL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://api:3000';
 
@@ -64,9 +64,10 @@ export async function middleware(req: NextRequest) {
     return new NextResponse(null, { status: 444 });
   }
 
-  // Rewrite slug localizat (ex. /uslovia pe site BG) → ruta canonică Next (/termeni).
-  // Acceptăm și slug-ul canonic RO pe orice site (link-uri vechi nu se sparg).
-  const canonical = resolveLegalCanonical(req.nextUrl.pathname, flags.locale);
+  // Rewrite slug localizat (ex. /slushai pe site BG) → ruta canonică Next (/asculta).
+  // Acoperă toate paginile principale + paginile legale. Acceptăm și slug-ul
+  // canonic RO pe orice site (link-uri vechi nu se sparg).
+  const canonical = resolveCanonicalPath(req.nextUrl.pathname, flags.locale);
   if (canonical && canonical !== req.nextUrl.pathname) {
     const url = req.nextUrl.clone();
     url.pathname = canonical;

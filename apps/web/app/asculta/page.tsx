@@ -8,6 +8,8 @@ import { SiteShell } from '@/components/SiteShell';
 import { api } from '@/lib/api';
 import { OCC, STYLES, VOICES } from '@/lib/seed-data';
 import { ManeaPlayer } from '@/components/ManeaPlayer';
+import { useSite } from '@/lib/site-context';
+import { getPagePath } from '@/lib/page-slugs';
 
 const PAGE_SIZE = 30;
 const MAX_TOTAL = 300;
@@ -16,6 +18,8 @@ export default function AsculaPage() {
   const t = useTranslations('ascultaPage');
   const tStyles = useTranslations('styles');
   const tOcc = useTranslations('occasions');
+  const site = useSite();
+  const studio = getPagePath(site.locale, 'studio');
   const [styleId, setStyleId] = useState('');
   const [occasion, setOccasion] = useState('');
   const [page, setPage] = useState(0);
@@ -118,7 +122,7 @@ export default function AsculaPage() {
           {items.length === 0 && !isLoading ? (
             <div style={{ textAlign: 'center', padding: 36 }}>
               <p className="ld">{t('empty')}</p>
-              <Link href="/studio" className="btn btn-gold" style={{ textDecoration: 'none', marginTop: 14 }}>
+              <Link href={studio} className="btn btn-gold" style={{ textDecoration: 'none', marginTop: 14 }}>
                 {t('emptyCta')}
               </Link>
             </div>
@@ -215,7 +219,7 @@ export default function AsculaPage() {
         </section>
 
         <section className="band" style={{ textAlign: 'center' }}>
-          <Link href="/studio" className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
+          <Link href={studio} className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
             {t('ctaMake')}
           </Link>
         </section>

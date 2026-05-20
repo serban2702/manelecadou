@@ -2,17 +2,18 @@ import type { MetadataRoute } from 'next';
 import { headers } from 'next/headers';
 import { getSiteConfig, siteUrl as buildSiteUrl } from '@/lib/site-config';
 import { getLegalPath } from '@/lib/legal-slugs';
+import { getPagePath, type PageKey } from '@/lib/page-slugs';
 
 const API_INTERNAL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
 
-const STATIC_PAGES = [
-  { path: '/',                 priority: 1.0, changeFrequency: 'weekly' as const },
-  { path: '/studio',           priority: 0.9, changeFrequency: 'weekly' as const },
-  { path: '/asculta',          priority: 0.9, changeFrequency: 'daily' as const },
-  { path: '/top',              priority: 0.7, changeFrequency: 'daily' as const },
-  { path: '/articole',         priority: 0.8, changeFrequency: 'weekly' as const },
-  { path: '/faq',              priority: 0.6, changeFrequency: 'monthly' as const },
-  { path: '/contact',          priority: 0.5, changeFrequency: 'monthly' as const },
+const STATIC_PAGES: Array<{ key: PageKey | 'home'; priority: number; changeFrequency: 'weekly' | 'daily' | 'monthly' }> = [
+  { key: 'home',          priority: 1.0, changeFrequency: 'weekly' },
+  { key: 'studio',        priority: 0.9, changeFrequency: 'weekly' },
+  { key: 'asculta',       priority: 0.9, changeFrequency: 'daily' },
+  { key: 'top',           priority: 0.7, changeFrequency: 'daily' },
+  { key: 'articole',      priority: 0.8, changeFrequency: 'weekly' },
+  { key: 'faq',           priority: 0.6, changeFrequency: 'monthly' },
+  { key: 'contact',       priority: 0.5, changeFrequency: 'monthly' },
 ];
 
 /**
@@ -27,7 +28,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
 
   const staticItems = STATIC_PAGES.map((p) => ({
-    url: `${baseUrl}${p.path}`,
+    url: `${baseUrl}${p.key === 'home' ? '' : getPagePath(site.locale, p.key)}`,
     lastModified: now,
     changeFrequency: p.changeFrequency,
     priority: p.priority,

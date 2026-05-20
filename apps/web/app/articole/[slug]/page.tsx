@@ -4,6 +4,7 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { SiteShell } from '@/components/SiteShell';
 import { getSiteConfig, siteUrl } from '@/lib/site-config';
+import { getPagePath } from '@/lib/page-slugs';
 
 const API_INTERNAL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
 
@@ -123,7 +124,7 @@ export default async function ArticolePage({
         <nav style={{ fontSize: 12, color: 'rgba(255,245,220,0.5)', marginBottom: 16 }}>
           <Link href="/" style={{ color: 'inherit' }}>Acasă</Link>
           <span style={{ margin: '0 6px' }}>›</span>
-          <Link href="/articole" style={{ color: 'inherit' }}>Articole</Link>
+          <Link href={getPagePath(site.locale, 'articole')} style={{ color: 'inherit' }}>Articole</Link>
           <span style={{ margin: '0 6px' }}>›</span>
           <span>{page.h1}</span>
         </nav>
@@ -164,13 +165,13 @@ export default async function ArticolePage({
           <p style={{ fontSize: 14, color: 'rgba(255,245,220,0.7)', marginBottom: 18 }}>
             Demo gratis în 30 secunde. Plătești doar dacă vrei tot.
           </p>
-          <Link href="/studio" className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
+          <Link href={getPagePath(site.locale, 'studio')} className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
             🎤 Începe acum — {(site.basePriceCents / 100).toFixed(2)} {site.currency}
           </Link>
         </div>
 
         <div style={{ marginTop: 32, textAlign: 'center', fontSize: 12 }}>
-          <Link href="/articole" style={{ color: 'var(--gold)', textDecoration: 'none' }}>
+          <Link href={getPagePath(site.locale, 'articole')} style={{ color: 'var(--gold)', textDecoration: 'none' }}>
             ← Toate articolele
           </Link>
         </div>

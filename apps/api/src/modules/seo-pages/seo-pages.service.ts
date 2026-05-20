@@ -11,14 +11,35 @@ import {
 import { SeoPageGeneratorService } from './seo-page-generator.service';
 import type { Site } from '../sites/site.entity';
 
+export type BulkJob = {
+  siteId: string;
+  status: 'running' | 'done' | 'error';
+  total: number;
+  processed: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  failed: string[];
+  startedAt: number;
+  endedAt?: number;
+  errorMessage?: string;
+};
+
 @Injectable()
 export class SeoPagesService {
   private readonly logger = new Logger('SeoPagesService');
+  /** Jobs in-progress per siteId. Memorie efemeră — la restart se pierde,
+   *  dar paginile generate până atunci rămân persistente în DB. */
+  private readonly bulkJobs = new Map<string, BulkJob>();
 
   constructor(
     @InjectRepository(SeoPage) private readonly repo: Repository<SeoPage>,
     private readonly generator: SeoPageGeneratorService,
   ) {}
+
+  bulkJob(siteId: string): BulkJob | null {
+    return this.bulkJobs.get(siteId) ?? null;
+  }
 
   /** Listă publică (doar published) pentru un site dat. */
   async listPublished(siteId: string): Promise<SeoPage[]> {
@@ -84,37 +105,78 @@ export class SeoPagesService {
   }
 
   /**
-   * Generează TOATE paginile lipsă pentru site-ul curent. Skip pe cele
-   * `manual` sau pe cele care deja există dacă `regenerate=false`.
+   * Kick-off async pentru job-ul bulk. Returnează imediat — admin face polling
+   * pe `bulkJob(siteId)` ca să afișeze progres. Generarea efectivă durează
+   * 5-10 minute pentru 50 de pagini și depășește orice timeout HTTP rezonabil.
    */
-  async regenerateAll(
-    site: Site,
-    opts: { regenerate?: boolean } = {},
-  ): Promise<{ created: number; updated: number; skipped: number; failed: string[] }> {
-    const stats = { created: 0, updated: 0, skipped: 0, failed: [] as string[] };
-    const existing = await this.repo.find({ where: { siteId: site.id } });
-    const bySlug = new Map(existing.map((p) => [p.slug, p]));
-
-    for (const template of SEO_SLUG_TEMPLATES) {
-      const current = bySlug.get(template.slug);
-      if (current?.source === 'manual') {
-        stats.skipped++;
-        continue;
-      }
-      if (current && !opts.regenerate) {
-        stats.skipped++;
-        continue;
-      }
-      const result = await this.regenerateOne(site, template.slug);
-      if (!result) {
-        stats.failed.push(template.slug);
-      } else if (current) {
-        stats.updated++;
-      } else {
-        stats.created++;
-      }
+  startBulk(site: Site, opts: { regenerate?: boolean } = {}): BulkJob {
+    const existing = this.bulkJobs.get(site.id);
+    if (existing && existing.status === 'running') {
+      return existing; // deja rulează — nu-l dublăm
     }
-    return stats;
+    const job: BulkJob = {
+      siteId: site.id,
+      status: 'running',
+      total: SEO_SLUG_TEMPLATES.length,
+      processed: 0,
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      failed: [],
+      startedAt: Date.now(),
+    };
+    this.bulkJobs.set(site.id, job);
+    // fire-and-forget — eroarea e capturată în catch-ul de mai jos
+    void this.runBulk(site, opts, job);
+    return job;
+  }
+
+  private async runBulk(
+    site: Site,
+    opts: { regenerate?: boolean },
+    job: BulkJob,
+  ): Promise<void> {
+    try {
+      const existing = await this.repo.find({ where: { siteId: site.id } });
+      const bySlug = new Map(existing.map((p) => [p.slug, p]));
+
+      for (const template of SEO_SLUG_TEMPLATES) {
+        const current = bySlug.get(template.slug);
+        if (current?.source === 'manual') {
+          job.skipped++;
+          job.processed++;
+          continue;
+        }
+        if (current && !opts.regenerate) {
+          job.skipped++;
+          job.processed++;
+          continue;
+        }
+        try {
+          const result = await this.regenerateOne(site, template.slug);
+          if (!result) {
+            job.failed.push(template.slug);
+          } else if (current) {
+            job.updated++;
+          } else {
+            job.created++;
+          }
+        } catch (err) {
+          this.logger.error(
+            `bulk slug=${template.slug} failed: ${(err as Error).message}`,
+          );
+          job.failed.push(template.slug);
+        }
+        job.processed++;
+      }
+      job.status = 'done';
+    } catch (err) {
+      job.status = 'error';
+      job.errorMessage = (err as Error).message;
+      this.logger.error(`bulk job failed: ${(err as Error).message}`);
+    } finally {
+      job.endedAt = Date.now();
+    }
   }
 
   async updateManual(

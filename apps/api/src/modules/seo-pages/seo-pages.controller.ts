@@ -77,13 +77,21 @@ export class AdminSeoPagesController {
   }
 
   @Post('regenerate-all')
-  @HttpCode(200)
+  @HttpCode(202)
   async regenerateAll(
     @Req() req: Request,
     @Body() body: { regenerate?: boolean } = {},
   ) {
     if (!req.site) throw new NotFoundException('Site neconfigurat');
-    return this.svc.regenerateAll(req.site, { regenerate: !!body.regenerate });
+    // Kick-off în background și răspuns imediat — admin face polling pe status.
+    // Generare sincronă ar dura 5-10 min și ar depăși orice timeout HTTP.
+    return this.svc.startBulk(req.site, { regenerate: !!body.regenerate });
+  }
+
+  @Get('regenerate-status')
+  async regenerateStatus(@Req() req: Request) {
+    if (!req.site) throw new NotFoundException('Site neconfigurat');
+    return this.svc.bulkJob(req.site.id) ?? { status: 'idle' };
   }
 
   @Post(':slug/regenerate')

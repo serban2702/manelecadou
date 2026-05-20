@@ -5,6 +5,7 @@ import { getTranslations } from 'next-intl/server';
 import { SiteShell } from '@/components/SiteShell';
 import { getSiteConfig, siteUrl } from '@/lib/site-config';
 import { formatPrice } from '@/lib/site-shared';
+import { getPagePath } from '@/lib/page-slugs';
 
 const API_INTERNAL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
 
@@ -121,7 +122,7 @@ export default async function ArticoleHubPage() {
         )}
 
         <div style={{ textAlign: 'center', marginTop: 40, padding: 24, borderTop: '1px solid var(--line)' }}>
-          <Link href="/studio" className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
+          <Link href={getPagePath(site.locale, 'studio')} className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
             {t('ctaMake', { price: formatPrice(site, site.basePriceCents) })}
           </Link>
         </div>
