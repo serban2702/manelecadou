@@ -19,7 +19,7 @@ export function CountrySwitcher() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/public/countries`, {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/public/site/countries`, {
       credentials: 'include',
     })
       .then((r) => (r.ok ? r.json() : []))
