@@ -2269,7 +2269,7 @@ function MailConfigSection({
 
         {provider && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="From email (override)" description="Override pentru From; dacă e gol, folosește „From email" de mai sus.">
+            <Field label="From email (override)" description={'Override pentru From; dacă e gol, folosește „From email" de mai sus.'}>
               <Input
                 value={mc.fromEmail ?? ''}
                 onChange={(e) => patch({ fromEmail: e.target.value })}
