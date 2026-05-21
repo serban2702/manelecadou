@@ -79,8 +79,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     });
     if (res.ok) {
       const payload = (await res.json()) as { items: Array<{ slug: string; localizedSlug?: string; updatedAt?: string }> };
+      const articlesPath = getPagePath(site.locale, 'articole');
       seoItems = payload.items.map((p) => ({
-        url: `${baseUrl}/articole/${p.localizedSlug || p.slug}`,
+        url: `${baseUrl}${articlesPath}/${p.localizedSlug || p.slug}`,
         lastModified: p.updatedAt ? new Date(p.updatedAt) : now,
         changeFrequency: 'monthly' as const,
         priority: 0.7,

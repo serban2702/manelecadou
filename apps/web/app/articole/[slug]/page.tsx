@@ -54,10 +54,11 @@ export async function generateMetadata({
     return { title: t('notFound') };
   }
   const baseUrl = siteUrl(site);
-  // Canonical → varianta localizată (URL-ul „bun") chiar dacă userul a venit
-  // pe master slug-ul vechi. Google va indexa doar URL-ul canonic.
+  // Canonical → varianta localizată: ATÂT path-ul „articole" (devine /statii pe
+  // bg, /arthra pe el etc., via PAGE_SLUGS) CÂT și slug-ul însuși.
   const canonicalSlug = page.localizedSlug || slug;
-  const url = `${baseUrl}/articole/${canonicalSlug}`;
+  const articlesPath = getPagePath(site.locale, 'articole');
+  const url = `${baseUrl}${articlesPath}/${canonicalSlug}`;
   const ogImage = site.brand?.ogImageUrl ?? `${baseUrl}/icon-512.png`;
   return {
     // absolute: ignoră template-ul „%s · BrandName" din root layout —
@@ -96,12 +97,14 @@ export default async function ArticolePage({
   // pe master slug-ul vechi (cel din SEO_SLUG_TEMPLATES, în română), facem
   // 308 redirect către varianta nativă — fără să spargem link-urile vechi.
   if (page.localizedSlug && page.localizedSlug !== slug) {
-    redirect(`/articole/${page.localizedSlug}`);
+    redirect(`${getPagePath(site.locale, 'articole')}/${page.localizedSlug}`);
   }
   const t = await getTranslations('articlesPage');
   const priceText = `${(site.basePriceCents / 100).toFixed(2)} ${site.currency}`;
 
   const baseUrl = siteUrl(site);
+  const articlesPathDetail = getPagePath(site.locale, 'articole');
+  const canonicalArticleUrl = `${baseUrl}${articlesPathDetail}/${page.localizedSlug || slug}`;
   const articleJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Article',
@@ -110,7 +113,7 @@ export default async function ArticolePage({
     inLanguage: page.locale,
     datePublished: page.updatedAt,
     dateModified: page.updatedAt,
-    mainEntityOfPage: { '@type': 'WebPage', '@id': `${baseUrl}/articole/${slug}` },
+    mainEntityOfPage: { '@type': 'WebPage', '@id': canonicalArticleUrl },
     publisher: {
       '@type': 'Organization',
       name: site.name,
@@ -122,8 +125,8 @@ export default async function ArticolePage({
     '@type': 'BreadcrumbList',
     itemListElement: [
       { '@type': 'ListItem', position: 1, name: site.name, item: baseUrl },
-      { '@type': 'ListItem', position: 2, name: 'Articole', item: `${baseUrl}/articole` },
-      { '@type': 'ListItem', position: 3, name: page.h1, item: `${baseUrl}/articole/${slug}` },
+      { '@type': 'ListItem', position: 2, name: t('breadcrumbAll'), item: `${baseUrl}${articlesPathDetail}` },
+      { '@type': 'ListItem', position: 3, name: page.h1, item: canonicalArticleUrl },
     ],
   };
 

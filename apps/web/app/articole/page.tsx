@@ -47,7 +47,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: { absolute: `${t('metaTitle')} — ${site.name}` },
     description: t('metaDescription'),
-    alternates: { canonical: `${baseUrl}/articole` },
+    alternates: { canonical: `${baseUrl}${getPagePath(site.locale, 'articole')}` },
   };
 }
 
@@ -56,6 +56,7 @@ export default async function ArticoleHubPage() {
   const site = await getSiteConfig();
   const t = await getTranslations('articlesPage');
   const items = data?.items ?? [];
+  const articlesPath = getPagePath(site.locale, 'articole');
 
   // grupare pe categorie
   const grouped = items.reduce<Record<string, SeoPageSummary[]>>((acc, p) => {
@@ -93,7 +94,7 @@ export default async function ArticoleHubPage() {
                 {pages.map((p) => (
                   <Link
                     key={p.slug}
-                    href={`/articole/${p.localizedSlug || p.slug}`}
+                    href={`${articlesPath}/${p.localizedSlug || p.slug}`}
                     style={{
                       display: 'block',
                       padding: 16,
