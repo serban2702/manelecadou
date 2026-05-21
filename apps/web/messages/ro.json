@@ -943,6 +943,13 @@
     "metaDescription": "Idei de cadou, ghiduri și exemple de manele personalizate. Tot ce trebuie să știi înainte să-ți faci propria manea cadou.",
     "emptyState": "Articolele se construiesc — revino în curând.",
     "ctaMake": "🎤 Fă propria manea — {price}",
+    "breadcrumbHome": "Acasă",
+    "breadcrumbAll": "Articole",
+    "backToAll": "← Toate articolele",
+    "articleCtaTitle": "Gata să faci propria manea?",
+    "articleCtaSub": "Demo gratis în 30 secunde. Plătești doar dacă vrei tot.",
+    "articleCtaButton": "🎤 Începe acum — {price}",
+    "notFound": "Articol negăsit",
     "categories": {
       "ocazii": "🎉 Ocazii",
       "destinatari": "👤 Pentru cine",

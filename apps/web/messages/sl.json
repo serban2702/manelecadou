@@ -945,6 +945,13 @@
     "metaDescription": "Ideje za darila, vodniki in primeri prilagojenih pesmi. Vse, kar moraš vedeti, preden narediš svojo pesem-darilo.",
     "emptyState": "Članki se pripravljajo — vrni se kmalu.",
     "ctaMake": "🎤 Naredi svojo pesem — {price}",
+    "breadcrumbHome": "Domov",
+    "breadcrumbAll": "Članki",
+    "backToAll": "← Vsi članki",
+    "articleCtaTitle": "Pripravljen narediti svojo pesem?",
+    "articleCtaSub": "Brezplačni demo v 30 sekundah. Plačaš le, če ti je všeč.",
+    "articleCtaButton": "🎤 Začni zdaj — {price}",
+    "notFound": "Članek ni najden",
     "categories": {
       "ocazii": "🎉 Priložnosti",
       "destinatari": "👤 Za koga",

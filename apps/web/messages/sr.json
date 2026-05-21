@@ -945,6 +945,13 @@
     "metaDescription": "Ideje za poklone, vodiči i primeri prilagođenih pesama. Sve što treba da znaš pre nego što napraviš svoju poklon-pesmu.",
     "emptyState": "Članci se prave — vrati se uskoro.",
     "ctaMake": "🎤 Napravi svoju pesmu — {price}",
+    "breadcrumbHome": "Početna",
+    "breadcrumbAll": "Članci",
+    "backToAll": "← Svi članci",
+    "articleCtaTitle": "Spreman da napraviš svoju pesmu?",
+    "articleCtaSub": "Besplatni demo za 30 sekundi. Plaćaš samo ako ti se sviđa.",
+    "articleCtaButton": "🎤 Počni sada — {price}",
+    "notFound": "Članak nije pronađen",
     "categories": {
       "ocazii": "🎉 Prilike",
       "destinatari": "👤 Za koga",

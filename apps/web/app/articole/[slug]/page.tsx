@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
+import { getTranslations } from 'next-intl/server';
 import { SiteShell } from '@/components/SiteShell';
 import { getSiteConfig, siteUrl } from '@/lib/site-config';
 import { getPagePath } from '@/lib/page-slugs';
@@ -46,7 +47,8 @@ export async function generateMetadata({
   const { slug } = await params;
   const [page, site] = await Promise.all([fetchPage(slug), getSiteConfig()]);
   if (!page) {
-    return { title: 'Articol negăsit' };
+    const t = await getTranslations('articlesPage');
+    return { title: t('notFound') };
   }
   const baseUrl = siteUrl(site);
   const url = `${baseUrl}/articole/${slug}`;
@@ -83,6 +85,8 @@ export default async function ArticolePage({
   const { slug } = await params;
   const [page, site] = await Promise.all([fetchPage(slug), getSiteConfig()]);
   if (!page) notFound();
+  const t = await getTranslations('articlesPage');
+  const priceText = `${(site.basePriceCents / 100).toFixed(2)} ${site.currency}`;
 
   const baseUrl = siteUrl(site);
   const articleJsonLd = {
@@ -122,9 +126,9 @@ export default async function ArticolePage({
       />
       <main style={{ maxWidth: 760, margin: '40px auto', padding: '0 20px' }}>
         <nav style={{ fontSize: 12, color: 'rgba(255,245,220,0.5)', marginBottom: 16 }}>
-          <Link href="/" style={{ color: 'inherit' }}>Acasă</Link>
+          <Link href="/" style={{ color: 'inherit' }}>{t('breadcrumbHome')}</Link>
           <span style={{ margin: '0 6px' }}>›</span>
-          <Link href={getPagePath(site.locale, 'articole')} style={{ color: 'inherit' }}>Articole</Link>
+          <Link href={getPagePath(site.locale, 'articole')} style={{ color: 'inherit' }}>{t('breadcrumbAll')}</Link>
           <span style={{ margin: '0 6px' }}>›</span>
           <span>{page.h1}</span>
         </nav>
@@ -160,19 +164,19 @@ export default async function ArticolePage({
           }}
         >
           <div className="gold-text serif" style={{ fontSize: 22, marginBottom: 8 }}>
-            Gata să faci propria manea?
+            {t('articleCtaTitle')}
           </div>
           <p style={{ fontSize: 14, color: 'rgba(255,245,220,0.7)', marginBottom: 18 }}>
-            Demo gratis în 30 secunde. Plătești doar dacă vrei tot.
+            {t('articleCtaSub')}
           </p>
           <Link href={getPagePath(site.locale, 'studio')} className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
-            🎤 Începe acum — {(site.basePriceCents / 100).toFixed(2)} {site.currency}
+            {t('articleCtaButton', { price: priceText })}
           </Link>
         </div>
 
         <div style={{ marginTop: 32, textAlign: 'center', fontSize: 12 }}>
           <Link href={getPagePath(site.locale, 'articole')} style={{ color: 'var(--gold)', textDecoration: 'none' }}>
-            ← Toate articolele
+            {t('backToAll')}
           </Link>
         </div>
       </main>

@@ -94,13 +94,24 @@ export class SeoPageGeneratorService {
 
   private userPrompt(site: Site, template: SeoSlugTemplate): string {
     const builder = USER_PROMPT_BY_LOCALE[site.locale] ?? USER_PROMPT_BY_LOCALE.en;
-    return builder({
+    const body = builder({
       template,
       brand: site.name,
       locale: site.locale,
       langName: LOCALE_NAME[site.locale] ?? 'English',
       priceText: `${(site.basePriceCents / 100).toFixed(2)} ${site.currency}`,
     });
+    // Pentru locale ≠ ro: keyword-ul din template e seed în ROMÂNĂ. Modelul
+    // trebuie OBLIGATORIU să-l traducă într-un echivalent nativ idiomatic din
+    // limba țintă și să folosească VARIANTA NATIVĂ peste tot (title, h1, meta,
+    // excerpt, contentMd). Fără asta, modelul lasă prefixul românesc as-is
+    // (ex. „Alternativă la a oferi bani cadou" rămâne în title pe site bg).
+    if (site.locale !== 'ro') {
+      const lang = LOCALE_NAME[site.locale] ?? 'English';
+      const directive = TRANSLATE_DIRECTIVE_BY_LOCALE[site.locale] ?? TRANSLATE_DIRECTIVE_BY_LOCALE.en;
+      return `${directive(lang)}\n\n${body}`;
+    }
+    return body;
   }
 
   private parseOutput(raw: string): GeneratedSeoPage | null {
@@ -792,4 +803,77 @@ const USER_PROMPT_BY_LOCALE: Record<string, UserBuilder> = {
     parts.push(`Generate the JSON object now.`);
     return parts.join('\n');
   },
+};
+
+// Directiva care apare la ÎNCEPUTUL user prompt-ului pentru locale ≠ ro:
+// forțează modelul să traducă keyword-ul (care vine în română) într-un
+// echivalent nativ idiomatic și să-l folosească peste tot. Fără asta, modelul
+// păstrează prefixul românesc as-is.
+const TRANSLATE_DIRECTIVE_BY_LOCALE: Record<string, (lang: string) => string> = {
+  bg: (lang) => [
+    `ВАЖНО: „Основната ключова дума" по-долу е дадена на РУМЪНСКИ като seed.`,
+    `ТРЯБВА да я преведеш в естествен, идиоматичен ${lang} еквивалент и да`,
+    `използваш ПРЕВЕДЕНАТА версия в title, h1, metaDescription, excerpt и`,
+    `целия contentMd. НЕ оставяй румънски думи в крайния резултат.`,
+  ].join('\n'),
+  sr: (lang) => [
+    `VAŽNO: „Glavna ključna reč" ispod je data na RUMUNSKOM kao seed.`,
+    `MORAŠ je prevesti u prirodan, idiomatičan ${lang} ekvivalent i koristiti`,
+    `PREVEDENU verziju u title, h1, metaDescription, excerpt i celom contentMd.`,
+    `NE ostavljaj rumunske reči u finalnom rezultatu.`,
+  ].join('\n'),
+  tr: (lang) => [
+    `ÖNEMLİ: Aşağıdaki „Ana anahtar kelime" tohum olarak ROMENCE verilmiştir.`,
+    `Onu doğal, deyimsel ${lang} karşılığına ÇEVİRMELİSİN ve ÇEVRİLMİŞ versiyonu`,
+    `title, h1, metaDescription, excerpt ve tüm contentMd'de kullanmalısın.`,
+    `Sonuçta Romence kelime BIRAKMA.`,
+  ].join('\n'),
+  el: (lang) => [
+    `ΣΗΜΑΝΤΙΚΟ: Η „Κύρια λέξη-κλειδί" παρακάτω δίνεται στα ΡΟΥΜΑΝΙΚΑ ως seed.`,
+    `ΠΡΕΠΕΙ να τη μεταφράσεις σε φυσικό, ιδιωματικό ${lang} ισοδύναμο και να`,
+    `χρησιμοποιήσεις τη ΜΕΤΑΦΡΑΣΜΕΝΗ έκδοση σε title, h1, metaDescription, excerpt`,
+    `και ολόκληρο το contentMd. ΜΗΝ αφήσεις ρουμανικές λέξεις στο τελικό αποτέλεσμα.`,
+  ].join('\n'),
+  hr: (lang) => [
+    `VAŽNO: „Glavna ključna riječ" ispod je dana na RUMUNJSKOM kao seed.`,
+    `MORAŠ je prevesti u prirodan, idiomatičan ${lang} ekvivalent i koristiti`,
+    `PREVEDENU verziju u title, h1, metaDescription, excerpt i cijelom contentMd.`,
+    `NE ostavljaj rumunjske riječi u konačnom rezultatu.`,
+  ].join('\n'),
+  sl: (lang) => [
+    `POMEMBNO: „Glavna ključna beseda" spodaj je podana v ROMUNŠČINI kot seed.`,
+    `MORAŠ jo prevesti v naraven, idiomatičen ${lang} ekvivalent in uporabiti`,
+    `PREVEDENO različico v title, h1, metaDescription, excerpt in celotnem contentMd.`,
+    `NE puščaj romunskih besed v končnem rezultatu.`,
+  ].join('\n'),
+  bs: (lang) => [
+    `VAŽNO: „Glavna ključna riječ" ispod je data na RUMUNSKOM kao seed.`,
+    `MORAŠ je prevesti u prirodan, idiomatičan ${lang} ekvivalent i koristiti`,
+    `PREVEDENU verziju u title, h1, metaDescription, excerpt i cijelom contentMd.`,
+    `NE ostavljaj rumunske riječi u konačnom rezultatu.`,
+  ].join('\n'),
+  sq: (lang) => [
+    `E RËNDËSISHME: „Fjala kyçe kryesore" më poshtë është dhënë në RUMANISHT si seed.`,
+    `DUHET ta përkthesh në një ekuivalent natyror, idiomatik ${lang} dhe të përdorësh`,
+    `versionin e PËRKTHYER në title, h1, metaDescription, excerpt dhe gjithë contentMd.`,
+    `MOS lër fjalë rumune në rezultatin përfundimtar.`,
+  ].join('\n'),
+  mk: (lang) => [
+    `ВАЖНО: „Главниот клучен збор" подолу е даден на РУМУНСКИ како seed.`,
+    `МОРАШ да го преведеш во природен, идиоматски ${lang} еквивалент и да`,
+    `го користиш ПРЕВЕДЕНИОТ во title, h1, metaDescription, excerpt и целиот contentMd.`,
+    `НЕ оставај романски зборови во крајниот резултат.`,
+  ].join('\n'),
+  hu: (lang) => [
+    `FONTOS: Az alábbi „Fő kulcsszó" ROMÁNUL van megadva seedként.`,
+    `LE KELL fordítanod természetes, idiomatikus ${lang} megfelelőre, és a`,
+    `LEFORDÍTOTT verziót kell használnod a title, h1, metaDescription, excerpt és`,
+    `az egész contentMd mezőben. NE hagyj román szavakat a végső kimenetben.`,
+  ].join('\n'),
+  en: (lang) => [
+    `IMPORTANT: The "Primary keyword" below is given in ROMANIAN as a seed.`,
+    `You MUST translate it into a natural, idiomatic ${lang} equivalent and use`,
+    `the TRANSLATED version in title, h1, metaDescription, excerpt and the entire`,
+    `contentMd. Do NOT leave any Romanian words in the final output.`,
+  ].join('\n'),
 };

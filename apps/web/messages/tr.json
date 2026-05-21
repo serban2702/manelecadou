@@ -945,6 +945,13 @@
     "metaDescription": "Hediye fikirleri, rehberler ve kişiselleştirilmiş şarkı örnekleri. Kendi hediye şarkını yapmadan önce bilmen gereken her şey.",
     "emptyState": "Makaleler hazırlanıyor — yakında geri dön.",
     "ctaMake": "🎤 Kendi şarkını yap — {price}",
+    "breadcrumbHome": "Ana sayfa",
+    "breadcrumbAll": "Makaleler",
+    "backToAll": "← Tüm makaleler",
+    "articleCtaTitle": "Kendi şarkını yapmaya hazır mısın?",
+    "articleCtaSub": "30 saniyede ücretsiz demo. Sadece beğenirsen ödersin.",
+    "articleCtaButton": "🎤 Şimdi başla — {price}",
+    "notFound": "Makale bulunamadı",
     "categories": {
       "ocazii": "🎉 Vesileler",
       "destinatari": "👤 Kim için",
