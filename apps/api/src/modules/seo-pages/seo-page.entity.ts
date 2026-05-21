@@ -25,9 +25,20 @@ export class SeoPage {
   @Column({ type: 'uuid' })
   siteId!: string;
 
-  /** Slug URL (ex: `manea-cadou-zi-nastere`). Identifică template-ul. */
+  /** Slug-ul MASTER (din SEO_SLUG_TEMPLATES, în română). Identifică template-ul
+   *  și e PK logic împreună cu siteId. NU se afișează în URL public dacă site-ul
+   *  e non-RO și are `localizedSlug` setat — atunci URL-ul public îl folosește
+   *  pe acela. */
   @Column({ type: 'varchar', length: 120 })
   slug!: string;
+
+  /** Slug-ul în limba site-ului (generat de OpenAI o dată cu conținutul).
+   *  Pe site-urile RO == slug. Pentru non-RO e variantă nativă, kebab-case,
+   *  ASCII (fără diacritice) — folosit ca URL public canonic. Master slug-ul
+   *  vechi face 301 redirect către acesta. */
+  @Index()
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  localizedSlug!: string | null;
 
   /** Categoria de keyword (folosit pentru breadcrumbs și hub). */
   @Column({ type: 'varchar', length: 32, default: 'general' })

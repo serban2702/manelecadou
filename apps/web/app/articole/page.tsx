@@ -11,6 +11,8 @@ const API_INTERNAL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API
 
 interface SeoPageSummary {
   slug: string;
+  /** Slug în limba site-ului (sau egal cu slug pe RO / pagini ne-regenerate). */
+  localizedSlug?: string;
   category: string;
   title: string;
   h1: string;
@@ -91,7 +93,7 @@ export default async function ArticoleHubPage() {
                 {pages.map((p) => (
                   <Link
                     key={p.slug}
-                    href={`/articole/${p.slug}`}
+                    href={`/articole/${p.localizedSlug || p.slug}`}
                     style={{
                       display: 'block',
                       padding: 16,

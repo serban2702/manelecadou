@@ -236,12 +236,13 @@ export default function SeoPagesContent() {
               <TableRow key={p.id}>
                 <TableCell>
                   <a
-                    href={`/articole/${p.slug}`}
+                    href={`/articole/${p.localizedSlug || p.slug}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-xs font-mono text-primary hover:underline inline-flex items-center gap-1"
+                    title={p.localizedSlug && p.localizedSlug !== p.slug ? `Slug master: ${p.slug}` : undefined}
                   >
-                    {p.slug}
+                    {p.localizedSlug || p.slug}
                     <ExternalLink className="h-3 w-3" />
                   </a>
                 </TableCell>
@@ -382,7 +383,7 @@ function EditDialog({
             <Edit3 className="h-4 w-4" /> Editează pagina SEO
           </DialogTitle>
           <DialogDescription>
-            <code className="text-xs">/articole/{page.slug}</code> · categoria{' '}
+            <code className="text-xs">/articole/{page.localizedSlug || page.slug}</code> · categoria{' '}
             <Badge variant="outline" className="text-xs ml-1">
               {page.category}
             </Badge>
@@ -474,7 +475,7 @@ function EditDialog({
             Renunță
           </Button>
           <a
-            href={`/articole/${page.slug}`}
+            href={`/articole/${page.localizedSlug || page.slug}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs text-muted-foreground hover:text-foreground self-center mr-auto inline-flex items-center gap-1"

@@ -56,7 +56,19 @@ export class SeoPagesService {
     });
   }
 
+  /**
+   * Caută pagină după slug. Acceptă FIE `slug` master (din template) FIE
+   * `localizedSlug` (cel tradus, vizibil în URL). Pe site-urile non-RO regenerate
+   * după introducerea coloanei `localizedSlug`, URL-ul canonic e cel localizat;
+   * dar acceptăm și master slug ca să nu spargem link-uri vechi indexate.
+   */
   async findBySlug(siteId: string, slug: string): Promise<SeoPage | null> {
+    // direct match pe localizedSlug (cazul curent)
+    const byLocalized = await this.repo.findOne({
+      where: { siteId, localizedSlug: slug, published: true },
+    });
+    if (byLocalized) return byLocalized;
+    // fallback: master slug
     return this.repo.findOne({ where: { siteId, slug, published: true } });
   }
 
@@ -95,13 +107,44 @@ export class SeoPagesService {
     row.contentMd = generated.contentMd;
     row.locale = site.locale;
     row.category = template.category;
+    row.localizedSlug = generated.localizedSlug;
     if (row.source === 'manual') {
       // nu suprascriem manual edits
       this.logger.log(`skip manual page slug=${slug}`);
       return row;
     }
     row.source = 'ai';
-    return this.repo.save(row);
+    const saved = await this.repo.save(row);
+    // Invalidează cache-ul Next.js pentru pagina afectată (fire-and-forget).
+    void this.invalidateWebCache(saved.localizedSlug ?? saved.slug, saved.slug);
+    return saved;
+  }
+
+  /**
+   * Notifică Next.js (apps/web) că trebuie să invalideze cache-ul pentru
+   * o pagină SEO. Folosește endpoint-ul intern `/api/internal/revalidate`
+   * cu un secret partajat (REVALIDATE_SECRET). Tăcut la eroare — nu blocăm
+   * regenerarea dacă web-ul nu răspunde.
+   */
+  private async invalidateWebCache(...slugs: Array<string | null | undefined>): Promise<void> {
+    const webUrl = process.env.WEB_INTERNAL_URL || 'http://web:1500';
+    const secret = process.env.REVALIDATE_SECRET;
+    if (!secret) return; // dezactivat dacă nu e configurat
+    const tags = Array.from(new Set(slugs.filter((s): s is string => !!s).map((s) => `seo-page-${s}`)));
+    tags.push('site-sitemap-seo');
+    try {
+      await Promise.allSettled(
+        tags.map((tag) =>
+          fetch(`${webUrl}/api/internal/revalidate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tag, secret }),
+          }),
+        ),
+      );
+    } catch (err) {
+      this.logger.warn(`revalidate web cache failed: ${(err as Error).message}`);
+    }
   }
 
   /**

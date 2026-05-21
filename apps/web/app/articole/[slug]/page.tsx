@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
@@ -11,6 +11,7 @@ const API_INTERNAL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API
 
 interface SeoPageDetail {
   slug: string;
+  localizedSlug: string;
   category: string;
   locale: string;
   title: string;
@@ -29,7 +30,9 @@ async function fetchPage(slug: string): Promise<SeoPageDetail | null> {
       `${API_INTERNAL}/api/public/seo-pages/${encodeURIComponent(slug)}`,
       {
         headers: { Host: host, 'X-Forwarded-Host': host },
-        next: { revalidate: 1800, tags: [`seo-page-${slug}`] },
+        // 60s e plasă de siguranță. La regenerare, API-ul cheamă explicit
+        // /api/internal/revalidate ca să invalideze tag-urile imediat.
+        next: { revalidate: 60, tags: [`seo-page-${slug}`] },
       },
     );
     if (!res.ok) return null;
@@ -51,7 +54,10 @@ export async function generateMetadata({
     return { title: t('notFound') };
   }
   const baseUrl = siteUrl(site);
-  const url = `${baseUrl}/articole/${slug}`;
+  // Canonical → varianta localizată (URL-ul „bun") chiar dacă userul a venit
+  // pe master slug-ul vechi. Google va indexa doar URL-ul canonic.
+  const canonicalSlug = page.localizedSlug || slug;
+  const url = `${baseUrl}/articole/${canonicalSlug}`;
   const ogImage = site.brand?.ogImageUrl ?? `${baseUrl}/icon-512.png`;
   return {
     // absolute: ignoră template-ul „%s · BrandName" din root layout —
@@ -85,6 +91,13 @@ export default async function ArticolePage({
   const { slug } = await params;
   const [page, site] = await Promise.all([fetchPage(slug), getSiteConfig()]);
   if (!page) notFound();
+
+  // Canonical URL = localizedSlug (varianta tradusă). Dacă vizitatorul a venit
+  // pe master slug-ul vechi (cel din SEO_SLUG_TEMPLATES, în română), facem
+  // 308 redirect către varianta nativă — fără să spargem link-urile vechi.
+  if (page.localizedSlug && page.localizedSlug !== slug) {
+    redirect(`/articole/${page.localizedSlug}`);
+  }
   const t = await getTranslations('articlesPage');
   const priceText = `${(site.basePriceCents / 100).toFixed(2)} ${site.currency}`;
 

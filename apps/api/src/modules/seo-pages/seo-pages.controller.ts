@@ -30,6 +30,7 @@ export class PublicSeoPagesController {
       categories: this.svc.categories(),
       items: pages.map((p) => ({
         slug: p.slug,
+        localizedSlug: p.localizedSlug ?? p.slug,
         category: p.category,
         title: p.title,
         h1: p.h1,
@@ -46,6 +47,7 @@ export class PublicSeoPagesController {
     if (!page) throw new NotFoundException('Pagina nu există');
     return {
       slug: page.slug,
+      localizedSlug: page.localizedSlug ?? page.slug,
       category: page.category,
       locale: page.locale,
       title: page.title,

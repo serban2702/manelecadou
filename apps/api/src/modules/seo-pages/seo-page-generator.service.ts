@@ -40,6 +40,9 @@ export interface GeneratedSeoPage {
   h1: string;
   excerpt: string;
   contentMd: string;
+  /** Slug în limba site-ului (kebab-case, ASCII, fără diacritice). Pentru
+   *  site-urile RO == slug-ul master. Pentru non-RO = variantă tradusă. */
+  localizedSlug: string;
 }
 
 /**
@@ -67,7 +70,7 @@ export class SeoPageGeneratorService {
 
     try {
       const raw = await this.openaiChat(apiKey, system, user);
-      const parsed = this.parseOutput(raw);
+      const parsed = this.parseOutput(raw, template.slug);
       if (!parsed) {
         this.logger.warn(`Generator returned unparseable JSON for slug=${template.slug}`);
         return null;
@@ -94,27 +97,32 @@ export class SeoPageGeneratorService {
 
   private userPrompt(site: Site, template: SeoSlugTemplate): string {
     const builder = USER_PROMPT_BY_LOCALE[site.locale] ?? USER_PROMPT_BY_LOCALE.en;
+    const lang = LOCALE_NAME[site.locale] ?? 'English';
     const body = builder({
       template,
       brand: site.name,
       locale: site.locale,
-      langName: LOCALE_NAME[site.locale] ?? 'English',
+      langName: lang,
       priceText: `${(site.basePriceCents / 100).toFixed(2)} ${site.currency}`,
     });
+    // Cerință SLUG: trebuie inclus în JSON-ul de output, în limba site-ului,
+    // kebab-case, ASCII (fără diacritice / caractere ne-latine pentru bg/el/sr/mk
+    // — transliterate în latine), lowercase, max 60 chars. Pentru ro = slug-ul
+    // master from template.
+    const slugDirective = SLUG_DIRECTIVE_BY_LOCALE[site.locale] ?? SLUG_DIRECTIVE_BY_LOCALE.en;
+    const slugInstr = slugDirective(lang, template.slug);
     // Pentru locale ≠ ro: keyword-ul din template e seed în ROMÂNĂ. Modelul
     // trebuie OBLIGATORIU să-l traducă într-un echivalent nativ idiomatic din
     // limba țintă și să folosească VARIANTA NATIVĂ peste tot (title, h1, meta,
-    // excerpt, contentMd). Fără asta, modelul lasă prefixul românesc as-is
-    // (ex. „Alternativă la a oferi bani cadou" rămâne în title pe site bg).
+    // excerpt, contentMd, localizedSlug).
     if (site.locale !== 'ro') {
-      const lang = LOCALE_NAME[site.locale] ?? 'English';
       const directive = TRANSLATE_DIRECTIVE_BY_LOCALE[site.locale] ?? TRANSLATE_DIRECTIVE_BY_LOCALE.en;
-      return `${directive(lang)}\n\n${body}`;
+      return `${directive(lang)}\n\n${body}\n\n${slugInstr}`;
     }
-    return body;
+    return `${body}\n\n${slugInstr}`;
   }
 
-  private parseOutput(raw: string): GeneratedSeoPage | null {
+  private parseOutput(raw: string, masterSlug: string): GeneratedSeoPage | null {
     let text = raw.trim();
     text = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/```\s*$/i, '');
     try {
@@ -125,12 +133,15 @@ export class SeoPageGeneratorService {
         typeof obj.h1 === 'string' &&
         typeof obj.contentMd === 'string'
       ) {
+        const rawSlug = typeof obj.slug === 'string' ? obj.slug : '';
+        const localizedSlug = normalizeSlug(rawSlug) || masterSlug;
         return {
           title: obj.title.slice(0, 200),
           metaDescription: obj.metaDescription.slice(0, 320),
           h1: obj.h1.slice(0, 200),
           excerpt: (obj.excerpt ?? obj.metaDescription).slice(0, 320),
           contentMd: obj.contentMd,
+          localizedSlug,
         };
       }
       return null;
@@ -875,5 +886,112 @@ const TRANSLATE_DIRECTIVE_BY_LOCALE: Record<string, (lang: string) => string> = 
     `You MUST translate it into a natural, idiomatic ${lang} equivalent and use`,
     `the TRANSLATED version in title, h1, metaDescription, excerpt and the entire`,
     `contentMd. Do NOT leave any Romanian words in the final output.`,
+  ].join('\n'),
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Slug normalization + per-locale slug instructions
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Normalizează slug-ul venit de la model: lower-case, fără diacritice,
+ * transliterare cirilic→latin pentru bg/sr/mk, grec→latin pentru el, păstrează
+ * doar [a-z0-9-], lungime max 80. Returnează string gol dacă output-ul e
+ * inutilizabil — caller-ul va cădea pe master-slug.
+ */
+function normalizeSlug(input: string): string {
+  if (!input) return '';
+  let s = input.trim().toLowerCase();
+  // transliteration tables (caractere obișnuite în limbi suportate)
+  const TRANSLIT: Record<string, string> = {
+    // bg / mk / sr (cirilic) → latin
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ж': 'zh',
+    'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n',
+    'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f',
+    'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sht', 'ъ': 'a',
+    'ь': '', 'ю': 'yu', 'я': 'ya',
+    'ѓ': 'gj', 'ѕ': 'dz', 'ј': 'j', 'љ': 'lj', 'њ': 'nj', 'ќ': 'kj',
+    'џ': 'dj', 'ђ': 'dj', 'ћ': 'c',
+    // greacă → latin
+    'α': 'a', 'β': 'v', 'γ': 'g', 'δ': 'd', 'ε': 'e', 'ζ': 'z', 'η': 'i',
+    'θ': 'th', 'ι': 'i', 'κ': 'k', 'λ': 'l', 'μ': 'm', 'ν': 'n', 'ξ': 'x',
+    'ο': 'o', 'π': 'p', 'ρ': 'r', 'σ': 's', 'ς': 's', 'τ': 't', 'υ': 'y',
+    'φ': 'f', 'χ': 'ch', 'ψ': 'ps', 'ω': 'o',
+    // turcă
+    'ı': 'i', 'ğ': 'g', 'ş': 's', 'ç': 'c', 'ü': 'u', 'ö': 'o',
+    // hr/sl/bs/sq/ro
+    'č': 'c', 'ć': 'c', 'đ': 'd', 'š': 's', 'ž': 'z',
+    'ă': 'a', 'â': 'a', 'î': 'i', 'ț': 't', 'ş': 's',
+    'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ő': 'o', 'ű': 'u',
+    'ë': 'e',
+  };
+  let out = '';
+  for (const ch of s) {
+    out += TRANSLIT[ch] ?? ch;
+  }
+  // strip Unicode decomposition for orice rămas (NFD + diacritics)
+  out = out.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  out = out.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return out.slice(0, 80);
+}
+
+const SLUG_DIRECTIVE_BY_LOCALE: Record<string, (lang: string, masterSlug: string) => string> = {
+  ro: (_lang, masterSlug) => [
+    `SLUG: include în JSON câmpul "slug" cu valoarea exactă: "${masterSlug}".`,
+  ].join('\n'),
+  bg: (lang, _masterSlug) => [
+    `СЛУГ: включи в JSON-а поле „slug" — кратък URL slug на ${lang}, ТРАНСЛИТЕРИРАН`,
+    `на ЛАТИНИЦА (без кирилица), kebab-case, само [a-z0-9-], малки букви, без`,
+    `диакритика, без специални символи, максимум 60 знака. Slug-ът трябва да`,
+    `отразява основната ключова дума на български (транслитерирана). Пример:`,
+    `за „чалга подарък рожден ден" → "chalga-podaruk-rozhden-den".`,
+  ].join('\n'),
+  sr: (lang, _) => [
+    `SLUG: uključi u JSON polje „slug" — kratak URL slug na ${lang}, kebab-case,`,
+    `samo [a-z0-9-], mala slova, bez dijakritike, latinica (ne ćirilica),`,
+    `maksimum 60 znakova, koji reflektuje glavnu ključnu reč.`,
+  ].join('\n'),
+  tr: (lang, _) => [
+    `SLUG: JSON'a "slug" alanı ekle — ${lang} kısa URL slug'ı, kebab-case,`,
+    `sadece [a-z0-9-], küçük harfler, Türkçe karakterler latin'e dönüştürülmüş`,
+    `(ı→i, ğ→g, ş→s, ç→c, ü→u, ö→o), maksimum 60 karakter, ana anahtar kelimeyi`,
+    `yansıtan.`,
+  ].join('\n'),
+  el: (lang, _) => [
+    `SLUG: συμπερίλαβε στο JSON πεδίο „slug" — σύντομο URL slug στα ${lang},`,
+    `ΜΕΤΑΓΡΑΜΜΑΤΙΣΜΕΝΟ σε ΛΑΤΙΝΙΚΟΥΣ χαρακτήρες (όχι ελληνικούς), kebab-case,`,
+    `μόνο [a-z0-9-], πεζά, χωρίς τόνους, μέγιστο 60 χαρακτήρες, που αντικατοπτρίζει`,
+    `την κύρια λέξη-κλειδί στα ελληνικά (μεταγραμματισμένη).`,
+  ].join('\n'),
+  hr: (lang, _) => [
+    `SLUG: uključi u JSON polje „slug" — kratak URL slug na ${lang}, kebab-case,`,
+    `samo [a-z0-9-], mala slova, bez dijakritike (č→c, ć→c, š→s, ž→z, đ→d),`,
+    `maksimum 60 znakova.`,
+  ].join('\n'),
+  sl: (lang, _) => [
+    `SLUG: vključi v JSON polje „slug" — kratek URL slug v ${lang}, kebab-case,`,
+    `samo [a-z0-9-], male črke, brez šumnikov (č→c, š→s, ž→z), max 60 znakov.`,
+  ].join('\n'),
+  bs: (lang, _) => [
+    `SLUG: uključi u JSON polje „slug" — kratak URL slug na ${lang}, kebab-case,`,
+    `samo [a-z0-9-], mala slova, bez dijakritike, max 60 znakova.`,
+  ].join('\n'),
+  sq: (lang, _) => [
+    `SLUG: përfshi në JSON fushën „slug" — slug i shkurtër URL në ${lang},`,
+    `kebab-case, vetëm [a-z0-9-], shkronja të vogla, pa ë/ç (ë→e, ç→c), max 60 karaktere.`,
+  ].join('\n'),
+  mk: (lang, _) => [
+    `СЛУГ: вклучи во JSON поле „slug" — краток URL slug на ${lang}, ТРАНСЛИТЕРИРАН`,
+    `на ЛАТИНИЦА (не кирилица), kebab-case, само [a-z0-9-], мали букви, max 60.`,
+  ].join('\n'),
+  hu: (lang, _) => [
+    `SLUG: vegyél fel a JSON-ba egy „slug" mezőt — rövid URL slug ${lang}ul,`,
+    `kebab-case, csak [a-z0-9-], kisbetűs, ékezetek nélkül (á→a, é→e, í→i, ó→o,`,
+    `ö→o, ő→o, ú→u, ü→u, ű→u), maximum 60 karakter.`,
+  ].join('\n'),
+  en: (lang, _) => [
+    `SLUG: include in the JSON a "slug" field — short URL slug in ${lang},`,
+    `kebab-case, only [a-z0-9-], lowercase, ASCII (no diacritics), max 60 chars,`,
+    `reflecting the primary keyword in the target language.`,
   ].join('\n'),
 };

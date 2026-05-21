@@ -83,6 +83,9 @@ services:
       META_CAPI_TOKEN: ${META_CAPI_TOKEN:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
       LOGS_DIR: /app/logs
+      # Used by API ca să invalideze cache-ul Next.js după regenerări SEO etc.
+      WEB_INTERNAL_URL: http://web:1500
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
     volumes:
       - api_uploads:/app/uploads
       - api_backups:/app/backups
@@ -116,6 +119,7 @@ services:
       NODE_ENV: production
       # Server-side calls (SSR, sitemap) hit API direct prin rețeaua Docker
       API_INTERNAL_URL: http://api:3000
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
     depends_on:
       api:
         condition: service_healthy

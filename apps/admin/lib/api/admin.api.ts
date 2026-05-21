@@ -70,6 +70,8 @@ export interface AdminSeoPage {
   id: string;
   siteId: string;
   slug: string;
+  /** Slug în limba site-ului. Pentru RO sau pagini ne-regenerate poate fi null/egal cu slug. */
+  localizedSlug?: string | null;
   category: string;
   locale: string;
   title: string;
