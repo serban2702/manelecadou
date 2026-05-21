@@ -335,21 +335,21 @@ function GeneralTab({
       </Section>
 
       <Section title="Email">
-        <Field label="From email">
+        <Field label="From email" description="Adresa expeditor pentru toate mailurile site-ului. Lasă gol = MAIL_FROM global.">
           <Input
             value={form.fromEmail ?? ''}
             onChange={(e) => setForm({ ...form, fromEmail: e.target.value })}
-            placeholder="contact@..."
+            placeholder="noreply@..."
           />
         </Field>
-        <Field label="Support email">
+        <Field label="Support email" description="Apare în footer-ul site-ului și ca Reply-To în mailuri.">
           <Input
             value={form.supportEmail ?? ''}
             onChange={(e) => setForm({ ...form, supportEmail: e.target.value })}
             placeholder="salut@..."
           />
         </Field>
-        <Field label="Admin emails (separate prin virgulă)">
+        <Field label="Admin emails (separate prin virgulă)" description="Notificările interne (cereri GDPR, alerte) ajung aici.">
           <Input
             value={(form.adminEmails ?? []).join(', ')}
             onChange={(e) =>
@@ -364,6 +364,8 @@ function GeneralTab({
           />
         </Field>
       </Section>
+
+      <MailConfigSection form={form} setForm={setForm} />
 
       <Section title="Date firmă (factură)">
         <Field label="Legal name">
@@ -2201,6 +2203,181 @@ function Field({ label, description, children }: { label: string; description?: 
       {description && <p className="text-[11px] text-muted-foreground leading-snug">{description}</p>}
       {children}
     </div>
+  );
+}
+
+/**
+ * Secțiune dedicată configurării serverului de email per-site.
+ * Provider: null (folosește configul global), 'mailgun', sau 'smtp'.
+ * Secretele (apiKey, smtp.pass) vin mascate de la server ca __MASKED__;
+ * input gol păstrează valoarea curentă; introduce string non-empty pentru schimbare.
+ */
+function MailConfigSection({
+  form,
+  setForm,
+}: {
+  form: SiteDto;
+  setForm: (f: SiteDto) => void;
+}) {
+  const mc = form.mailConfig ?? {};
+  const provider = mc.provider ?? null;
+
+  function patch(next: Partial<NonNullable<SiteDto['mailConfig']>>) {
+    setForm({ ...form, mailConfig: { ...mc, ...next } });
+  }
+  function patchMailgun(next: Partial<NonNullable<NonNullable<SiteDto['mailConfig']>['mailgun']>>) {
+    setForm({ ...form, mailConfig: { ...mc, mailgun: { ...(mc.mailgun ?? {}), ...next } } });
+  }
+  function patchSmtp(next: Partial<NonNullable<NonNullable<SiteDto['mailConfig']>['smtp']>>) {
+    setForm({ ...form, mailConfig: { ...mc, smtp: { ...(mc.smtp ?? {}), ...next } } });
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-4">
+        <div>
+          <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Server de email</div>
+          <p className="text-[11px] text-muted-foreground leading-snug">
+            Alege de unde se trimit mailurile pentru acest site (login, gift code, melodie gata, etc.).
+            Lasă pe „Implicit (global)" ca să folosești configul comun din .env.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          {([
+            { v: null, label: 'Implicit (global)' },
+            { v: 'mailgun' as const, label: 'Mailgun' },
+            { v: 'smtp' as const, label: 'SMTP' },
+          ]).map((opt) => {
+            const active = provider === opt.v;
+            return (
+              <button
+                key={String(opt.v)}
+                type="button"
+                onClick={() => patch({ provider: opt.v })}
+                className={`text-xs px-3 py-2 rounded border transition-colors ${
+                  active
+                    ? 'border-primary bg-primary/10 text-foreground'
+                    : 'border-border text-muted-foreground hover:bg-secondary/30'
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {provider && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="From email (override)" description="Override pentru From; dacă e gol, folosește „From email" de mai sus.">
+              <Input
+                value={mc.fromEmail ?? ''}
+                onChange={(e) => patch({ fromEmail: e.target.value })}
+                placeholder="noreply@domeniul-tau.com"
+              />
+            </Field>
+            <Field label="From name (display name)">
+              <Input
+                value={mc.fromName ?? ''}
+                onChange={(e) => patch({ fromName: e.target.value })}
+                placeholder="ЧалгаПодарък / ManeleCadou"
+              />
+            </Field>
+            <Field label="Reply-To (opțional)">
+              <Input
+                value={mc.replyTo ?? ''}
+                onChange={(e) => patch({ replyTo: e.target.value })}
+                placeholder="support@..."
+              />
+            </Field>
+          </div>
+        )}
+
+        {provider === 'mailgun' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-border pt-3">
+            <div className="col-span-full text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Credențiale Mailgun
+            </div>
+            <Field label="Domain" description="ex. mg.chalgapodarok.bg (domeniul verificat în Mailgun).">
+              <Input
+                value={mc.mailgun?.domain ?? ''}
+                onChange={(e) => patchMailgun({ domain: e.target.value })}
+                placeholder="mg.example.com"
+              />
+            </Field>
+            <Field label="API key" description="Lasă necompletat pentru a păstra cheia existentă.">
+              <Input
+                type="password"
+                value={mc.mailgun?.apiKey ?? ''}
+                onChange={(e) => patchMailgun({ apiKey: e.target.value })}
+                placeholder={mc.mailgun?.apiKey === '__MASKED__' ? '••••••••' : 'key-...'}
+              />
+            </Field>
+            <Field label="Region">
+              <select
+                value={mc.mailgun?.region ?? 'us'}
+                onChange={(e) => patchMailgun({ region: e.target.value as 'eu' | 'us' })}
+                className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
+              >
+                <option value="us">US</option>
+                <option value="eu">EU</option>
+              </select>
+            </Field>
+            <Field label="API URL (override)" description="Opțional. Lasă gol pentru endpoint-ul standard.">
+              <Input
+                value={mc.mailgun?.apiUrl ?? ''}
+                onChange={(e) => patchMailgun({ apiUrl: e.target.value })}
+                placeholder="https://api.eu.mailgun.net"
+              />
+            </Field>
+          </div>
+        )}
+
+        {provider === 'smtp' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-border pt-3">
+            <div className="col-span-full text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Credențiale SMTP
+            </div>
+            <Field label="Host">
+              <Input
+                value={mc.smtp?.host ?? ''}
+                onChange={(e) => patchSmtp({ host: e.target.value })}
+                placeholder="smtp.gmail.com / smtp.sendgrid.net"
+              />
+            </Field>
+            <Field label="Port">
+              <Input
+                type="number"
+                value={mc.smtp?.port ?? ''}
+                onChange={(e) => patchSmtp({ port: e.target.value ? Number(e.target.value) : undefined })}
+                placeholder="587 / 465"
+              />
+            </Field>
+            <Field label="Username">
+              <Input
+                value={mc.smtp?.user ?? ''}
+                onChange={(e) => patchSmtp({ user: e.target.value })}
+                placeholder="apikey / contul-tau@..."
+              />
+            </Field>
+            <Field label="Password" description="Lasă necompletat pentru a păstra parola existentă.">
+              <Input
+                type="password"
+                value={mc.smtp?.pass ?? ''}
+                onChange={(e) => patchSmtp({ pass: e.target.value })}
+                placeholder={mc.smtp?.pass === '__MASKED__' ? '••••••••' : ''}
+              />
+            </Field>
+            <Field label="Secure (TLS implicit)" description="On = TLS direct (port 465). Off = STARTTLS (port 587).">
+              <Switch
+                checked={!!mc.smtp?.secure}
+                onCheckedChange={(v) => patchSmtp({ secure: v })}
+              />
+            </Field>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

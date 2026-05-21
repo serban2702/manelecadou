@@ -1,13 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { MailProvider, SendMailOptions, SendMailResult } from '../mail.types';
-import { SettingsService } from '../../modules/settings/settings.service';
+import { MailProvider, ResolvedMailContext, SendMailOptions, SendMailResult } from '../mail.types';
 
 /**
  * Apelează Mailgun HTTP API direct (fără SDK).
- * Necesită:
- *   MAILGUN_API_KEY      — cheia privată
- *   MAILGUN_DOMAIN       — ex. mg.manelecadou.ro
- *   MAILGUN_REGION=eu|us — opțional (default us)
+ * Configul vine din `ResolvedMailContext.mailgun` (per-site sau global).
  *
  * Endpoint: https://api[.eu].mailgun.net/v3/{domain}/messages
  */
@@ -16,18 +12,15 @@ export class MailgunMailProvider extends MailProvider {
   readonly name = 'mailgun' as const;
   private readonly logger = new Logger('MailgunMailProvider');
 
-  constructor(private readonly settings: SettingsService) {
-    super();
-  }
-
-  async send(opts: SendMailOptions): Promise<SendMailResult> {
-    const apiKey = await this.settings.get('MAILGUN_API_KEY');
-    const domain = await this.settings.get('MAILGUN_DOMAIN');
-    const region = ((await this.settings.get('MAILGUN_REGION')) || 'us').toLowerCase();
+  async send(opts: SendMailOptions, ctx: ResolvedMailContext): Promise<SendMailResult> {
+    const mg = ctx.mailgun ?? {};
+    const apiKey = mg.apiKey;
+    const domain = mg.domain;
+    const region = (mg.region || 'us').toLowerCase();
 
     if (!apiKey || !domain) {
       this.logger.warn(
-        `[mailgun dev-log] to=${opts.to} subject="${opts.subject}" (MAILGUN_API_KEY/DOMAIN lipsă)`,
+        `[mailgun dev-log src=${ctx.source}${ctx.siteSlug ? ' site=' + ctx.siteSlug : ''}] to=${opts.to} subject="${opts.subject}" (MAILGUN_API_KEY/DOMAIN lipsă)`,
       );
       return {
         sent: false,
@@ -36,21 +29,18 @@ export class MailgunMailProvider extends MailProvider {
       };
     }
 
-    const apiUrl = await this.settings.get('MAILGUN_API_URL');
-    const baseHost = apiUrl
-      ? apiUrl.replace(/\/$/, '')
+    const baseHost = mg.apiUrl
+      ? mg.apiUrl.replace(/\/$/, '')
       : region === 'eu'
         ? 'https://api.eu.mailgun.net'
         : 'https://api.mailgun.net';
     const url = `${baseHost}/v3/${encodeURIComponent(domain)}/messages`;
 
-    const mailgunFrom = await this.settings.get('MAILGUN_FROM_EMAIL');
-    const fromAddr = (await this.settings.get('MAIL_FROM')) || `no-reply@${domain}`;
-    const fromName = await this.settings.get('MAIL_FROM_NAME');
+    const fromAddr = mg.fromEmail || ctx.fromEmail || `no-reply@${domain}`;
+    const fromName = ctx.fromName;
     const from =
       opts.from ??
-      mailgunFrom ??
-      (fromName ? `${fromName} <${fromAddr}>` : fromAddr);
+      (fromName ? `"${fromName}" <${fromAddr}>` : fromAddr);
 
     const form = new URLSearchParams();
     form.append('from', from);
@@ -58,7 +48,8 @@ export class MailgunMailProvider extends MailProvider {
     form.append('subject', opts.subject);
     form.append('html', opts.html);
     if (opts.text) form.append('text', opts.text);
-    if (opts.replyTo) form.append('h:Reply-To', opts.replyTo);
+    const replyTo = opts.replyTo ?? ctx.replyTo;
+    if (replyTo) form.append('h:Reply-To', replyTo);
 
     const auth = Buffer.from(`api:${apiKey}`).toString('base64');
     const res = await fetch(url, {

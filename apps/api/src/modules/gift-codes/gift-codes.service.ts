@@ -101,13 +101,16 @@ export class GiftCodesService {
         branding,
       });
       try {
-        await this.mailer.send({
-          to: input.purchasedByEmail,
-          subject: tpl.subject,
-          html: tpl.html,
-          text: tpl.text,
-          from: site?.fromEmail ?? undefined,
-        });
+        await this.mailer.send(
+          {
+            to: input.purchasedByEmail,
+            subject: tpl.subject,
+            html: tpl.html,
+            text: tpl.text,
+            from: site?.fromEmail ?? undefined,
+          },
+          { site },
+        );
       } catch (err) {
         this.logger.warn(`Failed to email gift code ${created.code}: ${(err as Error).message}`);
       }

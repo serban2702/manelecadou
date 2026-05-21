@@ -7,6 +7,15 @@ import { SitesService } from './sites.service';
 import { Site } from './site.entity';
 import { SiteSamplesService, SAMPLE_STYLES, SAMPLE_VOICES, SampleKind } from './site-samples.service';
 import { SiteBrandUploadService, BrandAssetField } from './site-brand-upload.service';
+import { encryptSecret } from '../../common/crypto.util';
+
+/**
+ * Placeholder folosit de admin UI pentru câmpurile criptate (apiKey, smtp.pass):
+ * dacă valoarea care vine în PATCH e exact acest string, ÎNSEAMNĂ că adminul nu
+ * a editat câmpul → păstrăm valoarea criptată existentă din DB. Dacă vine altă
+ * valoare non-vidă, o criptăm și o salvăm. Empty string explicit = clear.
+ */
+const MASKED_SECRET = '__MASKED__';
 
 // Public: returnează configul site-ului curent (rezolvat din Host) — folosit de web app
 @Controller('public/site')
@@ -200,8 +209,89 @@ export class AdminSitesController {
         voiceSamples: current?.suno?.voiceSamples ?? {},
       };
     }
+    // Mail config: secretele (mailgun.apiKey, smtp.pass) sunt criptate la repaus.
+    // Adminul UI le primește mascate (MASKED_SECRET) → nu trebuie suprascrise
+    // accidental cu placeholder. Dacă userul a editat câmpul, criptăm valoarea.
+    if (body.mailConfig && typeof body.mailConfig === 'object') {
+      const current = await this.sites.findById(id);
+      body.mailConfig = this.normalizeMailConfig(body.mailConfig, current?.mailConfig);
+    }
     const updated = await this.sites.update(id, body);
     return this.serializeFull(updated);
+  }
+
+  /** Curăță / criptează secretele din mailConfig folosind ghid:
+   *  - MASKED_SECRET sau undefined → păstrează valoarea criptată existentă
+   *  - string non-empty → criptează cu encryptSecret() și salvează
+   *  - empty string '' → clear (șterge secretul) */
+  private normalizeMailConfig(
+    incoming: Partial<Site['mailConfig']>,
+    current?: Site['mailConfig'],
+  ): Site['mailConfig'] {
+    const out: Site['mailConfig'] = {
+      provider: incoming.provider ?? current?.provider ?? null,
+      fromEmail: incoming.fromEmail ?? current?.fromEmail,
+      fromName: incoming.fromName ?? current?.fromName,
+      replyTo: incoming.replyTo ?? current?.replyTo,
+    };
+    if (incoming.mailgun || current?.mailgun) {
+      const mg = incoming.mailgun ?? {};
+      const curMg = current?.mailgun ?? {};
+      out.mailgun = {
+        domain: mg.domain ?? curMg.domain,
+        region: mg.region ?? curMg.region,
+        apiUrl: mg.apiUrl ?? curMg.apiUrl,
+        apiKey: this.handleSecret(mg.apiKey, curMg.apiKey),
+      };
+    }
+    if (incoming.smtp || current?.smtp) {
+      const s = incoming.smtp ?? {};
+      const curS = current?.smtp ?? {};
+      out.smtp = {
+        host: s.host ?? curS.host,
+        port: s.port ?? curS.port,
+        secure: s.secure ?? curS.secure,
+        user: s.user ?? curS.user,
+        pass: this.handleSecret(s.pass, curS.pass),
+      };
+    }
+    return out;
+  }
+
+  private handleSecret(incoming: string | undefined, current: string | undefined): string | undefined {
+    if (incoming === undefined || incoming === MASKED_SECRET) return current;
+    if (incoming === '') return undefined; // explicit clear
+    return encryptSecret(incoming);
+  }
+
+  /** Adminul nu trebuie să vadă secretele în plain. Dacă există un secret
+   *  setat (varianta criptată), îl întoarcem ca MASKED_SECRET; altfel `''`. */
+  private serializeMailConfig(mc: Site['mailConfig'] | null | undefined): Site['mailConfig'] {
+    const m = mc ?? {};
+    const out: Site['mailConfig'] = {
+      provider: m.provider ?? null,
+      fromEmail: m.fromEmail,
+      fromName: m.fromName,
+      replyTo: m.replyTo,
+    };
+    if (m.mailgun) {
+      out.mailgun = {
+        domain: m.mailgun.domain,
+        region: m.mailgun.region,
+        apiUrl: m.mailgun.apiUrl,
+        apiKey: m.mailgun.apiKey ? MASKED_SECRET : '',
+      };
+    }
+    if (m.smtp) {
+      out.smtp = {
+        host: m.smtp.host,
+        port: m.smtp.port,
+        secure: m.smtp.secure,
+        user: m.smtp.user,
+        pass: m.smtp.pass ? MASKED_SECRET : '',
+      };
+    }
+    return out;
   }
 
   @Delete(':id')
@@ -235,6 +325,7 @@ export class AdminSitesController {
       fromEmail: s.fromEmail,
       supportEmail: s.supportEmail,
       adminEmails: s.adminEmails,
+      mailConfig: this.serializeMailConfig(s.mailConfig),
       active: s.active,
       isDefault: s.isDefault,
       sslEnabled: s.sslEnabled,

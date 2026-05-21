@@ -63,6 +63,32 @@ export interface SiteDto {
   fromEmail: string | null;
   supportEmail: string | null;
   adminEmails: string[];
+  /**
+   * Configurare email per-site: provider (mailgun / smtp / null) + credențiale.
+   * Secretele (mailgun.apiKey, smtp.pass) vin întotdeauna mascate de la API ca
+   * `__MASKED__` dacă există valoare salvată, sau `''` dacă nu. La PATCH:
+   * trimite valoarea nouă pentru a o seta, `''` pentru a o șterge, sau
+   * `__MASKED__` (sau lipsa câmpului) pentru a păstra valoarea curentă.
+   */
+  mailConfig?: {
+    provider?: 'mailgun' | 'smtp' | null;
+    fromEmail?: string;
+    fromName?: string;
+    replyTo?: string;
+    mailgun?: {
+      apiKey?: string;
+      domain?: string;
+      region?: 'eu' | 'us';
+      apiUrl?: string;
+    };
+    smtp?: {
+      host?: string;
+      port?: number;
+      secure?: boolean;
+      user?: string;
+      pass?: string;
+    };
+  };
   active: boolean;
   isDefault: boolean;
   sslEnabled: boolean;

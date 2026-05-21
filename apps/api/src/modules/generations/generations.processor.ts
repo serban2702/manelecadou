@@ -184,11 +184,15 @@ export class GenerationsProcessor extends WorkerHost {
       locale: site?.locale ?? gen.locale ?? 'ro',
       branding,
     });
-    await this.mailer.send({
-      to: email,
-      subject: tpl.subject,
-      html: tpl.html,
-      text: tpl.text,
-    });
+    await this.mailer.send(
+      {
+        to: email,
+        subject: tpl.subject,
+        html: tpl.html,
+        text: tpl.text,
+        from: site?.fromEmail ?? undefined,
+      },
+      { site },
+    );
   }
 }

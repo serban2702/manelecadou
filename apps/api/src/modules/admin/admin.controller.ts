@@ -12,6 +12,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { AnalyticsSession } from '../analytics/analytics-session.entity';
 import { MailerService } from '../../mailer/mailer.module';
 import { SeederService } from '../../database/seeder/seeder.service';
+import { SitesService } from '../sites/sites.service';
 
 class TestMailDto {
   @IsEmail()
@@ -36,6 +37,7 @@ export class AdminController {
     private readonly mailer: MailerService,
     private readonly paymentsService: PaymentsService,
     private readonly seeder: SeederService,
+    private readonly sites: SitesService,
   ) {}
 
   @Post('seeder/run')
@@ -44,18 +46,24 @@ export class AdminController {
   }
 
   @Get('mail/status')
-  mailStatus() {
-    return { provider: this.mailer.providerName };
+  async mailStatus(@CurrentSiteId() siteId: string | null) {
+    const site = siteId ? await this.sites.findById(siteId) : null;
+    return { provider: await this.mailer.providerName(site), source: site?.mailConfig?.provider ? 'site' : 'global' };
   }
 
   @Post('mail/test')
-  async testMail(@Body() body: TestMailDto) {
-    return this.mailer.sendDetailed({
-      to: body.to,
-      subject: body.subject,
-      html: `<p>${body.body}</p>`,
-      text: body.body,
-    });
+  async testMail(@Body() body: TestMailDto, @CurrentSiteId() siteId: string | null) {
+    const site = siteId ? await this.sites.findById(siteId) : null;
+    return this.mailer.sendDetailed(
+      {
+        to: body.to,
+        subject: body.subject,
+        html: `<p>${body.body}</p>`,
+        text: body.body,
+        from: site?.fromEmail ?? undefined,
+      },
+      { site },
+    );
   }
 
   @Get('stats')

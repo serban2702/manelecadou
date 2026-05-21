@@ -1,56 +1,45 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
-import { MailProvider, SendMailOptions, SendMailResult } from '../mail.types';
-import { SettingsService } from '../../modules/settings/settings.service';
+import { MailProvider, ResolvedMailContext, SendMailOptions, SendMailResult } from '../mail.types';
 
 @Injectable()
 export class SmtpMailProvider extends MailProvider {
   readonly name = 'smtp' as const;
   private readonly logger = new Logger('SmtpMailProvider');
-  private transporter: nodemailer.Transporter | null = null;
-  private cacheKey = '';
+  /** Cache de transporters per (host|port|secure|user|passHash). Evităm
+   *  re-create la fiecare mail; cheia include configul ca să nu reutilizăm
+   *  greșit transportul când se schimbă credențialele unui site. */
+  private readonly cache = new Map<string, nodemailer.Transporter>();
 
-  constructor(private readonly settings: SettingsService) {
-    super();
+  private getCacheKey(s: NonNullable<ResolvedMailContext['smtp']>): string {
+    return `${s.host}|${s.port}|${s.secure ? 1 : 0}|${s.user ?? ''}|${(s.pass ?? '').length}`;
   }
 
-  private async ensureTransporter(): Promise<nodemailer.Transporter | null> {
-    const host = await this.settings.get('SMTP_HOST');
-    const portStr = await this.settings.get('SMTP_PORT');
-    const port = Number(portStr) || 0;
-    const user = await this.settings.get('SMTP_USER');
-    const pass = await this.settings.get('SMTP_PASS');
-    const secureRaw = await this.settings.get('SMTP_SECURE');
-
-    if (!host || !port) {
-      this.transporter = null;
-      this.cacheKey = '';
-      return null;
-    }
-    const secure = secureRaw === 'true' || port === 465;
-    const key = `${host}|${port}|${secure}|${user}|${pass.length}`;
-    if (this.transporter && key === this.cacheKey) return this.transporter;
-
-    this.transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure,
-      auth: user && pass ? { user, pass } : undefined,
+  private ensureTransporter(s: ResolvedMailContext['smtp']): nodemailer.Transporter | null {
+    if (!s?.host || !s.port) return null;
+    const key = this.getCacheKey(s);
+    const cached = this.cache.get(key);
+    if (cached) return cached;
+    const transporter = nodemailer.createTransport({
+      host: s.host,
+      port: s.port,
+      secure: s.secure ?? s.port === 465,
+      auth: s.user && s.pass ? { user: s.user, pass: s.pass } : undefined,
     });
-    this.cacheKey = key;
-    this.logger.log(`SMTP transport ready: ${host}:${port} (secure=${secure})`);
-    return this.transporter;
+    this.cache.set(key, transporter);
+    this.logger.log(`SMTP transport ready: ${s.host}:${s.port} (secure=${!!s.secure})`);
+    return transporter;
   }
 
-  async send(opts: SendMailOptions): Promise<SendMailResult> {
-    const fromAddr = (await this.settings.get('MAIL_FROM')) || 'no-reply@manelecadou.ro';
-    const fromName = await this.settings.get('MAIL_FROM_NAME');
-    const from = opts.from ?? (fromName ? `${fromName} <${fromAddr}>` : fromAddr);
+  async send(opts: SendMailOptions, ctx: ResolvedMailContext): Promise<SendMailResult> {
+    const fromAddr = ctx.fromEmail || 'no-reply@manelecadou.ro';
+    const fromName = ctx.fromName;
+    const from = opts.from ?? (fromName ? `"${fromName}" <${fromAddr}>` : fromAddr);
 
-    const transporter = await this.ensureTransporter();
+    const transporter = this.ensureTransporter(ctx.smtp);
     if (!transporter) {
       this.logger.warn(
-        `[smtp dev-log] to=${opts.to} subject="${opts.subject}"\n${opts.text ?? opts.html}`,
+        `[smtp dev-log src=${ctx.source}${ctx.siteSlug ? ' site=' + ctx.siteSlug : ''}] to=${opts.to} subject="${opts.subject}"\n${opts.text ?? opts.html}`,
       );
       return {
         sent: false,
@@ -65,7 +54,7 @@ export class SmtpMailProvider extends MailProvider {
       subject: opts.subject,
       html: opts.html,
       text: opts.text,
-      replyTo: opts.replyTo,
+      replyTo: opts.replyTo ?? ctx.replyTo,
     });
     return {
       sent: true,

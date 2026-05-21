@@ -428,12 +428,16 @@ export class GenerationsService {
         locale: site?.locale ?? gen.locale ?? 'ro',
         branding: brandingFromSite(site),
       });
-      await this.mailer.send({
-        to: email,
-        subject: tpl.subject,
-        html: tpl.html,
-        text: tpl.text,
-      });
+      await this.mailer.send(
+        {
+          to: email,
+          subject: tpl.subject,
+          html: tpl.html,
+          text: tpl.text,
+          from: site?.fromEmail ?? undefined,
+        },
+        { site },
+      );
     } catch (err) {
       this.logger.warn(
         `payment confirmation email failed for gen ${gen.id}: ${(err as Error).message}`,

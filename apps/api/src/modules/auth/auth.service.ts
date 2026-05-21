@@ -85,13 +85,16 @@ export class AuthService {
       locale: userLocale,
       branding: brandingFromSite(site),
     });
-    await this.mailer.send({
-      to: normalizedEmail,
-      subject: tpl.subject,
-      html: tpl.html,
-      text: tpl.text,
-      from: site?.fromEmail ?? undefined,
-    });
+    await this.mailer.send(
+      {
+        to: normalizedEmail,
+        subject: tpl.subject,
+        html: tpl.html,
+        text: tpl.text,
+        from: site?.fromEmail ?? undefined,
+      },
+      { site },
+    );
 
     this.logger.log(`magic link issued for ${normalizedEmail} (site=${siteId ?? 'none'})`);
 
@@ -234,12 +237,15 @@ export class AuthService {
       branding: brandingFromSite(userSite),
     });
     for (const adminEmail of adminEmails) {
-      await this.mailer.send({
-        to: adminEmail,
-        subject: tpl.subject,
-        html: tpl.html,
-        text: tpl.text,
-      });
+      await this.mailer.send(
+        {
+          to: adminEmail,
+          subject: tpl.subject,
+          html: tpl.html,
+          text: tpl.text,
+        },
+        { site: userSite },
+      );
     }
     this.logger.log(`GDPR ${type} request from ${user.email} → notified ${adminEmails.length} admins`);
     return { ok: true };

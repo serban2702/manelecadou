@@ -63,6 +63,44 @@ export interface SiteSocial {
   phone?: string; // ex: '+40 758 972 277'
 }
 
+/**
+ * Configurare email per-site: din ce provider (Mailgun / SMTP) se trimit
+ * mailurile (login, gift, confirmări, etc.) și cu ce credențiale. Câmpurile
+ * sensibile (`mailgun.apiKey`, `smtp.pass`) sunt stocate criptate cu
+ * `encryptSecret()` (AES-256-GCM, cheia din env `MAIL_CRED_KEY`).
+ *
+ * Dacă `provider` e null/undefined, mailerul cade pe configul GLOBAL din
+ * SettingsService (env / settings table) — comportamentul anterior, pentru
+ * compatibilitate.
+ */
+export interface SiteMailConfig {
+  /** 'mailgun' | 'smtp' | null. Null = folosește configul global. */
+  provider?: 'mailgun' | 'smtp' | null;
+  /** Adresa expeditor (ex. `noreply@chalgapodarok.bg`). */
+  fromEmail?: string;
+  /** Numele afișat lângă adresă (ex. „ЧалгаПодарък"). */
+  fromName?: string;
+  /** Reply-To opțional. */
+  replyTo?: string;
+  /** Configurare Mailgun. */
+  mailgun?: {
+    /** CRIPTAT cu encryptSecret(). */
+    apiKey?: string;
+    domain?: string;
+    region?: 'eu' | 'us';
+    apiUrl?: string;
+  };
+  /** Configurare SMTP. */
+  smtp?: {
+    host?: string;
+    port?: number;
+    secure?: boolean;
+    user?: string;
+    /** CRIPTAT cu encryptSecret(). */
+    pass?: string;
+  };
+}
+
 export interface SiteCompanyInfo {
   legalName?: string; // ex: "Manele Cadou SRL"
   cui?: string; // ex: "RO12345678"
@@ -324,6 +362,13 @@ export class Site {
 
   @Column({ type: 'jsonb', default: () => `'{}'::jsonb` })
   companyInfo!: SiteCompanyInfo;
+
+  /**
+   * Configurare email per-site (provider + credențiale + from/name). Secretele
+   * sunt criptate la repaus. Vezi `SiteMailConfig`.
+   */
+  @Column({ type: 'jsonb', default: () => `'{}'::jsonb` })
+  mailConfig!: SiteMailConfig;
 
   @Column({ type: 'varchar', length: 320, nullable: true })
   fromEmail!: string | null;
