@@ -7,6 +7,7 @@ import { SitesService } from './sites.service';
 import { AdminSitesController, AdminSiteSamplesController, CaddyAskController, PublicSiteController } from './sites.controller';
 import { SiteContextMiddleware } from './site-context.middleware';
 import { SiteSamplesService } from './site-samples.service';
+import { SiteBrandUploadService } from './site-brand-upload.service';
 import { SunoModule } from '../suno/suno.module';
 import { LyricsModule } from '../lyrics/lyrics.module';
 // SettingsModule e @Global() — SettingsService e injectabil în SiteSamplesService
@@ -29,7 +30,7 @@ import { LyricsModule } from '../lyrics/lyrics.module';
       }),
     }),
   ],
-  providers: [SitesService, SiteSamplesService],
+  providers: [SitesService, SiteSamplesService, SiteBrandUploadService],
   controllers: [PublicSiteController, AdminSitesController, AdminSiteSamplesController, CaddyAskController],
   exports: [SitesService, TypeOrmModule],
 })

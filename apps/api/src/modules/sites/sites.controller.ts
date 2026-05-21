@@ -6,6 +6,7 @@ import { AdminGuard } from '../../common/admin.guard';
 import { SitesService } from './sites.service';
 import { Site } from './site.entity';
 import { SiteSamplesService, SAMPLE_STYLES, SAMPLE_VOICES, SampleKind } from './site-samples.service';
+import { SiteBrandUploadService, BrandAssetField } from './site-brand-upload.service';
 
 // Public: returnează configul site-ului curent (rezolvat din Host) — folosit de web app
 @Controller('public/site')
@@ -130,7 +131,30 @@ function extractClientIp(req: Request): string | null {
 @UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('admin/sites')
 export class AdminSitesController {
-  constructor(private readonly sites: SitesService) {}
+  constructor(
+    private readonly sites: SitesService,
+    private readonly brandUpload: SiteBrandUploadService,
+  ) {}
+
+  /** Upload pentru asset-urile vizuale de brand (logo, OG image, favicon,
+   *  email banner). Salvează fișierul, generează URL public, persistă în
+   *  `site.brand[field]`. Răspunde cu URL-ul nou + brand-ul actualizat. */
+  @Post(':id/brand/upload')
+  @HttpCode(200)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  async uploadBrandAsset(
+    @Param('id') id: string,
+    @UploadedFile() file: { buffer: Buffer; originalname: string; size: number; mimetype: string } | undefined,
+    @Body() body: { field: BrandAssetField },
+  ) {
+    if (!file) throw new BadRequestException('Lipsește fișierul (field name: file)');
+    if (!body?.field) throw new BadRequestException('field este obligatoriu');
+    if (!SiteBrandUploadService.isAllowedField(body.field)) {
+      throw new BadRequestException(`Câmp invalid: ${body.field}`);
+    }
+    const result = await this.brandUpload.uploadAsset(id, body.field, file.buffer, file.originalname);
+    return { ok: true, ...result };
+  }
 
   @Get()
   async list() {

@@ -209,6 +209,22 @@ export const SitesApi = {
   create: (body: Partial<SiteDto>) => http.post<SiteDto>('/admin/sites', body),
   update: (id: string, body: Partial<SiteDto>) => http.patch<SiteDto>(`/admin/sites/${id}`, body),
   remove: (id: string) => http.delete<{ ok: true }>(`/admin/sites/${id}`),
+  /** Upload asset brand (logo / OG / favicon / email banner). Răspunde cu URL-ul
+   *  public + brand-ul actualizat (deja persistat în DB pe site). */
+  uploadBrandAsset: (
+    id: string,
+    field: 'logoUrl' | 'ogImageUrl' | 'faviconUrl' | 'emailBannerUrl',
+    file: File,
+  ) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('field', field);
+    return http.post<{ ok: true; url: string; brand: SiteDto['brand'] }>(
+      `/admin/sites/${id}/brand/upload`,
+      fd,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60_000 },
+    );
+  },
 
   // === Mostre audio (carduri ► din /studio) ===
   listSamples: (id: string) => http.get<SamplesListDto>(`/admin/sites/${id}/samples`),

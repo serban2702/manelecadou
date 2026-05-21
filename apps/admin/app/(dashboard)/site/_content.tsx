@@ -210,7 +210,7 @@ export default function SiteConfigPage() {
       </div>
 
       {activeTab === 'general' && <GeneralTab form={form} setForm={setForm} />}
-      {activeTab === 'brand' && <BrandSeoTab form={form} setForm={setForm} />}
+      {activeTab === 'brand' && <BrandSeoTab siteId={siteId} form={form} setForm={setForm} />}
       {activeTab === 'suno-stripe' && <SunoStripeTab form={form} setForm={setForm} />}
       {activeTab === 'status' && <StatusTab form={form} setForm={setForm} />}
       {activeTab === 'categories' && (
@@ -421,7 +421,98 @@ function GeneralTab({
 // TAB: Brand & SEO
 // ─────────────────────────────────────────────────────────────────────────────
 
-function BrandSeoTab({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto) => void }) {
+type BrandAssetField = 'logoUrl' | 'ogImageUrl' | 'faviconUrl' | 'emailBannerUrl';
+
+function BrandAssetUploader({
+  siteId,
+  field,
+  accept,
+  value,
+  onChange,
+  placeholder,
+}: {
+  siteId: string;
+  field: BrandAssetField;
+  accept: string;
+  value: string;
+  onChange: (url: string) => void;
+  placeholder?: string;
+}) {
+  const { toast } = useToast();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFile(file: File) {
+    if (!siteId || siteId === ALL_SITES) return;
+    setUploading(true);
+    try {
+      const res = await SitesApi.uploadBrandAsset(siteId, field, file);
+      onChange(res.url);
+      toast({ variant: 'success', title: 'Fișier încărcat', description: 'Link public generat și salvat.' });
+    } catch (err) {
+      toast({ variant: 'destructive', title: 'Eroare upload', description: (err as Error).message });
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  }
+
+  const isImage = !!value && !value.toLowerCase().endsWith('.ico');
+
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center gap-2">
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder ?? 'https://...'}
+        />
+        <input
+          ref={inputRef}
+          type="file"
+          accept={accept}
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void handleFile(f);
+          }}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+        >
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+          {uploading ? 'Se încarcă...' : 'Încarcă fișier'}
+        </Button>
+      </div>
+      {value && (
+        <div className="flex items-center gap-3 rounded border border-border bg-muted/30 p-2">
+          {isImage && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={value}
+              alt={field}
+              className="h-12 w-12 rounded border border-border object-contain bg-white"
+            />
+          )}
+          <a
+            href={value}
+            target="_blank"
+            rel="noreferrer"
+            className="truncate text-xs text-muted-foreground hover:text-foreground underline"
+          >
+            {value}
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BrandSeoTab({ siteId, form, setForm }: { siteId: string; form: SiteDto; setForm: (f: SiteDto) => void }) {
   return (
     <div className="grid gap-4">
       <Section title="Brand">
@@ -445,29 +536,41 @@ function BrandSeoTab({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto) =
             onChange={(e) => setForm({ ...form, brand: { ...form.brand, tagline: e.target.value } })}
           />
         </Field>
-        <Field label="Logo URL">
-          <Input
+        <Field label="Logo (PNG/JPG/WEBP/SVG, max 5 MB)">
+          <BrandAssetUploader
+            siteId={siteId}
+            field="logoUrl"
+            accept="image/png,image/jpeg,image/webp,image/svg+xml"
             value={form.brand?.logoUrl ?? ''}
-            onChange={(e) => setForm({ ...form, brand: { ...form.brand, logoUrl: e.target.value } })}
+            onChange={(url) => setForm({ ...form, brand: { ...form.brand, logoUrl: url } })}
           />
         </Field>
-        <Field label="OG image URL (1200×630)">
-          <Input
+        <Field label="OG image (1200×630, PNG/JPG/WEBP, max 5 MB)">
+          <BrandAssetUploader
+            siteId={siteId}
+            field="ogImageUrl"
+            accept="image/png,image/jpeg,image/webp"
             value={form.brand?.ogImageUrl ?? ''}
-            onChange={(e) => setForm({ ...form, brand: { ...form.brand, ogImageUrl: e.target.value } })}
+            onChange={(url) => setForm({ ...form, brand: { ...form.brand, ogImageUrl: url } })}
           />
         </Field>
-        <Field label="Favicon URL">
-          <Input
+        <Field label="Favicon (ICO/PNG/SVG, max 1 MB)">
+          <BrandAssetUploader
+            siteId={siteId}
+            field="faviconUrl"
+            accept="image/x-icon,image/vnd.microsoft.icon,image/png,image/svg+xml,.ico"
             value={form.brand?.faviconUrl ?? ''}
-            onChange={(e) => setForm({ ...form, brand: { ...form.brand, faviconUrl: e.target.value } })}
+            onChange={(url) => setForm({ ...form, brand: { ...form.brand, faviconUrl: url } })}
           />
         </Field>
-        <Field label="Email banner URL (600×200, opțional)">
-          <Input
+        <Field label="Email banner (600×200, PNG/JPG/WEBP, opțional)">
+          <BrandAssetUploader
+            siteId={siteId}
+            field="emailBannerUrl"
+            accept="image/png,image/jpeg,image/webp"
             value={form.brand?.emailBannerUrl ?? ''}
-            onChange={(e) => setForm({ ...form, brand: { ...form.brand, emailBannerUrl: e.target.value } })}
-            placeholder="Lasă gol = folosește logo URL; gol și acolo = banner Manele Cadou implicit"
+            onChange={(url) => setForm({ ...form, brand: { ...form.brand, emailBannerUrl: url } })}
+            placeholder="Lasă gol = folosește logo; gol și acolo = banner Manele Cadou implicit"
           />
         </Field>
       </Section>
