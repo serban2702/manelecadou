@@ -919,9 +919,9 @@ function normalizeSlug(input: string): string {
     'φ': 'f', 'χ': 'ch', 'ψ': 'ps', 'ω': 'o',
     // turcă
     'ı': 'i', 'ğ': 'g', 'ş': 's', 'ç': 'c', 'ü': 'u', 'ö': 'o',
-    // hr/sl/bs/sq/ro
+    // hr/sl/bs/sq/ro (ş e deja mapat în secțiunea turcă mai sus)
     'č': 'c', 'ć': 'c', 'đ': 'd', 'š': 's', 'ž': 'z',
-    'ă': 'a', 'â': 'a', 'î': 'i', 'ț': 't', 'ş': 's',
+    'ă': 'a', 'â': 'a', 'î': 'i', 'ț': 't',
     'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ő': 'o', 'ű': 'u',
     'ë': 'e',
   };
