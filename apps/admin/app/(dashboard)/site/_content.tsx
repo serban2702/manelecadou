@@ -1450,6 +1450,7 @@ function CategoryRow({
   onRemove,
   onGenerate,
   onUpload,
+  onUpdateStartSec,
 }: {
   kind: 'style' | 'voice' | 'occasion';
   idx: number;
