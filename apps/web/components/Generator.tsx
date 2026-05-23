@@ -1767,8 +1767,6 @@ function UnlockStep({
           : tg('step6.unlockCta', { amount: fmt(Math.max(0, (quote?.total ?? site.basePriceCents) - (promoApplied?.discountCents ?? 0))) })}
       </button>
 
-      <GiftCodeUnlock generationId={generation.id} onUnlocked={onAgain /* refetch via parent */} />
-
       <button onClick={onAgain} style={{
         background: 'transparent', border: 'none', color: 'rgba(255,245,220,0.5)',
         textDecoration: 'underline', fontSize: 12, marginTop: 14, cursor: 'pointer', display: 'block', textAlign: 'center', width: '100%',
@@ -1776,72 +1774,6 @@ function UnlockStep({
         {tg('step6.laterCta')}
       </button>
     </>
-  );
-}
-
-function GiftCodeUnlock({ generationId, onUnlocked }: { generationId: string; onUnlocked: () => void }) {
-  const tg = useTranslations('generator');
-  const [code, setCode] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
-
-  async function apply() {
-    if (!code.trim()) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await api.unlockGenerationWithGift(generationId, code.trim());
-      window.location.reload();
-    } catch (e) {
-      const msg = e instanceof ApiError ? (e.body as { message?: string })?.message : (e as Error).message;
-      const reason = msg || 'unknown';
-      setError(
-        reason === 'invalid' ? tg('gift.errInvalid') :
-        reason === 'expired' ? tg('gift.errExpired') :
-        reason === 'used_up' ? tg('gift.errUsedUp') :
-        tg('gift.errGeneric'),
-      );
-      setSubmitting(false);
-    }
-  }
-
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        style={{
-          marginTop: 12, padding: '10px 14px', width: '100%',
-          background: 'rgba(255,255,255,0.04)', border: '1px dashed rgba(241,200,77,0.4)',
-          borderRadius: 10, color: 'var(--gold-2)', fontWeight: 600, fontSize: 13, cursor: 'pointer',
-          fontFamily: 'inherit',
-        }}
-      >
-        {tg('gift.openCta')}
-      </button>
-    );
-  }
-
-  return (
-    <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)' }}>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <input
-          type="text"
-          placeholder={tg('gift.placeholder')}
-          value={code}
-          onChange={(e) => { setCode(e.target.value.toUpperCase()); setError(null); }}
-          style={{
-            flex: 1, padding: '10px 12px', background: 'rgba(0,0,0,0.3)',
-            border: '1px solid var(--line)', borderRadius: 8, color: 'var(--cream)',
-            fontFamily: 'ui-monospace, monospace', fontSize: 13, letterSpacing: '0.1em', textTransform: 'uppercase',
-          }}
-        />
-        <button className="btn btn-gold btn-sm" disabled={!code.trim() || submitting} onClick={apply}>
-          {submitting ? tg('gift.applying') : tg('gift.applyCta')}
-        </button>
-      </div>
-      {error && <div style={{ fontSize: 12, color: 'var(--rose)', marginTop: 6 }}>{error}</div>}
-    </div>
   );
 }
 

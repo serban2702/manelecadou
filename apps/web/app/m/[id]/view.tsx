@@ -9,6 +9,7 @@ import { track } from '@/lib/tracking';
 import { ManeaPlayer } from '@/components/ManeaPlayer';
 import { STYLES, VOICES, OCC } from '@/lib/seed-data';
 import { useSite } from '@/lib/site-context';
+import { useSession } from '@/lib/providers';
 import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
 
@@ -186,7 +187,7 @@ function ShareGenerationViewInner() {
       )}
 
       {!isPaid && g.status === 'succeeded' && g.audioUrl && (
-        <PaywallSection generationId={g.id} onUnlocked={refresh} />
+        <PaywallSection generationId={g.id} />
       )}
 
       {g.lyrics && (
@@ -205,10 +206,11 @@ function ShareGenerationViewInner() {
   );
 }
 
-function PaywallSection({ generationId, onUnlocked }: { generationId: string; onUnlocked: () => void }) {
+function PaywallSection({ generationId }: { generationId: string }) {
   const t = useTranslations('mViewPage');
   const tg = useTranslations('generator');
   const site = useSite();
+  const session = useSession();
   const fmt = (cents: number) => formatPrice(site, cents);
   const [submittingPay, setSubmittingPay] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
@@ -237,7 +239,7 @@ function PaywallSection({ generationId, onUnlocked }: { generationId: string; on
     setPromoError(null);
     setValidatingPromo(true);
     try {
-      const r = await api.validatePromo(promoCode.trim(), undefined, basePrice);
+      const r = await api.validatePromo(promoCode.trim(), session.email ?? undefined, basePrice);
       if (r.ok && r.appliedDiscountCents) {
         setPromoApplied({ code: promoCode.trim(), discountCents: r.appliedDiscountCents });
       } else {
@@ -368,79 +370,6 @@ function PaywallSection({ generationId, onUnlocked }: { generationId: string; on
         )}
         {promoError && <div style={{ marginTop: 6, fontSize: 12, color: '#ff8888' }}>{promoError}</div>}
       </div>
-
-      <PaywallGiftCode generationId={generationId} onUnlocked={onUnlocked} />
-    </div>
-  );
-}
-
-function PaywallGiftCode({ generationId, onUnlocked }: { generationId: string; onUnlocked: () => void }) {
-  const tg = useTranslations('generator');
-  const [code, setCode] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
-
-  async function apply() {
-    if (!code.trim()) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await api.unlockGenerationWithGift(generationId, code.trim());
-      onUnlocked();
-    } catch (e) {
-      const msg = e instanceof ApiError ? (e.body as { message?: string })?.message : (e as Error).message;
-      const reason = msg || 'unknown';
-      setError(
-        reason === 'invalid' ? tg('gift.errInvalid') :
-        reason === 'expired' ? tg('gift.errExpired') :
-        reason === 'used_up' ? tg('gift.errUsedUp') :
-        tg('gift.errGeneric'),
-      );
-      setSubmitting(false);
-    }
-  }
-
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        style={{
-          marginTop: 10, padding: '10px 14px', width: '100%',
-          background: 'rgba(255,255,255,0.04)', border: '1px dashed rgba(241,200,77,0.4)',
-          borderRadius: 10, color: 'var(--gold-2)', fontWeight: 600, fontSize: 13, cursor: 'pointer',
-          fontFamily: 'inherit',
-        }}
-      >
-        {tg('gift.openCta')}
-      </button>
-    );
-  }
-
-  return (
-    <div style={{ marginTop: 10, padding: 12, borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)' }}>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <input
-          type="text"
-          placeholder={tg('gift.placeholder')}
-          value={code}
-          onChange={(e) => { setCode(e.target.value.toUpperCase()); setError(null); }}
-          style={{
-            flex: 1, padding: '8px 10px', borderRadius: 8,
-            background: 'rgba(0,0,0,0.3)', border: '1px solid var(--line)',
-            color: 'var(--gold-2)', fontFamily: 'ui-monospace, monospace', fontSize: 13,
-          }}
-        />
-        <button
-          onClick={apply}
-          disabled={submitting || !code.trim()}
-          className="btn btn-gold"
-          style={{ padding: '8px 14px', fontSize: 13 }}
-        >
-          {submitting ? tg('gift.applying') : tg('gift.applyCta')}
-        </button>
-      </div>
-      {error && <div style={{ marginTop: 6, fontSize: 12, color: '#ff8888' }}>{error}</div>}
     </div>
   );
 }
