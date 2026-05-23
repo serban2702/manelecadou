@@ -470,6 +470,25 @@ export class AdminSiteSamplesController {
     return { ok: true, ...result };
   }
 
+  /** Actualizează secunda de start pentru o mostră existentă (skip intro).
+   *  Body: { kind, key, startSec } — startSec >= 0 (în secunde). */
+  @Patch('start-sec')
+  @HttpCode(200)
+  async updateStartSec(
+    @Param('id') id: string,
+    @Body() body: { kind: SampleKind; key: string; startSec: number },
+  ) {
+    if (!body?.kind || !body?.key) {
+      throw new BadRequestException('kind și key sunt obligatorii');
+    }
+    const startSec = Number(body.startSec);
+    if (!Number.isFinite(startSec) || startSec < 0 || startSec > 600) {
+      throw new BadRequestException('startSec trebuie să fie între 0 și 600');
+    }
+    const entry = await this.samples.updateStartSec(id, body.kind, body.key, startSec);
+    return { ok: true, entry };
+  }
+
   /** Generează lyrics demo cu AI (OpenAI) folosind writerSystemPrompt al site-ului.
    *  Returnează DOAR string-ul — UI-ul îl arată în textarea editabilă. */
   @Post('preview-lyrics')

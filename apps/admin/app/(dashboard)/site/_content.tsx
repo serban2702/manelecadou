@@ -1055,6 +1055,24 @@ function CategoriesTab({
     }
   }
 
+  async function updateSampleStartSec(kind: 'style' | 'voice', key: string, sec: number) {
+    if (!samples) return;
+    // Optimistic local update.
+    onSamplesChange(
+      updateSampleLocal(samples, kind, key, (s) =>
+        s.entry ? { ...s, entry: { ...s.entry, startSec: sec || undefined } } : s,
+      ),
+    );
+    try {
+      await SitesApi.updateSampleStartSec(siteId, { kind, key, startSec: sec });
+    } catch (err) {
+      toast({ variant: 'destructive', title: 'Eroare la salvare', description: (err as Error).message });
+      // Reîncarcă de la server ca să nu lăsăm UI-ul desincronizat.
+      const fresh = await SitesApi.listSamples(siteId);
+      onSamplesChange(fresh);
+    }
+  }
+
   async function uploadSample(kind: 'style' | 'voice', key: string, file: File) {
     const token = `${kind}-${key}`;
     markBusy(token, true);
@@ -1307,6 +1325,7 @@ function CategoriesTab({
                 onRemove={() => removeEntry('style', idx)}
                 onGenerate={(regen, overrides) => generateOne('style', s.id, regen, overrides)}
                 onUpload={(file) => uploadSample('style', s.id, file)}
+                onUpdateStartSec={(sec) => updateSampleStartSec('style', s.id, sec)}
               />
             ))}
           </div>
@@ -1345,6 +1364,7 @@ function CategoriesTab({
                 onRemove={() => removeEntry('voice', idx)}
                 onGenerate={(regen, overrides) => generateOne('voice', v.id, regen, overrides)}
                 onUpload={(file) => uploadSample('voice', v.id, file)}
+                onUpdateStartSec={(sec) => updateSampleStartSec('voice', v.id, sec)}
               />
             ))}
           </div>
@@ -1460,6 +1480,7 @@ function CategoryRow({
     },
   ) => void;
   onUpload?: (file: File) => void;
+  onUpdateStartSec?: (sec: number) => Promise<void> | void;
 }) {
   const [open, setOpen] = useState(false);
   const [lyricsBusy, setLyricsBusy] = useState(false);
@@ -1598,6 +1619,14 @@ function CategoryRow({
                 <span className="text-[11px] text-muted-foreground italic">Mostra nu a fost generată</span>
               )}
             </div>
+          )}
+
+          {kind !== 'occasion' && sample?.entry && onUpdateStartSec && (
+            <SampleStartSecInput
+              audioUrl={sample.entry.audioUrl}
+              value={sample.entry.startSec ?? 0}
+              onCommit={(sec) => onUpdateStartSec(sec)}
+            />
           )}
 
           {kind !== 'occasion' && (
@@ -1974,6 +2003,69 @@ function CategoryRow({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/** Input pentru `startSec` — secunda de la care începe playback-ul în site.
+ *  - Buton „Setează din player": pune second-ul curent al audio-ului de mai sus.
+ *  - Input numeric editabil (commit on blur / Enter).
+ *  - 0 = de la început (cazul default). */
+function SampleStartSecInput({
+  audioUrl,
+  value,
+  onCommit,
+}: {
+  audioUrl: string;
+  value: number;
+  onCommit: (sec: number) => Promise<void> | void;
+}) {
+  const [draft, setDraft] = useState<string>(String(Math.round(value * 10) / 10));
+  useEffect(() => {
+    setDraft(String(Math.round(value * 10) / 10));
+  }, [value]);
+
+  const commit = async () => {
+    const n = Math.max(0, Math.min(600, Number(draft) || 0));
+    if (Math.abs(n - value) < 0.05) return;
+    await onCommit(n);
+  };
+
+  const grabFromPlayer = () => {
+    // Caută elementul <audio> precedent în DOM și citește currentTime-ul.
+    const el = document.querySelector<HTMLAudioElement>(`audio[src="${audioUrl}"]`);
+    if (!el) return;
+    const sec = Math.round(el.currentTime * 10) / 10;
+    setDraft(String(sec));
+    void onCommit(sec);
+  };
+
+  return (
+    <div className="flex items-center gap-1" title="Secunda de la care începe playback-ul în site">
+      <span className="text-[10px] text-muted-foreground">Start</span>
+      <input
+        type="number"
+        min={0}
+        max={600}
+        step={0.5}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        }}
+        className="w-14 h-7 rounded border border-input bg-background px-1 text-[11px] text-right"
+      />
+      <span className="text-[10px] text-muted-foreground">s</span>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-7 px-2 text-[10px]"
+        onClick={grabFromPlayer}
+        title="Setează din playerul de mai sus (currentTime)"
+      >
+        ⤓
+      </Button>
+    </div>
   );
 }
 

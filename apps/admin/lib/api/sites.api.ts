@@ -199,6 +199,7 @@ export interface SampleEntryDto {
   audioUrl: string;
   generatedAt: string;
   sunoTaskId?: string;
+  startSec?: number;
 }
 
 export interface SampleStatusDto {
@@ -333,6 +334,15 @@ export const SitesApi = {
       timeout: 60_000,
     });
   },
+  /** Actualizează secunda de start (skip intro) pentru o mostră existentă. */
+  updateSampleStartSec: (
+    id: string,
+    body: { kind: 'style' | 'voice'; key: string; startSec: number },
+  ) =>
+    http.patch<{ ok: true; entry: SampleEntryDto }>(
+      `/admin/sites/${id}/samples/start-sec`,
+      body,
+    ),
   /** Șterge toate mostrele audio (fișiere MP3 + intrările din DB). */
   clearAllSamples: (id: string) =>
     http.delete<{ ok: true; deleted: number }>(`/admin/sites/${id}/samples`),

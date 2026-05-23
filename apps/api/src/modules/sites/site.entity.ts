@@ -159,6 +159,8 @@ export interface SiteSampleEntry {
   /** AudioId returnat de Suno pe track-ul ales. Necesar pentru a putea
    *  crea ulterior un Persona din această mostră. */
   sunoAudioId?: string;
+  /** Secunda de la care începe playback-ul în UI (skip intro). Default 0. */
+  startSec?: number;
 }
 
 /**

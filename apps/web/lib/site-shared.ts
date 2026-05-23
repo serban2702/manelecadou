@@ -142,6 +142,8 @@ export interface SiteSampleEntry {
   audioUrl: string;
   generatedAt: string;
   sunoTaskId?: string;
+  /** Secunda de la care începe playback-ul în UI (skip intro). */
+  startSec?: number;
 }
 
 /** Formatează un preț în valuta site-ului folosind locale-ul lui. */

@@ -546,6 +546,24 @@ export class SiteSamplesService {
     return `${apiUrl}/uploads/site-samples/${site.slug}/${fileName}?v=${v}`;
   }
 
+  /** Actualizează DOAR startSec pe o mostră existentă (skip intro la playback). */
+  async updateStartSec(
+    siteId: string,
+    kind: SampleKind,
+    key: string,
+    startSec: number,
+  ): Promise<SiteSampleEntry> {
+    const site = await this.sites.findById(siteId);
+    if (!site) throw new NotFoundException('Site negăsit');
+    const current = readSample(site.suno, kind, key);
+    if (!current) {
+      throw new NotFoundException(`Mostra ${kind}/${key} nu există`);
+    }
+    const next: SiteSampleEntry = { ...current, startSec: startSec || undefined };
+    await this.sites.setSampleEntry(siteId, kind, key, next);
+    return next;
+  }
+
   /**
    * Șterge toate mostrele audio ale site-ului: fișierele MP3 din uploads/site-samples/<slug>/
    * și intrările styleSamples / voiceSamples din suno config.

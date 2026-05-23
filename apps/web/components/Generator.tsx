@@ -92,16 +92,18 @@ function useSamplePreview(
 
     // Sursa preferată: mostrele pre-generate per site (admin → /sites/:id/samples).
     // Fallback: cea mai recentă piesă publică care folosește acel stil/voce.
-    const presetUrl = isStyle
-      ? site.styleSamples?.[id]?.audioUrl
-      : site.voiceSamples?.[id]?.audioUrl;
+    const presetEntry = isStyle ? site.styleSamples?.[id] : site.voiceSamples?.[id];
+    const presetUrl = presetEntry?.audioUrl;
+    // startSec setat din admin → skip intro la playback. Doar pentru presets;
+    // fallback-ul publicGenerations (piese ale altor useri) începe mereu de la 0.
+    const presetStartSec = presetEntry?.startSec ?? 0;
 
-    async function startPlayback(url: string) {
+    async function startPlayback(url: string, startSec = 0) {
       if (cancelled || activeKeyRef.current !== key) return;
       const a = new Audio(url);
       a.preload = 'auto';
       audioRef.current = a;
-      const stopAt = 30;
+      const stopAt = startSec + 30;
       const stopFn = () => {
         try {
           a.pause();
@@ -122,6 +124,19 @@ function useSamplePreview(
         releasePlayback(stopFn);
         if (activeKeyRef.current === key) onAutoStop(key);
       });
+      // Sări la startSec înainte de play (când e setat). Trebuie să așteptăm
+      // metadata ca să putem face seek; `loadedmetadata` se firește o singură dată.
+      if (startSec > 0) {
+        const seek = () => {
+          try {
+            a.currentTime = startSec;
+          } catch {
+            /* noop */
+          }
+        };
+        if (a.readyState >= 1) seek();
+        else a.addEventListener('loadedmetadata', seek, { once: true });
+      }
       try {
         await a.play();
       } catch {
@@ -133,7 +148,7 @@ function useSamplePreview(
     (async () => {
       // 1. Mostrele admin (preset per site) au prioritate — sună exact pe limba/genul site-ului.
       if (presetUrl) {
-        await startPlayback(presetUrl);
+        await startPlayback(presetUrl, presetStartSec);
         return;
       }
       const cached = SAMPLE_CACHE.get(key);
