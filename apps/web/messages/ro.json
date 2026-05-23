@@ -3,7 +3,7 @@
     "currency": "lei",
     "priceMain": "29,99",
     "priceMainStrike": "49,99",
-    "ctaMakeManea": "🎤 Fă o manea — de la 29,99 lei",
+    "ctaMakeManea": "🎤 Fă o manea — de la {price}",
     "ctaMakeManeaShort": "Fă o manea",
     "ctaListen": "Ascultă exemple",
     "loading": "Se încarcă…",

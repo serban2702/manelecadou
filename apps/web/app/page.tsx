@@ -16,6 +16,7 @@ import {
 import { Generator } from '@/components/Generator';
 import { Ic } from '@/components/icons';
 import { useSite } from '@/lib/site-context';
+import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
 
 export default function HomePage() {
@@ -65,7 +66,7 @@ export default function HomePage() {
               data-hint="true"
               data-hint-label="Studio"
             >
-              {tCommon('ctaMakeManea')}
+              {tCommon('ctaMakeManea', { price: formatPrice(site, site.basePriceCents) })}
             </Link>
             <Link href={asculta} className="btn btn-ghost" style={{ textDecoration: 'none' }}>
               <Ic.Play s={14} /> {tCommon('ctaListen')}

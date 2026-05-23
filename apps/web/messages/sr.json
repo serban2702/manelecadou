@@ -3,7 +3,7 @@
     "currency": "RSD",
     "priceMain": "2.999",
     "priceMainStrike": "3.499",
-    "ctaMakeManea": "🎤 Napravi pesmu — 2.999 RSD",
+    "ctaMakeManea": "🎤 Napravi pesmu — {price}",
     "ctaMakeManeaShort": "Napravi pesmu",
     "ctaListen": "Slušaj primere",
     "loading": "Učitavanje…",

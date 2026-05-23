@@ -3,7 +3,7 @@
     "currency": "₺",
     "priceMain": "499",
     "priceMainStrike": "599",
-    "ctaMakeManea": "🎤 Şarkı yap — 499 ₺",
+    "ctaMakeManea": "🎤 Şarkı yap — {price}",
     "ctaMakeManeaShort": "Şarkı yap",
     "ctaListen": "Örnekleri dinle",
     "loading": "Yükleniyor…",

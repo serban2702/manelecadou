@@ -12,6 +12,7 @@ import { CountrySwitcher } from './CountrySwitcher';
 import { MyGenerationsCounter } from './MyGenerationsCounter';
 import { useSession } from '@/lib/providers';
 import { useSite } from '@/lib/site-context';
+import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
 
 export function SiteShell({ children, hideStickyCta }: { children: ReactNode; hideStickyCta?: boolean }) {
@@ -131,7 +132,7 @@ export function SiteShell({ children, hideStickyCta }: { children: ReactNode; hi
       {!hideStickyCta && (
         <div className="sticky-cta">
           <Link href={getPagePath(site.locale, 'studio')} className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
-            {tCommon('ctaMakeManea')}
+            {tCommon('ctaMakeManea', { price: formatPrice(site, site.basePriceCents) })}
           </Link>
         </div>
       )}

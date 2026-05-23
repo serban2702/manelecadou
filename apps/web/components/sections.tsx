@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Ic } from './icons';
 import { toast } from './Toaster';
 import { DEMOS, FEED as FEED_FALLBACK, TESTI, TOP } from '@/lib/seed-data';
-import { siteSupportEmail, siteUrl } from '@/lib/site-shared';
+import { formatPrice, siteSupportEmail, siteUrl } from '@/lib/site-shared';
 import { useSite } from '@/lib/site-context';
 import { getLegalPath } from '@/lib/legal-slugs';
 import { getPagePath } from '@/lib/page-slugs';
@@ -13,6 +13,7 @@ import { getPagePath } from '@/lib/page-slugs';
 export function Hero({ onGen, onListen }: { onGen: () => void; onListen: () => void }) {
   const t = useTranslations('hero');
   const tc = useTranslations('common');
+  const site = useSite();
   return (
     <section className="hero">
       <div className="hero-flag">{t('flag')}</div>
@@ -21,7 +22,7 @@ export function Hero({ onGen, onListen }: { onGen: () => void; onListen: () => v
       </h1>
       <p className="sub">{t('sub')}</p>
       <div className="hero-actions">
-        <button className="btn btn-gold btn-lg" onClick={onGen}>{tc('ctaMakeManea')}</button>
+        <button className="btn btn-gold btn-lg" onClick={onGen}>{tc('ctaMakeManea', { price: formatPrice(site, site.basePriceCents) })}</button>
         <button className="btn btn-ghost" onClick={onListen}><Ic.Play s={14} /> {tc('ctaListen')}</button>
       </div>
       <div className="hero-trust">

@@ -3,7 +3,7 @@
     "currency": "€",
     "priceMain": "9,99",
     "priceMainStrike": "12,99",
-    "ctaMakeManea": "🎤 Naredi pesem — 9,99 €",
+    "ctaMakeManea": "🎤 Naredi pesem — {price}",
     "ctaMakeManeaShort": "Naredi pesem",
     "ctaListen": "Poslušaj primere",
     "loading": "Nalaganje…",

@@ -3,7 +3,7 @@
     "currency": "KM",
     "priceMain": "19,99",
     "priceMainStrike": "24,99",
-    "ctaMakeManea": "🎤 Napravi pjesmu — 19,99 KM",
+    "ctaMakeManea": "🎤 Napravi pjesmu — {price}",
     "ctaMakeManeaShort": "Napravi pjesmu",
     "ctaListen": "Slušaj primjere",
     "loading": "Učitavanje…",

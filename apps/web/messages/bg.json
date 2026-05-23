@@ -3,7 +3,7 @@
     "currency": "лв",
     "priceMain": "49,99",
     "priceMainStrike": "59,99",
-    "ctaMakeManea": "🎤 Направи манеле — 49,99 лв",
+    "ctaMakeManea": "🎤 Направи манеле — {price}",
     "ctaMakeManeaShort": "Направи манеле",
     "ctaListen": "Чуй примери",
     "loading": "Зарежда се…",
