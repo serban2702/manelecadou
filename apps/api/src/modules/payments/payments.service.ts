@@ -80,21 +80,21 @@ export class PaymentsService {
     return (await this.getStripe()) !== null;
   }
 
-  /** Tip-surcharge are sens doar pe RON (lei). Pe alte valute îl ignorăm.
-   *  Folosește valorile DIN site config (tipSurchargePercent + cap) cu fallback
-   *  la constantele globale dacă DB nu are valori setate. */
+  /** Suprataxă pe dedicație. Folosește valorile DIN site config
+   *  (tipSurchargePercent + cap) cu fallback la constantele globale dacă DB
+   *  nu are valori setate. Se aplică pentru orice monedă — fiecare site își
+   *  setează propriile valori (sau le pune 0 dacă nu vrea suprataxă). */
   private siteTipSurcharge(site: Site, tipAmount: number): number {
-    if (site.currency.toUpperCase() !== 'RON') return 0;
     if (!tipAmount || tipAmount < 0) return 0;
     const percent = site.tipSurchargePercent ?? 5;
     const cap = site.tipSurchargeCapCents ?? 5000;
+    if (percent <= 0) return 0;
     const surchargeCents = Math.round(tipAmount * 100 * (percent / 100));
     return Math.min(cap, surchargeCents);
   }
 
   private sitePremiumExtra(site: Site, premium: boolean): number {
     if (!premium) return 0;
-    if (site.currency.toUpperCase() !== 'RON') return 0;
     return site.premiumExtraCents ?? PREMIUM_EXTRA_CENTS;
   }
 
