@@ -11,6 +11,7 @@ import { GiftCodesModule } from '../gift-codes/gift-codes.module';
 import { SitesModule } from '../sites/sites.module';
 import { GenerationsModule } from '../generations/generations.module';
 import { TiktokModule } from '../tiktok/tiktok.module';
+import { GuestSessionsModule } from '../guest-sessions/guest-sessions.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { TiktokModule } from '../tiktok/tiktok.module';
     SitesModule,
     forwardRef(() => GenerationsModule),
     TiktokModule,
+    GuestSessionsModule,
   ],
   providers: [PaymentsService],
   controllers: [PaymentsController],

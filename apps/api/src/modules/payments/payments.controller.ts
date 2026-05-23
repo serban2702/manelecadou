@@ -13,6 +13,7 @@ import {
 import { Request } from 'express';
 import { IsBoolean, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 import { PaymentsService } from './payments.service';
+import { GuestSessionsService } from '../guest-sessions/guest-sessions.service';
 import { OptionalJwtAuthGuard } from '../../common/jwt.guard';
 import {
   AuthedRequestUser,
@@ -73,7 +74,22 @@ class DirectCheckoutDto {
 
 @Controller('payments')
 export class PaymentsController {
-  constructor(private readonly svc: PaymentsService) {}
+  constructor(
+    private readonly svc: PaymentsService,
+    private readonly guests: GuestSessionsService,
+  ) {}
+
+  private async resolveEmail(
+    user: AuthedRequestUser | null,
+    guestId: string | null,
+  ): Promise<string | undefined> {
+    if (user?.email) return user.email;
+    if (guestId) {
+      const g = await this.guests.findById(guestId);
+      if (g?.email) return g.email;
+    }
+    return undefined;
+  }
 
   @Get('quote')
   async quote(
@@ -113,7 +129,7 @@ export class PaymentsController {
       tipAmount: body.tipAmount ?? 0,
       premium: body.premium ?? false,
       promoCode: body.promoCode,
-      email: user?.email,
+      email: await this.resolveEmail(user, guestId),
       site,
     });
   }
@@ -138,7 +154,7 @@ export class PaymentsController {
       tipAmount: body.tipAmount ?? body.generation.tipAmount ?? 0,
       premium: body.premium ?? body.generation.premium ?? false,
       promoCode: body.promoCode,
-      email: user?.email,
+      email: await this.resolveEmail(user, guestId),
       site,
     });
   }
