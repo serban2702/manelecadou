@@ -23,6 +23,7 @@ import { useGenerationPolling, useSession } from '@/lib/providers';
 import { useSite } from '@/lib/site-context';
 import { track } from '@/lib/tracking';
 import { formatPrice } from '@/lib/site-shared';
+import { claimPlayback, releasePlayback } from '@/lib/audio-registry';
 
 type Data = {
   style: string;
@@ -101,6 +102,15 @@ function useSamplePreview(
       a.preload = 'auto';
       audioRef.current = a;
       const stopAt = 30;
+      const stopFn = () => {
+        try {
+          a.pause();
+        } catch {
+          /* noop */
+        }
+      };
+      a.addEventListener('play', () => claimPlayback(stopFn));
+      a.addEventListener('pause', () => releasePlayback(stopFn));
       a.addEventListener('timeupdate', () => {
         if (a.currentTime >= stopAt) {
           a.pause();
@@ -109,6 +119,7 @@ function useSamplePreview(
         }
       });
       a.addEventListener('ended', () => {
+        releasePlayback(stopFn);
         if (activeKeyRef.current === key) onAutoStop(key);
       });
       try {
@@ -247,6 +258,19 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   useEffect(() => {
     setMaxVisited((m) => Math.max(m, step));
   }, [step]);
+
+  // Oprește orice mostră voce/stil care încă rulează când schimbi pasul.
+  // useSamplePreview pauzează audio-ul când `playing` se schimbă, iar
+  // onPlay(playing) cu același id îl resetează la null.
+  const stoppedForStepRef = useRef<number>(step);
+  useEffect(() => {
+    if (stoppedForStepRef.current !== step) {
+      stoppedForStepRef.current = step;
+      if (playing && (playing.startsWith('style-') || playing.startsWith('voice-'))) {
+        onPlay(playing);
+      }
+    }
+  }, [step, playing, onPlay]);
 
   const stepDone = (i: number): boolean => {
     if (i === 0) return !!data.style;

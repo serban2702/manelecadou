@@ -1,8 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ic } from './icons';
 import { resolveMediaUrl } from '@/lib/api';
+import { claimPlayback, releasePlayback } from '@/lib/audio-registry';
+
+type Stopper = () => void;
 
 interface Props {
   audioUrl: string;
@@ -69,9 +72,25 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
             } catch {}
           }
         });
-        ws.on('play', () => setIsPlaying(true));
-        ws.on('pause', () => setIsPlaying(false));
-        ws.on('finish', () => setIsPlaying(false));
+        const stopFn = () => {
+          try {
+            ws.pause();
+          } catch {
+            /* noop */
+          }
+        };
+        ws.on('play', () => {
+          claimPlayback(stopFn);
+          setIsPlaying(true);
+        });
+        ws.on('pause', () => {
+          releasePlayback(stopFn);
+          setIsPlaying(false);
+        });
+        ws.on('finish', () => {
+          releasePlayback(stopFn);
+          setIsPlaying(false);
+        });
         ws.on('error', (err: Error) => setError(err.message));
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Eroare');
@@ -88,6 +107,21 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
   function toggle() {
     wsRef.current?.playPause();
   }
+
+  // Stopper stabil pentru fallback-ul nativ (înregistrat în audio-registry).
+  const nativeStopRef = useRef<Stopper | null>(null);
+  const getNativeStop = useCallback((el: HTMLAudioElement) => {
+    if (!nativeStopRef.current) {
+      nativeStopRef.current = () => {
+        try {
+          el.pause();
+        } catch {
+          /* noop */
+        }
+      };
+    }
+    return nativeStopRef.current;
+  }, []);
 
   // Fallback: dacă wavesurfer eșuează (de regulă din cauza CORS-ului),
   // afișăm un audio nativ stilizat — user-ul tot poate asculta.
@@ -111,6 +145,9 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
           controls
           src={audioUrl}
           style={{ width: '100%', height: compact ? 32 : 40 }}
+          onPlay={(e) => claimPlayback(getNativeStop(e.currentTarget))}
+          onPause={(e) => releasePlayback(getNativeStop(e.currentTarget))}
+          onEnded={(e) => releasePlayback(getNativeStop(e.currentTarget))}
           onTimeUpdate={(e) => {
             if (!previewLimited) return;
             const el = e.currentTarget;
