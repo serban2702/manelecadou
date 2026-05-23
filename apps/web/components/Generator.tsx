@@ -15,7 +15,6 @@ import {
   api,
   ApiError,
   type GenerationDto,
-  type GenStatus,
   type RecentDto,
   type PriceQuote,
 } from '@/lib/api';
@@ -1425,20 +1424,43 @@ function PayFirstStep({
   );
 }
 
-const STATUS_PCT: Record<GenStatus, number> = {
-  pending: 5,
-  queued: 12,
-  writing_lyrics: 30,
-  checking_lyrics: 55,
-  generating_audio: 78,
-  running: 92,
-  succeeded: 100,
-  failed: 100,
-};
+/**
+ * Progres-bar time-based, independent de status. Profile:
+ *   0 → 90%   în primele 3 minute  (liniar, 0.5%/s)
+ *   90 → 99%  cu 1% pe minut       (rămâne sub 100 până la finish)
+ *   succeeded → 100%
+ *   failed    → 100% (pe culoarea rose)
+ * Pleacă de la `generation.createdAt` (sincronizat backend), așa că
+ * refresh-ul nu resetează progresul.
+ */
+function useTimeBasedProgress(generation: GenerationDto): number {
+  const startMs = useMemo(() => {
+    const t = new Date(generation.createdAt).getTime();
+    return Number.isFinite(t) ? t : Date.now();
+  }, [generation.createdAt]);
+
+  const computePct = useCallback((): number => {
+    if (generation.status === 'succeeded' || generation.status === 'failed') return 100;
+    const elapsedSec = Math.max(0, (Date.now() - startMs) / 1000);
+    if (elapsedSec <= 180) return (elapsedSec / 180) * 90;
+    return Math.min(99, 90 + (elapsedSec - 180) / 60);
+  }, [generation.status, startMs]);
+
+  const [pct, setPct] = useState<number>(computePct);
+
+  useEffect(() => {
+    setPct(computePct());
+    if (generation.status === 'succeeded' || generation.status === 'failed') return;
+    const id = setInterval(() => setPct(computePct()), 1000);
+    return () => clearInterval(id);
+  }, [computePct, generation.status]);
+
+  return Math.min(100, Math.max(0, pct));
+}
 
 function GenerationLive({ generation, recent }: { generation: GenerationDto; recent: RecentDto[] }) {
   const tg = useTranslations('generator');
-  const pct = STATUS_PCT[generation.status];
+  const pct = useTimeBasedProgress(generation);
   const statusLabel = tg(`live.status.${generation.status}`);
   const isPlaying = generation.status !== 'succeeded' && generation.status !== 'failed';
 
@@ -1486,7 +1508,7 @@ function GenerationLive({ generation, recent }: { generation: GenerationDto; rec
             background: generation.status === 'failed'
               ? 'var(--rose)'
               : 'linear-gradient(90deg,#ffe28a,#f1c84d,#b07c1e)',
-            transition: 'width 0.6s ease',
+            transition: 'width 1s linear',
           }}
         />
       </div>
