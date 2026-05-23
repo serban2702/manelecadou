@@ -46,7 +46,7 @@ export class GenerationsService {
       throw new ForbiddenException('Missing guest session');
     }
 
-    return this.dataSource.transaction(async (mgr) => {
+    const saved = await this.dataSource.transaction(async (mgr) => {
       const generationRepo = mgr.getRepository(Generation);
 
       if (dto.type === 'demo') {
@@ -96,21 +96,24 @@ export class GenerationsService {
         locale: dto.locale ?? 'ro',
         siteId: ctx.siteId ?? null,
       });
-      const saved = await generationRepo.save(created);
-
-      await this.queue.add(
-        'generate',
-        { generationId: saved.id },
-        {
-          removeOnComplete: 100,
-          removeOnFail: 100,
-          // Suno poate dura 2-4 min; lăsăm 8 min ca să nu eșueze prematur
-          attempts: 1,
-        },
-      );
-
-      return saved;
+      return generationRepo.save(created);
     });
+
+    // IMPORTANT: queue.add se face DUPĂ commit-ul tranzacției — altfel worker-ul
+    // BullMQ poate prelua job-ul înainte ca generation să fie persistat și
+    // primește „generation not found".
+    await this.queue.add(
+      'generate',
+      { generationId: saved.id },
+      {
+        removeOnComplete: 100,
+        removeOnFail: 100,
+        // Suno poate dura 2-4 min; lăsăm 8 min ca să nu eșueze prematur
+        attempts: 1,
+      },
+    );
+
+    return saved;
   }
 
   async findOne(
