@@ -1214,26 +1214,20 @@ function DemoStep({
         <h3>{tg('step5Demo.title')}</h3>
         <p className="ld">{tg('step5Demo.sub')}</p>
 
-        {!email && (
-          <div className="field" style={{ marginTop: 14 }}>
-            <label>{tg('step5Demo.emailLabel')}</label>
-            <input
-              type="email"
-              placeholder={tg('step5Demo.emailPlaceholder')}
-              value={emailDraft}
-              onChange={(e) => onEmailChange(e.target.value)}
-              required
-            />
-            <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.5)', marginTop: 4 }}>
-              {tg('step5Demo.emailHint')}
-            </div>
+        <div className="field" style={{ marginTop: 14 }}>
+          <label>{tg('step5Demo.emailLabel')}</label>
+          <input
+            type="email"
+            placeholder={tg('step5Demo.emailPlaceholder')}
+            value={email ?? emailDraft}
+            onChange={(e) => onEmailChange(e.target.value)}
+            readOnly={!!email}
+            required
+          />
+          <div style={{ fontSize: 11, color: email ? 'var(--gold-2)' : 'rgba(255,245,220,0.5)', marginTop: 4 }}>
+            {email ? `${tg('step5Demo.emailSentTo')} ${email}` : tg('step5Demo.emailHint')}
           </div>
-        )}
-        {email && (
-          <div style={{ marginTop: 12, fontSize: 13, color: 'var(--gold-2)' }}>
-            {tg('step5Demo.emailSentTo')} <b>{email}</b>
-          </div>
-        )}
+        </div>
 
         {error && <ErrorBox text={error} />}
 
@@ -1302,23 +1296,22 @@ function PayFirstStep({
       <h3>{tg('step5PayFirst.title')}</h3>
       <p className="ld">{tg('step5PayFirst.sub')}</p>
 
-      {!email && (
-        <div className="field" style={{ marginTop: 14 }}>
-          <label>{tg('step5PayFirst.emailLabel')}</label>
-          <input
-            type="email"
-            placeholder={tg('step5Demo.emailPlaceholder')}
-            value={emailDraft}
-            onChange={(e) => onEmailChange(e.target.value)}
-            required
-          />
-        </div>
-      )}
-      {email && (
-        <div style={{ marginTop: 8, fontSize: 13, color: 'var(--gold-2)' }}>
-          {tg('step5PayFirst.emailSentTo')} <b>{email}</b>
-        </div>
-      )}
+      <div className="field" style={{ marginTop: 14 }}>
+        <label>{tg('step5PayFirst.emailLabel')}</label>
+        <input
+          type="email"
+          placeholder={tg('step5Demo.emailPlaceholder')}
+          value={email ?? emailDraft}
+          onChange={(e) => onEmailChange(e.target.value)}
+          readOnly={!!email}
+          required
+        />
+        {email && (
+          <div style={{ fontSize: 11, color: 'var(--gold-2)', marginTop: 4 }}>
+            {tg('step5PayFirst.emailSentTo')} <b>{email}</b>
+          </div>
+        )}
+      </div>
 
       <div style={{
         marginTop: 14, padding: 14, borderRadius: 10,

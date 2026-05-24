@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { IsBoolean, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsObject, IsOptional, IsUUID, Max, Min } from 'class-validator';
 import { PaymentsService } from './payments.service';
 import { GuestSessionsService } from '../guest-sessions/guest-sessions.service';
 import { OptionalJwtAuthGuard } from '../../common/jwt.guard';
@@ -58,6 +58,10 @@ class DirectCheckoutDto {
 
   // Câmpurile generation — validare minimă (DTO-ul de pe createGeneration are
   // class-validator decorators dar îl primim ca obiect plain pentru flexibilitate).
+  // Trebuie marcat ca obiect, altfel ValidationPipe ({ whitelist: true,
+  // forbidNonWhitelisted: true }) îl strip-uiește/respinge → 400 + frontend
+  // afișează „Nu s-a putut deschide plata".
+  @IsObject()
   generation!: {
     style: string;
     occasion: string;
