@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { api, ApiError, resolveMediaUrl, type GenerationDto } from '@/lib/api';
@@ -21,8 +21,14 @@ export default function ShareGenerationView() {
   );
 }
 
+const IN_PROGRESS_STATUSES = new Set([
+  'pending', 'queued', 'writing_lyrics', 'checking_lyrics', 'generating_audio', 'running',
+]);
+
 function ShareGenerationViewInner() {
   const t = useTranslations('mViewPage');
+  const tLive = useTranslations('generator.live');
+  const tStatus = useTranslations('generator.live.status');
   const tStyles = useTranslations('styles');
   const tOcc = useTranslations('occasions');
   const params = useParams<{ id: string }>();
@@ -46,6 +52,15 @@ function ShareGenerationViewInner() {
   useEffect(() => {
     refresh();
   }, [params.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Polling cât timp generation e încă în lucru — UX identic cu pasul demo
+  // din Generator (progress bar + statusuri vii).
+  useEffect(() => {
+    if (!g) return;
+    if (!IN_PROGRESS_STATUSES.has(g.status)) return;
+    const id = setInterval(refresh, 2500);
+    return () => clearInterval(id);
+  }, [g?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!g || viewTrackedRef.current) return;
@@ -103,6 +118,7 @@ function ShareGenerationViewInner() {
   if (!g) return <main style={{ padding: 40, textAlign: 'center' }}><p className="ld">{t('loading')}</p></main>;
 
   const isPaid = g.type === 'full' || g.paidUnlocked;
+  const inProgress = IN_PROGRESS_STATUSES.has(g.status);
   // Lookup chain: admin-defined config per site (cu i18n localizare) → seed-data
   //               → traduceri next-intl (pentru seed-data ids) → literal id.
   const adminStyle = site.styles?.find((s) => s.id === g.style);
@@ -150,12 +166,14 @@ function ShareGenerationViewInner() {
         }}>
           {isPaid ? t('unlockedBadge') : t('demoBadge')}
         </span>
-        <span style={{
-          fontSize: 11, padding: '3px 10px', borderRadius: 999,
-          background: 'rgba(255,255,255,0.05)', color: 'rgba(255,245,220,0.6)',
-        }}>
-          {t('statusLabel')} {g.status}
-        </span>
+        {!inProgress && (
+          <span style={{
+            fontSize: 11, padding: '3px 10px', borderRadius: 999,
+            background: 'rgba(255,255,255,0.05)', color: 'rgba(255,245,220,0.6)',
+          }}>
+            {t('statusLabel')} {g.status}
+          </span>
+        )}
       </div>
 
       {unlocking && (
@@ -165,6 +183,14 @@ function ShareGenerationViewInner() {
         }}>
           {t('confirmingPayment')}
         </div>
+      )}
+
+      {inProgress && (
+        <GenerationProgress
+          generation={g}
+          tLive={tLive}
+          tStatus={tStatus}
+        />
       )}
 
       {g.audioUrl && (
@@ -203,6 +229,102 @@ function ShareGenerationViewInner() {
         </details>
       )}
     </main>
+  );
+}
+
+/** Progress bar time-based — replică din Generator.tsx (`useTimeBasedProgress`).
+ *  În primele 180s urcă liniar până la 90%, apoi încet spre 99% până la finalizare. */
+function useTimeBasedProgress(generation: GenerationDto): number {
+  const startMs = useMemo(() => {
+    const t = new Date(generation.createdAt).getTime();
+    return Number.isFinite(t) ? t : Date.now();
+  }, [generation.createdAt]);
+
+  const computePct = useCallback((): number => {
+    if (generation.status === 'succeeded' || generation.status === 'failed') return 100;
+    const elapsedSec = Math.max(0, (Date.now() - startMs) / 1000);
+    if (elapsedSec <= 180) return (elapsedSec / 180) * 90;
+    return Math.min(99, 90 + (elapsedSec - 180) / 60);
+  }, [generation.status, startMs]);
+
+  const [pct, setPct] = useState<number>(computePct);
+
+  useEffect(() => {
+    setPct(computePct());
+    if (generation.status === 'succeeded' || generation.status === 'failed') return;
+    const id = setInterval(() => setPct(computePct()), 1000);
+    return () => clearInterval(id);
+  }, [computePct, generation.status]);
+
+  return Math.min(100, Math.max(0, pct));
+}
+
+/** UI „live" pentru generation în curs — identic vizual cu pasul demo din
+ *  Generator.tsx (titlu working, status, progress bar, ciornă/versuri verificate). */
+function GenerationProgress({
+  generation,
+  tLive,
+  tStatus,
+}: {
+  generation: GenerationDto;
+  tLive: ReturnType<typeof useTranslations>;
+  tStatus: ReturnType<typeof useTranslations>;
+}) {
+  const pct = useTimeBasedProgress(generation);
+  const statusLabel = (() => {
+    try { return tStatus(generation.status as any); } catch { return generation.status; }
+  })();
+
+  return (
+    <div style={{ marginTop: 18 }}>
+      <h3 style={{ margin: 0, fontSize: 18, color: 'var(--gold-2)' }}>
+        {tLive('workingTitle')}
+      </h3>
+      <p className="ld" style={{ marginTop: 4 }}>{statusLabel}</p>
+
+      <div style={{
+        marginTop: 14, height: 6, borderRadius: 999,
+        background: 'rgba(241,200,77,0.1)', overflow: 'hidden',
+      }}>
+        <div
+          style={{
+            width: `${pct}%`,
+            height: '100%',
+            background: 'linear-gradient(90deg,#ffe28a,#f1c84d,#b07c1e)',
+            transition: 'width 1s linear',
+          }}
+        />
+      </div>
+
+      {generation.lyrics && (
+        <div style={{
+          marginTop: 18, padding: 14, borderRadius: 10,
+          background: 'rgba(241,200,77,0.05)',
+          border: '1px solid rgba(241,200,77,0.2)',
+        }}>
+          <div style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
+            {tLive('lyricsVerified')}
+          </div>
+          <pre style={{ whiteSpace: 'pre-wrap', color: 'var(--gold-2)', fontSize: 13, lineHeight: 1.6 }}>
+            {generation.lyrics}
+          </pre>
+        </div>
+      )}
+      {!generation.lyrics && generation.lyricsDraft && (
+        <div style={{
+          marginTop: 18, padding: 14, borderRadius: 10,
+          background: 'rgba(255,255,255,0.02)',
+          border: '1px dashed rgba(241,200,77,0.2)',
+        }}>
+          <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.5)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
+            {tLive('lyricsDraft')}
+          </div>
+          <pre style={{ whiteSpace: 'pre-wrap', color: 'rgba(255,245,220,0.7)', fontSize: 12, lineHeight: 1.5 }}>
+            {generation.lyricsDraft}
+          </pre>
+        </div>
+      )}
+    </div>
   );
 }
 
