@@ -448,11 +448,11 @@ export function Footer() {
 
       {(social.instagram || social.facebook || social.tiktok || social.youtube || social.whatsapp) && (
         <div style={{ display: 'flex', gap: 14, justifyContent: 'center', marginBottom: 14 }}>
-          {social.instagram && <SocialIcon href={social.instagram} label="Instagram" emoji="📷" />}
-          {social.facebook && <SocialIcon href={social.facebook} label="Facebook" emoji="📘" />}
-          {social.tiktok && <SocialIcon href={social.tiktok} label="TikTok" emoji="🎵" />}
-          {social.youtube && <SocialIcon href={social.youtube} label="YouTube" emoji="▶️" />}
-          {social.whatsapp && <SocialIcon href={social.whatsapp} label="WhatsApp" emoji="💬" />}
+          {social.instagram && <SocialIcon href={social.instagram} label="Instagram" icon={<InstagramIcon />} />}
+          {social.facebook && <SocialIcon href={social.facebook} label="Facebook" icon={<FacebookIcon />} />}
+          {social.tiktok && <SocialIcon href={social.tiktok} label="TikTok" icon={<TikTokIcon />} />}
+          {social.youtube && <SocialIcon href={social.youtube} label="YouTube" icon={<YouTubeIcon />} />}
+          {social.whatsapp && <SocialIcon href={social.whatsapp} label="WhatsApp" icon={<WhatsAppIcon />} />}
         </div>
       )}
 
@@ -497,7 +497,7 @@ export function Footer() {
   );
 }
 
-function SocialIcon({ href, label, emoji }: { href: string; label: string; emoji: string }) {
+function SocialIcon({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) {
   return (
     <a
       href={href}
@@ -509,12 +509,55 @@ function SocialIcon({ href, label, emoji }: { href: string; label: string; emoji
         background: 'rgba(241,200,77,0.06)',
         border: '1px solid var(--line)',
         display: 'grid', placeItems: 'center',
-        fontSize: 16, textDecoration: 'none',
-        transition: 'border-color 0.15s, background 0.15s',
+        color: '#f1c84d',
+        textDecoration: 'none',
+        transition: 'border-color 0.15s, background 0.15s, color 0.15s',
       }}
     >
-      {emoji}
+      {icon}
     </a>
+  );
+}
+
+function InstagramIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+    </svg>
+  );
+}
+
+function FacebookIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M22 12a10 10 0 1 0-11.56 9.88v-6.99H7.9V12h2.54V9.8c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56V12h2.77l-.44 2.89h-2.33v6.99A10 10 0 0 0 22 12z" />
+    </svg>
+  );
+}
+
+function TikTokIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.93a8.16 8.16 0 0 0 4.77 1.52V7a4.85 4.85 0 0 1-1.84-.31z" />
+    </svg>
+  );
+}
+
+function YouTubeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M23.5 6.2a3 3 0 0 0-2.1-2.12C19.55 3.5 12 3.5 12 3.5s-7.55 0-9.4.58A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.12c1.85.58 9.4.58 9.4.58s7.55 0 9.4-.58a3 3 0 0 0 2.1-2.12A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.6 15.6V8.4l6.27 3.6z" />
+    </svg>
+  );
+}
+
+function WhatsAppIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.25-.46-2.38-1.47-.88-.78-1.47-1.74-1.65-2.04-.17-.3-.02-.46.13-.6.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51l-.57-.01c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48 0 1.47 1.07 2.88 1.22 3.08.15.2 2.1 3.2 5.08 4.49.71.3 1.26.49 1.69.63.71.23 1.35.2 1.86.12.57-.08 1.76-.72 2-1.42.25-.7.25-1.3.17-1.42-.07-.12-.27-.2-.57-.35zM12.05 21.5h-.04a9.43 9.43 0 0 1-4.8-1.31l-.34-.2-3.57.93.95-3.47-.22-.36a9.4 9.4 0 0 1-1.44-5 9.45 9.45 0 0 1 16.13-6.68 9.4 9.4 0 0 1 2.77 6.69 9.45 9.45 0 0 1-9.44 9.4zm8.04-17.44A11.43 11.43 0 0 0 12.05 0C5.78 0 .68 5.08.68 11.34c0 2 .52 3.96 1.52 5.68L.58 24l7.13-1.86a11.36 11.36 0 0 0 5.43 1.38h.01c6.27 0 11.37-5.08 11.37-11.34a11.26 11.26 0 0 0-3.43-8.12z" />
+    </svg>
   );
 }
 
