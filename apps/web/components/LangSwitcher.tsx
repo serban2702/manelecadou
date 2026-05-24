@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale } from 'next-intl';
 import { LOCALES, LOCALE_META, isLocale, type Locale } from '@/i18n/locales';
+import { useSite } from '@/lib/site-context';
 
 const COOKIE_NAME = 'NEXT_LOCALE';
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
@@ -15,6 +16,7 @@ function setLocaleCookie(locale: Locale) {
 
 export function LangSwitcher() {
   const router = useRouter();
+  const site = useSite();
   const current = useLocale() as Locale;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -27,7 +29,11 @@ export function LangSwitcher() {
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  const show = (process.env.NEXT_PUBLIC_SHOW_LANG_SWITCHER ?? 'true') !== 'false';
+  // Sursa de adevăr: flag-ul `langSwitcherEnabled` din configul site-ului (DB).
+  // Fallback la env-ul vechi `NEXT_PUBLIC_SHOW_LANG_SWITCHER` doar dacă siteul nu
+  // are setarea (ex. fallback config la cold-start). Default: ascuns.
+  const envFallback = (process.env.NEXT_PUBLIC_SHOW_LANG_SWITCHER ?? 'false') !== 'false';
+  const show = site.langSwitcherEnabled ?? envFallback;
   if (!show) return null;
 
   const meta = LOCALE_META[isLocale(current) ? current : 'ro'];

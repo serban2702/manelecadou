@@ -397,6 +397,15 @@ export class Site {
   hiddenMode!: boolean; // dacă true, Caddy/Next.js închid conexiunea cu 444 (ERR_EMPTY_RESPONSE)
 
   /**
+   * Dacă true, meniul de selectare limbă (LangSwitcher din topbar) e afișat.
+   * Default false fiindcă pe site-urile multi-tenant convenția e "un domeniu
+   * = o limbă". Activează când vrei să dai vizitatorului control manual peste
+   * locale (ex. când împărtășești același domeniu pentru mai multe regiuni).
+   */
+  @Column({ type: 'boolean', default: false })
+  langSwitcherEnabled!: boolean;
+
+  /**
    * Lista de IP-uri (exact-match) scutite de maintenanceMode și hiddenMode.
    * Suportă IPv4, IPv6, sau prefix wildcard simplu (ex. "192.168.*"). Pentru
    * fiecare request, dacă IP-ul clientului e în listă, modurile sunt sărite.

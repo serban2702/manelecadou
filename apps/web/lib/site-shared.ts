@@ -51,6 +51,8 @@ export interface SiteConfig {
   active: boolean;
   maintenanceMode: boolean;
   hiddenMode?: boolean;
+  /** Dacă true, LangSwitcher-ul din topbar e afișat. Default false. */
+  langSwitcherEnabled?: boolean;
   maintenanceMessage?: Record<string, string>;
   /** Lista IP-uri scutite de maintenance + hidden mode (exact match sau wildcard "*"). */
   ipWhitelist?: string[];

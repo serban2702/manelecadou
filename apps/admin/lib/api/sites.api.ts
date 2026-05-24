@@ -94,6 +94,8 @@ export interface SiteDto {
   sslEnabled: boolean;
   maintenanceMode: boolean;
   hiddenMode: boolean;
+  /** Afișează meniul de selectare limbă în topbar. Default false (un domeniu = o limbă). */
+  langSwitcherEnabled: boolean;
   maintenanceMessage: Record<string, string>;
   /** Lista IP-uri scutite de mentenanță / hidden (exact match sau prefix "192.168.*"). */
   ipWhitelist: string[];

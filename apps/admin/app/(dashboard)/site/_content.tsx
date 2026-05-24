@@ -826,6 +826,11 @@ function StatusTab({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto) => 
           value={form.demoEnabled ?? true}
           onChange={(v) => setForm({ ...form, demoEnabled: v })}
         />
+        <Toggle
+          label="Meniu selectare limbă (topbar)"
+          value={form.langSwitcherEnabled ?? false}
+          onChange={(v) => setForm({ ...form, langSwitcherEnabled: v })}
+        />
         <Field label="Sursă date /top">
           <select
             value={form.topSource ?? 'seed'}

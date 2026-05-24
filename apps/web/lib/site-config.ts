@@ -33,6 +33,7 @@ export const getSiteConfig = cache(async (): Promise<SiteConfig> => {
     active: true,
     maintenanceMode: false,
     hiddenMode: false,
+    langSwitcherEnabled: false,
     maintenanceMessage: {},
   };
 
