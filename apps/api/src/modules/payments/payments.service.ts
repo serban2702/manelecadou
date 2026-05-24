@@ -22,6 +22,7 @@ import { SettingsService } from '../settings/settings.service';
 import { GenerationsService } from '../generations/generations.service';
 import { CreateGenerationDto } from '../generations/dto/create-generation.dto';
 import { TiktokEventsService } from '../tiktok/tiktok-events.service';
+import { AnalyticsService } from '../analytics/analytics.service';
 import {
   productName as i18nProductName,
   dedicationDescription as i18nDedicDesc,
@@ -59,6 +60,7 @@ export class PaymentsService {
     @Inject(forwardRef(() => GenerationsService))
     private readonly generations: GenerationsService,
     private readonly tiktok: TiktokEventsService,
+    private readonly analytics: AnalyticsService,
   ) {}
 
   /** Returnează instanța Stripe, re-instanțiată dacă cheia s-a schimbat în admin. */
@@ -588,6 +590,35 @@ export class PaymentsService {
           })
           .catch((err) =>
             this.logger.warn(`TikTok Purchase event failed: ${(err as Error).message}`),
+          );
+
+        // Meta CAPI + GA4 Measurement Protocol (server-side Purchase). event_id
+        // = paymentId — identic cu `eventID` din `fbq('track', 'Purchase', ...)`
+        // de pe success page → Meta/GA dedup browser↔server automat.
+        // Webhook-ul vine 100% din partea Stripe, chiar dacă userul închide
+        // tab-ul după plată → atribuirea reclamei nu mai depinde de redirect.
+        this.analytics
+          .ingestServerEvent({
+            type: 'purchase_success',
+            eventId: paymentId,
+            siteId: metaSiteId,
+            userId: payment?.userId ?? null,
+            guestId: payment?.guestId ?? null,
+            userEmail: customerEmail,
+            valueCents: amount,
+            currency,
+            url: session.metadata?.siteDomain
+              ? `https://${session.metadata.siteDomain}/`
+              : null,
+            props: {
+              transaction_id: paymentId,
+              content_id: generationId ?? paymentId,
+              content_name: 'Manea Cadou',
+              content_type: 'product',
+            },
+          })
+          .catch((err) =>
+            this.logger.warn(`Meta CAPI Purchase event failed: ${(err as Error).message}`),
           );
       }
 

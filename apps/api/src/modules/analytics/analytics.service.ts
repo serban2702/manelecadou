@@ -100,6 +100,68 @@ export class AnalyticsService {
     void this.afterIngest(event, session);
   }
 
+  /**
+   * Variantă "server-only" pentru ingest — folosită din webhook-uri (ex. Stripe
+   * `checkout.session.completed`) unde nu există sesiune browser. Salvează un
+   * `AnalyticsEvent` cu `sessionKey` sintetic (`server:<eventId>`) și forward-ează
+   * direct prin `forwarders.forward()` (GA4 Measurement Protocol + Meta CAPI).
+   *
+   * eventId trebuie să fie STABIL și UNIC per tranzacție (ex. paymentId Stripe)
+   * — în view.tsx browser-ul folosește același paymentId ca `event_id`/`eventID`,
+   * iar Meta/GA fac dedup browser↔server automat.
+   */
+  async ingestServerEvent(input: {
+    type: string;
+    eventId: string;
+    siteId: string | null;
+    userId?: string | null;
+    guestId?: string | null;
+    userEmail?: string | null;
+    valueCents?: number | null;
+    currency?: string | null;
+    url?: string | null;
+    path?: string | null;
+    props?: Record<string, unknown> | null;
+    ip?: string | null;
+    userAgent?: string | null;
+  }): Promise<void> {
+    const event = this.events.create({
+      eventId: input.eventId,
+      type: input.type,
+      sessionKey: `server:${input.eventId}`,
+      visitorId: null,
+      userId: input.userId ?? null,
+      guestId: input.guestId ?? null,
+      siteId: input.siteId,
+      url: input.url ?? null,
+      path: input.path ?? null,
+      referrer: null,
+      valueCents: input.valueCents ?? null,
+      currency: input.currency ?? null,
+      props: input.props ?? null,
+      ip: input.ip ?? null,
+      userAgent: input.userAgent ?? null,
+      forwardStatus: 'pending',
+    });
+
+    try {
+      await this.events.save(event);
+    } catch (err) {
+      // Dedup pe eventId — webhook poate fi livrat de Stripe de >1 ori (retry).
+      const code = (err as { code?: string }).code;
+      if (code === '23505') {
+        this.logger.debug(`duplicate server event ${input.eventId} skipped`);
+        return;
+      }
+      throw err;
+    }
+
+    const r = await this.forwarders.forward(event, input.userEmail ?? null);
+    event.forwardStatus = !r.attempted ? 'skipped' : r.ok ? 'sent' : 'failed';
+    event.forwardError = r.error ?? null;
+    await this.events.save(event);
+  }
+
   private async afterIngest(event: AnalyticsEvent, session: AnalyticsSession) {
     if (event.type === 'page_view') {
       session.pageViews += 1;
