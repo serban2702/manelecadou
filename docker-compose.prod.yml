@@ -81,6 +81,11 @@ services:
       GA4_API_SECRET: ${GA4_API_SECRET:-}
       META_PIXEL_ID: ${NEXT_PUBLIC_META_PIXEL_ID:-}
       META_CAPI_TOKEN: ${META_CAPI_TOKEN:-}
+      # Opțional, pentru testare CAPI: copiezi codul din Events Manager →
+      # Test events (ex. TEST8465) și-l setezi în .env. Cât timp e setat,
+      # toate evenimentele CAPI apar în tab-ul Test events în loc să intre
+      # în production data. Scoți env var-ul + restart api după validare.
+      META_CAPI_TEST_EVENT_CODE: ${META_CAPI_TEST_EVENT_CODE:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
       LOGS_DIR: /app/logs
       # Used by API ca să invalideze cache-ul Next.js după regenerări SEO etc.
