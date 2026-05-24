@@ -183,7 +183,7 @@ export class AnalyticsForwarders {
     }
     Object.assign(customData, event.props ?? {});
 
-    const body = {
+    const body: Record<string, unknown> = {
       data: [
         {
           event_name: this.metaEventName(event.type),
@@ -196,6 +196,13 @@ export class AnalyticsForwarders {
         },
       ],
     };
+
+    // Mod test: dacă `META_CAPI_TEST_EVENT_CODE` e setat pe env (ex. `TEST8465`
+    // copiat din Events Manager → Test events), evenimentele apar în tab-ul
+    // Test events în loc să intre în production data. Setezi temporar pe VPS
+    // doar cât validezi integrarea, apoi scoți env var-ul + restart api.
+    const testEventCode = this.config.get<string>('META_CAPI_TEST_EVENT_CODE');
+    if (testEventCode) body.test_event_code = testEventCode;
 
     const res = await fetch(url, {
       method: 'POST',
