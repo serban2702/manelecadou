@@ -11,12 +11,14 @@ import { AnalyticsForwarders } from './forwarders';
 import { GeoIpService } from './geoip.service';
 import { AdminGuard } from '../../common/admin.guard';
 import { AuthModule } from '../auth/auth.module';
+import { SitesModule } from '../sites/sites.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([AnalyticsEvent, AnalyticsSession, Payment, User]),
     ConfigModule,
     AuthModule,
+    SitesModule,
   ],
   providers: [AnalyticsService, AnalyticsForwarders, AdminGuard, GeoIpService],
   controllers: [AnalyticsPublicController, AnalyticsAdminController],

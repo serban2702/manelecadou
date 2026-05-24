@@ -364,7 +364,7 @@ export function LiveFeed() {
         setPops((p) => p.map((x) => (x.id === id ? { ...x, out: true } : x)));
         setTimeout(() => setPops((p) => p.filter((x) => x.id !== id)), 350);
       }, 4500);
-    }, 6500);
+    }, 19500); // ~3x mai rar decât 6500ms inițial
     return () => clearInterval(intv);
   }, []);
 

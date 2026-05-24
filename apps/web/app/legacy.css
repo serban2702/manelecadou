@@ -548,11 +548,13 @@ input, textarea, select { font-family: inherit; }
 
 /* ========== Live feed popup ========== */
 .lf-stack {
-  position: fixed; bottom: 16px; left: 16px;
+  position: fixed; top: 80px; left: 16px;
   z-index: 90; pointer-events: none;
   display: flex; flex-direction: column; gap: 8px;
   max-width: calc(100% - 32px);
 }
+/* Live feed-ul rulează doar pe desktop — pe mobil ocupă spațiu prețios. */
+@media (max-width: 899px) { .lf-stack { display: none !important; } }
 .lf-pop {
   pointer-events: auto;
   background: linear-gradient(135deg, rgba(20,9,9,0.97), rgba(40,12,18,0.97));

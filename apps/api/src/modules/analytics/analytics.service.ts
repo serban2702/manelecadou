@@ -126,11 +126,7 @@ export class AnalyticsService {
       userEmail = u?.email ?? null;
     }
     const r = await this.forwarders.forward(event, userEmail);
-    event.forwardStatus = r.ok
-      ? this.forwarders.ga4Configured || this.forwarders.capiConfigured
-        ? 'sent'
-        : 'skipped'
-      : 'failed';
+    event.forwardStatus = !r.attempted ? 'skipped' : r.ok ? 'sent' : 'failed';
     event.forwardError = r.error ?? null;
     await this.events.save(event);
   }
@@ -1113,8 +1109,8 @@ export class AnalyticsService {
       .getRawMany<{ type: string; count: number; forwarded: number; failed: number; skipped: number }>();
 
     return {
-      ga4Enabled: this.forwarders.ga4Configured,
-      capiEnabled: this.forwarders.capiConfigured,
+      ga4Enabled: await this.forwarders.anyGa4Configured(siteId),
+      capiEnabled: await this.forwarders.anyCapiConfigured(siteId),
       events: eventStats.map((s) => ({
         type: s.type,
         captured: Number(s.count),

@@ -15,7 +15,10 @@ import { useSite } from '@/lib/site-context';
 import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
 
-export function SiteShell({ children, hideStickyCta }: { children: ReactNode; hideStickyCta?: boolean }) {
+// `hideStickyCta` rămâne în signature pentru retrocompatibilitate cu paginile
+// care îl pasează (legal, login, cont etc.), dar nu mai are efect — sticky
+// CTA-ul a fost eliminat complet la cererea userului.
+export function SiteShell({ children, hideStickyCta: _ignored }: { children: ReactNode; hideStickyCta?: boolean }) {
   const pathname = usePathname();
   const session = useSession();
   const tNav = useTranslations('nav');
@@ -129,13 +132,9 @@ export function SiteShell({ children, hideStickyCta }: { children: ReactNode; hi
       {rouletteOpen && <RouletteWheel onClose={() => setRouletteOpen(false)} />}
       {cookieOpen && <Cookie onClose={closeCookie} />}
 
-      {!hideStickyCta && (
-        <div className="sticky-cta">
-          <Link href={getPagePath(site.locale, 'studio')} className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
-            {tCommon('ctaMakeManea', { price: formatPrice(site, site.basePriceCents) })}
-          </Link>
-        </div>
-      )}
+      {/* Sticky CTA mobile scos la cererea userului — ocupa spațiu prețios
+          pe ecranele mici și acoperea conținutul. CTA-ul rămâne în header
+          + pe pagina principală. */}
     </div>
   );
 }
