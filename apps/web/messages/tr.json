@@ -31,7 +31,7 @@
     "subBrand": "★ AI Stüdyo ★"
   },
   "hero": {
-    "flag": "⭐ #1 AI MANELE/ARABESK GENERATÖRÜ",
+    "flag": "⭐ #1 KİŞİSELLEŞTİRİLMİŞ MANELE/ARABESK GENERATÖRÜ",
     "titleA": "Ona ismiyle bir",
     "titleHl": "şarkı yap",
     "titleB": "90 saniyede",
@@ -60,7 +60,7 @@
     "decline": "Reddet"
   },
   "footer": {
-    "tagline": "AI şarkı üretici. Kurgusal, parodi sesler. Gerçek sanatçıları temsil etmez. 🛡️ Tek seferlik ödeme, abonelik yok.",
+    "tagline": "Kişiselleştirilmiş şarkı üretici. Kurgusal, parodi sesler. Gerçek sanatçıları temsil etmez. 🛡️ Tek seferlik ödeme, abonelik yok.",
     "links": {
       "termeni": "Şartlar",
       "confidentialitate": "Gizlilik",
@@ -331,15 +331,15 @@
     "side": {
       "offer": "Teklif",
       "whyTitle": "Neden manele hediye?",
-      "whyBullet1": "🎯 AI ile yazılmış sözler, ikinci AI ile doğrulanmış",
+      "whyBullet1": "🎯 Ekibimiz tarafından yazılan sözler, editör tarafından doğrulanmış",
       "whyBullet2": "🎤 2 ses versiyonu, en iyisini seçiyorsun",
       "whyBullet3": "📧 E-postaya <2 dakikada teslim",
       "whyBullet4": "💰 Demo ücretsiz — sadece tamamını istersen ödersin",
       "howTitle": "Nasıl çalışır?",
       "howStep1Title": "Seçiyorsun",
       "howStep1Body": "Stil, ortam, isim, ses — birkaç tık.",
-      "howStep2Title": "AI yazar + söyler",
-      "howStep2Body": "AI ile sözleri ve seçilen sesle 2 parça oluşturuyoruz.",
+      "howStep2Title": "Besteliyoruz + söylüyoruz",
+      "howStep2Body": "Sözleri besteliyor ve seçilen sesle 2 parça kaydediyoruz.",
       "howStep3Title": "Dinliyorsun ve ödüyorsun",
       "howStep3Body": "Ücretsiz 30s demo. Beğendin mi? Tam sürümün kilidini açıyorsun.",
       "giftSomeone": "🎁 Birine hediye"
@@ -401,12 +401,12 @@
       "lyricsLabel": "📝 Sözleri sen mi yazmak istiyorsun?",
       "lyricsActive": "✓ aktif",
       "lyricsActivate": "Aktifleştir",
-      "lyricsPlaceholder": "İstersen sözleri buraya yaz. Boş bırak = AI sözleri mesaja göre yazar.\n\nNakarat:\n...\nKıta:\n...",
+      "lyricsPlaceholder": "İstersen sözleri buraya yaz. Boş bırak = sözleri biz yazarız, mesaja göre.\n\nNakarat:\n...\nKıta:\n...",
       "voicesTitle": "🎤 Hangi sanatçı sana şarkı söylesin?",
       "voiceHint": "Sesi dinle",
       "errCompleteFirst": "Önce stil, vesile ve ismi doldur.",
       "errTooManySuggestions": "Çok fazla öneri. Bir dakika sonra dene.",
-      "errAiFallback": "AI ile üretemedim, yedek bir öneri koydum.",
+      "errAiFallback": "Otomatik üretemedim, yedek bir öneri koydum.",
       "defaultDraft": "{name}, bu şarkı senin için yazıldı,\nkafanda, dudaklarında ve ruhunda kalsın.\nSen unutulmayacak biriydin,\nve bunu yüksek sesle söyleyen bir parça hak ediyorsun.",
       "defaultDraftYou": "senin için biri"
     },
@@ -422,8 +422,8 @@
       "customSurcharge": "Ek ücret: +{amount} TL (%5, üst sınır 50 TL).",
       "premiumTitle": "Premium Şarkı",
       "premiumRecommended": "ÖNERİLEN",
-      "premiumDesc": "🎤 4× üstün ses kalitesi · 🔥 AI master ile işlenmiş ses · ⚡ Profesyonel miks",
-      "baseLine": "Temel şarkı (90s × 2)",
+      "premiumDesc": "🎤 4× üstün ses kalitesi · 🔥 Profesyonel master ile işlenmiş ses · ⚡ Profesyonel miks",
+      "baseLine": "Temel şarkı (3 min × 2)",
       "premiumLine": "👑 Premium yükseltme",
       "tipSurchargeLine": "İthaf ek ücreti ({amount} TL × %5, üst sınır 50)",
       "totalUnlock": "Kilidi açma toplam",
@@ -431,7 +431,7 @@
     },
     "step5Demo": {
       "title": "5. Ücretsiz demo (30s)",
-      "sub": "Önce 30 saniyelik ücretsiz bir demo üretiriz. Beğenirsen tam şarkıyı (90s × 2) açarsın.",
+      "sub": "Önce 30 saniyelik ücretsiz bir demo üretiriz. Beğenirsen tam şarkıyı (3 min × 2) açarsın.",
       "emailLabel": "📧 E-posta adresin (zorunlu — şarkıyı buraya gönderiyoruz)",
       "emailPlaceholder": "sen@email.com",
       "emailHint": "Sadece teslimat için kullanılır. Spam yok.",
@@ -442,10 +442,10 @@
     },
     "step5PayFirst": {
       "title": "5. Şarkıyı üretmek için öde",
-      "sub": "Şarkın (90s × 2 versiyon) ödeme onaylandığı ANDA üretilir. Sonucu e-postaya gönderir ve ~3 dakika sonra burada da görebilirsin.",
+      "sub": "Şarkın (3 min × 2 versiyon) ödeme onaylandığı ANDA üretilir. Sonucu e-postaya gönderir ve ~3 dakika sonra burada da görebilirsin.",
       "emailLabel": "📧 E-posta adresin (zorunlu)",
       "emailSentTo": "✓ Şarkıyı şu adrese gönderiyoruz:",
-      "completeLine": "Tam şarkı (90s × 2)",
+      "completeLine": "Tam şarkı (3 min × 2)",
       "tipLine": "İthaf ek ücreti {amount} {currency}",
       "promoLine": "Promo:",
       "totalLabel": "Toplam",
@@ -461,9 +461,9 @@
     "live": {
       "succeededTitle": "🎉 Demo hazır!",
       "failedTitle": "Bir şeyler ters gitti...",
-      "workingTitle": "Şarkı hazırlanıyor...",
+      "workingTitle": "Şimdi besteliyor ve şarkını sana gönderiyoruz...",
       "techDetails": "Teknik detaylar (destek için)",
-      "lyricsVerified": "✓ Sözler AI tarafından doğrulandı",
+      "lyricsVerified": "✓ Sözler editör tarafından doğrulandı",
       "lyricsDraft": "✏️ Taslak (kontrol ediliyor...)",
       "twoVersionsTitle": "🎤 Sana 2 versiyon yaptım — ikisi de hediye:",
       "version1": "Versiyon 1",
@@ -474,12 +474,24 @@
       "status": {
         "pending": "Her şeyi hazırlıyoruz...",
         "queued": "Sıraya alındı, birazdan başlıyoruz",
-        "writing_lyrics": "AI söz yazarı sözleri yazıyor... 🎤",
-        "checking_lyrics": "AI editör kafiyeyi kontrol ediyor... ✍️",
+        "writing_lyrics": "Ekibimiz sözleri yazıyor... 🎤",
+        "checking_lyrics": "Editörümüz kafiyeyi kontrol ediyor... ✍️",
         "generating_audio": "Stüdyo akordiyonu akort ediyor... 🎻",
         "running": "Tamamlanıyor...",
         "succeeded": "✓ Şarkı hazır!",
         "failed": "Bir şeyler ters gitti"
+      },
+      "statusRotation": {
+        "generating_audio": [
+          "🎻 Stüdyo akordiyonu akort ediyor...",
+          "🥁 Davulcu parmaklarını ısıtıyor...",
+          "🎤 Ses kabinde mikrofonu deniyor...",
+          "🎚️ Ses mühendisi seviyeleri ayarlıyor...",
+          "🔊 Çocuklar nakaratı stüdyoda prova ediyor...",
+          "🎶 İlk kıta kaydediliyor...",
+          "🎷 Saksofon melodi hattına giriyor...",
+          "✨ Son rötuşlar yapılıyor..."
+        ]
       },
       "humanizeFail": {
         "default": "Üretim başarısız oldu. Tekrar dene — sorun devam ederse sohbette bize yaz.",
@@ -499,12 +511,12 @@
       "techDetails": "Teknik detaylar (destek için)",
       "againBtnGhost": "← Yeni başlat",
       "unlockedTitle": "✓ Tam şarkı açıldı!",
-      "unlockedSub": "Tam versiyonlar (90s) e-postana geliyor.",
+      "unlockedSub": "Tam versiyonlar (3 min) e-postana geliyor.",
       "version1Full": "Versiyon 1 (tam)",
       "version2Full": "Versiyon 2 (tam)",
       "againCta": "+ Bir şarkı daha yap",
       "title": "6. Tam şarkıyı aç",
-      "sub": "Demoyu dinledin. Şimdi e-postaya gönderilen 2 tam versiyon (her biri 90s) alıyorsun.",
+      "sub": "Demoyu dinledin. Şimdi e-postaya gönderilen 2 tam versiyon (her biri 3 min) alıyorsun.",
       "replayTitle": "🔊 Demoyu tekrar dinle (30s)",
       "tipLine": "İthaf ek ücreti {amount} TL",
       "payingCta": "Ödeme açılıyor...",
@@ -541,7 +553,7 @@
     "humanError": {
       "duplicate": "Yinelenen istek — birkaç saniye sonra tekrar dene.",
       "emailRequired": "Şarkıyı göndermemiz için e-posta gir.",
-      "paymentRequired": "Tam şarkı (90s) için ödeme gerekli.",
+      "paymentRequired": "Tam şarkı (3 min) için ödeme gerekli.",
       "unknown": "Bilinmeyen hata.",
       "emailInvalid": "Şarkıyı göndermemiz için geçerli bir e-posta gir.",
       "emailSaveFailed": "E-postayı kaydedemedim. Tekrar dene.",
@@ -558,12 +570,12 @@
   },
   "metadata": {
     "title": "Manele Cadou — Onun ismiyle 90 saniyede şarkı",
-    "description": "AI ile kişiselleştirilmiş arabesk/manele üreticisi. Stil, vesile, ses seç — e-postaya 2 versiyon. 1+1 BEDAVA, tek ödeme.",
+    "description": "Kişiselleştirilmiş arabesk/manele üreticisi. Stil, vesile, ses seç — e-postaya 2 versiyon. 1+1 BEDAVA, tek ödeme.",
     "ogTitle": "Manele Cadou — 90 saniyede ismiyle şarkı",
-    "ogDescription": "AI şarkı üretici. E-postaya 2 profi versiyon. 1+1 BEDAVA."
+    "ogDescription": "Şarkı üretici. E-postaya 2 profi versiyon. 1+1 BEDAVA."
   },
   "studio": {
-    "heroFlag": "🎤 AI stüdyo · 6 kolay adım",
+    "heroFlag": "🎤 Profi stüdyo · 6 kolay adım",
     "title": "Şarkını şimdi yap",
     "leadPart1": "Ücretsiz demo (30s × 2 versiyon) gönderdikten hemen sonra. Sadece tam versiyonu istersen ödersin.",
     "giftBadge": "🎁 1+1 BEDAVA",
@@ -571,7 +583,7 @@
     "sideOfferTitle": "Teklif",
     "sideGiftTitle": "🎁 Birine hediye",
     "whyTryTitle": "Neden denemeli?",
-    "whyBullet1": "🎯 AI ile yazılmış sözler, ikinci AI ile doğrulanmış",
+    "whyBullet1": "🎯 Ekibimiz tarafından yazılan sözler, editör tarafından doğrulanmış",
     "whyBullet2": "🎤 2 ses versiyonu, en iyisini seçiyorsun",
     "whyBullet3": "📧 E-postaya <2 dakikada teslim",
     "whyBullet4": "💰 Demo ücretsiz — sadece tamamını istersen ödersin"
@@ -590,7 +602,7 @@
   "topPage": {
     "flag": "Top Türkiye",
     "title": "En sert manele",
-    "sub": "Ülke AI'ya ne yükledi. Dinlenmelere ve paylaşımlara göre sıralama.",
+    "sub": "Haftanın en sert maneleleri. Dinlenmelere ve paylaşımlara göre sıralama.",
     "periodWeek": "Bu hafta",
     "periodMonth": "Bu ay",
     "periodAll": "Tüm zamanlar",
@@ -825,7 +837,7 @@
     "items": [
       {
         "q": "Şarkıyı almam ne kadar sürer?",
-        "a": "Ücretsiz demo (30s) ~60-90 saniyede hazır. Tam şarkı (90s × 2 versiyon) ödemeden sonra ~2 dakikada hazır."
+        "a": "Ücretsiz demo (30s) ~60-90 saniyede hazır. Tam şarkı (3 min × 2 versiyon) ödemeden sonra ~2 dakikada hazır."
       },
       {
         "q": "Sesler gerçek mi? Sanatçı mı?",
@@ -837,11 +849,11 @@
       },
       {
         "q": "Neden 2 versiyon alıyorum?",
-        "a": "AI stüdyomuz istek başına 2 şarkı üretir. İkisini de hediye alıyorsun — daha çok hangisini beğendiysen onu seç."
+        "a": "Stüdyomuz istek başına 2 şarkı üretir. İkisini de hediye alıyorsun — daha çok hangisini beğendiysen onu seç."
       },
       {
         "q": "Sözleri kendim yazabilir miyim?",
-        "a": "Evet! Stüdyoda 3. adımda \"Sözleri sen yaz\" seçeneğini açıp metni giriyorsun. AI stüdyosu tam yazdığını söyler."
+        "a": "Evet! Stüdyoda 3. adımda \"Sözleri sen yaz\" seçeneğini açıp metni giriyorsun. Stüdyo tam yazdığını söyler."
       },
       {
         "q": "İthaf ek ücreti nedir?",
@@ -908,7 +920,7 @@
     "forSomeone": "{name} için",
     "voiceLabel": "ses",
     "fromSomeone": "{from} adına",
-    "unlockedBadge": "✓ Açıldı — tam versiyonlar (90s)",
+    "unlockedBadge": "✓ Açıldı — tam versiyonlar (3 min)",
     "demoBadge": "🔒 Demo — 30s önizleme",
     "statusLabel": "Durum:",
     "confirmingPayment": "✨ Ödemeyi onaylıyoruz...",
@@ -918,7 +930,7 @@
     "demo30": "demo 30s",
     "unlockFailed": "Ödemeden sonra açamadım:",
     "lyricsToggle": "📝 Sözleri gör",
-    "paywallTitle": "🔓 Tam versiyonların kilidini aç (90s × 2)",
+    "paywallTitle": "🔓 Tam versiyonların kilidini aç (3 min × 2)",
     "paywallSub": "Tek seferlik öde — e-postaya her iki tam versiyon gelir, 30s sınırı olmadan.",
     "priceLine": "Fiyat",
     "totalLine": "Toplam",

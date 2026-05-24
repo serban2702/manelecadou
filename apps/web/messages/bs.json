@@ -31,7 +31,7 @@
     "subBrand": "★ AI Studio ★"
   },
   "hero": {
-    "flag": "⭐ #1 AI GENERATOR PJESAMA NA BALKANU",
+    "flag": "⭐ #1 GENERATOR PERSONALIZOVANIH PJESAMA NA BALKANU",
     "titleA": "Napravi mu pjesmu sa",
     "titleHl": "njegovim imenom",
     "titleB": "za 90 sekundi",
@@ -60,7 +60,7 @@
     "decline": "Odbij"
   },
   "footer": {
-    "tagline": "AI generator pjesama. Izmišljeni, parodijski glasovi. Ne predstavljaju prave izvođače. 🛡️ Jednokratno plaćanje, bez pretplate.",
+    "tagline": "Generator personalizovanih pjesama. Izmišljeni, parodijski glasovi. Ne predstavljaju prave izvođače. 🛡️ Jednokratno plaćanje, bez pretplate.",
     "links": {
       "termeni": "Uslovi",
       "confidentialitate": "Privatnost",
@@ -331,15 +331,15 @@
     "side": {
       "offer": "Ponuda",
       "whyTitle": "Zašto manele na poklon?",
-      "whyBullet1": "🎯 Tekst pisan sa AI, provjeren drugim AI",
+      "whyBullet1": "🎯 Tekst piše naš tim, provjerava urednik",
       "whyBullet2": "🎤 2 audio verzije, biraš najbolju",
       "whyBullet3": "📧 Stiže na mail za <2 minute",
       "whyBullet4": "💰 Demo besplatno — plaćaš samo ako želiš cijelu",
       "howTitle": "Kako funkcioniše?",
       "howStep1Title": "Biraš",
       "howStep1Body": "Stil, povod, ime, glas — par klikova.",
-      "howStep2Title": "AI piše + pjeva",
-      "howStep2Body": "Generišemo tekst sa AI i 2 pjesme izabranim glasom.",
+      "howStep2Title": "Komponujemo + pjevamo",
+      "howStep2Body": "Komponujemo tekst i snimamo 2 pjesme izabranim glasom.",
       "howStep3Title": "Slušaš i plaćaš",
       "howStep3Body": "Besplatan demo 30s. Sviđa ti se? Otključavaš punu verziju.",
       "giftSomeone": "🎁 Poklon za nekoga"
@@ -401,12 +401,12 @@
       "lyricsLabel": "📝 Hoćeš sam napisati tekst?",
       "lyricsActive": "✓ aktivno",
       "lyricsActivate": "Aktiviraj",
-      "lyricsPlaceholder": "Napiši tekst ovdje ako želiš. Ostavi prazno = AI piše tekst na osnovu poruke.\n\nRefren:\n...\nStrofa:\n...",
+      "lyricsPlaceholder": "Napiši tekst ovdje ako želiš. Ostavi prazno = mi pišemo tekst na osnovu poruke.\n\nRefren:\n...\nStrofa:\n...",
       "voicesTitle": "🎤 Koji izvođač da ti pjeva?",
       "voiceHint": "Slušaj glas",
       "errCompleteFirst": "Prvo popuni stil, priliku i ime.",
       "errTooManySuggestions": "Previše prijedloga. Pokušaj za minutu.",
-      "errAiFallback": "Nisam uspio generirati sa AI, stavio sam rezervni prijedlog.",
+      "errAiFallback": "Nisam uspio generirati automatski, stavio sam rezervni prijedlog.",
       "defaultDraft": "{name}, ova pjesma je napisana za tebe,\nda ti ostane u glavi, na usnama i u duši.\nTi si od onih koje ne zaboravljaš,\ni zaslužuješ pjesmu koja to glasno govori.",
       "defaultDraftYou": "tebe"
     },
@@ -422,8 +422,8 @@
       "customSurcharge": "Doplata: +{amount} KM (5%, plafon 50).",
       "premiumTitle": "Premium Pjesma",
       "premiumRecommended": "PREPORUČENO",
-      "premiumDesc": "🎤 4× bolji audio · 🔥 Glas obrađen sa AI master · ⚡ Profesionalni miks",
-      "baseLine": "Osnovna pjesma (90s × 2)",
+      "premiumDesc": "🎤 4× bolji audio · 🔥 Glas obrađen profi masterom · ⚡ Profesionalni miks",
+      "baseLine": "Osnovna pjesma (3 min × 2)",
       "premiumLine": "👑 Premium nadogradnja",
       "tipSurchargeLine": "Doplata posveta ({amount} KM × 5%, plafon 50)",
       "totalUnlock": "Ukupno za otključavanje",
@@ -431,7 +431,7 @@
     },
     "step5Demo": {
       "title": "5. Besplatni demo (30s)",
-      "sub": "Prvo generiramo besplatni demo od 30s. Ako ti se svidi, otključavaš cijelu pjesmu (90s × 2).",
+      "sub": "Prvo generiramo besplatni demo od 30s. Ako ti se svidi, otključavaš cijelu pjesmu (3 min × 2).",
       "emailLabel": "📧 Tvoj email (obavezno — šaljemo pjesmu ovdje)",
       "emailPlaceholder": "ti@email.ba",
       "emailHint": "Koristi se samo za dostavu. Bez spama.",
@@ -442,10 +442,10 @@
     },
     "step5PayFirst": {
       "title": "5. Plati da se generira pjesma",
-      "sub": "Tvoja pjesma (90s × 2 verzije) se generira U MOMENTU kada se plaćanje potvrdi. Šaljemo rezultat na email i vidiš ga i ovdje za ~3 minuta.",
+      "sub": "Tvoja pjesma (3 min × 2 verzije) se generira U MOMENTU kada se plaćanje potvrdi. Šaljemo rezultat na email i vidiš ga i ovdje za ~3 minuta.",
       "emailLabel": "📧 Tvoj email (obavezno)",
       "emailSentTo": "✓ Šaljemo pjesmu na",
-      "completeLine": "Cijela pjesma (90s × 2)",
+      "completeLine": "Cijela pjesma (3 min × 2)",
       "tipLine": "Doplata posveta {amount} {currency}",
       "promoLine": "Promo:",
       "totalLabel": "Ukupno",
@@ -461,9 +461,9 @@
     "live": {
       "succeededTitle": "🎉 Demo gotov!",
       "failedTitle": "Nešto nije išlo...",
-      "workingTitle": "Sprema se pjesma...",
+      "workingTitle": "Sada komponujemo i šaljemo ti pjesmu...",
       "techDetails": "Tehnički detalji (za podršku)",
-      "lyricsVerified": "✓ Tekst provjeren od AI",
+      "lyricsVerified": "✓ Tekst provjeren od urednika",
       "lyricsDraft": "✏️ Skica (provjerava se...)",
       "twoVersionsTitle": "🎤 Napravio sam ti 2 verzije — obje poklon za tebe:",
       "version1": "Verzija 1",
@@ -474,12 +474,24 @@
       "status": {
         "pending": "Pripremamo sve...",
         "queued": "U redu, uskoro počinjemo",
-        "writing_lyrics": "AI tekstopisac piše tekst... 🎤",
-        "checking_lyrics": "AI urednik provjerava rimu... ✍️",
+        "writing_lyrics": "Naš tim piše tekst... 🎤",
+        "checking_lyrics": "Naš urednik provjerava rimu... ✍️",
         "generating_audio": "Studio štima harmoniku... 🎻",
         "running": "Finalizira se...",
         "succeeded": "✓ Pjesma gotova!",
         "failed": "Nešto nije išlo"
+      },
+      "statusRotation": {
+        "generating_audio": [
+          "🎻 Studio štima harmoniku...",
+          "🥁 Bubnjar zagrijava prste...",
+          "🎤 Glas provjerava mikrofon u kabini...",
+          "🎚️ Tonski inženjer namješta nivoe...",
+          "🔊 Momci ponavljaju refren u studiju...",
+          "🎶 Snima se prva strofa...",
+          "🎷 Saksofon ulazi u melodijsku liniju...",
+          "✨ Stavljaju se zadnji detalji..."
+        ]
       },
       "humanizeFail": {
         "default": "Generiranje nije uspjelo. Pokušaj ponovo — ako se nastavi, piši nam na chat.",
@@ -499,12 +511,12 @@
       "techDetails": "Tehnički detalji (za podršku)",
       "againBtnGhost": "← Pokreni novu",
       "unlockedTitle": "✓ Cijela pjesma otključana!",
-      "unlockedSub": "Pune verzije (90s) ti stižu na email.",
+      "unlockedSub": "Pune verzije (3 min) ti stižu na email.",
       "version1Full": "Verzija 1 (puna)",
       "version2Full": "Verzija 2 (puna)",
       "againCta": "+ Napravi još jednu pjesmu",
       "title": "6. Otključaj cijelu pjesmu",
-      "sub": "Demo si čuo. Sada dobivaš 2 pune verzije (po 90s) poslane na email.",
+      "sub": "Demo si čuo. Sada dobivaš 2 pune verzije (po 3 min) poslane na email.",
       "replayTitle": "🔊 Ponovno slušaj demo (30s)",
       "tipLine": "Doplata posveta {amount} KM",
       "payingCta": "Otvara se plaćanje...",
@@ -541,7 +553,7 @@
     "humanError": {
       "duplicate": "Duplikat zahtjeva — pokušaj ponovo za nekoliko sekundi.",
       "emailRequired": "Unesi email da ti pošaljemo pjesmu.",
-      "paymentRequired": "Za cijelu pjesmu (90s) potrebno je plaćanje.",
+      "paymentRequired": "Za cijelu pjesmu (3 min) potrebno je plaćanje.",
       "unknown": "Nepoznata greška.",
       "emailInvalid": "Unesi važeći email da ti pošaljemo pjesmu.",
       "emailSaveFailed": "Nisam uspio sačuvati email. Pokušaj ponovo.",
@@ -558,12 +570,12 @@
   },
   "metadata": {
     "title": "Manele Cadou — Napravi mu pjesmu sa imenom za 90 sek",
-    "description": "AI generator personalizovanih balkanskih pjesama. Biraš stil, povod, glas — 2 verzije na mail. 1+1 GRATIS.",
+    "description": "Generator personalizovanih balkanskih pjesama. Biraš stil, povod, glas — 2 verzije na mail. 1+1 GRATIS.",
     "ogTitle": "Manele Cadou — Pjesma sa imenom za 90 sek",
-    "ogDescription": "AI generator. 2 profi verzije na mail. 1+1 GRATIS."
+    "ogDescription": "Generator pjesama. 2 profi verzije na mail. 1+1 GRATIS."
   },
   "studio": {
-    "heroFlag": "🎤 AI studio · 6 jednostavnih koraka",
+    "heroFlag": "🎤 Profi studio · 6 jednostavnih koraka",
     "title": "Napravi svoju pjesmu sad",
     "leadPart1": "Besplatan demo (30s × 2 verzije) odmah nakon slanja. Plaćaš samo ako želiš punu verziju.",
     "giftBadge": "🎁 1+1 BESPLATNO",
@@ -571,7 +583,7 @@
     "sideOfferTitle": "Ponuda",
     "sideGiftTitle": "🎁 Poklon za nekoga",
     "whyTryTitle": "Zašto probati?",
-    "whyBullet1": "🎯 Tekst pisan sa AI, provjeren drugim AI",
+    "whyBullet1": "🎯 Tekst piše naš tim, provjerava urednik",
     "whyBullet2": "🎤 2 audio verzije, biraš najbolju",
     "whyBullet3": "📧 Stiže na mail za <2 minute",
     "whyBullet4": "💰 Demo besplatno — plaćaš samo ako želiš cijelu"
@@ -590,7 +602,7 @@
   "topPage": {
     "flag": "Top BiH",
     "title": "Najjače manele",
-    "sub": "Šta je zemlja stavila u AI. Rang po slušanjima i dijeljenjima.",
+    "sub": "Najjače manele ove sedmice. Rang po slušanjima i dijeljenjima.",
     "periodWeek": "Ova sedmica",
     "periodMonth": "Ovaj mjesec",
     "periodAll": "Sva vremena",
@@ -825,7 +837,7 @@
     "items": [
       {
         "q": "Koliko traje dok dobijem pjesmu?",
-        "a": "Besplatni demo (30s) gotov je za ~60-90 sekundi. Cijela pjesma (90s × 2 verzije) gotova je za ~2 minuta nakon plaćanja."
+        "a": "Besplatni demo (30s) gotov je za ~60-90 sekundi. Cijela pjesma (3 min × 2 verzije) gotova je za ~2 minuta nakon plaćanja."
       },
       {
         "q": "Jesu li glasovi pravi? Jesu li umjetnici?",
@@ -837,11 +849,11 @@
       },
       {
         "q": "Zašto dobivam 2 verzije?",
-        "a": "Naš AI studio generira 2 pjesme po zahtjevu. Dobivaš obje na poklon — izaberi onu koja ti se više sviđa."
+        "a": "Naš studio generira 2 pjesme po zahtjevu. Dobivaš obje na poklon — izaberi onu koja ti se više sviđa."
       },
       {
         "q": "Mogu li sam napisati tekst?",
-        "a": "Da! Na koraku 3 u studiju aktiviraš opciju \"Napiši tekst\" i unosiš tekst. AI studio pjeva tačno ono što si napisao."
+        "a": "Da! Na koraku 3 u studiju aktiviraš opciju \"Napiši tekst\" i unosiš tekst. Studio pjeva tačno ono što si napisao."
       },
       {
         "q": "Šta je doplata za posvetu?",
@@ -908,7 +920,7 @@
     "forSomeone": "Za {name}",
     "voiceLabel": "glas",
     "fromSomeone": "od {from}",
-    "unlockedBadge": "✓ Otključana — pune verzije (90s)",
+    "unlockedBadge": "✓ Otključana — pune verzije (3 min)",
     "demoBadge": "🔒 Demo — pregled 30s",
     "statusLabel": "Status:",
     "confirmingPayment": "✨ Potvrđujemo plaćanje...",
@@ -918,7 +930,7 @@
     "demo30": "demo 30s",
     "unlockFailed": "Nisam mogao otključati nakon plaćanja:",
     "lyricsToggle": "📝 Vidi tekst",
-    "paywallTitle": "🔓 Otključaj pune verzije (90s × 2)",
+    "paywallTitle": "🔓 Otključaj pune verzije (3 min × 2)",
     "paywallSub": "Plati jednom — dobivaš na email obje pune verzije, bez ograničenja od 30s.",
     "priceLine": "Cijena",
     "totalLine": "Ukupno",

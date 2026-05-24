@@ -30,7 +30,7 @@
     "subBrand": "★ STUDIO DE MANELE ★"
   },
   "hero": {
-    "flag": "⭐ #1 GENERATOR DE MANELE AI ÎN ROMÂNIA",
+    "flag": "⭐ #1 GENERATOR DE MANELE PERSONALIZATE ÎN ROMÂNIA",
     "titleA": "Fă-i o manea cu",
     "titleHl": "numele lui",
     "titleB": "în 90 de secunde",
@@ -59,7 +59,7 @@
     "decline": "Refuz"
   },
   "footer": {
-    "tagline": "Generator de manele cu AI. Voci fictive, parodice. Nu reprezintă artiști reali. 🛡️ Plată unică, fără abonament.",
+    "tagline": "Generator de manele personalizate. Voci fictive, parodice. Nu reprezintă artiști reali. 🛡️ Plată unică, fără abonament.",
     "links": {
       "termeni": "Termeni",
       "confidentialitate": "Confidențialitate",
@@ -330,15 +330,15 @@
     "side": {
       "offer": "Ofertă",
       "whyTitle": "De ce manele cadou?",
-      "whyBullet1": "🎯 Versuri scrise cu AI, verificate de un al doilea AI",
+      "whyBullet1": "🎯 Versuri scrise de echipa noastră, verificate de editor",
       "whyBullet2": "🎤 2 versiuni audio, alegi pe cea mai tare",
       "whyBullet3": "📧 Livrate pe email în <2 minute",
       "whyBullet4": "💰 Demo gratis — plătești doar dacă vrei tot",
       "howTitle": "Cum funcționează?",
       "howStep1Title": "Alegi",
       "howStep1Body": "Stilul, ocazia, numele, vocea — câteva click-uri.",
-      "howStep2Title": "AI scrie + cântă",
-      "howStep2Body": "Generăm versurile cu AI și 2 piese cu vocea aleasă.",
+      "howStep2Title": "Compunem + cântăm",
+      "howStep2Body": "Compunem versurile și înregistrăm 2 piese cu vocea aleasă.",
       "howStep3Title": "Asculți & plătești",
       "howStep3Body": "Demo gratis 30s. Îți place? Deblochezi varianta completă."
     },
@@ -399,12 +399,12 @@
       "lyricsLabel": "📝 Vrei să scrii tu versurile?",
       "lyricsActive": "✓ activ",
       "lyricsActivate": "Activează",
-      "lyricsPlaceholder": "Scrie aici versurile tale dacă vrei. Lasă gol = AI scrie versurile pe baza mesajului.\n\nRefren:\n...\nCuplet:\n...",
+      "lyricsPlaceholder": "Scrie aici versurile tale dacă vrei. Lasă gol = scriem noi versurile pe baza mesajului.\n\nRefren:\n...\nCuplet:\n...",
       "voicesTitle": "🎤 Care artist îți cântă?",
       "voiceHint": "Ascultă vocea",
       "errCompleteFirst": "Completează stilul, ocazia și numele întâi.",
       "errTooManySuggestions": "Prea multe sugestii. Încearcă peste un minut.",
-      "errAiFallback": "Nu am putut genera cu AI, am pus o sugestie de rezervă.",
+      "errAiFallback": "Nu am putut genera automat, am pus o sugestie de rezervă.",
       "defaultDraft": "{name}, manaua asta e scrisă pentru tine,\nsă-ți rămână-n cap, pe buze și-n suflet.\nEști dintre ăia pe care nu-i uiți o viață,\nși meriți o piesă care să-ți spună asta tare.",
       "defaultDraftYou": "tine"
     },
@@ -420,8 +420,8 @@
       "customSurcharge": "Suprataxă: +{amount} lei (5% capped la 50 lei).",
       "premiumTitle": "Manea Premium",
       "premiumRecommended": "RECOMANDAT",
-      "premiumDesc": "🎤 Calitate audio 4x superioară · 🔥 Voce procesată cu AI master · ⚡ Mix profi",
-      "baseLine": "Manea de bază (90s × 2)",
+      "premiumDesc": "🎤 Calitate audio 4x superioară · 🔥 Voce procesată cu master profi · ⚡ Mix profi",
+      "baseLine": "Manea de bază (3 min × 2)",
       "premiumLine": "👑 Upgrade Premium",
       "tipSurchargeLine": "Suprataxă dedicație ({amount} lei × 5%, plafon 50)",
       "totalUnlock": "Total la deblocare",
@@ -429,7 +429,7 @@
     },
     "step5Demo": {
       "title": "5. Demo gratuit (30s)",
-      "sub": "Generăm întâi un demo de 30s gratis. Dacă-ți place, deblochezi maneaua completă (90s × 2).",
+      "sub": "Generăm întâi un demo de 30s gratis. Dacă-ți place, deblochezi maneaua completă (3 min × 2).",
       "emailLabel": "📧 Email-ul tău (obligatoriu — îți trimitem maneaua aici)",
       "emailPlaceholder": "tu@email.ro",
       "emailHint": "Folosit doar pentru livrare. Fără spam.",
@@ -440,10 +440,10 @@
     },
     "step5PayFirst": {
       "title": "5. Plătește pentru a genera maneaua",
-      "sub": "Maneaua ta (90s × 2 versiuni) se generează ÎN MOMENTUL în care plata e confirmată. Trimitem rezultatul pe email și-l vezi și aici după ~3 minute.",
+      "sub": "Maneaua ta (3 min × 2 versiuni) se generează ÎN MOMENTUL în care plata e confirmată. Trimitem rezultatul pe email și-l vezi și aici după ~3 minute.",
       "emailLabel": "📧 Email-ul tău (obligatoriu)",
       "emailSentTo": "✓ Trimitem maneaua la",
-      "completeLine": "Manea completă (90s × 2)",
+      "completeLine": "Manea completă (3 min × 2)",
       "tipLine": "Suprataxă dedicație {amount} {currency}",
       "promoLine": "Promo:",
       "totalLabel": "Total",
@@ -459,9 +459,9 @@
     "live": {
       "succeededTitle": "🎉 Demo gata!",
       "failedTitle": "Ceva n-a mers...",
-      "workingTitle": "Se gătește maneaua...",
+      "workingTitle": "Acum compunem și-ți trimitem melodia...",
       "techDetails": "Detalii tehnice (pentru suport)",
-      "lyricsVerified": "✓ Versuri verificate de AI",
+      "lyricsVerified": "✓ Versuri verificate de editor",
       "lyricsDraft": "✏️ Ciornă (se verifică...)",
       "twoVersionsTitle": "🎤 Ți-am făcut 2 versiuni — ambele cadou pentru tine:",
       "version1": "Versiunea 1",
@@ -472,12 +472,24 @@
       "status": {
         "pending": "Pregătim totul...",
         "queued": "Pus la coadă, în curând începem",
-        "writing_lyrics": "Textierul AI scrie versurile... 🎤",
-        "checking_lyrics": "Editorul AI verifică rima... ✍️",
+        "writing_lyrics": "Echipa noastră compune versurile... 🎤",
+        "checking_lyrics": "Editorul nostru verifică rima... ✍️",
         "generating_audio": "Studio-ul acordează acordeonul... 🎻",
         "running": "Se finalizează...",
         "succeeded": "✓ Manea gata!",
         "failed": "Ceva n-a mers"
+      },
+      "statusRotation": {
+        "generating_audio": [
+          "🎻 Studio-ul acordează acordeonul...",
+          "🥁 Țambalagiul își încălzește degetele...",
+          "🎤 Vocea încearcă microfonul în cabină...",
+          "🎚️ Inginerul de sunet ajustează nivelele...",
+          "🔊 Băieții repetă refrenul în studio...",
+          "🎶 Se înregistrează prima strofă...",
+          "🎷 Saxofonul intră pe linia melodică...",
+          "✨ Se aplică ultimele retușuri..."
+        ]
       },
       "humanizeFail": {
         "default": "Generarea a eșuat. Încearcă din nou — dacă persistă, scrie-ne pe chat.",
@@ -497,12 +509,12 @@
       "techDetails": "Detalii tehnice (pentru suport)",
       "againBtnGhost": "← Pornește unul nou",
       "unlockedTitle": "✓ Manea completă deblocată!",
-      "unlockedSub": "Versiunile complete (90s) îți sosesc pe email.",
+      "unlockedSub": "Versiunile complete (3 min) îți sosesc pe email.",
       "version1Full": "Versiunea 1 (completă)",
       "version2Full": "Versiunea 2 (completă)",
       "againCta": "+ Fă încă o manea",
       "title": "6. Deblochează maneaua completă",
-      "sub": "Demo-ul l-ai ascultat. Acum primești 2 versiuni complete (90s fiecare) trimise pe email.",
+      "sub": "Demo-ul l-ai ascultat. Acum primești 2 versiuni complete (3 min fiecare) trimise pe email.",
       "replayTitle": "🔊 Reascultă demo-ul (30s)",
       "tipLine": "Suprataxă dedicație {amount} lei",
       "payingCta": "Se deschide plata...",
@@ -539,7 +551,7 @@
     "humanError": {
       "duplicate": "Cerere duplicat — încearcă din nou peste câteva secunde.",
       "emailRequired": "Introdu email-ul ca să-ți trimitem maneaua.",
-      "paymentRequired": "Pentru manea completă (90s) e nevoie de plată.",
+      "paymentRequired": "Pentru manea completă (3 min) e nevoie de plată.",
       "unknown": "Eroare necunoscută.",
       "emailInvalid": "Introdu un email valid ca să-ți trimitem maneaua.",
       "emailSaveFailed": "Nu am putut salva email-ul. Încearcă din nou.",
@@ -556,12 +568,12 @@
   },
   "metadata": {
     "title": "Manele Cadou — Fă-i o manea cu numele lui în 90 de secunde",
-    "description": "Generator de manele AI personalizate. Alegi stilul, ocazia, vocea — primești 2 versiuni pe email. 1+1 GRATIS, plată unică.",
+    "description": "Generator de manele personalizate. Alegi stilul, ocazia, vocea — primești 2 versiuni pe email. 1+1 GRATIS, plată unică.",
     "ogTitle": "Manele Cadou — Fă-i o manea cu numele lui în 90 de secunde",
-    "ogDescription": "Generator de manele AI. 2 versiuni profi pe email. 1+1 GRATIS."
+    "ogDescription": "Generator de manele. 2 versiuni profi pe email. 1+1 GRATIS."
   },
   "studio": {
-    "heroFlag": "🎤 Studio AI · 6 pași simpli",
+    "heroFlag": "🎤 Studio profi · 6 pași simpli",
     "title": "Fă-ți maneaua ta acum",
     "leadPart1": "Demo gratuit (30s × 2 versiuni) imediat după trimitere. Plătești doar dacă vrei varianta completă.",
     "giftBadge": "🎁 1+1 GRATIS",
@@ -569,7 +581,7 @@
     "sideOfferTitle": "Ofertă",
     "sideGiftTitle": "🎁 Cadou pentru cineva",
     "whyTryTitle": "De ce să încerci?",
-    "whyBullet1": "🎯 Versuri scrise cu AI, verificate de un al doilea AI",
+    "whyBullet1": "🎯 Versuri scrise de echipa noastră, verificate de editor",
     "whyBullet2": "🎤 2 versiuni audio, alegi pe cea mai tare",
     "whyBullet3": "📧 Livrate pe email în <2 minute",
     "whyBullet4": "💰 Demo gratis — plătești doar dacă vrei tot"
@@ -588,7 +600,7 @@
   "topPage": {
     "flag": "Top România",
     "title": "Cele mai tari manele",
-    "sub": "Ce a băgat țara la AI. Ranking pe baza ascultărilor și a share-urilor.",
+    "sub": "Cele mai tari manele ale săptămânii. Ranking pe baza ascultărilor și a share-urilor.",
     "periodWeek": "Săptămâna asta",
     "periodMonth": "Luna asta",
     "periodAll": "Tot timpul",
@@ -823,7 +835,7 @@
     "items": [
       {
         "q": "Cât durează să primesc maneaua?",
-        "a": "Demo-ul gratuit (30s) e gata în ~60-90 secunde. Maneaua completă (90s × 2 versiuni) e gata în ~2 minute după plată."
+        "a": "Demo-ul gratuit (30s) e gata în ~60-90 secunde. Maneaua completă (3 min × 2 versiuni) e gata în ~2 minute după plată."
       },
       {
         "q": "Vocile sunt reale? Sunt artiști?",
@@ -835,11 +847,11 @@
       },
       {
         "q": "De ce primesc 2 versiuni?",
-        "a": "Studio-ul nostru AI generează 2 piese per request. Le primești pe amândouă cadou — alege-o pe cea care-ți place mai mult."
+        "a": "Studio-ul nostru generează 2 piese per request. Le primești pe amândouă cadou — alege-o pe cea care-ți place mai mult."
       },
       {
         "q": "Pot să-mi scriu eu versurile?",
-        "a": "Da! La pasul 3 din studio activezi opțiunea \"Scrie tu versurile\" și introduci textul. Studio-ul AI cântă exact ce-ai scris."
+        "a": "Da! La pasul 3 din studio activezi opțiunea \"Scrie tu versurile\" și introduci textul. Studio-ul cântă exact ce-ai scris."
       },
       {
         "q": "Ce e suprataxa de dedicație?",
@@ -906,7 +918,7 @@
     "forSomeone": "Pentru {name}",
     "voiceLabel": "voce",
     "fromSomeone": "de la {from}",
-    "unlockedBadge": "✓ Deblocată — versiuni complete (90s)",
+    "unlockedBadge": "✓ Deblocată — versiuni complete (3 min)",
     "demoBadge": "🔒 Demo — preview 30s",
     "statusLabel": "Status:",
     "confirmingPayment": "✨ Confirmăm plata...",
@@ -916,7 +928,7 @@
     "demo30": "demo 30s",
     "unlockFailed": "Nu am putut debloca după plată:",
     "lyricsToggle": "📝 Vezi versurile",
-    "paywallTitle": "🔓 Deblochează versiunile complete (90s × 2)",
+    "paywallTitle": "🔓 Deblochează versiunile complete (3 min × 2)",
     "paywallSub": "Plătește o singură dată — primești pe email ambele versiuni complete, fără limita de 30s.",
     "priceLine": "Preț",
     "totalLine": "Total",

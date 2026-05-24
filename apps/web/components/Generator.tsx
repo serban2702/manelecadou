@@ -20,6 +20,8 @@ import {
 } from '@/lib/api';
 import { useGenerationPolling, useSession } from '@/lib/providers';
 import { useSite } from '@/lib/site-context';
+import { prettifyLyrics } from '@/lib/lyrics-display';
+import { RotatingStatus } from './RotatingStatus';
 import { track } from '@/lib/tracking';
 import { formatPrice } from '@/lib/site-shared';
 import { claimPlayback, releasePlayback } from '@/lib/audio-registry';
@@ -1453,11 +1455,20 @@ function useTimeBasedProgress(generation: GenerationDto): number {
 
 function GenerationLive({ generation, recent }: { generation: GenerationDto; recent: RecentDto[] }) {
   const tg = useTranslations('generator');
+  const site = useSite();
   const pct = useTimeBasedProgress(generation);
   const statusLabel = tg(`live.status.${generation.status}`);
   const isPlaying = generation.status !== 'succeeded' && generation.status !== 'failed';
-
   const isFailed = generation.status === 'failed';
+
+  // Rotire de fraze pe „generating_audio" — același UX uman ca pe /m/[id].
+  const rotation: string[] | null = (() => {
+    if (generation.status !== 'generating_audio') return null;
+    try {
+      const raw = (tg as any).raw('live.statusRotation.generating_audio');
+      return Array.isArray(raw) && raw.length > 0 ? (raw as string[]) : null;
+    } catch { return null; }
+  })();
 
   return (
     <>
@@ -1468,7 +1479,13 @@ function GenerationLive({ generation, recent }: { generation: GenerationDto; rec
             ? tg('live.failedTitle')
             : tg('live.workingTitle')}
       </h3>
-      <p className="ld">{isFailed ? humanizeGenError(generation.error, tg) : statusLabel}</p>
+      <p className="ld" style={{ minHeight: '1.4em' }}>
+        {isFailed
+          ? humanizeGenError(generation.error, tg)
+          : rotation
+            ? <RotatingStatus phrases={rotation} />
+            : statusLabel}
+      </p>
       {isFailed && (
         <>
           {generation.error && (
@@ -1516,7 +1533,7 @@ function GenerationLive({ generation, recent }: { generation: GenerationDto; rec
             {tg('live.lyricsVerified')}
           </div>
           <pre style={{ whiteSpace: 'pre-wrap', color: 'var(--gold-2)', fontSize: 13, lineHeight: 1.6 }}>
-            {generation.lyrics}
+            {prettifyLyrics(generation.lyrics, site.locale)}
           </pre>
         </div>
       )}
@@ -1530,7 +1547,7 @@ function GenerationLive({ generation, recent }: { generation: GenerationDto; rec
             {tg('live.lyricsDraft')}
           </div>
           <pre style={{ whiteSpace: 'pre-wrap', color: 'rgba(255,245,220,0.7)', fontSize: 12, lineHeight: 1.5 }}>
-            {generation.lyricsDraft}
+            {prettifyLyrics(generation.lyricsDraft, site.locale)}
           </pre>
         </div>
       )}

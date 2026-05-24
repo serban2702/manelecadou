@@ -12,6 +12,8 @@ import { useSite } from '@/lib/site-context';
 import { useSession } from '@/lib/providers';
 import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
+import { prettifyLyrics } from '@/lib/lyrics-display';
+import { RotatingStatus } from '@/components/RotatingStatus';
 
 export default function ShareGenerationView() {
   return (
@@ -188,6 +190,7 @@ function ShareGenerationViewInner() {
       {inProgress && (
         <GenerationProgress
           generation={g}
+          locale={site.locale}
           tLive={tLive}
           tStatus={tStatus}
         />
@@ -225,7 +228,7 @@ function ShareGenerationViewInner() {
             whiteSpace: 'pre-wrap', marginTop: 10, color: 'var(--gold-2)',
             background: 'rgba(241,200,77,0.05)', padding: 12, borderRadius: 8,
             fontSize: 13, lineHeight: 1.6,
-          }}>{g.lyrics}</pre>
+          }}>{prettifyLyrics(g.lyrics, site.locale)}</pre>
         </details>
       )}
     </main>
@@ -263,15 +266,26 @@ function useTimeBasedProgress(generation: GenerationDto): number {
  *  Generator.tsx (titlu working, status, progress bar, ciornă/versuri verificate). */
 function GenerationProgress({
   generation,
+  locale,
   tLive,
   tStatus,
 }: {
   generation: GenerationDto;
+  locale: string;
   tLive: ReturnType<typeof useTranslations>;
   tStatus: ReturnType<typeof useTranslations>;
 }) {
   const pct = useTimeBasedProgress(generation);
-  const statusLabel = (() => {
+  // Pe „generating_audio" rotim mai multe fraze cu mică animație, ca la Claude Code.
+  // Pe celelalte statusuri afișăm un singur label din `generator.live.status.*`.
+  const rotation: string[] | null = (() => {
+    if (generation.status !== 'generating_audio') return null;
+    try {
+      const raw = tLive.raw('statusRotation.generating_audio');
+      return Array.isArray(raw) && raw.length > 0 ? (raw as string[]) : null;
+    } catch { return null; }
+  })();
+  const fallbackLabel = (() => {
     try { return tStatus(generation.status as any); } catch { return generation.status; }
   })();
 
@@ -280,7 +294,9 @@ function GenerationProgress({
       <h3 style={{ margin: 0, fontSize: 18, color: 'var(--gold-2)' }}>
         {tLive('workingTitle')}
       </h3>
-      <p className="ld" style={{ marginTop: 4 }}>{statusLabel}</p>
+      <p className="ld" style={{ marginTop: 4, minHeight: '1.4em' }}>
+        {rotation ? <RotatingStatus phrases={rotation} /> : fallbackLabel}
+      </p>
 
       <div style={{
         marginTop: 14, height: 6, borderRadius: 999,
@@ -306,7 +322,7 @@ function GenerationProgress({
             {tLive('lyricsVerified')}
           </div>
           <pre style={{ whiteSpace: 'pre-wrap', color: 'var(--gold-2)', fontSize: 13, lineHeight: 1.6 }}>
-            {generation.lyrics}
+            {prettifyLyrics(generation.lyrics, locale)}
           </pre>
         </div>
       )}
@@ -320,7 +336,7 @@ function GenerationProgress({
             {tLive('lyricsDraft')}
           </div>
           <pre style={{ whiteSpace: 'pre-wrap', color: 'rgba(255,245,220,0.7)', fontSize: 12, lineHeight: 1.5 }}>
-            {generation.lyricsDraft}
+            {prettifyLyrics(generation.lyricsDraft, locale)}
           </pre>
         </div>
       )}
