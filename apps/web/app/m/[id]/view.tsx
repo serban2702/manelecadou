@@ -168,12 +168,12 @@ function ShareGenerationViewInner() {
         }}>
           {isPaid ? t('unlockedBadge') : t('demoBadge')}
         </span>
-        {!inProgress && (
+        {g.status === 'failed' && (
           <span style={{
             fontSize: 11, padding: '3px 10px', borderRadius: 999,
-            background: 'rgba(255,255,255,0.05)', color: 'rgba(255,245,220,0.6)',
+            background: 'rgba(255,90,90,0.15)', color: '#ffb3b3', fontWeight: 600,
           }}>
-            {t('statusLabel')} {g.status}
+            ⚠️ {t('statusLabel')} {g.status}
           </span>
         )}
       </div>
