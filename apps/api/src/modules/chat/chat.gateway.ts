@@ -58,6 +58,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private adminSockets = new Set<string>();
   /** Pending disconnect timers — ștergerea din presence se face cu un delay scurt. */
   private pendingDisconnect = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Ultimul IP cunoscut per user/guest (capturat la handshake WS). Persistă peste
+   *  disconnect ca să-l putem afișa și după ce userul iese din pagină. Sursă de
+   *  rezervă față de `analytics_sessions.ip` (care poate lipsi dacă guestul a deschis
+   *  chat-ul înainte de primul event /track). */
+  private lastIpByUser = new Map<string, string>();
+  private lastIpByGuest = new Map<string, string>();
 
   constructor(@Inject(forwardRef(() => JwtService)) private readonly jwt: JwtService) {}
 
@@ -66,6 +72,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleConnection(client: Socket) {
     const ident = this.identifySocket(client);
     (client.data as SocketIdentity) = ident;
+
+    // Capturăm IP-ul din handshake (Caddy/NPM setează X-Forwarded-For). Persistă
+    // în memorie chiar și după disconnect — util pentru triage când userul iese.
+    const ip = this.extractIp(client);
+    if (ip) {
+      if (ident.userId) this.lastIpByUser.set(ident.userId, ip);
+      else if (ident.guestId) this.lastIpByGuest.set(ident.guestId, ip);
+    }
 
     if (ident.isAdmin) {
       this.adminSockets.add(client.id);
@@ -199,6 +213,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (target.userId && (this.presenceUsers.get(target.userId)?.size ?? 0) > 0) return true;
     if (target.guestId && (this.presenceGuests.get(target.guestId)?.size ?? 0) > 0) return true;
     return false;
+  }
+
+  /** IP-ul capturat din handshake WS (rezervă pentru când `analytics_sessions.ip`
+   *  nu există încă — guest care a deschis chat-ul înainte de primul page_view). */
+  getKnownIp(target: { userId: string | null; guestId: string | null }): string | null {
+    if (target.userId && this.lastIpByUser.has(target.userId)) return this.lastIpByUser.get(target.userId)!;
+    if (target.guestId && this.lastIpByGuest.has(target.guestId)) return this.lastIpByGuest.get(target.guestId)!;
+    return null;
+  }
+
+  private extractIp(client: Socket): string | null {
+    const xff = client.handshake.headers['x-forwarded-for'];
+    const raw = Array.isArray(xff) ? xff[0] : xff;
+    if (typeof raw === 'string' && raw.length > 0) return raw.split(',')[0].trim();
+    return client.handshake.address || null;
   }
 
   snapshot(): { users: string[]; guests: string[] } {

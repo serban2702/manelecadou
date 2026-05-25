@@ -92,14 +92,19 @@ export default function AdminChatPage() {
         return liveOnline === undefined ? c : { ...c, online: liveOnline as boolean };
       })
       .sort((a, b) => {
-        // Re-aplicăm bucket sort în client (ordering live):
-        // 1. online + mesaje, 2. online, 3. offline + mesaje, 4. offline.
+        // Re-aplicăm bucket sort în client (ordering live), aceleași 5 buckets ca pe server:
+        // 1. online + mesaj de la EI, 2. online + mesaj de la NOI, 3. online fără mesaje,
+        // 4. offline + mesaj de la EI, 5. offline + mesaj de la NOI.
         const bucket = (x: typeof a) => {
-          const hasMsgs = !!x.lastMessageAt;
-          if (x.online && hasMsgs) return 0;
-          if (x.online) return 1;
-          if (hasMsgs) return 2;
-          return 3;
+          const role = x.lastMessageRole;
+          if (x.online) {
+            if (role === 'user') return 0;
+            if (role === 'admin') return 1;
+            return 2;
+          }
+          if (role === 'user') return 3;
+          if (role === 'admin') return 4;
+          return 5;
         };
         const ba = bucket(a);
         const bb = bucket(b);

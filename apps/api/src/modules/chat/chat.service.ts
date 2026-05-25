@@ -259,45 +259,61 @@ export class ChatService {
 
     const userIds = all.map((c) => c.userId).filter((v): v is string => !!v);
     const guestIds = all.map((c) => c.guestId).filter((v): v is string => !!v);
-    const [presence, ips] = await Promise.all([
+    const convIds = all.map((c) => c.id);
+    const [presence, ips, lastAuthors] = await Promise.all([
       this.fetchPresence(userIds, guestIds),
       this.fetchLastIp(userIds, guestIds),
+      this.fetchLastMessageAuthors(convIds),
     ]);
 
     const now = Date.now();
-    const augmented: ConversationWithPresence[] = all.map((c) => {
-      const seenAt =
-        (c.userId && presence.users.get(c.userId)) ||
-        (c.guestId && presence.guests.get(c.guestId)) ||
-        null;
-      const lastSeenMs = seenAt ? new Date(seenAt).getTime() : 0;
-      // Presence: WS-online (real-time, instant) SAU activitate analytics în ultimele 2 min.
-      const wsOnline = this.gateway.isOnline({ userId: c.userId, guestId: c.guestId });
-      const analyticsOnline = lastSeenMs > 0 && (now - lastSeenMs) / 1000 < ONLINE_WINDOW_SEC;
-      const online = wsOnline || analyticsOnline;
-      const ip =
-        (c.userId && ips.users.get(c.userId)) ||
-        (c.guestId && ips.guests.get(c.guestId)) ||
-        null;
-      return {
-        ...c,
-        online,
-        lastSeenAt: wsOnline ? new Date().toISOString() : seenAt ? new Date(seenAt).toISOString() : null,
-        ip,
-      };
-    });
+    const augmented: Array<ConversationWithPresence & { lastMessageRole: 'user' | 'admin' | null }> =
+      all.map((c) => {
+        const seenAt =
+          (c.userId && presence.users.get(c.userId)) ||
+          (c.guestId && presence.guests.get(c.guestId)) ||
+          null;
+        const lastSeenMs = seenAt ? new Date(seenAt).getTime() : 0;
+        // Presence: WS-online (real-time, instant) SAU activitate analytics în ultimele 2 min.
+        const wsOnline = this.gateway.isOnline({ userId: c.userId, guestId: c.guestId });
+        const analyticsOnline = lastSeenMs > 0 && (now - lastSeenMs) / 1000 < ONLINE_WINDOW_SEC;
+        const online = wsOnline || analyticsOnline;
+        // IP: analytics_sessions (precis, persistent) → fallback WS handshake (capturat
+        // chiar dacă guest nu a tras încă /track) → null.
+        const ip =
+          (c.userId && ips.users.get(c.userId)) ||
+          (c.guestId && ips.guests.get(c.guestId)) ||
+          this.gateway.getKnownIp({ userId: c.userId, guestId: c.guestId }) ||
+          null;
+        return {
+          ...c,
+          online,
+          lastSeenAt: wsOnline ? new Date().toISOString() : seenAt ? new Date(seenAt).toISOString() : null,
+          ip,
+          lastMessageRole: lastAuthors.get(c.id) ?? null,
+        };
+      });
 
     /**
-     * Bucket priority:
-     * 0 = online + cu mesaje, 1 = online fără mesaje,
-     * 2 = offline + cu mesaje, 3 = offline fără mesaje.
+     * Bucket priority (cerere user — 2026-05-25):
+     * 0 = online + ultimul mesaj de la EI (user)
+     * 1 = online + ultimul mesaj de la NOI (admin)
+     * 2 = online + fără mesaje
+     * 3 = offline + ultimul mesaj de la EI (user)
+     * 4 = offline + ultimul mesaj de la NOI (admin)
+     * (offline fără mesaje sunt deja excluse din query prin filtrul de relevanță)
      */
-    const bucket = (c: ConversationWithPresence) => {
-      const hasMsgs = !!c.lastMessageAt;
-      if (c.online && hasMsgs) return 0;
-      if (c.online) return 1;
-      if (hasMsgs) return 2;
-      return 3;
+    const bucket = (c: (typeof augmented)[number]) => {
+      const role = c.lastMessageRole;
+      if (c.online) {
+        if (role === 'user') return 0;
+        if (role === 'admin') return 1;
+        return 2;
+      }
+      if (role === 'user') return 3;
+      if (role === 'admin') return 4;
+      // Offline fără mesaje — în mod normal filtrate, dar fallback la coadă dacă apar.
+      return 5;
     };
 
     augmented.sort((a, b) => {
@@ -313,6 +329,27 @@ export class ChatService {
     });
 
     return augmented;
+  }
+
+  /** DISTINCT ON pe chat_messages — întoarce rolul ultimului mesaj per conversație.
+   *  Folosit la sortarea inbox-ului admin (cele cu ultimul mesaj de la user au prioritate
+   *  peste cele unde noi am răspuns ultimii). */
+  private async fetchLastMessageAuthors(
+    convIds: string[],
+  ): Promise<Map<string, 'user' | 'admin'>> {
+    const out = new Map<string, 'user' | 'admin'>();
+    if (convIds.length === 0) return out;
+    const rows = await this.msg
+      .createQueryBuilder('m')
+      .select('m.conversationId', 'cid')
+      .addSelect('m.authorRole', 'role')
+      .where('m.conversationId IN (:...ids)', { ids: convIds })
+      .distinctOn(['m.conversationId'])
+      .orderBy('m.conversationId')
+      .addOrderBy('m.createdAt', 'DESC')
+      .getRawMany<{ cid: string; role: 'user' | 'admin' }>();
+    for (const r of rows) out.set(r.cid, r.role);
+    return out;
   }
 
   /** Returnează presence + ultimul IP pentru o singură conversație (folosit în view-ul thread). */

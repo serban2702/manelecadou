@@ -78,8 +78,10 @@ export interface AdminChatConversation {
   lastMessageAt: string | null;
   online: boolean;
   lastSeenAt: string | null;
-  /** Ultimul IP cunoscut din analytics_sessions. */
+  /** Ultimul IP cunoscut (analytics_sessions sau handshake WS chat). */
   ip: string | null;
+  /** Rolul autorului ultimului mesaj din conversație (null = fără mesaje). */
+  lastMessageRole: 'user' | 'admin' | null;
 }
 
 export interface AdminChatMessage {
