@@ -206,6 +206,23 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   const [step, setStep] = useState(0);
   const [data, setData] = useState<Data>(EMPTY);
 
+  // Pe orice schimbare de pas, derulează la începutul wizard-ului (în special
+  // pe mobile: la pasul 3 user-ul ajunge jos pe pagină și la trecerea la pasul
+  // 4 ar vedea doar butonul „Continuă" — fără context).
+  const stepScrollMountedRef = useRef(false);
+  useEffect(() => {
+    if (!stepScrollMountedRef.current) {
+      stepScrollMountedRef.current = true;
+      return; // skip pe primul render
+    }
+    if (typeof window === 'undefined') return;
+    const el = document.getElementById('generator');
+    if (!el) return;
+    // Offset 70px pentru header-ul sticky.
+    const y = el.getBoundingClientRect().top + window.scrollY - 70;
+    window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+  }, [step]);
+
   // Când se termină mostra de voce/stil sau nu există, comută înapoi starea vizuală.
   const handleSampleAutoStop = useCallback(
     (key: string) => {
