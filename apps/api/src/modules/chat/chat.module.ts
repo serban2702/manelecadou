@@ -8,10 +8,15 @@ import { AnalyticsSession } from '../analytics/analytics-session.entity';
 import { ChatService } from './chat.service';
 import { ChatController, AdminChatController } from './chat.controller';
 import { ChatGateway } from './chat.gateway';
+import { ChatAttachmentsService } from './chat-attachments.service';
 import { AuthModule } from '../auth/auth.module';
 import { AdminGuard } from '../../common/admin.guard';
 import { OpenAiModule } from '../../openai/openai.module';
 import { KbModule } from '../kb/kb.module';
+import { WebPushModule } from '../web-push/web-push.module';
+import { PaymentsModule } from '../payments/payments.module';
+import { SitesModule } from '../sites/sites.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
@@ -19,8 +24,12 @@ import { KbModule } from '../kb/kb.module';
     AuthModule,
     OpenAiModule,
     KbModule,
+    WebPushModule,
+    PaymentsModule,
+    SitesModule,
+    SettingsModule,
   ],
-  providers: [ChatService, ChatGateway, AdminGuard],
+  providers: [ChatService, ChatGateway, ChatAttachmentsService, AdminGuard],
   exports: [ChatService, ChatGateway],
   controllers: [ChatController, AdminChatController],
 })

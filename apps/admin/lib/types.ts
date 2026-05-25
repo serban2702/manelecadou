@@ -63,6 +63,25 @@ export interface AdminGeneration {
   siteId?: string | null;
 }
 
+export type AiChatMode = 'manual' | 'suggest' | 'auto';
+
+export interface EnrichedPresence {
+  online: boolean;
+  connectedAt: string | null;
+  lastSeenAt: string | null;
+  currentPath: string | null;
+  currentTitle: string | null;
+  chatOpen: boolean;
+  device: {
+    type?: 'mobile' | 'tablet' | 'desktop';
+    os?: string;
+    browser?: string;
+    viewport?: { w: number; h: number };
+    userAgent?: string;
+  } | null;
+  ip: string | null;
+}
+
 export interface AdminChatConversation {
   id: string;
   siteId: string | null;
@@ -82,6 +101,11 @@ export interface AdminChatConversation {
   ip: string | null;
   /** Rolul autorului ultimului mesaj din conversație (null = fără mesaje). */
   lastMessageRole: 'user' | 'admin' | null;
+  // Faza 1
+  aiMode?: AiChatMode;
+  chatOpenOnClient?: boolean;
+  lastClientPath?: string | null;
+  enriched?: EnrichedPresence | null;
 }
 
 export interface AdminChatMessage {
@@ -94,6 +118,16 @@ export interface AdminChatMessage {
   detectedLang: string | null;
   bodyRo: string | null;
   translationConsensus: number | null;
+  // Faza 1
+  messageType?: 'text' | 'image' | 'file' | 'payment_link' | 'song_form_step' | 'song_preview' | 'system' | 'ai_suggestion';
+  payload?: Record<string, unknown> | null;
+  deliveredAt?: string | null;
+  readAt?: string | null;
+  attachmentUrl?: string | null;
+  attachmentMime?: string | null;
+  attachmentSize?: number | null;
+  attachmentName?: string | null;
+  aiGenerated?: boolean;
 }
 
 export interface AdminPromoCode {

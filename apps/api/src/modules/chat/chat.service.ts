@@ -4,16 +4,23 @@ import {
   ForbiddenException,
   forwardRef,
   Inject,
+  OnModuleInit,
 } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Conversation } from './conversation.entity';
-import { ChatMessage } from './message.entity';
+import { In, IsNull, Repository } from 'typeorm';
+import { Conversation, AiChatMode } from './conversation.entity';
+import { ChatMessage, ChatMessageType, ChatMessagePayload } from './message.entity';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { User } from '../users/user.entity';
 import { AnalyticsSession } from '../analytics/analytics-session.entity';
 import { ChatGateway } from './chat.gateway';
 import { TranslationService } from '../../openai/translation.service';
+import { WebPushService } from '../web-push/web-push.service';
+import { ChatAttachmentsService } from './chat-attachments.service';
+import { PaymentsService } from '../payments/payments.service';
+import { SitesService } from '../sites/sites.service';
+import { SettingsService } from '../settings/settings.service';
 
 /** Pragul în secunde sub care o sesiune e considerată "online". */
 const ONLINE_WINDOW_SEC = 120;
@@ -32,7 +39,7 @@ interface OwnerCtx {
 }
 
 @Injectable()
-export class ChatService {
+export class ChatService implements OnModuleInit {
   constructor(
     @InjectRepository(Conversation) private readonly conv: Repository<Conversation>,
     @InjectRepository(ChatMessage) private readonly msg: Repository<ChatMessage>,
@@ -42,7 +49,84 @@ export class ChatService {
     @Inject(forwardRef(() => ChatGateway))
     private readonly gateway: ChatGateway,
     private readonly translation: TranslationService,
+    private readonly webPush: WebPushService,
+    private readonly attachments: ChatAttachmentsService,
+    private readonly payments: PaymentsService,
+    private readonly sites: SitesService,
+    private readonly chatSettings: SettingsService,
+    private readonly moduleRef: ModuleRef,
   ) {}
+
+  /** Citeste AI_CHAT_MODE_DEFAULT (manual|suggest|auto) pentru conversații noi. */
+  private async getDefaultAiMode(): Promise<'manual' | 'suggest' | 'auto'> {
+    const raw = (await this.chatSettings.get('AI_CHAT_MODE_DEFAULT')).trim().toLowerCase();
+    if (raw === 'suggest' || raw === 'auto' || raw === 'manual') return raw;
+    return 'manual';
+  }
+
+  /** Wire ACK handler la gateway după ce ambele sunt construite. */
+  onModuleInit() {
+    this.gateway.registerAckHandler(async (messageIds, status, actor) => {
+      await this.handleAckFromSocket(messageIds, status, actor);
+    });
+  }
+
+  /** Apelat din gateway când userul/adminul confirmă receipt/citire mesaje. */
+  private async handleAckFromSocket(
+    messageIds: string[],
+    status: 'delivered' | 'read',
+    actor: { userId: string | null; guestId: string | null; isAdmin: boolean },
+  ): Promise<void> {
+    if (messageIds.length === 0) return;
+    // Receiver-ul ACK confirmă doar mesaje pe care NU le-a scris el.
+    // Adminul confirmă mesajele de la user. Userul/guest confirmă mesajele admin.
+    const expectedAuthorRole: 'user' | 'admin' = actor.isAdmin ? 'user' : 'admin';
+    const messages = await this.msg.find({
+      where: { id: In(messageIds), authorRole: expectedAuthorRole },
+    });
+    if (messages.length === 0) return;
+
+    // Pentru security: dacă actor e user/guest, verificăm că mesajele aparțin conversațiilor lor.
+    if (!actor.isAdmin) {
+      const convIds = Array.from(new Set(messages.map((m) => m.conversationId)));
+      const ownConvs = await this.conv.find({
+        where: actor.userId
+          ? { id: In(convIds), userId: actor.userId }
+          : { id: In(convIds), guestId: actor.guestId! },
+      });
+      const ownedIds = new Set(ownConvs.map((c) => c.id));
+      const filtered = messages.filter((m) => ownedIds.has(m.conversationId));
+      if (filtered.length === 0) return;
+      messages.length = 0;
+      messages.push(...filtered);
+    }
+
+    const now = new Date();
+    const byConv = new Map<string, ChatMessage[]>();
+    for (const m of messages) {
+      if (status === 'delivered' && !m.deliveredAt) m.deliveredAt = now;
+      if (status === 'read') {
+        if (!m.deliveredAt) m.deliveredAt = now;
+        if (!m.readAt) m.readAt = now;
+      }
+      const arr = byConv.get(m.conversationId) ?? [];
+      arr.push(m);
+      byConv.set(m.conversationId, arr);
+    }
+    await this.msg.save(messages);
+
+    // Broadcast ACK pentru fiecare conversație
+    for (const [convId, msgs] of byConv) {
+      const c = await this.conv.findOne({ where: { id: convId } });
+      if (!c) continue;
+      this.gateway.emitMessageAck({
+        conversation: c,
+        messageIds: msgs.map((m) => m.id),
+        status,
+        by: actor.isAdmin ? 'admin' : 'user',
+      });
+    }
+  }
 
   /**
    * Întoarce un Map cu lastSeenAt pentru fiecare userId/guestId trimis ca input.
@@ -125,11 +209,13 @@ export class ChatService {
       const existing = await this.conv.findOne({ where: scopedWhere({ userId: ctx.userId }) });
       if (existing) return existing;
       const u = await this.users.findOne({ where: { id: ctx.userId } });
+      const defaultMode = await this.getDefaultAiMode();
       const created = this.conv.create({
         userId: ctx.userId,
         siteId: ctx.siteId,
         email: u?.email ?? null,
         subject: 'Conversație',
+        aiMode: defaultMode,
       });
       return this.conv.save(created);
     }
@@ -137,21 +223,30 @@ export class ChatService {
     const existing = await this.conv.findOne({ where: scopedWhere({ guestId: ctx.guestId }) });
     if (existing) return existing;
     const g = await this.guests.findOne({ where: { id: ctx.guestId } });
+    const defaultMode = await this.getDefaultAiMode();
     const created = this.conv.create({
       guestId: ctx.guestId,
       siteId: ctx.siteId,
       email: g?.email ?? null,
       subject: 'Conversație guest',
+      aiMode: defaultMode,
     });
     return this.conv.save(created);
   }
 
   async listMyMessages(ctx: OwnerCtx): Promise<{ conversation: Conversation; messages: ChatMessage[] }> {
     const conversation = await this.getOrCreateMine(ctx);
-    const messages = await this.msg.find({
+    // Marchează ca delivered toate mesajele admin → user (client le-a primit).
+    // Read se setează separat când userul deschide widgetul (via WS chat_toggle + message:ack).
+    await this.markAllAdminMessagesDelivered(conversation.id);
+    const all = await this.msg.find({
       where: { conversationId: conversation.id },
       order: { createdAt: 'ASC' },
     });
+    // Clientul NU vede mesaje internal: AI suggestions, system messages.
+    const messages = all.filter(
+      (m) => m.messageType !== 'ai_suggestion' && m.messageType !== 'system' && m.authorRole !== 'system',
+    );
     if (conversation.unreadByUser > 0) {
       conversation.unreadByUser = 0;
       await this.conv.save(conversation);
@@ -175,6 +270,23 @@ export class ChatService {
     this.gateway.emitMessage({ message: saved, conversation });
     // Auto-translate inbound non-RO → RO (background, nu blocăm răspunsul către user).
     void this.translateMessageAsync(saved.id);
+    // AI agent dacă conversația e în mod suggest/auto (non-blocking).
+    void this.maybeTriggerAi(conversation.id, saved.id);
+    // Web Push notification către toți adminii subscribed (best-effort, non-blocking).
+    const senderLabel = conversation.email
+      ?? (ctx.userId ? `user:${ctx.userId.slice(0, 8)}` : `guest:${ctx.guestId?.slice(0, 8) ?? '?'}`);
+    const preview = body.trim().slice(0, 140);
+    void this.webPush.sendToAll({
+      title: `💬 ${senderLabel}`,
+      body: preview + (body.length > 140 ? '…' : ''),
+      tag: `chat-${conversation.id}`, // mesajele din aceeași conversație se înlocuiesc
+      url: `/chat?c=${conversation.id}`,
+      icon: '/icon-512.png',
+      badge: '/icon-512.png',
+      data: { conversationId: conversation.id, messageId: saved.id },
+    }).catch(() => {
+      /* silent — push e best-effort */
+    });
     return saved;
   }
 
@@ -444,6 +556,11 @@ export class ChatService {
     return { online, lastSeenAt: seenAt ? new Date(seenAt).toISOString() : null, ip };
   }
 
+  /** Enriched presence (currentPath, device, chatOpen, connectedAt) pentru sidebar admin. */
+  getEnrichedPresenceForConversation(c: Conversation) {
+    return this.gateway.getEnriched({ userId: c.userId, guestId: c.guestId });
+  }
+
   async getConversation(id: string): Promise<Conversation> {
     const c = await this.conv.findOne({ where: { id } });
     if (!c) throw new NotFoundException('Conversation not found');
@@ -459,9 +576,25 @@ export class ChatService {
 
   async markReadByAdmin(conversationId: string): Promise<void> {
     await this.conv.update({ id: conversationId }, { unreadByAdmin: 0 });
+    // Marchează ca read toate mesajele user → admin (adminul are thread-ul deschis).
+    await this.markAllUserMessagesRead(conversationId);
   }
 
-  async sendAsAdmin(conversationId: string, adminUserId: string, body: string, opts?: { forceTargetLang?: string; skipTranslation?: boolean }): Promise<ChatMessage & { translation?: { original: string; targetLang: string; consensus: number } | null }> {
+  async sendAsAdmin(
+    conversationId: string,
+    adminUserId: string,
+    body: string,
+    opts?: {
+      forceTargetLang?: string;
+      skipTranslation?: boolean;
+      messageType?: ChatMessageType;
+      payload?: ChatMessagePayload | null;
+      attachment?: { url: string; mime: string; size: number; name: string } | null;
+      aiGenerated?: boolean;
+      aiApprovedBy?: string | null;
+      aiSuggestionFor?: string | null;
+    },
+  ): Promise<ChatMessage & { translation?: { original: string; targetLang: string; consensus: number } | null }> {
     const conv = await this.getConversation(conversationId);
     const trimmed = body.trim();
 
@@ -486,6 +619,15 @@ export class ChatService {
       bodyRo: translationMeta ? translationMeta.original : null,
       detectedLang: translationMeta?.targetLang ?? 'ro',
       translationConsensus: translationMeta?.consensus ?? null,
+      messageType: opts?.messageType ?? 'text',
+      payload: opts?.payload ?? null,
+      attachmentUrl: opts?.attachment?.url ?? null,
+      attachmentMime: opts?.attachment?.mime ?? null,
+      attachmentSize: opts?.attachment?.size ?? null,
+      attachmentName: opts?.attachment?.name ?? null,
+      aiGenerated: !!opts?.aiGenerated,
+      aiApprovedBy: opts?.aiApprovedBy ?? null,
+      aiSuggestionFor: opts?.aiSuggestionFor ?? null,
     });
     const saved = await this.msg.save(msg);
     conv.lastMessageAt = saved.createdAt;
@@ -494,5 +636,270 @@ export class ChatService {
     await this.conv.save(conv);
     this.gateway.emitMessage({ message: saved, conversation: conv });
     return Object.assign(saved, { translation: translationMeta });
+  }
+
+  /**
+   * Trigger AIChatAgentService dacă conversația e în mod suggest/auto.
+   * Folosim ModuleRef cu lazy resolve ca să evităm dependency circulară între
+   * ChatModule și AiChatModule.
+   */
+  private async maybeTriggerAi(conversationId: string, userMessageId: string): Promise<void> {
+    try {
+      // strict: false → permite resolve cross-module fără a marca dependency
+      const agent = this.moduleRef.get(
+        await import('../ai-chat/ai-chat-agent.service').then((m) => m.AIChatAgentService),
+        { strict: false },
+      );
+      await agent.maybeRun(conversationId, userMessageId);
+    } catch (e) {
+      // Silent — AI e opțional, nu blocăm chat-ul dacă agentul eșuează
+    }
+  }
+
+  // ============== Faza 4: Approve AI suggestion ==============
+
+  /** Convertește un mesaj `ai_suggestion` într-un mesaj admin real trimis către user. */
+  async approveAiSuggestion(suggestionMessageId: string, adminUserId: string, editedText?: string): Promise<ChatMessage> {
+    const suggestion = await this.msg.findOne({ where: { id: suggestionMessageId } });
+    if (!suggestion) throw new NotFoundException('Sugestia nu există');
+    if (suggestion.messageType !== 'ai_suggestion') {
+      throw new ForbiddenException('Mesajul nu e o sugestie AI');
+    }
+    const conv = await this.getConversation(suggestion.conversationId);
+    const text = (editedText ?? suggestion.body).trim();
+    if (!text) throw new ForbiddenException('Text gol');
+
+    // Marchează sugestia ca aprobată
+    suggestion.aiApprovedBy = adminUserId;
+    await this.msg.save(suggestion);
+
+    // Creează mesaj admin real (cu sourceTag că vine de la AI, dacă text-ul nu a fost editat)
+    return this.sendAsAdmin(conv.id, adminUserId, text, {
+      aiGenerated: editedText ? false : true,
+      aiApprovedBy: adminUserId,
+      aiSuggestionFor: suggestion.aiSuggestionFor,
+    });
+  }
+
+  /** Respinge o sugestie AI (o șterge silent). */
+  async rejectAiSuggestion(suggestionMessageId: string): Promise<{ ok: true }> {
+    await this.msg.delete({ id: suggestionMessageId, messageType: 'ai_suggestion' });
+    return { ok: true };
+  }
+
+  // ============== Faza 3: Attachments + Rich messages ==============
+
+  /** Admin trimite un atașament (imagine / pdf) cu caption opțional. */
+  async sendAttachmentAsAdmin(
+    conversationId: string,
+    adminUserId: string,
+    file: { buffer: Buffer; originalName: string; mime: string },
+    caption?: string,
+  ): Promise<ChatMessage> {
+    const conv = await this.getConversation(conversationId);
+    const saved = await this.attachments.save({
+      conversationId: conv.id,
+      fileBuffer: file.buffer,
+      originalName: file.originalName,
+      mime: file.mime,
+    });
+
+    const isImage = saved.mime.startsWith('image/');
+    const msg = this.msg.create({
+      conversationId: conv.id,
+      siteId: conv.siteId ?? null,
+      authorRole: 'admin',
+      authorId: adminUserId,
+      body: caption?.trim() || (isImage ? '📷 Imagine' : `📎 ${saved.originalName}`),
+      messageType: isImage ? 'image' : 'file',
+      attachmentUrl: saved.url,
+      attachmentMime: saved.mime,
+      attachmentSize: saved.size,
+      attachmentName: saved.originalName,
+      bodyRo: caption?.trim() || null,
+      detectedLang: 'ro',
+    });
+    const persisted = await this.msg.save(msg);
+    conv.lastMessageAt = persisted.createdAt;
+    conv.unreadByUser += 1;
+    conv.unreadByAdmin = 0;
+    await this.conv.save(conv);
+    this.gateway.emitMessage({ message: persisted, conversation: conv });
+    return persisted;
+  }
+
+  /** Admin trimite un link de plată — generează Stripe Checkout pentru ownerul conversației. */
+  async sendPaymentLinkAsAdmin(
+    conversationId: string,
+    adminUserId: string,
+    opts: {
+      amount?: number; // cents — default site.basePriceCents
+      currency?: string; // default site.currency
+      description?: string;
+      premium?: boolean;
+    },
+  ): Promise<ChatMessage> {
+    const conv = await this.getConversation(conversationId);
+    if (!conv.siteId) {
+      throw new ForbiddenException('Conversația nu are siteId — nu pot determina prețul/Stripe context.');
+    }
+    const site = await this.sites.findById(conv.siteId);
+    if (!site) throw new NotFoundException('Site nu există');
+
+    // Creează Checkout Session prin PaymentsService (refoloseste logica existentă).
+    const checkout = await this.payments.createCheckoutSession({
+      userId: conv.userId,
+      guestId: conv.guestId,
+      premium: !!opts.premium,
+      email: conv.email ?? undefined,
+      site,
+    });
+
+    const amount = opts.amount ?? site.basePriceCents + (opts.premium ? site.premiumExtraCents : 0);
+    const currency = (opts.currency ?? site.currency).toUpperCase();
+    const description = opts.description?.trim() || `Manea personalizată${opts.premium ? ' (premium)' : ''}`;
+
+    const msg = this.msg.create({
+      conversationId: conv.id,
+      siteId: conv.siteId,
+      authorRole: 'admin',
+      authorId: adminUserId,
+      body: `💳 Link de plată: ${description} — ${(amount / 100).toFixed(2)} ${currency}`,
+      messageType: 'payment_link',
+      payload: {
+        amount,
+        currency,
+        description,
+        checkoutUrl: checkout.url,
+        paymentId: checkout.paymentId,
+        premium: !!opts.premium,
+      },
+      bodyRo: null,
+      detectedLang: 'ro',
+    });
+    const persisted = await this.msg.save(msg);
+    conv.lastMessageAt = persisted.createdAt;
+    conv.unreadByUser += 1;
+    conv.unreadByAdmin = 0;
+    await this.conv.save(conv);
+    this.gateway.emitMessage({ message: persisted, conversation: conv });
+
+    // Push notification pentru client (dacă are notificări — viitoare faza)
+    return persisted;
+  }
+
+  // ============== Faza 1: AI mode + force-open + delivery batch-mark ==============
+
+  /** Setează modul AI pentru o conversație (manual / suggest / auto). */
+  async setAiMode(conversationId: string, mode: AiChatMode): Promise<Conversation> {
+    if (!['manual', 'suggest', 'auto'].includes(mode)) {
+      throw new ForbiddenException('Invalid AI mode');
+    }
+    const c = await this.getConversation(conversationId);
+    c.aiMode = mode;
+    return this.conv.save(c);
+  }
+
+  /** Forțează deschiderea chat-ului pe partea de client (admin sau AI). */
+  async forceOpenChat(conversationId: string): Promise<{ ok: true; online: boolean }> {
+    const c = await this.getConversation(conversationId);
+    const online = this.gateway.isOnline({ userId: c.userId, guestId: c.guestId });
+    this.gateway.forceOpenChat({ userId: c.userId, guestId: c.guestId });
+    return { ok: true, online };
+  }
+
+  /** Marchează toate mesajele admin → user dintr-o conversație ca delivered (folosit la listMyMessages). */
+  async markAllAdminMessagesDelivered(conversationId: string): Promise<void> {
+    const now = new Date();
+    const undelivered = await this.msg.find({
+      where: { conversationId, authorRole: 'admin', deliveredAt: IsNull() },
+      select: ['id'],
+    });
+    if (undelivered.length === 0) return;
+    await this.msg
+      .createQueryBuilder()
+      .update(ChatMessage)
+      .set({ deliveredAt: now })
+      .where('id IN (:...ids)', { ids: undelivered.map((m) => m.id) })
+      .execute();
+    const c = await this.conv.findOne({ where: { id: conversationId } });
+    if (c) {
+      this.gateway.emitMessageAck({
+        conversation: c,
+        messageIds: undelivered.map((m) => m.id),
+        status: 'delivered',
+        by: 'user',
+      });
+    }
+  }
+
+  /** Marchează ca read toate mesajele admin → user (folosit când userul deschide chat-ul). */
+  async markAllAdminMessagesRead(conversationId: string): Promise<void> {
+    const now = new Date();
+    const unread = await this.msg.find({
+      where: { conversationId, authorRole: 'admin', readAt: IsNull() },
+      select: ['id', 'deliveredAt'],
+    });
+    if (unread.length === 0) return;
+    await this.msg
+      .createQueryBuilder()
+      .update(ChatMessage)
+      .set({ readAt: now })
+      .where('id IN (:...ids)', { ids: unread.map((m) => m.id) })
+      .execute();
+    // Și setăm deliveredAt unde lipsește
+    const needDelivered = unread.filter((m) => !m.deliveredAt).map((m) => m.id);
+    if (needDelivered.length > 0) {
+      await this.msg
+        .createQueryBuilder()
+        .update(ChatMessage)
+        .set({ deliveredAt: now })
+        .where('id IN (:...ids)', { ids: needDelivered })
+        .execute();
+    }
+    const c = await this.conv.findOne({ where: { id: conversationId } });
+    if (c) {
+      this.gateway.emitMessageAck({
+        conversation: c,
+        messageIds: unread.map((m) => m.id),
+        status: 'read',
+        by: 'user',
+      });
+    }
+  }
+
+  /** Folosit din admin: marchează ca read mesajele user → admin (când adminul deschide thread-ul). */
+  async markAllUserMessagesRead(conversationId: string): Promise<void> {
+    const now = new Date();
+    const unread = await this.msg.find({
+      where: { conversationId, authorRole: 'user', readAt: IsNull() },
+      select: ['id', 'deliveredAt'],
+    });
+    if (unread.length === 0) return;
+    const ids = unread.map((m) => m.id);
+    await this.msg
+      .createQueryBuilder()
+      .update(ChatMessage)
+      .set({ readAt: now })
+      .where('id IN (:...ids)', { ids })
+      .execute();
+    const needDel = unread.filter((m) => !m.deliveredAt).map((m) => m.id);
+    if (needDel.length > 0) {
+      await this.msg
+        .createQueryBuilder()
+        .update(ChatMessage)
+        .set({ deliveredAt: now })
+        .where('id IN (:...ids)', { ids: needDel })
+        .execute();
+    }
+    const c = await this.conv.findOne({ where: { id: conversationId } });
+    if (c) {
+      this.gateway.emitMessageAck({
+        conversation: c,
+        messageIds: ids,
+        status: 'read',
+        by: 'admin',
+      });
+    }
   }
 }

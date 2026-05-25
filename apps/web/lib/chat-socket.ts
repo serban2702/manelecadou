@@ -14,6 +14,13 @@ export interface IncomingChatMessage {
     authorId: string | null;
     body: string;
     createdAt: string;
+    messageType?: string;
+    payload?: Record<string, unknown> | null;
+    attachmentUrl?: string | null;
+    attachmentMime?: string | null;
+    attachmentName?: string | null;
+    deliveredAt?: string | null;
+    readAt?: string | null;
   };
   conversation: {
     id: string;
@@ -24,18 +31,63 @@ export interface IncomingChatMessage {
   };
 }
 
+export interface MessageAckEvent {
+  conversationId: string;
+  messageIds: string[];
+  status: 'delivered' | 'read';
+  by: 'admin' | 'user';
+  at: string;
+}
+
+export interface DeviceInfo {
+  type?: 'mobile' | 'tablet' | 'desktop';
+  os?: string;
+  browser?: string;
+  viewport?: { w: number; h: number };
+}
+
 interface UseChatSocketArgs {
   enabled?: boolean;
   onMessage?: (e: IncomingChatMessage) => void;
+  onForceOpen?: () => void;
+  onAck?: (e: MessageAckEvent) => void;
+}
+
+/** Detectează device-ul din window (fallback peste user-agent server-side). */
+function detectDevice(): DeviceInfo {
+  if (typeof window === 'undefined') return {};
+  const ua = navigator.userAgent;
+  const isMobile = /Mobi|Android|iPhone/.test(ua);
+  const isTablet = /iPad|Tablet/.test(ua);
+  const type: DeviceInfo['type'] = isTablet ? 'tablet' : isMobile ? 'mobile' : 'desktop';
+  let os: string | undefined;
+  if (/Windows/.test(ua)) os = 'Windows';
+  else if (/Mac OS X|Macintosh/.test(ua)) os = 'macOS';
+  else if (/Android/.test(ua)) os = 'Android';
+  else if (/iPhone|iPad|iOS/.test(ua)) os = 'iOS';
+  else if (/Linux/.test(ua)) os = 'Linux';
+  let browser: string | undefined;
+  if (/Edg\//.test(ua)) browser = 'Edge';
+  else if (/Chrome\//.test(ua)) browser = 'Chrome';
+  else if (/Safari\//.test(ua)) browser = 'Safari';
+  else if (/Firefox\//.test(ua)) browser = 'Firefox';
+  return {
+    type,
+    os,
+    browser,
+    viewport: { w: window.innerWidth, h: window.innerHeight },
+  };
 }
 
 /**
  * Conexiune WebSocket pentru chat user (sau guest).
- * Auth handshake: JWT dacă userul e logat, altfel guestId.
+ * Trimite presence heartbeat (10s) + reacționează la page changes.
  */
-export function useChatSocket({ enabled = true, onMessage }: UseChatSocketArgs = {}) {
+export function useChatSocket({ enabled = true, onMessage, onForceOpen, onAck }: UseChatSocketArgs = {}) {
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
+  const lastPathRef = useRef<string | null>(null);
+  const chatOpenRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!enabled) return;
@@ -50,11 +102,57 @@ export function useChatSocket({ enabled = true, onMessage }: UseChatSocketArgs =
     });
     socketRef.current = socket;
 
-    socket.on('connect', () => setConnected(true));
+    const sendHeartbeat = () => {
+      if (typeof window === 'undefined') return;
+      socket.emit('presence:heartbeat', {
+        path: window.location.pathname + window.location.search,
+        title: document.title,
+        viewport: { w: window.innerWidth, h: window.innerHeight },
+        chatOpen: chatOpenRef.current,
+        device: detectDevice(),
+      });
+    };
+
+    socket.on('connect', () => {
+      setConnected(true);
+      sendHeartbeat();
+    });
     socket.on('disconnect', () => setConnected(false));
     if (onMessage) socket.on('chat:message', onMessage);
+    if (onForceOpen) socket.on('chat:force_open', onForceOpen);
+    if (onAck) socket.on('chat:message:ack', onAck);
+
+    // Heartbeat la 15s (suficient pentru presence; idle aging < 30s la admin)
+    const hbInterval = window.setInterval(sendHeartbeat, 15_000);
+
+    // Detect page change via popstate + interval polling (Next.js app router nu emite event)
+    const checkPath = () => {
+      if (typeof window === 'undefined') return;
+      const path = window.location.pathname + window.location.search;
+      if (lastPathRef.current && lastPathRef.current !== path) {
+        socket.emit('presence:page_change', {
+          from: lastPathRef.current,
+          to: path,
+          title: document.title,
+        });
+      }
+      lastPathRef.current = path;
+    };
+    checkPath();
+    const pathInterval = window.setInterval(checkPath, 1_000);
+    window.addEventListener('popstate', checkPath);
+
+    // Resend heartbeat când userul revine pe tab (asigură online imediat)
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') sendHeartbeat();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
+      window.clearInterval(hbInterval);
+      window.clearInterval(pathInterval);
+      window.removeEventListener('popstate', checkPath);
+      document.removeEventListener('visibilitychange', onVisibility);
       socket.disconnect();
       socketRef.current = null;
     };
@@ -65,6 +163,16 @@ export function useChatSocket({ enabled = true, onMessage }: UseChatSocketArgs =
     connected,
     sendTyping: (conversationId: string, isTyping: boolean) => {
       socketRef.current?.emit('chat:typing', { conversationId, isTyping });
+    },
+    /** Anunță serverul că widgetul s-a deschis/închis. */
+    setChatOpen: (open: boolean) => {
+      chatOpenRef.current = open;
+      socketRef.current?.emit('presence:chat_toggle', { open });
+    },
+    /** Confirmă receipt sau citire pentru o listă de mesaje admin. */
+    ack: (messageIds: string[], status: 'delivered' | 'read') => {
+      if (!messageIds.length) return;
+      socketRef.current?.emit('message:ack', { messageIds, status });
     },
   };
 }

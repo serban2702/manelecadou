@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { getAdminToken } from '@/lib/api';
+import type { EnrichedPresence } from './types';
 
 const WS_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
 
@@ -14,6 +15,13 @@ export interface ChatMessageEvent {
     authorId: string | null;
     body: string;
     createdAt: string;
+    messageType?: string;
+    payload?: Record<string, unknown> | null;
+    deliveredAt?: string | null;
+    readAt?: string | null;
+    attachmentUrl?: string | null;
+    attachmentMime?: string | null;
+    attachmentName?: string | null;
   };
   conversation: {
     id: string;
@@ -29,24 +37,37 @@ export interface PresenceEvent {
   guestId: string | null;
   online: boolean;
   lastSeenAt?: string;
+  enriched?: EnrichedPresence | null;
 }
 
 export interface PresenceSnapshot {
   users: string[];
   guests: string[];
+  enriched?: Record<string, EnrichedPresence>;
+}
+
+export interface MessageAckEvent {
+  conversationId: string;
+  messageIds: string[];
+  status: 'delivered' | 'read';
+  by: 'admin' | 'user';
+  at: string;
+}
+
+export interface AiSuggestionEvent {
+  conversationId: string;
+  message: ChatMessageEvent['message'];
 }
 
 interface UseChatSocketArgs {
   onMessage?: (e: ChatMessageEvent) => void;
   onPresence?: (e: PresenceEvent) => void;
   onSnapshot?: (s: PresenceSnapshot) => void;
+  onAck?: (e: MessageAckEvent) => void;
+  onAiSuggestion?: (e: AiSuggestionEvent) => void;
 }
 
-/**
- * Conexiune live la /chat namespace cu rol admin.
- * Emite `chat:message`, `chat:presence`, `chat:presence:snapshot` din server.
- */
-export function useAdminChatSocket({ onMessage, onPresence, onSnapshot }: UseChatSocketArgs = {}) {
+export function useAdminChatSocket({ onMessage, onPresence, onSnapshot, onAck, onAiSuggestion }: UseChatSocketArgs = {}) {
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
 
@@ -66,6 +87,8 @@ export function useAdminChatSocket({ onMessage, onPresence, onSnapshot }: UseCha
     if (onMessage) socket.on('chat:message', onMessage);
     if (onPresence) socket.on('chat:presence', onPresence);
     if (onSnapshot) socket.on('chat:presence:snapshot', onSnapshot);
+    if (onAck) socket.on('chat:message:ack', onAck);
+    if (onAiSuggestion) socket.on('chat:ai_suggestion', onAiSuggestion);
 
     return () => {
       socket.disconnect();

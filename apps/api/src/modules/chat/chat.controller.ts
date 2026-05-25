@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -6,10 +7,13 @@ import {
   Post,
   Query,
   Sse,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
-import { IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
 import { Observable, interval } from 'rxjs';
 import { switchMap, distinctUntilChanged } from 'rxjs/operators';
 import { ChatService } from './chat.service';
@@ -27,6 +31,28 @@ class SendMessageDto {
   @MinLength(1)
   @MaxLength(4000)
   body!: string;
+}
+
+class SetAiModeDto {
+  @IsString()
+  @IsIn(['manual', 'suggest', 'auto'])
+  mode!: 'manual' | 'suggest' | 'auto';
+}
+
+class ApproveSuggestionDto {
+  @IsOptional() @IsString() @MaxLength(4000)
+  editedText?: string;
+}
+
+class PaymentLinkDto {
+  @IsOptional() @IsNumber() @Min(1)
+  amount?: number;
+  @IsOptional() @IsString()
+  currency?: string;
+  @IsOptional() @IsString() @MaxLength(200)
+  description?: string;
+  @IsOptional() @IsBoolean()
+  premium?: boolean;
 }
 
 @UseGuards(OptionalJwtAuthGuard)
@@ -111,9 +137,10 @@ export class AdminChatController {
   async getOne(@Param('id') id: string) {
     const conversation = await this.svc.getConversation(id);
     const presence = await this.svc.conversationPresence(conversation);
+    const enriched = this.svc.getEnrichedPresenceForConversation(conversation);
     const messages = await this.svc.listMessages(id);
     await this.svc.markReadByAdmin(id);
-    return { conversation: { ...conversation, ...presence }, messages };
+    return { conversation: { ...conversation, ...presence, enriched }, messages };
   }
 
   @Post('conversations/:id/messages')
@@ -123,5 +150,66 @@ export class AdminChatController {
     @CurrentUser() user: AuthedRequestUser | null,
   ) {
     return this.svc.sendAsAdmin(id, user?.id ?? '00000000-0000-0000-0000-000000000000', body.body);
+  }
+
+  /** Setează modul AI pentru o conversație (manual / suggest / auto). */
+  @Post('conversations/:id/ai-mode')
+  async setAiMode(@Param('id') id: string, @Body() body: SetAiModeDto) {
+    const conv = await this.svc.setAiMode(id, body.mode);
+    return { ok: true, aiMode: conv.aiMode };
+  }
+
+  /** Forțează deschiderea chat-ului pe client (admin sau AI). */
+  @Post('conversations/:id/force-open')
+  async forceOpen(@Param('id') id: string) {
+    return this.svc.forceOpenChat(id);
+  }
+
+  /** Upload atașament (imagine / PDF) — multipart 'file', optional caption în body. */
+  @Post('conversations/:id/attachments')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  async uploadAttachment(
+    @Param('id') id: string,
+    @UploadedFile() file: { buffer: Buffer; originalname: string; size: number; mimetype: string } | undefined,
+    @Body('caption') caption: string | undefined,
+    @CurrentUser() user: AuthedRequestUser | null,
+  ) {
+    if (!file) throw new BadRequestException('Lipsește file');
+    return this.svc.sendAttachmentAsAdmin(
+      id,
+      user?.id ?? '00000000-0000-0000-0000-000000000000',
+      { buffer: file.buffer, originalName: file.originalname, mime: file.mimetype },
+      caption,
+    );
+  }
+
+  /** Aprobă o sugestie AI și o trimite ca mesaj admin către user. */
+  @Post('suggestions/:messageId/approve')
+  approveSuggestion(
+    @Param('messageId') messageId: string,
+    @Body() body: ApproveSuggestionDto,
+    @CurrentUser() user: AuthedRequestUser | null,
+  ) {
+    return this.svc.approveAiSuggestion(messageId, user?.id ?? '00000000-0000-0000-0000-000000000000', body.editedText);
+  }
+
+  /** Respinge o sugestie AI (ștergere silent). */
+  @Post('suggestions/:messageId/reject')
+  rejectSuggestion(@Param('messageId') messageId: string) {
+    return this.svc.rejectAiSuggestion(messageId);
+  }
+
+  /** Trimite link de plată Stripe Checkout către utilizator. */
+  @Post('conversations/:id/payment-link')
+  async paymentLink(
+    @Param('id') id: string,
+    @Body() body: PaymentLinkDto,
+    @CurrentUser() user: AuthedRequestUser | null,
+  ) {
+    return this.svc.sendPaymentLinkAsAdmin(
+      id,
+      user?.id ?? '00000000-0000-0000-0000-000000000000',
+      body,
+    );
   }
 }

@@ -1,5 +1,12 @@
 import { http } from '../http/client';
-import type { AdminChatConversation, AdminChatMessage } from '../types';
+import type { AdminChatConversation, AdminChatMessage, AiChatMode } from '../types';
+
+export interface PaymentLinkOpts {
+  amount?: number;
+  currency?: string;
+  description?: string;
+  premium?: boolean;
+}
 
 export class ChatApi {
   static list(opts: { q?: string } = {}): Promise<AdminChatConversation[]> {
@@ -13,5 +20,29 @@ export class ChatApi {
   }
   static reply(id: string, body: string): Promise<AdminChatMessage> {
     return http.post(`/admin/chat/conversations/${id}/messages`, { body });
+  }
+  static setAiMode(id: string, mode: AiChatMode): Promise<{ ok: true; aiMode: AiChatMode }> {
+    return http.post(`/admin/chat/conversations/${id}/ai-mode`, { mode });
+  }
+  static forceOpen(id: string): Promise<{ ok: true; online: boolean }> {
+    return http.post(`/admin/chat/conversations/${id}/force-open`, {});
+  }
+  static uploadAttachment(id: string, file: File, caption?: string): Promise<AdminChatMessage> {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (caption) fd.append('caption', caption);
+    return http.post(`/admin/chat/conversations/${id}/attachments`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60_000,
+    });
+  }
+  static sendPaymentLink(id: string, opts: PaymentLinkOpts): Promise<AdminChatMessage> {
+    return http.post(`/admin/chat/conversations/${id}/payment-link`, opts);
+  }
+  static approveSuggestion(messageId: string, editedText?: string): Promise<AdminChatMessage> {
+    return http.post(`/admin/chat/suggestions/${messageId}/approve`, { editedText });
+  }
+  static rejectSuggestion(messageId: string): Promise<{ ok: true }> {
+    return http.post(`/admin/chat/suggestions/${messageId}/reject`, {});
   }
 }

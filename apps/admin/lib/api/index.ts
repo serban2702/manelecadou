@@ -10,3 +10,4 @@ export * from './lyrics.api';
 export * from './sites.api';
 export * from './database.api';
 export * from './ai-assistant.api';
+export * from './web-push.api';

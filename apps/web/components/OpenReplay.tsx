@@ -120,30 +120,32 @@ export function OpenReplay() {
           }
         }
 
-        // NOTĂ: `tracker.start()` așteaptă `document.visibilityState === 'visible'`
-        // înainte să facă POST la /ingest/v1/web/start. În tab-uri background
-        // (sau headless Chrome cu visibility hidden) promise-ul rămâne suspended
-        // până când documentul devine vizibil. E by design — evită sesiuni
-        // inutile de la pre-render / background tabs.
+        // ---- IP attribution: fetch ÎNAINTE de tracker.start() ----
+        // `tracker.start()` așteaptă `document.visibilityState === 'visible'`
+        // (by design SDK v17). În TikTok in-app browser pagina e preload-ed
+        // în background (hidden), userul închide rapid → start() nu mai
+        // execută codul de după. Fetch-ul whoami trebuie să se facă în
+        // PARALEL cu wait-ul de visibility, nu sequential după. Așa, când
+        // tracker primește semnalul visible și pornește, IP-ul e deja gata
+        // și setUserID se aplică instant — întoarce sesiuni anonymous TikTok
+        // de la „null" la „ip:X.X.X.X".
+        const ipPromise: Promise<string | null> = fetch(`${API_URL}/api/analytics/whoami`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j: { ip?: string | null } | null) => j?.ip ?? null)
+          .catch(() => null);
+
         await tracker.start();
 
         const sid = (tracker as unknown as { getSessionID?: () => string }).getSessionID?.();
         if (sid) window.__OR_SESSION_ID__ = sid;
         window.__OR_TRACKER__ = tracker;
 
-        // ---- IP attribution pentru anonymous users ----
-        // Dashboard-ul OpenReplay arată „Anonymous User" pentru sesiunile fără
-        // userID. Setăm `setUserID('ip:<X>')` ca fallback ca să distingi vizual
-        // sesiunile diferite în lista din /sessions. Real user e suprapus mai
-        // jos (după login).
+        // Aplicăm IP-ul ASAP după start (de obicei deja resolved la acest punct).
         try {
-          const res = await fetch(`${API_URL}/api/analytics/whoami`);
-          if (res.ok) {
-            const { ip } = (await res.json()) as { ip?: string | null };
-            if (ip) {
-              tracker.setUserID(`ip:${ip}`);
-              tracker.setMetadata('ip', ip);
-            }
+          const ip = await ipPromise;
+          if (ip) {
+            tracker.setUserID(`ip:${ip}`);
+            tracker.setMetadata('ip', ip);
           }
         } catch {
           /* ignore — whoami e best-effort */

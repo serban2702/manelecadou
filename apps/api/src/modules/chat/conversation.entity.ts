@@ -7,6 +7,8 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
+export type AiChatMode = 'manual' | 'suggest' | 'auto';
+
 @Entity({ name: 'conversations' })
 export class Conversation {
   @PrimaryGeneratedColumn('uuid')
@@ -47,4 +49,42 @@ export class Conversation {
 
   @Column({ type: 'timestamptz', nullable: true })
   lastMessageAt!: Date | null;
+
+  // ============== Faza 1: AI Mode + presence snapshot ==============
+
+  /**
+   * Modul AI pentru această conversație:
+   *  - manual: AI-ul nu intervine
+   *  - suggest: AI generează sugestii, adminul aprobă înainte de send
+   *  - auto: AI răspunde singur (cu guardrails pentru acțiuni sensibile)
+   * Default per site se setează în settings (AI_CHAT_MODE_DEFAULT).
+   */
+  @Column({ type: 'varchar', length: 16, default: 'manual' })
+  aiMode!: AiChatMode;
+
+  /** Ultima stare cunoscută a widget-ului (deschis/închis). Updated live prin WS. */
+  @Column({ type: 'boolean', default: false })
+  chatOpenOnClient!: boolean;
+
+  /** Ultima rută pe care a fost văzut clientul (ex. /generator, /cadou/success). */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  lastClientPath!: string | null;
+
+  /** Snapshot device (type, os, browser, viewport). Pentru sidebar admin. */
+  @Column({ type: 'jsonb', nullable: true })
+  lastDevice!: {
+    type?: 'mobile' | 'tablet' | 'desktop';
+    os?: string;
+    browser?: string;
+    viewport?: { w: number; h: number };
+    userAgent?: string;
+  } | null;
+
+  /** Momentul ultimei conectări WS (start timer "este pe site de X minute"). */
+  @Column({ type: 'timestamptz', nullable: true })
+  connectedAt!: Date | null;
+
+  /** Momentul ultimei deconectări (după debounce de 5s). */
+  @Column({ type: 'timestamptz', nullable: true })
+  disconnectedAt!: Date | null;
 }

@@ -19,26 +19,52 @@ interface SocketIdentity {
   conversationId?: string | null;
 }
 
+export interface DeviceInfo {
+  type?: 'mobile' | 'tablet' | 'desktop';
+  os?: string;
+  browser?: string;
+  viewport?: { w: number; h: number };
+  userAgent?: string;
+}
+
+/** Snapshot enriched de presence — folosit de admin sidebar. */
+export interface EnrichedPresence {
+  online: boolean;
+  connectedAt: string | null; // ISO
+  lastSeenAt: string | null;
+  currentPath: string | null;
+  currentTitle: string | null;
+  chatOpen: boolean;
+  device: DeviceInfo | null;
+  ip: string | null;
+}
+
 const ADMIN_ROOM = 'admin:chat';
 const userRoom = (id: string) => `user:${id}`;
 const guestRoom = (id: string) => `guest:${id}`;
 const conversationRoom = (id: string) => `conv:${id}`;
 
+const presenceKey = (target: { userId: string | null; guestId: string | null }) =>
+  target.userId ? `u:${target.userId}` : target.guestId ? `g:${target.guestId}` : null;
+
 /**
- * Gateway WebSocket pentru chat live + presence.
+ * Gateway WebSocket pentru chat live + presence enriched.
  *
- * Conexiunea = sursa primă de adevăr pentru online/offline:
- *  - `connected` = adăugat în `presenceMap` și emis `presence:update` către admin room
- *  - `disconnect` = scos din map (după un mic delay ca să acoperim refresh-uri)
+ * Faza 1 events:
+ *  Client → Server:
+ *    - chat:join / chat:leave / chat:typing / chat:ping  (existing)
+ *    - presence:heartbeat ({ path, title, viewport, chatOpen, device }) — la 10s
+ *    - presence:page_change ({ from, to, title })
+ *    - presence:chat_toggle ({ open })
+ *    - message:ack ({ messageIds: string[], status: 'delivered'|'read' })
  *
- * Eveni-mente client → server:
- *  - `chat:join` (conversationId) — admin se subscribe la o conversație
- *  - `chat:typing` ({ conversationId, isTyping }) — propagat la receiver
- *
- * Server → client:
- *  - `chat:message` ({ message, conversationId, conversation })
- *  - `chat:presence` ({ userId|guestId, online, lastSeenAt })
- *  - `chat:typing` ({ conversationId, from, isTyping })
+ *  Server → Client:
+ *    - chat:message (existing)
+ *    - chat:presence (online/offline diff, existing) + enriched payload
+ *    - chat:presence:snapshot (sent on admin connect — now enriched)
+ *    - chat:presence:enriched (diff cu currentPath/device/chatOpen)
+ *    - chat:force_open  (server tells user widget să se deschidă)
+ *    - chat:message:ack (server informează celălalt capăt despre delivered/read)
  */
 @Injectable()
 @WebSocketGateway({
@@ -56,16 +82,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private presenceUsers = new Map<string, Set<string>>();
   private presenceGuests = new Map<string, Set<string>>();
   private adminSockets = new Set<string>();
-  /** Pending disconnect timers — ștergerea din presence se face cu un delay scurt. */
   private pendingDisconnect = new Map<string, ReturnType<typeof setTimeout>>();
-  /** Ultimul IP cunoscut per user/guest (capturat la handshake WS). Persistă peste
-   *  disconnect ca să-l putem afișa și după ce userul iese din pagină. Sursă de
-   *  rezervă față de `analytics_sessions.ip` (care poate lipsi dacă guestul a deschis
-   *  chat-ul înainte de primul event /track). */
   private lastIpByUser = new Map<string, string>();
   private lastIpByGuest = new Map<string, string>();
 
+  /** Enriched presence keyed by `u:<userId>` / `g:<guestId>`. */
+  private enriched = new Map<string, EnrichedPresence>();
+
+  /** Callback (injected by ChatService) când vine ACK pe mesaj. */
+  private onMessageAck?: (messageIds: string[], status: 'delivered' | 'read', actor: SocketIdentity) => Promise<void>;
+
   constructor(@Inject(forwardRef(() => JwtService)) private readonly jwt: JwtService) {}
+
+  /** ChatService apelează la initializare ca să primească ACK-uri. */
+  registerAckHandler(handler: (ids: string[], status: 'delivered' | 'read', actor: SocketIdentity) => Promise<void>) {
+    this.onMessageAck = handler;
+  }
 
   // ============== CONNECTION LIFECYCLE ==============
 
@@ -73,8 +105,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const ident = this.identifySocket(client);
     (client.data as SocketIdentity) = ident;
 
-    // Capturăm IP-ul din handshake (Caddy/NPM setează X-Forwarded-For). Persistă
-    // în memorie chiar și după disconnect — util pentru triage când userul iese.
     const ip = this.extractIp(client);
     if (ip) {
       if (ident.userId) this.lastIpByUser.set(ident.userId, ip);
@@ -85,25 +115,48 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.adminSockets.add(client.id);
       await client.join(ADMIN_ROOM);
       this.logger.log(`admin connected ${client.id}`);
-      // La conectare, trimite snapshot-ul cu presence-ul curent.
       client.emit('chat:presence:snapshot', this.snapshot());
       return;
     }
 
-    if (ident.userId) {
-      this.addPresence(this.presenceUsers, ident.userId, client.id);
-      await client.join(userRoom(ident.userId));
-      this.broadcastPresence({ userId: ident.userId, guestId: null, online: true });
-      this.logger.log(`user connected ${ident.userId.slice(0, 8)} (${client.id})`);
-    } else if (ident.guestId) {
-      this.addPresence(this.presenceGuests, ident.guestId, client.id);
-      await client.join(guestRoom(ident.guestId));
-      this.broadcastPresence({ userId: null, guestId: ident.guestId, online: true });
-      this.logger.log(`guest connected ${ident.guestId.slice(0, 8)} (${client.id})`);
-    } else {
-      this.logger.warn(`anonymous socket ${client.id} — disconnecting`);
-      client.disconnect();
+    if (ident.userId || ident.guestId) {
+      const key = presenceKey(ident)!;
+      if (ident.userId) {
+        this.addPresence(this.presenceUsers, ident.userId, client.id);
+        await client.join(userRoom(ident.userId));
+      } else {
+        this.addPresence(this.presenceGuests, ident.guestId!, client.id);
+        await client.join(guestRoom(ident.guestId!));
+      }
+
+      // Inițializează enriched presence (vine update prin heartbeat în 10s)
+      const existing = this.enriched.get(key);
+      const ua = (client.handshake.headers['user-agent'] as string | undefined) ?? null;
+      this.enriched.set(key, {
+        online: true,
+        connectedAt: existing?.connectedAt ?? new Date().toISOString(),
+        lastSeenAt: new Date().toISOString(),
+        currentPath: existing?.currentPath ?? null,
+        currentTitle: existing?.currentTitle ?? null,
+        chatOpen: existing?.chatOpen ?? false,
+        device: existing?.device ?? (ua ? { userAgent: ua, ...this.parseUA(ua) } : null),
+        ip: ip ?? existing?.ip ?? null,
+      });
+
+      this.broadcastPresence({
+        userId: ident.userId,
+        guestId: ident.guestId,
+        online: true,
+        enriched: this.enriched.get(key) ?? null,
+      });
+      this.logger.log(
+        `${ident.userId ? 'user' : 'guest'} connected ${(ident.userId ?? ident.guestId)!.slice(0, 8)} (${client.id})`,
+      );
+      return;
     }
+
+    this.logger.warn(`anonymous socket ${client.id} — disconnecting`);
+    client.disconnect();
   }
 
   handleDisconnect(client: Socket) {
@@ -114,24 +167,29 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
+    const onOffline = () => {
+      const key = presenceKey(ident);
+      if (key) {
+        const e = this.enriched.get(key);
+        if (e) {
+          e.online = false;
+          e.lastSeenAt = new Date().toISOString();
+          e.chatOpen = false;
+        }
+      }
+      this.broadcastPresence({
+        userId: ident.userId,
+        guestId: ident.guestId,
+        online: false,
+        lastSeenAt: new Date().toISOString(),
+        enriched: key ? this.enriched.get(key) ?? null : null,
+      });
+    };
+
     if (ident.userId) {
-      this.removePresenceWithDelay(this.presenceUsers, ident.userId, client.id, () => {
-        this.broadcastPresence({
-          userId: ident.userId,
-          guestId: null,
-          online: false,
-          lastSeenAt: new Date().toISOString(),
-        });
-      });
+      this.removePresenceWithDelay(this.presenceUsers, ident.userId, client.id, onOffline);
     } else if (ident.guestId) {
-      this.removePresenceWithDelay(this.presenceGuests, ident.guestId, client.id, () => {
-        this.broadcastPresence({
-          userId: null,
-          guestId: ident.guestId,
-          online: false,
-          lastSeenAt: new Date().toISOString(),
-        });
-      });
+      this.removePresenceWithDelay(this.presenceGuests, ident.guestId, client.id, onOffline);
     }
   }
 
@@ -152,7 +210,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         userId = payload.sub;
         isAdmin = payload.role === 'admin';
       } catch {
-        // token invalid — îl ignorăm, dăm fallback la guest
+        // token invalid — ignorat
       }
     }
     const guestId = !userId ? (auth.guestId ?? (client.handshake.query.guestId as string | undefined) ?? null) : null;
@@ -163,10 +221,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // ============== PRESENCE HELPERS ==============
 
   private addPresence(map: Map<string, Set<string>>, key: string, socketId: string) {
-    const pending = this.pendingDisconnect.get(`${map === this.presenceUsers ? 'u' : 'g'}:${key}`);
+    const tag = map === this.presenceUsers ? 'u' : 'g';
+    const pending = this.pendingDisconnect.get(`${tag}:${key}`);
     if (pending) {
       clearTimeout(pending);
-      this.pendingDisconnect.delete(`${map === this.presenceUsers ? 'u' : 'g'}:${key}`);
+      this.pendingDisconnect.delete(`${tag}:${key}`);
     }
     let set = map.get(key);
     if (!set) {
@@ -185,8 +244,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const set = map.get(key);
     if (!set) return;
     set.delete(socketId);
-    if (set.size > 0) return; // alte tab-uri încă active
-    // Așteptăm 5s — dacă userul nu se reconectează (refresh), îl marcăm offline.
+    if (set.size > 0) return;
     const pendingKey = `${map === this.presenceUsers ? 'u' : 'g'}:${key}`;
     const t = setTimeout(() => {
       this.pendingDisconnect.delete(pendingKey);
@@ -204,6 +262,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     guestId: string | null;
     online: boolean;
     lastSeenAt?: string;
+    enriched?: EnrichedPresence | null;
   }) {
     this.server.to(ADMIN_ROOM).emit('chat:presence', payload);
   }
@@ -215,17 +274,28 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return false;
   }
 
-  /** IP-ul capturat din handshake WS (rezervă pentru când `analytics_sessions.ip`
-   *  nu există încă — guest care a deschis chat-ul înainte de primul page_view). */
+  /** Enriched presence pentru o conversație (admin sidebar). */
+  getEnriched(target: { userId: string | null; guestId: string | null }): EnrichedPresence | null {
+    const key = presenceKey(target);
+    return key ? this.enriched.get(key) ?? null : null;
+  }
+
+  /** Force open chat pe client (admin sau AI). */
+  forceOpenChat(target: { userId: string | null; guestId: string | null }) {
+    if (target.userId) {
+      this.server.to(userRoom(target.userId)).emit('chat:force_open', { at: Date.now() });
+    }
+    if (target.guestId) {
+      this.server.to(guestRoom(target.guestId)).emit('chat:force_open', { at: Date.now() });
+    }
+  }
+
   getKnownIp(target: { userId: string | null; guestId: string | null }): string | null {
     if (target.userId && this.lastIpByUser.has(target.userId)) return this.lastIpByUser.get(target.userId)!;
     if (target.guestId && this.lastIpByGuest.has(target.guestId)) return this.lastIpByGuest.get(target.guestId)!;
     return null;
   }
 
-  /** Întoarce userIds/guestIds al căror IP capturat din WS conține `needle`.
-   *  Folosit la search după IP în admin chat — completează rezultatele care nu
-   *  apar încă în `analytics_sessions`. Case-insensitive substring match. */
   findIdsByIp(needle: string): { userIds: string[]; guestIds: string[] } {
     const n = needle.toLowerCase();
     const userIds: string[] = [];
@@ -246,35 +316,96 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return client.handshake.address || null;
   }
 
-  snapshot(): { users: string[]; guests: string[] } {
+  /** Parser foarte simplu de User-Agent. Fallback rapid; pentru detalii folosim datele trimise de client în heartbeat. */
+  private parseUA(ua: string): Partial<DeviceInfo> {
+    const isMobile = /Mobi|Android|iPhone/.test(ua);
+    const isTablet = /iPad|Tablet/.test(ua);
+    const type: DeviceInfo['type'] = isTablet ? 'tablet' : isMobile ? 'mobile' : 'desktop';
+    let os: string | undefined;
+    if (/Windows/.test(ua)) os = 'Windows';
+    else if (/Mac OS X|Macintosh/.test(ua)) os = 'macOS';
+    else if (/Android/.test(ua)) os = 'Android';
+    else if (/iPhone|iPad|iOS/.test(ua)) os = 'iOS';
+    else if (/Linux/.test(ua)) os = 'Linux';
+    let browser: string | undefined;
+    if (/Edg\//.test(ua)) browser = 'Edge';
+    else if (/Chrome\//.test(ua)) browser = 'Chrome';
+    else if (/Safari\//.test(ua)) browser = 'Safari';
+    else if (/Firefox\//.test(ua)) browser = 'Firefox';
+    return { type, os, browser };
+  }
+
+  snapshot(): {
+    users: string[];
+    guests: string[];
+    enriched: Record<string, EnrichedPresence>;
+  } {
+    const enriched: Record<string, EnrichedPresence> = {};
+    for (const [k, v] of this.enriched) enriched[k] = v;
     return {
       users: Array.from(this.presenceUsers.keys()),
       guests: Array.from(this.presenceGuests.keys()),
+      enriched,
     };
   }
 
   // ============== EMISSION HELPERS (apelate din ChatService) ==============
 
-  /** Notifică ambele părți despre un mesaj nou într-o conversație. */
   emitMessage(args: {
     message: ChatMessage;
-    conversation: { id: string; userId: string | null; guestId: string | null; unreadByAdmin: number; unreadByUser: number };
-  }) {
-    const payload = {
-      message: args.message,
-      conversation: args.conversation,
+    conversation: {
+      id: string;
+      userId: string | null;
+      guestId: string | null;
+      unreadByAdmin: number;
+      unreadByUser: number;
     };
-    // Admin room întotdeauna primește.
+  }) {
+    const payload = { message: args.message, conversation: args.conversation };
     this.server.to(ADMIN_ROOM).emit('chat:message', payload);
-    // Owner-ul (user sau guest)
     if (args.conversation.userId) {
       this.server.to(userRoom(args.conversation.userId)).emit('chat:message', payload);
     }
     if (args.conversation.guestId) {
       this.server.to(guestRoom(args.conversation.guestId)).emit('chat:message', payload);
     }
-    // Camera per conversație (pt admin care are conversația deschisă)
     this.server.to(conversationRoom(args.conversation.id)).emit('chat:message', payload);
+  }
+
+  /** Emite o sugestie AI doar către admin room (NU către client). */
+  emitAiSuggestion(args: { conversation: { id: string; siteId: string | null }; message: ChatMessage }) {
+    this.server.to(ADMIN_ROOM).emit('chat:ai_suggestion', {
+      conversationId: args.conversation.id,
+      message: args.message,
+    });
+    this.server.to(conversationRoom(args.conversation.id)).emit('chat:ai_suggestion', {
+      conversationId: args.conversation.id,
+      message: args.message,
+    });
+  }
+
+  /** Notifică ambele părți că un mesaj a fost delivered/read. */
+  emitMessageAck(args: {
+    conversation: { id: string; userId: string | null; guestId: string | null };
+    messageIds: string[];
+    status: 'delivered' | 'read';
+    by: 'admin' | 'user';
+  }) {
+    const payload = {
+      conversationId: args.conversation.id,
+      messageIds: args.messageIds,
+      status: args.status,
+      by: args.by,
+      at: new Date().toISOString(),
+    };
+    this.server.to(ADMIN_ROOM).emit('chat:message:ack', payload);
+    if (args.conversation.userId) {
+      this.server.to(userRoom(args.conversation.userId)).emit('chat:message:ack', payload);
+    }
+    if (args.conversation.guestId) {
+      this.server.to(guestRoom(args.conversation.guestId)).emit('chat:message:ack', payload);
+    }
+    this.server.to(conversationRoom(args.conversation.id)).emit('chat:message:ack', payload);
   }
 
   // ============== CLIENT EVENTS ==============
@@ -311,11 +442,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       isTyping: !!data.isTyping,
       from: ident.isAdmin ? 'admin' : 'user',
     };
-    // Tot ce e legat de conversație primește (admin care o are deschisă + owner)
     this.server.to(conversationRoom(data.conversationId)).emit('chat:typing', payload);
     if (ident.isAdmin) {
-      // adminul tastează → notifică owner-ul
-      // Nu știm direct user/guestId aici fără lookup în DB; lăsăm controllerul să lookup-eze dacă e nevoie.
       this.server.to(ADMIN_ROOM).emit('chat:typing', payload);
     } else if (ident.userId) {
       this.server.to(ADMIN_ROOM).emit('chat:typing', { ...payload, userId: ident.userId });
@@ -327,5 +455,127 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('chat:ping')
   handlePing(@ConnectedSocket() client: Socket) {
     client.emit('chat:pong', { at: Date.now() });
+  }
+
+  // ============== PRESENCE EVENTS (Faza 1) ==============
+
+  @SubscribeMessage('presence:heartbeat')
+  handleHeartbeat(
+    @MessageBody()
+    data: {
+      path?: string;
+      title?: string;
+      viewport?: { w: number; h: number };
+      chatOpen?: boolean;
+      device?: DeviceInfo;
+    },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const ident = client.data as SocketIdentity;
+    if (ident.isAdmin) return;
+    const key = presenceKey(ident);
+    if (!key) return;
+
+    const prev = this.enriched.get(key);
+    const next: EnrichedPresence = {
+      online: true,
+      connectedAt: prev?.connectedAt ?? new Date().toISOString(),
+      lastSeenAt: new Date().toISOString(),
+      currentPath: data?.path ?? prev?.currentPath ?? null,
+      currentTitle: data?.title ?? prev?.currentTitle ?? null,
+      chatOpen: typeof data?.chatOpen === 'boolean' ? data.chatOpen : prev?.chatOpen ?? false,
+      device: data?.device ? { ...(prev?.device ?? {}), ...data.device } : prev?.device ?? null,
+      ip: prev?.ip ?? null,
+    };
+    this.enriched.set(key, next);
+
+    // Diff-uri semnificative → broadcast admin. Heartbeat-ul (timestamp only) NU spamează.
+    const changed =
+      !prev ||
+      prev.currentPath !== next.currentPath ||
+      prev.chatOpen !== next.chatOpen ||
+      JSON.stringify(prev.device) !== JSON.stringify(next.device);
+    if (changed) {
+      this.broadcastPresence({
+        userId: ident.userId,
+        guestId: ident.guestId,
+        online: true,
+        enriched: next,
+      });
+    }
+  }
+
+  @SubscribeMessage('presence:page_change')
+  handlePageChange(
+    @MessageBody() data: { from?: string; to?: string; title?: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const ident = client.data as SocketIdentity;
+    if (ident.isAdmin || !data?.to) return;
+    const key = presenceKey(ident);
+    if (!key) return;
+    const prev = this.enriched.get(key);
+    const next: EnrichedPresence = {
+      online: true,
+      connectedAt: prev?.connectedAt ?? new Date().toISOString(),
+      lastSeenAt: new Date().toISOString(),
+      currentPath: data.to,
+      currentTitle: data.title ?? prev?.currentTitle ?? null,
+      chatOpen: prev?.chatOpen ?? false,
+      device: prev?.device ?? null,
+      ip: prev?.ip ?? null,
+    };
+    this.enriched.set(key, next);
+    this.broadcastPresence({
+      userId: ident.userId,
+      guestId: ident.guestId,
+      online: true,
+      enriched: next,
+    });
+  }
+
+  @SubscribeMessage('presence:chat_toggle')
+  handleChatToggle(
+    @MessageBody() data: { open: boolean },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const ident = client.data as SocketIdentity;
+    if (ident.isAdmin) return;
+    const key = presenceKey(ident);
+    if (!key) return;
+    const prev = this.enriched.get(key);
+    const next: EnrichedPresence = {
+      online: true,
+      connectedAt: prev?.connectedAt ?? new Date().toISOString(),
+      lastSeenAt: new Date().toISOString(),
+      currentPath: prev?.currentPath ?? null,
+      currentTitle: prev?.currentTitle ?? null,
+      chatOpen: !!data?.open,
+      device: prev?.device ?? null,
+      ip: prev?.ip ?? null,
+    };
+    this.enriched.set(key, next);
+    this.broadcastPresence({
+      userId: ident.userId,
+      guestId: ident.guestId,
+      online: true,
+      enriched: next,
+    });
+  }
+
+  @SubscribeMessage('message:ack')
+  async handleMessageAck(
+    @MessageBody() data: { messageIds: string[]; status: 'delivered' | 'read' },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const ident = client.data as SocketIdentity;
+    if (!Array.isArray(data?.messageIds) || data.messageIds.length === 0) return;
+    if (data.status !== 'delivered' && data.status !== 'read') return;
+    if (!this.onMessageAck) return;
+    try {
+      await this.onMessageAck(data.messageIds, data.status, ident);
+    } catch (e) {
+      this.logger.warn(`message:ack handler failed: ${(e as Error).message}`);
+    }
   }
 }

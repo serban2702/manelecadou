@@ -180,17 +180,24 @@ export class AuthService {
     });
   }
 
-  /** URL de bază pentru link-uri trimise prin email (fallback APP_URL pe localhost). */
+  /** URL de bază pentru link-uri trimise prin email (fallback APP_URL pe localhost / dev). */
   private siteAppUrl(domain: string | undefined): string {
-    if (!domain || domain.startsWith('localhost') || domain.startsWith('127.')) {
-      return this.config.get<string>('APP_URL') ?? `http://${domain ?? 'localhost:1500'}`;
+    const appUrl = this.config.get<string>('APP_URL');
+    const isDev = (this.config.get<string>('NODE_ENV') ?? 'development') !== 'production';
+    // 1. Localhost / IP locală — folosește APP_URL (e mereu setat în dev la http://localhost:1500)
+    if (!domain || domain.startsWith('localhost') || domain.startsWith('127.') || domain.endsWith('.local')) {
+      return appUrl ?? `http://${domain ?? 'localhost:1500'}`;
+    }
+    // 2. Domeniu fără TLD (ex. „manelecadou", „test") — în dev e bug de seed, folosește APP_URL
+    if (!domain.includes('.') && isDev) {
+      return appUrl ?? 'http://localhost:1500';
     }
     return `https://${domain}`;
   }
 
   /**
    * Decide base URL pentru magic link.
-   * Dacă request-ul vine de pe admin host (ex. admin.manelecadou.ro) → ADMIN_URL.
+   * Dacă request-ul vine de pe admin host (ex. admin.manelecadou.ro sau localhost:1505) → ADMIN_URL.
    * Altfel → URL-ul site-ului curent (pentru site-uri multi-tenant).
    */
   private computeLoginBaseUrl(
@@ -200,9 +207,17 @@ export class AuthService {
     const adminUrl = this.config.get<string>('ADMIN_URL');
     if (adminUrl && requestHost) {
       try {
-        const adminHost = new URL(adminUrl).host.toLowerCase();
-        const reqHost = requestHost.split(':')[0].toLowerCase();
-        if (reqHost === adminHost) return adminUrl;
+        // Comparăm cu hostname (fără port) — în dev request.host = "localhost" iar
+        // ADMIN_URL = "http://localhost:1505" → host = "localhost:1505". Split pe ':'
+        // ca să nu eșueze matchul localhost ↔ localhost:1505.
+        const adminUrlObj = new URL(adminUrl);
+        const adminHost = adminUrlObj.host.toLowerCase();
+        const adminHostname = adminUrlObj.hostname.toLowerCase();
+        const reqHostFull = requestHost.toLowerCase();
+        const reqHostname = reqHostFull.split(':')[0];
+        if (reqHostname === adminHostname || reqHostFull === adminHost) {
+          return adminUrl;
+        }
       } catch {
         // ignore — fallback la site URL
       }

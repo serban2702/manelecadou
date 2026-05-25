@@ -16,3 +16,5 @@ export * from './api/settings.api';
 export * from './api/analytics.api';
 export * from './api/suno.api';
 export * from './api/database.api';
+export * from './api/web-push.api';
+export * from './api/ai-chat.api';

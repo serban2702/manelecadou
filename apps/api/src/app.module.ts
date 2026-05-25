@@ -36,6 +36,8 @@ import { SitesModule } from './modules/sites/sites.module';
 import { AiAssistantModule } from './modules/ai-assistant/ai-assistant.module';
 import { TiktokModule } from './modules/tiktok/tiktok.module';
 import { SeoPagesModule } from './modules/seo-pages/seo-pages.module';
+import { WebPushModule } from './modules/web-push/web-push.module';
+import { AiChatModule } from './modules/ai-chat/ai-chat.module';
 
 @Module({
   imports: [
@@ -81,6 +83,8 @@ import { SeoPagesModule } from './modules/seo-pages/seo-pages.module';
     KbModule,
     MailModule,
     AiAssistantModule,
+    WebPushModule,
+    AiChatModule,
     SeederModule,
   ],
   providers: [

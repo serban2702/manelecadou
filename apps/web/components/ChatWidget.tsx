@@ -1,12 +1,121 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations, useLocale } from 'next-intl';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/providers';
-import { useChatSocket } from '@/lib/chat-socket';
+import { useChatSocket, type MessageAckEvent } from '@/lib/chat-socket';
 import { useSite } from '@/lib/site-context';
+
+/** Sunet scurt sintetic via WebAudio — fără dependențe externe sau fișiere. */
+function playPing() {
+  if (typeof window === 'undefined') return;
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(880, ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.18);
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
+    o.connect(g).connect(ctx.destination);
+    o.start();
+    o.stop(ctx.currentTime + 0.32);
+    o.onended = () => ctx.close().catch(() => {});
+  } catch {
+    /* autoplay blocked — fallback la badge + tab flash */
+  }
+}
+
+/** Desenează un dot roșu peste favicon-ul curent când unread > 0. */
+function useFaviconDot(unread: number) {
+  const originalRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const link =
+      (document.querySelector("link[rel='icon']") as HTMLLinkElement | null) ||
+      (document.querySelector("link[rel='shortcut icon']") as HTMLLinkElement | null);
+    if (!link) return;
+    if (originalRef.current === null) originalRef.current = link.href;
+
+    if (unread <= 0) {
+      if (originalRef.current) link.href = originalRef.current;
+      return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const size = 64;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0, size, size);
+      // Dot roșu cu ring
+      const r = 18;
+      const cx = size - r - 2;
+      const cy = r + 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r + 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#e11d48';
+      ctx.fill();
+      try {
+        link.href = canvas.toDataURL('image/png');
+      } catch {
+        /* taint canvas — fallback fără dot */
+      }
+    };
+    img.onerror = () => {
+      /* CORS fail — skip silently */
+    };
+    img.src = originalRef.current ?? link.href;
+  }, [unread]);
+}
+
+/** Alternează titlul tab-ului între original și „(N) — Mesaj nou" până userul revine pe tab. */
+function useTabTitleFlash(unread: number, brand: string) {
+  const originalRef = useRef<string>('');
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (!originalRef.current) originalRef.current = document.title;
+
+    if (unread <= 0 || document.visibilityState === 'visible') {
+      document.title = originalRef.current || document.title;
+      return;
+    }
+
+    const original = originalRef.current;
+    const alt = `(${unread}) 💬 Mesaj nou — ${brand}`;
+    let flip = false;
+    const id = window.setInterval(() => {
+      flip = !flip;
+      document.title = flip ? alt : original;
+    }, 1100);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        window.clearInterval(id);
+        document.title = original;
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+      document.title = original;
+    };
+  }, [unread, brand]);
+}
 
 export function ChatWidget() {
   const { ready, email } = useSession();
@@ -16,29 +125,101 @@ export function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [pulsing, setPulsing] = useState(false);
+  const [lastMsgId, setLastMsgId] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const { data } = useQuery({
     queryKey: ['chat-me'],
     queryFn: () => api.chatMe(),
     enabled: ready,
-    // Backup polling în caz că WS pică sau e blocat (firewall/proxy).
     refetchInterval: open ? 30_000 : 60_000,
     staleTime: 0,
   });
 
-  // WebSocket — canal primar realtime (presence + push messages).
-  useChatSocket({
-    enabled: ready,
-    onMessage: () => {
-      qc.invalidateQueries({ queryKey: ['chat-me'] });
-    },
-  });
-
   const messages = data?.messages ?? [];
   const unread = open ? 0 : (data?.conversation.unreadByUser ?? 0);
-  const scroller = useRef<HTMLDivElement | null>(null);
 
+  // WebSocket — primar realtime.
+  const handleMessage = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['chat-me'] });
+  }, [qc]);
+
+  const handleForceOpen = useCallback(() => {
+    setOpen(true);
+  }, []);
+
+  const handleAck = useCallback((ev: MessageAckEvent) => {
+    // Update local cache pentru a reflecta delivered/read pe mesajele user → admin
+    qc.setQueryData<{ messages: Array<{ id: string; deliveredAt?: string | null; readAt?: string | null }>; conversation: unknown } | undefined>(
+      ['chat-me'],
+      (prev) => {
+        if (!prev) return prev;
+        const set = new Set(ev.messageIds);
+        const messages = prev.messages.map((m) => {
+          if (!set.has(m.id)) return m;
+          if (ev.status === 'delivered') return { ...m, deliveredAt: m.deliveredAt ?? ev.at };
+          return { ...m, deliveredAt: m.deliveredAt ?? ev.at, readAt: m.readAt ?? ev.at };
+        });
+        return { ...prev, messages };
+      },
+    );
+  }, [qc]);
+
+  const { setChatOpen, ack } = useChatSocket({
+    enabled: ready,
+    onMessage: handleMessage,
+    onForceOpen: handleForceOpen,
+    onAck: handleAck,
+  });
+
+  // Detectează mesaj nou de la admin → sunet + pulse + (titlu flash via hook)
+  const lastAdminMsg = useMemo(
+    () => [...messages].reverse().find((m) => m.authorRole === 'admin'),
+    [messages],
+  );
+
+  useEffect(() => {
+    if (!lastAdminMsg) return;
+    if (lastAdminMsg.id === lastMsgId) return;
+    setLastMsgId(lastAdminMsg.id);
+    // Skip pe primul render (când încărcăm istoricul) — flag pe lastMsgId care era null
+    if (lastMsgId === null) return;
+    if (!open) {
+      playPing();
+      setPulsing(true);
+      window.setTimeout(() => setPulsing(false), 3500);
+    }
+  }, [lastAdminMsg, lastMsgId, open]);
+
+  useTabTitleFlash(unread, site.name);
+  useFaviconDot(unread);
+
+  // ACK delivered pentru mesajele admin nou văzute (când le primim — chiar fără să deschidem)
+  useEffect(() => {
+    const undelivered = messages.filter(
+      (m) => m.authorRole === 'admin' && !('deliveredAt' in m ? (m as { deliveredAt?: string | null }).deliveredAt : null),
+    );
+    if (undelivered.length === 0) return;
+    ack(undelivered.map((m) => m.id), 'delivered');
+  }, [messages, ack]);
+
+  // ACK read când userul deschide chatul
+  useEffect(() => {
+    if (!open) return;
+    const unreadIds = messages
+      .filter((m) => m.authorRole === 'admin' && !('readAt' in m ? (m as { readAt?: string | null }).readAt : null))
+      .map((m) => m.id);
+    if (unreadIds.length === 0) return;
+    ack(unreadIds, 'read');
+  }, [open, messages, ack]);
+
+  // Anunță serverul de starea chat-ului
+  useEffect(() => {
+    setChatOpen(open);
+  }, [open, setChatOpen]);
+
+  const scroller = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (open && scroller.current) {
       scroller.current.scrollTop = scroller.current.scrollHeight;
@@ -64,10 +245,29 @@ export function ChatWidget() {
 
   return (
     <>
+      {/* Keyframes pentru pulse-ul butonului */}
+      <style jsx global>{`
+        @keyframes chat-pulse-ring {
+          0% { box-shadow: 0 8px 24px rgba(241,200,77,0.45), 0 0 0 0 rgba(241,200,77,0.55); }
+          70% { box-shadow: 0 8px 24px rgba(241,200,77,0.45), 0 0 0 18px rgba(241,200,77,0); }
+          100% { box-shadow: 0 8px 24px rgba(241,200,77,0.45), 0 0 0 0 rgba(241,200,77,0); }
+        }
+        @keyframes chat-jiggle {
+          0%,100% { transform: rotate(0deg); }
+          15% { transform: rotate(-8deg) scale(1.05); }
+          30% { transform: rotate(8deg) scale(1.05); }
+          45% { transform: rotate(-6deg); }
+          60% { transform: rotate(6deg); }
+          75% { transform: rotate(-3deg); }
+        }
+        .chat-btn-pulse { animation: chat-pulse-ring 1.2s ease-out infinite, chat-jiggle 0.9s ease-in-out 3; }
+      `}</style>
+
       {!open && (
         <button
           onClick={() => setOpen(true)}
           aria-label={t('openAria')}
+          className={pulsing ? 'chat-btn-pulse' : ''}
           style={{
             position: 'fixed', right: 18, bottom: 18, zIndex: 50,
             width: 58, height: 58, borderRadius: '50%',
@@ -169,6 +369,15 @@ export function ChatWidget() {
             )}
             {messages.map((m) => {
               const isMine = m.authorRole === 'user';
+              const mm = m as typeof m & {
+                deliveredAt?: string | null;
+                readAt?: string | null;
+                messageType?: string;
+                payload?: { amount?: number; currency?: string; description?: string; checkoutUrl?: string; premium?: boolean } | null;
+                attachmentUrl?: string | null;
+                attachmentMime?: string | null;
+                attachmentName?: string | null;
+              };
               return (
                 <div
                   key={m.id}
@@ -194,17 +403,105 @@ export function ChatWidget() {
                       👑 {t('adminLabel')}
                     </div>
                   )}
-                  {m.body}
+                  {mm.attachmentUrl && mm.attachmentMime?.startsWith('image/') && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={mm.attachmentUrl}
+                      alt={mm.attachmentName ?? 'imagine'}
+                      style={{
+                        maxWidth: '100%',
+                        maxHeight: 220,
+                        borderRadius: 8,
+                        marginBottom: 6,
+                        objectFit: 'contain',
+                        display: 'block',
+                      }}
+                    />
+                  )}
+                  {mm.attachmentUrl && mm.attachmentMime === 'application/pdf' && (
+                    <a
+                      href={mm.attachmentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'flex',
+                        gap: 8,
+                        padding: 8,
+                        marginBottom: 6,
+                        borderRadius: 6,
+                        background: 'rgba(0,0,0,0.25)',
+                        color: 'inherit',
+                        textDecoration: 'none',
+                        alignItems: 'center',
+                        fontSize: 12,
+                      }}
+                    >
+                      📎 {mm.attachmentName ?? 'document.pdf'}
+                    </a>
+                  )}
+                  {mm.messageType === 'payment_link' && mm.payload && (
+                    <a
+                      href={mm.payload.checkoutUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'block',
+                        padding: 12,
+                        marginBottom: 6,
+                        borderRadius: 10,
+                        background: 'linear-gradient(135deg, #5b0d18, #2b0710)',
+                        color: '#fff5cc',
+                        textDecoration: 'none',
+                        border: '1px solid var(--gold)',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                      }}
+                    >
+                      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)' }}>
+                        💳 Plată sigură
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 600, margin: '2px 0' }}>
+                        {mm.payload.description ?? 'Manea personalizată'}
+                      </div>
+                      <div style={{ fontSize: 18, fontWeight: 900, color: '#ffe28a' }}>
+                        {((mm.payload.amount ?? 0) / 100).toFixed(2)} {mm.payload.currency ?? 'RON'}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 8,
+                          background: 'linear-gradient(180deg,#ffe28a,#b07c1e)',
+                          color: '#2a1a04',
+                          padding: '6px 12px',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          fontWeight: 800,
+                          textAlign: 'center',
+                        }}
+                      >
+                        Plătește acum →
+                      </div>
+                    </a>
+                  )}
+                  {/* nu afișa "body" generic pentru payment_link sau image (ar fi redundant) */}
+                  {!(mm.messageType === 'payment_link' || (mm.attachmentUrl && (!m.body || m.body === '📷 Imagine'))) && m.body}
                   <div
                     style={{
                       fontSize: 10,
                       marginTop: 4,
-                      opacity: 0.6,
+                      opacity: 0.65,
                       color: isMine ? '#2a1a04' : 'rgba(255,245,220,0.4)',
                       textAlign: 'right',
+                      display: 'flex',
+                      gap: 4,
+                      justifyContent: 'flex-end',
+                      alignItems: 'center',
                     }}
                   >
-                    {new Date(m.createdAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
+                    <span>
+                      {new Date(m.createdAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    {isMine && (
+                      <ReceiptIcon delivered={!!mm.deliveredAt} read={!!mm.readAt} dark />
+                    )}
                   </div>
                 </div>
               );
@@ -257,5 +554,25 @@ export function ChatWidget() {
         </div>
       )}
     </>
+  );
+}
+
+/** Iconiță delivered/seen — 1 check = sent, 2 checks = delivered, 2 checks gold = read. */
+function ReceiptIcon({ delivered, read, dark }: { delivered: boolean; read: boolean; dark?: boolean }) {
+  const color = read ? '#0066ff' : dark ? '#2a1a04' : 'rgba(255,245,220,0.55)';
+  const opacity = read ? 1 : delivered ? 0.9 : 0.55;
+  if (!delivered && !read) {
+    // single check
+    return (
+      <svg width="14" height="10" viewBox="0 0 14 10" fill="none" style={{ opacity, marginLeft: 2 }}>
+        <path d="M1 5l3.5 3.5L13 1" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="18" height="10" viewBox="0 0 18 10" fill="none" style={{ opacity, marginLeft: 2 }}>
+      <path d="M1 5l3.5 3.5L13 1" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M6 5l3.5 3.5L18 1" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
