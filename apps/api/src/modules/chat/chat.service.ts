@@ -231,11 +231,31 @@ export class ChatService {
     // Listing-ul e cross-tenant când nu ai un site activ — UI-ul afișează badge-ul
     // siteId per conversație ca să distingi vizual. Acțiunile write rămân scoped la conversație
     // (ex: reply ia siteId din entitate, nu din header).
-    const all = await this.conv.find({
-      where: siteId ? { siteId } : {},
-      order: { lastMessageAt: 'DESC', updatedAt: 'DESC' },
-      take: 200,
-    });
+    // BUG-FIX (2026-05-25): Postgres sortează NULL FIRST în DESC, deci `lastMessageAt DESC`
+    // întorcea PRIMELE 200 conversații cu `lastMessageAt = NULL` (guests goi care nu au scris
+    // niciodată), iar cele cu mesaje reale (inclusiv cea în care tocmai răspunsesem) erau
+    // împinse după index 200 și dispăreau din UI. Fix: NULLS LAST + includem și conversațiile
+    // online (chiar fără mesaje) prin OR pe ID-urile din presence snapshot, ca să nu cadă
+    // bucket 1 (online fără mesaje) când avem 200+ goi.
+    const onlineIds = this.gateway.snapshot();
+    const qb = this.conv.createQueryBuilder('c');
+    if (siteId) qb.where('c.siteId = :siteId', { siteId });
+    // Filtrăm la conversațiile relevante: cu mesaje SAU cu user/guest online acum.
+    const relevanceClauses: string[] = ['c."lastMessageAt" IS NOT NULL'];
+    const relevanceParams: Record<string, unknown> = {};
+    if (onlineIds.users.length > 0) {
+      relevanceClauses.push('c."userId" IN (:...onlineUsers)');
+      relevanceParams.onlineUsers = onlineIds.users;
+    }
+    if (onlineIds.guests.length > 0) {
+      relevanceClauses.push('c."guestId" IN (:...onlineGuests)');
+      relevanceParams.onlineGuests = onlineIds.guests;
+    }
+    qb.andWhere(`(${relevanceClauses.join(' OR ')})`, relevanceParams);
+    qb.orderBy('c."lastMessageAt"', 'DESC', 'NULLS LAST')
+      .addOrderBy('c."updatedAt"', 'DESC')
+      .take(200);
+    const all = await qb.getMany();
 
     const userIds = all.map((c) => c.userId).filter((v): v is string => !!v);
     const guestIds = all.map((c) => c.guestId).filter((v): v is string => !!v);
