@@ -9,6 +9,40 @@ import {
 
 export type AiChatMode = 'manual' | 'suggest' | 'auto';
 
+/**
+ * Wizard state pentru AI sales concierge — colectează pas cu pas datele
+ * necesare pentru a comanda o manea în chat, apoi creează Generation + Checkout.
+ *
+ *  collecting → review → payment_sent → paid → generating → completed
+ */
+export type WizardStep =
+  | 'idle'           // userul n-a manifestat încă intenție de cumpărare
+  | 'collecting'     // AI întreabă pas cu pas
+  | 'review'         // toate datele complete, AI cere confirmare
+  | 'payment_sent'   // wizard_finalize executat, payment_link trimis, așteptăm plata
+  | 'paid'           // webhook Stripe confirmat
+  | 'generating'     // Suno în lucru
+  | 'completed';     // audio livrat
+
+export interface WizardData {
+  style?: string;
+  occasion?: string;
+  recipientName?: string;
+  message?: string;
+  voiceArtist?: string;
+  dedication?: string;
+  customLyrics?: string;
+  premium?: boolean;
+}
+
+export interface WizardState {
+  step: WizardStep;
+  data: WizardData;
+  generationId?: string | null;
+  paymentId?: string | null;
+  updatedAt: string; // ISO
+}
+
 @Entity({ name: 'conversations' })
 export class Conversation {
   @PrimaryGeneratedColumn('uuid')
@@ -87,4 +121,13 @@ export class Conversation {
   /** Momentul ultimei deconectări (după debounce de 5s). */
   @Column({ type: 'timestamptz', nullable: true })
   disconnectedAt!: Date | null;
+
+  /**
+   * State machine pentru AI sales wizard. Persistă datele colectate de AI prin
+   * întrebări succesive (stil, ocazie, beneficiar, mesaj, voce). La finalize:
+   * creează Generation pending + Stripe checkout + trimite payment_link.
+   * NULL = userul n-a intrat încă în flow-ul de comandă.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  wizardState!: WizardState | null;
 }

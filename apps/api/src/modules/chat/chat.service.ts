@@ -690,6 +690,71 @@ export class ChatService implements OnModuleInit {
     return { ok: true };
   }
 
+  /**
+   * Apelat de GenerationsProcessor după ce o generare se termină cu succes.
+   * Caută conversația care a inițiat comanda prin wizard (wizardState.generationId match)
+   * și trimite un mesaj în chat cu link către melodie. Actualizează și wizardState.step.
+   */
+  async notifyGenerationCompleted(generationId: string, status: 'succeeded' | 'failed'): Promise<void> {
+    // Query Postgres direct prin TypeORM raw (jsonb path operator nu e tipat în TypeORM)
+    const conv = await this.conv
+      .createQueryBuilder('c')
+      .where(`c."wizardState"->>'generationId' = :gid`, { gid: generationId })
+      .getOne();
+    if (!conv) return;
+
+    // Update wizard state
+    const state = conv.wizardState;
+    if (state) {
+      state.step = status === 'succeeded' ? 'completed' : 'idle';
+      state.updatedAt = new Date().toISOString();
+      conv.wizardState = state;
+    }
+    conv.lastMessageAt = new Date();
+
+    // Construiește mesajul
+    const isOk = status === 'succeeded';
+    const body = isOk
+      ? `🎵 Melodia ta e gata! O poți asculta și descărca aici: ${this.buildGenerationUrl(conv, generationId)}`
+      : `⚠️ A apărut o eroare la generarea melodiei. Operatorul nostru se ocupă imediat — te ținem la curent.`;
+
+    const msg = this.msg.create({
+      conversationId: conv.id,
+      siteId: conv.siteId ?? null,
+      authorRole: 'admin',
+      authorId: null,
+      body,
+      messageType: isOk ? 'song_preview' : 'text',
+      payload: isOk ? { generationId, audioUrl: this.buildGenerationUrl(conv, generationId) } : null,
+      aiGenerated: true,
+      detectedLang: 'ro',
+    });
+    const saved = await this.msg.save(msg);
+    conv.unreadByUser += 1;
+    // Setează aiMode înapoi la 'manual' dacă a fost generare nereușită — vrem ca admin uman să intervină
+    if (!isOk && conv.aiMode === 'auto') conv.aiMode = 'manual';
+    await this.conv.save(conv);
+    this.gateway.emitMessage({ message: saved, conversation: conv });
+
+    // Push notification către admins (best-effort)
+    void this.webPush.sendToAll({
+      title: isOk ? `🎵 Comandă finalizată — ${conv.email ?? 'guest'}` : `⚠️ Generare eșuată — ${conv.email ?? 'guest'}`,
+      body: isOk ? 'Melodia s-a generat cu succes.' : 'Verifică conversația și ia legătura cu clientul.',
+      tag: `chat-${conv.id}`,
+      url: `/chat?c=${conv.id}`,
+      icon: '/icon-512.png',
+      badge: '/icon-512.png',
+      data: { conversationId: conv.id, generationId },
+    }).catch(() => {});
+  }
+
+  private buildGenerationUrl(conv: { siteId: string | null }, generationId: string): string {
+    // Folosim URL relativ care va fi rezolvat de site curent — link ajunge la /m/:id
+    // pe domeniul site-ului care a originat conversația (din siteId → site.domain)
+    // Pentru moment, link relativ funcționează când userul e pe site.
+    return `/m/${generationId}`;
+  }
+
   // ============== Faza 3: Attachments + Rich messages ==============
 
   /** Admin trimite un atașament (imagine / pdf) cu caption opțional. */

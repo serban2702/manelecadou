@@ -16,6 +16,8 @@ import { KbModule } from '../kb/kb.module';
 import { SitesModule } from '../sites/sites.module';
 import { ChatModule } from '../chat/chat.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { GenerationsModule } from '../generations/generations.module';
+import { GuestSessionsModule } from '../guest-sessions/guest-sessions.module';
 import { AdminGuard } from '../../common/admin.guard';
 
 @Module({
@@ -27,6 +29,8 @@ import { AdminGuard } from '../../common/admin.guard';
     KbModule,
     SitesModule,
     PaymentsModule,
+    GenerationsModule,
+    GuestSessionsModule,
     forwardRef(() => ChatModule),
     JwtModule.registerAsync({
       inject: [ConfigService],

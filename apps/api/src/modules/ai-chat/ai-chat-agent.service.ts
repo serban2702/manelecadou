@@ -6,11 +6,27 @@ import { SettingsService } from '../settings/settings.service';
 import { KbService } from '../kb/kb.service';
 import { SitesService } from '../sites/sites.service';
 import { ChatGateway } from '../chat/chat.gateway';
-import { Conversation } from '../chat/conversation.entity';
+import { Conversation, WizardData, WizardState } from '../chat/conversation.entity';
 import { ChatMessage, ChatMessagePayload } from '../chat/message.entity';
 import { PaymentsService } from '../payments/payments.service';
+import { GenerationsService } from '../generations/generations.service';
+import { GuestSessionsService } from '../guest-sessions/guest-sessions.service';
 import { AiMemory } from './ai-memory.entity';
 import { AiToolCall } from './ai-tool-call.entity';
+
+/** Lista oficială de stiluri (sincronă cu UI generator). Folosită pentru fuzzy match în wizard_update. */
+const STYLES = [
+  'Clasică de pahar', 'Modernă', 'Orientală', 'Cu trompetă', 'De jale',
+  'Comercială', 'De opulență', 'De iubire', 'Tallava', 'Kuchek', 'Trapanele',
+];
+const OCCASIONS = [
+  'Zi de naștere', 'Nuntă', 'Botez', 'Cumătrie', 'Aniversare cuplu',
+  'Pentru șef', 'Declarație', 'Roast prieten', 'Naș/fin', 'Înmormântare',
+  'Motivațională', 'Altă ocazie',
+];
+
+/** Câmpurile minime cerute pentru a putea face wizard_finalize. */
+const REQUIRED_WIZARD_FIELDS: Array<keyof WizardData> = ['style', 'occasion', 'recipientName', 'message', 'voiceArtist'];
 
 @Injectable()
 export class AIChatAgentService {
@@ -26,6 +42,8 @@ export class AIChatAgentService {
     private readonly kb: KbService,
     private readonly sites: SitesService,
     private readonly payments: PaymentsService,
+    private readonly generations: GenerationsService,
+    private readonly guests: GuestSessionsService,
     @Inject(forwardRef(() => ChatGateway))
     private readonly gateway: ChatGateway,
   ) {}
@@ -178,7 +196,7 @@ Limba conversației: ${locale}. Răspunde EXCLUSIV în această limbă, cu ton c
 
 Context business:
 - Vindem manele AI personalizate generate în 90 secunde.
-- Preț de bază: ${price} per manea.
+- Preț de bază: ${price} per manea (+20 pentru variantă Premium).
 - Procesul: client completează formular (stil, ocazie, beneficiar, mesaj) → plătește Stripe → primește 2 versiuni pe email.
 - 50.000+ manele generate, garanție 30 zile, plată unică (nu abonament).
 
@@ -186,11 +204,37 @@ Reguli stricte:
 1. Răspunde DOAR prin tool call \`send_message\`. NU scrie text liber.
 2. Înainte de a inventa detalii (preț specific, timpi, garanții), folosește \`search_memory\` SAU consultă faptele din "Memorie aprobată" de mai jos.
 3. Dacă clientul cere refund / are problemă complexă / cere explicit "om real", folosește \`escalate_to_human\`.
-4. Dacă clientul vrea să cumpere (preț, plată, "cum plătesc?"), folosește \`send_payment_link\` — va fi gated pentru aprobare admin.
-5. Dacă clientul stă blocat pe formular și ai impresia că nu vede chat-ul, folosește \`force_open_chat\` pentru a-i atrage atenția.
-6. NU promite ce nu poți livra (ex. nume artiști reali, modificări tehnice).
-7. Nu pomeni că ești AI decât dacă userul te întreabă direct.
-8. Folosește emoji moderat (1-2 per mesaj, opțional). Nu folosi markdown (** sau __).`;
+4. Dacă clientul vrea să stă blocat pe formular și ai impresia că nu vede chat-ul, folosește \`force_open_chat\` pentru a-i atrage atenția.
+5. NU promite ce nu poți livra (ex. nume artiști reali, modificări tehnice).
+6. Nu pomeni că ești AI decât dacă userul te întreabă direct.
+7. Folosește emoji moderat (1-2 per mesaj, opțional). Nu folosi markdown (** sau __).
+
+═══════════════════════════════════════════════════════════════════════
+WORKFLOW WIZARD DE COMANDĂ — ATENTIE MAXIMA:
+═══════════════════════════════════════════════════════════════════════
+Când clientul își manifestă intenția de a comanda o manea ("vreau o manea", "vreau să cumpăr", "cum comand?", "cât e prețul?", etc.), NU trimite link de plată direct. Folosește FLOW-UL WIZARD pas-cu-pas:
+
+1. Apelează \`wizard_get_state\` ca să vezi ce date sunt deja colectate.
+2. Întreabă pe rând, ÎN ORDINEA aceasta, doar câmpurile LIPSĂ:
+   a. style — stilul melodiei
+   b. occasion — ocazia
+   c. recipientName — pentru cine e (nume)
+   d. message — mesaj/dedicare scurt (1-2 fraze sentiment de transmis)
+   e. voiceArtist — preferință voce (ex. „masculină", „feminină", „grav", etc. — liber)
+   f. (opțional) premium — dacă vrea variantă premium (+20 RON, audio de calitate superioară)
+3. Câte 1 întrebare per mesaj. NU bombarda cu 5 întrebări odată.
+4. Stiluri valide (folosește exact aceste denumiri): ${STYLES.join(', ')}.
+5. Ocazii valide (folosește exact aceste denumiri): ${OCCASIONS.join(', ')}.
+6. După FIECARE răspuns user, apelează \`wizard_update\` cu câmpul colectat + valoarea normalizată (fuzzy match: "moderna" → "Modernă", "nunta" → "Nuntă").
+7. Când toate cele 5 câmpuri minime (style/occasion/recipientName/message/voiceArtist) sunt complete, fă un REZUMAT scurt prin \`send_message\` și întreabă: „Confirmi datele? Trimit linkul de plată."
+8. Doar dacă userul confirmă explicit ("da", "trimite", "ok"), apelează \`wizard_finalize\`. Acesta va crea automat melodia pending + linkul de plată Stripe. NU mai trimite tu link separat.
+9. După wizard_finalize, doar răspunde scurt: „Gata, ți-am trimis linkul de plată. După plată melodia se generează în ~90 secunde și o vei primi pe email."
+10. NU repeta wizard_finalize de mai multe ori per turn (e idempotent dar fără rost).
+
+INTERZIS:
+- NU sugera prețuri/sume diferite de ${price}.
+- NU promite voci de artiști reali (Salam, Guță, etc.) — sunt fictive AI.
+- NU sări peste wizard chiar dacă clientul zice „trimite-mi direct linkul" — explică-i că trebuie 1-2 detalii ca să-i facem manea pentru cine trebuie.`;
 
     return this.appendMemoryAndContacts(basePrompt, memory, site);
   }
@@ -237,22 +281,36 @@ Reguli stricte:
         },
       },
       {
-        name: 'send_payment_link',
-        description: 'Generează și trimite un link de plată Stripe Checkout. Folosește când clientul cere să cumpere, plătească, sau întreabă "cum plătesc?". Default folosește prețul site-ului. Tool-ul poate fi gated pentru aprobare admin în funcție de setări.',
+        name: 'wizard_get_state',
+        description: 'Vezi datele colectate până acum pentru comanda manelei (style, occasion, recipientName, message, voiceArtist, etc.) și ce câmpuri lipsesc. Folosește la începutul oricărei interacțiuni de cumpărare.',
+        parameters: { type: 'object', properties: {} },
+      },
+      {
+        name: 'wizard_update',
+        description: 'Salvează unul sau mai multe câmpuri în wizardul de comandă. Folosește după ce userul răspunde la o întrebare. Normalize valorile (ex. „moderna" → „Modernă"). Câmpurile cerute pentru a putea finaliza: style, occasion, recipientName, message, voiceArtist.',
         parameters: {
           type: 'object',
           properties: {
-            description: { type: 'string', description: 'Descriere scurtă a produsului (ex. „Manea pentru aniversarea Mariei").' },
-            amount: { type: 'number', description: 'Sumă în cents (opțional — default prețul site-ului).' },
-            currency: { type: 'string', description: 'Valută ISO 3 litere (opțional — default valuta site-ului).' },
-            premium: { type: 'boolean', description: 'Variantă premium (+extra). Default false.' },
+            style: { type: 'string', description: `Unul din: ${STYLES.join(', ')}` },
+            occasion: { type: 'string', description: `Una din: ${OCCASIONS.join(', ')}` },
+            recipientName: { type: 'string', description: 'Numele persoanei pentru care e manea (1-120 char).' },
+            message: { type: 'string', description: 'Mesajul/dedicarea sentimentală pe care vrea s-o transmită (max 600 char).' },
+            voiceArtist: { type: 'string', description: 'Preferință voce (ex. „masculină grav", „feminină", „classic").' },
+            dedication: { type: 'string', description: 'Opțional: text scurt dedicare audio (max 120 char).' },
+            customLyrics: { type: 'string', description: 'Opțional: versuri custom complete furnizate de user.' },
+            premium: { type: 'boolean', description: 'Opțional: dacă userul vrea variantă premium (+20 RON).' },
+            email: { type: 'string', description: 'Email-ul user-ului (necesar pentru livrare). Doar dacă e guest fără email.' },
           },
-          required: ['description'],
         },
       },
       {
+        name: 'wizard_finalize',
+        description: 'Finalizează comanda: creează generation pending în DB + Stripe Checkout cu generationId + trimite payment_link în chat. Cere ca toate câmpurile minime să fie complete (style, occasion, recipientName, message, voiceArtist) și user-ul să aibă email. Apelează DOAR după ce userul a confirmat datele recapitulate.',
+        parameters: { type: 'object', properties: {} },
+      },
+      {
         name: 'force_open_chat',
-        description: 'Forțează deschiderea widget-ului de chat pe ecranul clientului. Folosește RAR — doar dacă clientul a închis chatul dar îi trimiți ceva critic (ex. link plată, eroare la formular). Nu folosi pentru mesaje normale.',
+        description: 'Forțează deschiderea widget-ului de chat pe ecranul clientului. Folosește RAR — doar dacă clientul a închis chatul dar îi trimiți ceva critic. Nu folosi pentru mesaje normale.',
         parameters: {
           type: 'object',
           properties: {
@@ -279,10 +337,243 @@ Reguli stricte:
     return {
       send_message: async (args) => this.handleSendMessage(ctx, String(args.text ?? '')),
       search_memory: async (args) => this.handleSearchMemory(ctx.conv, String(args.query ?? '')),
-      send_payment_link: async (args) => this.handleSendPaymentLink(ctx, args),
+      wizard_get_state: async () => this.handleWizardGetState(ctx),
+      wizard_update: async (args) => this.handleWizardUpdate(ctx, args),
+      wizard_finalize: async () => this.handleWizardFinalize(ctx),
       force_open_chat: async (args) => this.handleForceOpen(ctx, String(args.reason ?? '')),
       escalate_to_human: async (args) => this.handleEscalate(ctx, String(args.reason ?? 'unspecified')),
     };
+  }
+
+  // ============== WIZARD HANDLERS ==============
+
+  private getOrInitWizardState(conv: Conversation): WizardState {
+    if (conv.wizardState) return conv.wizardState;
+    return {
+      step: 'idle',
+      data: {},
+      generationId: null,
+      paymentId: null,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  private missingWizardFields(data: WizardData): Array<keyof WizardData> {
+    return REQUIRED_WIZARD_FIELDS.filter((f) => {
+      const v = data[f];
+      return !v || (typeof v === 'string' && !v.trim());
+    });
+  }
+
+  /** Fuzzy match pe nume stil/ocazie. „moderna" → „Modernă". */
+  private normalizeStyle(input: string): string {
+    const t = input.toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const found = STYLES.find((s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').startsWith(t) || t.startsWith(s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')));
+    return found ?? input.trim();
+  }
+  private normalizeOccasion(input: string): string {
+    const t = input.toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const found = OCCASIONS.find((o) => o.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes(t) || t.includes(o.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').split(' ')[0]));
+    return found ?? input.trim();
+  }
+
+  private async handleWizardGetState(ctx: AgentCtx): Promise<unknown> {
+    const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
+    if (!conv) return { error: 'conversation gone' };
+    const state = this.getOrInitWizardState(conv);
+    const missing = this.missingWizardFields(state.data);
+    // Verifică dacă userul are email (necesar pt guest checkout)
+    let hasEmail = false;
+    if (conv.userId) hasEmail = true; // user logat → are email
+    else if (conv.guestId) {
+      const guest = await this.guests.findById?.(conv.guestId).catch(() => null) ?? null;
+      hasEmail = !!(guest?.email || conv.email);
+    }
+    return {
+      step: state.step,
+      data: state.data,
+      missingFields: missing,
+      hasEmail,
+      readyToFinalize: missing.length === 0 && hasEmail,
+      instruction:
+        missing.length === 0 && hasEmail
+          ? 'Toate datele sunt complete. Fă recapitulare scurtă în send_message + cere confirmare, apoi wizard_finalize.'
+          : !hasEmail && missing.length === 0
+            ? 'Datele de comandă sunt complete dar lipsește email-ul. Cere email-ul prin send_message + salvează-l cu wizard_update({email}).'
+            : `Întreabă userul despre: ${missing.join(', ')} (în ordinea asta, câte unul per mesaj).`,
+    };
+  }
+
+  private async handleWizardUpdate(ctx: AgentCtx, args: Record<string, unknown>): Promise<unknown> {
+    const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
+    if (!conv) return { error: 'conversation gone' };
+    const state = this.getOrInitWizardState(conv);
+    const updates: Partial<WizardData> = {};
+
+    if (typeof args.style === 'string' && args.style.trim()) updates.style = this.normalizeStyle(args.style);
+    if (typeof args.occasion === 'string' && args.occasion.trim()) updates.occasion = this.normalizeOccasion(args.occasion);
+    if (typeof args.recipientName === 'string' && args.recipientName.trim()) updates.recipientName = args.recipientName.trim().slice(0, 120);
+    if (typeof args.message === 'string' && args.message.trim()) updates.message = args.message.trim().slice(0, 600);
+    if (typeof args.voiceArtist === 'string' && args.voiceArtist.trim()) updates.voiceArtist = args.voiceArtist.trim().slice(0, 64);
+    if (typeof args.dedication === 'string') updates.dedication = args.dedication.trim().slice(0, 120);
+    if (typeof args.customLyrics === 'string' && args.customLyrics.length > 10) updates.customLyrics = args.customLyrics.trim().slice(0, 4000);
+    if (typeof args.premium === 'boolean') updates.premium = args.premium;
+
+    // Email collection — pentru guest fără email
+    let emailUpdated = false;
+    if (typeof args.email === 'string' && args.email.includes('@')) {
+      const email = args.email.trim().toLowerCase();
+      if (conv.guestId && this.guests.setEmail) {
+        try {
+          await this.guests.setEmail(conv.guestId, email);
+          conv.email = email;
+          emailUpdated = true;
+        } catch (e) {
+          return { error: `email invalid: ${(e as Error).message}` };
+        }
+      }
+    }
+
+    Object.assign(state.data, updates);
+    state.updatedAt = new Date().toISOString();
+    if (state.step === 'idle' && Object.keys(updates).length > 0) state.step = 'collecting';
+    conv.wizardState = state;
+    await this.conv.save(conv);
+    ctx.conv = conv; // sync ctx
+
+    const missing = this.missingWizardFields(state.data);
+    return {
+      updated: Object.keys(updates),
+      emailUpdated,
+      data: state.data,
+      missingFields: missing,
+      readyToFinalize: missing.length === 0 && (emailUpdated || !!conv.email),
+      instruction:
+        missing.length === 0
+          ? 'Toate câmpurile sunt complete. Recapitulează datele în send_message + cere confirmare, apoi wizard_finalize.'
+          : `Mai întreabă: ${missing[0]} (un singur câmp pe mesaj).`,
+    };
+  }
+
+  private async handleWizardFinalize(ctx: AgentCtx): Promise<unknown> {
+    if (!ctx.conv.siteId) return { error: 'no siteId' };
+    const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
+    if (!conv) return { error: 'conversation gone' };
+    const state = this.getOrInitWizardState(conv);
+    const missing = this.missingWizardFields(state.data);
+    if (missing.length > 0) {
+      return {
+        error: 'incomplete',
+        missingFields: missing,
+        instruction: `Lipsesc câmpuri: ${missing.join(', ')}. Întreabă userul + wizard_update.`,
+      };
+    }
+    if (state.step === 'payment_sent' || state.step === 'paid' || state.step === 'generating') {
+      return { error: 'already_finalized', instruction: 'Comanda deja finalizată. NU re-finaliza.' };
+    }
+
+    if (!conv.siteId) return { error: 'no siteId' };
+    const site = await this.sites.findById(conv.siteId);
+    if (!site) return { error: 'site not found' };
+
+    // Verifică email (cerut de createPendingForPayment pentru guest)
+    if (conv.guestId && !conv.email) {
+      // Re-check guest în DB (poate emailUpdated în alt run)
+      const guest = await this.guests.findById?.(conv.guestId).catch(() => null);
+      if (!guest?.email) {
+        return {
+          error: 'email_required',
+          instruction: 'Userul nu are email setat. Cere email-ul prin send_message + salvează-l cu wizard_update({email: "..."}).',
+        };
+      }
+      conv.email = guest.email;
+    }
+
+    try {
+      // 1. Crează Generation pending
+      const generation = await this.generations.createPendingForPayment(
+        {
+          style: state.data.style!,
+          occasion: state.data.occasion!,
+          recipientName: state.data.recipientName!,
+          message: state.data.message!,
+          voiceArtist: state.data.voiceArtist!,
+          dedication: state.data.dedication,
+          customLyrics: state.data.customLyrics,
+          premium: !!state.data.premium,
+          locale: site.locale,
+        },
+        {
+          userId: conv.userId,
+          guestId: conv.guestId,
+          siteId: conv.siteId,
+        },
+      );
+
+      // 2. Crează Stripe Checkout legat de Generation
+      const checkout = await this.payments.createCheckoutSession({
+        userId: conv.userId,
+        guestId: conv.guestId,
+        generationId: generation.id,
+        premium: !!state.data.premium,
+        email: conv.email ?? undefined,
+        site,
+      });
+
+      // 3. Update state
+      state.step = 'payment_sent';
+      state.generationId = generation.id;
+      state.paymentId = checkout.paymentId;
+      state.updatedAt = new Date().toISOString();
+      conv.wizardState = state;
+      await this.conv.save(conv);
+
+      // 4. Trimite payment_link în chat (vizibil user + admin)
+      const amount = site.basePriceCents + (state.data.premium ? site.premiumExtraCents : 0);
+      const currency = site.currency.toUpperCase();
+      const description = `Manea pentru ${state.data.recipientName}${state.data.premium ? ' (premium)' : ''}`;
+      const msg = this.msg.create({
+        conversationId: conv.id,
+        siteId: conv.siteId,
+        authorRole: 'admin',
+        authorId: null,
+        body: `💳 Linkul tău de plată: ${description} — ${(amount / 100).toFixed(2)} ${currency}`,
+        messageType: 'payment_link',
+        payload: {
+          amount,
+          currency,
+          description,
+          checkoutUrl: checkout.url,
+          paymentId: checkout.paymentId,
+          generationId: generation.id,
+          premium: !!state.data.premium,
+        },
+        aiGenerated: true,
+        detectedLang: site.locale,
+      });
+      const saved = await this.msg.save(msg);
+      conv.lastMessageAt = saved.createdAt;
+      conv.unreadByUser += 1;
+      await this.conv.save(conv);
+      this.gateway.emitMessage({ message: saved, conversation: conv });
+
+      ctx.paymentLinkSent = true;
+      return {
+        ok: true,
+        status: 'PAYMENT_LINK_SENT',
+        generationId: generation.id,
+        checkoutUrl: checkout.url,
+        instruction:
+          'Comanda finalizată cu succes. Spune userului scurt că linkul de plată e mai sus + că după plată melodia se generează în ~90s și o va primi pe email. TERMINĂ TURUL.',
+      };
+    } catch (e) {
+      this.logger.warn(`wizard_finalize failed: ${(e as Error).message}`);
+      return {
+        error: 'finalize_failed',
+        message: (e as Error).message,
+        instruction: 'A apărut o eroare la creare. Spune userului că ne ocupăm și escalate_to_human.',
+      };
+    }
   }
 
   // ============== TOOL HANDLERS ==============

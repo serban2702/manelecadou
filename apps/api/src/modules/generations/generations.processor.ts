@@ -1,5 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -31,8 +32,23 @@ export class GenerationsProcessor extends WorkerHost {
     private readonly config: ConfigService,
     private readonly sites: SitesService,
     private readonly audio: AudioProcessorService,
+    private readonly moduleRef: ModuleRef,
   ) {
     super();
+  }
+
+  /** Lazy notification către ChatService — apelat după ce generation termină
+   *  (succes sau eșec). Lazy load pentru a evita dependency circular între
+   *  GenerationsModule și ChatModule (chat importă payments care importă generations). */
+  private async notifyChat(generationId: string, status: 'succeeded' | 'failed'): Promise<void> {
+    try {
+      const mod = await import('../chat/chat.service');
+      const chat = this.moduleRef.get(mod.ChatService, { strict: false });
+      await chat.notifyGenerationCompleted(generationId, status);
+    } catch (e) {
+      // ChatService poate lipsi în testing — best-effort
+      this.logger.debug?.(`chat notify skipped: ${(e as Error).message}`);
+    }
   }
 
   async process(job: Job<{ generationId: string }>): Promise<void> {
@@ -151,12 +167,14 @@ export class GenerationsProcessor extends WorkerHost {
       this.logger.log(`generation ${gen.id} succeeded with ${result.tracks.length} tracks`);
 
       await this.notifyOwner(gen);
+      void this.notifyChat(gen.id, 'succeeded');
     } catch (err) {
       gen.status = 'failed';
       gen.error = err instanceof Error ? err.message : String(err);
       gen.completedAt = new Date();
       await this.repo.save(gen);
       this.logger.error(`generation ${gen.id} failed: ${gen.error}`);
+      void this.notifyChat(gen.id, 'failed');
     }
   }
 
