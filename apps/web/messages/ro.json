@@ -986,5 +986,19 @@
       "cum-functioneaza": "⚙️ Cum funcționează",
       "long-tail": "📚 Ghiduri"
     }
+  },
+  "checkoutCancelPage": {
+    "title": "Plata a fost anulată",
+    "lead": "Nu te-am taxat — totul e ok.",
+    "detail": "Dacă a fost o greșeală sau ai schimbat doar metoda de plată, reia procesul de aici. Datele formularului sunt salvate.",
+    "retryCta": "Reia plata",
+    "supportCta": "Ajutor"
+  },
+  "checkoutSuccessPage": {
+    "title": "Plată confirmată!",
+    "lead": "Mulțumim — primești detaliile pe email în câteva minute.",
+    "detail": "Dacă ai cumpărat o manea, o vei găsi în „Manelele mele" imediat ce e gata.",
+    "mineCta": "Vezi manelele mele",
+    "homeCta": "Acasă"
   }
 }

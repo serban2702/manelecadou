@@ -568,10 +568,13 @@ export class ChatService implements OnModuleInit {
   }
 
   async listMessages(conversationId: string): Promise<ChatMessage[]> {
-    return this.msg.find({
+    const all = await this.msg.find({
       where: { conversationId },
       order: { createdAt: 'ASC' },
     });
+    // Filtrăm sugestiile AI aprobate/respinse — nu mai au valoare în thread (după approve
+    // există deja un admin message real cu aiSuggestionFor link). Audit-ul rămâne în DB.
+    return all.filter((m) => !(m.messageType === 'ai_suggestion' && m.aiApprovedBy));
   }
 
   async markReadByAdmin(conversationId: string): Promise<void> {

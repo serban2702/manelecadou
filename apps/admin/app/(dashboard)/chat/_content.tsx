@@ -30,7 +30,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { ChatApi } from '@/lib/api';
+import { ChatApi, SitesApi } from '@/lib/api';
 import { useAsync } from '@/lib/hooks/use-async';
 import {
   useAdminChatSocket,
@@ -635,8 +635,9 @@ export default function AdminChatPage() {
         />
       </div>
 
-      {showPaymentModal && (
+      {showPaymentModal && thread && (
         <PaymentLinkModal
+          siteId={thread.conversation.siteId}
           onClose={() => setShowPaymentModal(false)}
           onSend={sendPaymentLink}
         />
@@ -645,18 +646,55 @@ export default function AdminChatPage() {
   );
 }
 
+/** Valute suportate de Stripe + uzuale pentru multi-tenant (RO/BG/GR/CZ/etc.). */
+const CURRENCY_OPTIONS = ['RON', 'EUR', 'USD', 'BGN', 'HUF', 'PLN', 'CZK', 'GBP', 'TRY', 'RSD'];
+
 function PaymentLinkModal({
+  siteId,
   onClose,
   onSend,
 }: {
+  siteId: string | null;
   onClose: () => void;
   onSend: (opts: { amount?: number; currency?: string; description?: string; premium?: boolean }) => void;
 }) {
   const [amountStr, setAmountStr] = useState('');
-  const [currency, setCurrency] = useState('');
-  const [description, setDescription] = useState('');
+  const [currency, setCurrency] = useState('RON');
+  const [description, setDescription] = useState('Manea personalizată');
   const [premium, setPremium] = useState(false);
   const [sending, setSending] = useState(false);
+  const [loadingSite, setLoadingSite] = useState(true);
+  const [premiumExtraCents, setPremiumExtraCents] = useState(2000);
+  const [basePriceCents, setBasePriceCents] = useState(2999);
+
+  // Preîncarcă prețul + valuta din site la deschidere
+  useEffect(() => {
+    if (!siteId) {
+      setLoadingSite(false);
+      return;
+    }
+    SitesApi.get(siteId)
+      .then((site) => {
+        const base = site.basePriceCents ?? 2999;
+        const curr = (site.currency ?? 'RON').toUpperCase();
+        const premiumExtra = (site as { premiumExtraCents?: number }).premiumExtraCents ?? 2000;
+        setBasePriceCents(base);
+        setPremiumExtraCents(premiumExtra);
+        setCurrency(CURRENCY_OPTIONS.includes(curr) ? curr : 'RON');
+        setAmountStr((base / 100).toFixed(2));
+      })
+      .catch(() => {
+        // fallback la defaults
+      })
+      .finally(() => setLoadingSite(false));
+  }, [siteId]);
+
+  // Când userul comută premium, actualizează suma propusă
+  useEffect(() => {
+    if (loadingSite) return;
+    const target = basePriceCents + (premium ? premiumExtraCents : 0);
+    setAmountStr((target / 100).toFixed(2));
+  }, [premium, basePriceCents, premiumExtraCents, loadingSite]);
 
   return (
     <div
@@ -674,50 +712,55 @@ function PaymentLinkModal({
         <div className="space-y-3">
           <div>
             <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">
-              Descriere (opțional)
+              Descriere
             </label>
             <input
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="ex. Manea personalizată pentru Maria"
+              placeholder="Manea personalizată"
               className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none focus:ring-1 focus:ring-primary/50"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">
-                Sumă (RON, opțional)
+                Sumă {loadingSite && '(se încarcă...)'}
               </label>
               <input
                 type="number"
                 step="0.01"
+                min="0.01"
                 value={amountStr}
                 onChange={(e) => setAmountStr(e.target.value)}
-                placeholder="default prețul site-ului"
-                className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none focus:ring-1 focus:ring-primary/50"
+                disabled={loadingSite}
+                className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none focus:ring-1 focus:ring-primary/50 disabled:opacity-50"
               />
             </div>
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">
-                Valută (opțional)
+                Valută
               </label>
-              <input
-                type="text"
+              <select
                 value={currency}
-                onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-                placeholder="RON"
-                maxLength={3}
-                className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none focus:ring-1 focus:ring-primary/50 font-mono uppercase"
-              />
+                onChange={(e) => setCurrency(e.target.value)}
+                disabled={loadingSite}
+                className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none focus:ring-1 focus:ring-primary/50 font-mono disabled:opacity-50"
+              >
+                {CURRENCY_OPTIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" checked={premium} onChange={(e) => setPremium(e.target.checked)} />
-            Variantă premium (+20 RON)
+            Variantă premium (+{(premiumExtraCents / 100).toFixed(2)} {currency})
           </label>
           <div className="text-[11px] text-muted-foreground bg-secondary/30 rounded p-2">
-            Dacă lași sumă/valută gol, se folosește prețul implicit al site-ului. Linkul îl duce direct la Stripe Checkout.
+            Suma și valuta sunt precompletate din configul site-ului. Le poți modifica înainte de trimitere. Linkul îl duce direct la Stripe Checkout.
           </div>
         </div>
         <div className="flex justify-end gap-2 mt-5">
@@ -731,7 +774,7 @@ function PaymentLinkModal({
                 const amount = amountStr ? Math.round(parseFloat(amountStr) * 100) : undefined;
                 await onSend({
                   amount,
-                  currency: currency || undefined,
+                  currency,
                   description: description.trim() || undefined,
                   premium,
                 });
@@ -739,7 +782,7 @@ function PaymentLinkModal({
                 setSending(false);
               }
             }}
-            disabled={sending}
+            disabled={sending || loadingSite || !amountStr}
           >
             {sending ? <Loader2 className="animate-spin" /> : <Send />}
             Trimite link
