@@ -91,7 +91,10 @@ export function SiteShell({ children, hideStickyCta: _ignored }: { children: Rea
           </nav>
           <div className="hdr-right" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <MyGenerationsCounter />
-            <CountrySwitcher />
+            {/* Atât CountrySwitcher (flag + .ro/.bg/...) cât și LangSwitcher
+                (locale UI) sunt gate-uiate pe același flag din admin
+                „Meniu selectare limbă". Userii vor unul SAU niciunul. */}
+            {site.langSwitcherEnabled === true && <CountrySwitcher />}
             <LangSwitcher />
             {session.user ? (
               <Link href={getPagePath(site.locale, 'cont')} className="lang-btn" style={{ textDecoration: 'none' }}>
