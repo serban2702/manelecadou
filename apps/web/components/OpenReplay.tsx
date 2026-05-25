@@ -65,24 +65,6 @@ export function OpenReplay() {
         const tracker = new Tracker({
           projectKey: PROJECT_KEY,
           ingestPoint: INGEST_POINT || undefined,
-          defaultInputMode: 0,
-          obscureTextEmails: false,
-          obscureTextNumbers: false,
-          captureIFrames: true,
-          captureResourceTimings: true,
-          capturePerformance: true,
-          network: {
-            failuresOnly: false,
-            sessionTokenHeader: false,
-            captureInIframes: true,
-            capturePayload: true,
-            ignoreHeaders: [
-              'authorization',
-              'cookie',
-              'set-cookie',
-              'x-csrf-token',
-            ],
-          },
         });
 
         console.log('[OpenReplay] before start()');
