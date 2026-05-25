@@ -555,7 +555,13 @@ Dashboard OpenReplay: <https://openreplay.manelecadou.ro> — credentials owner:
     1. `curl -sI -H "Origin: https://openreplay.manelecadou.ro" https://manelecadou.ro/_next/static/css/<HASH>.css` returnează `access-control-allow-origin: *`.
     2. `docker logs assets --tail=30` pe Hetzner — nicio eroare `AccessDenied` la fetch.
     3. `docker run --rm --network=docker-compose_openreplay-net --entrypoint /bin/sh minio/mc -c 'mc alias set m http://minio:9000 KEY SECRET && mc ls -r m/sessions-assets/'` — bucket-ul are CSS-uri și fonturi capturate.
-12. **RustFS beta refuză writes pe single-disk** (BUG MAJOR descoperit 2026-05-25) — OpenReplay `scripts/docker-compose` folosește `rustfs/rustfs:1.0.0-beta.1` ca storage S3-compatible default. Pe single-disk setup (cum e Hetzner cu un `miniodata` volume), RustFS răspunde la orice `MakeBucket` și `PutObject` cu **HTTP 500 "Storage resources are insufficient for the write operation"** (EC:0 erasure coding refuză writes). Rezultatul: TOATE recording-urile sunt pierdute silently (storage service primește AccessDenied de la S3 și log-uri `failed to upload mob file`, dar pipeline-ul continuă).
+12bis. **IP attribution pentru anonymous users** — by default OpenReplay arată „Anonymous User" peste tot pentru visitatori ne-logați, imposibil de distins. Setup actual:
+   - `GET /api/analytics/whoami` returnează IP-ul real (din `X-Forwarded-For` setat de Caddy).
+   - `components/OpenReplay.tsx` la `tracker.start()` apelează whoami și face `tracker.setUserID('ip:<IP>')` + `tracker.setMetadata('ip', <IP>)`.
+   - În dashboard, **trebuie declarat `ip` ca metadata field**: Preferences → Projects → My First Project → Metadata → "+ Add Metadata" → Field Name: `ip`. (Făcut o singură dată; persistă în Postgres.)
+   - În UI sesiunile arată acum `ip:X.X.X.X` în header (în loc de "Anonymous User") și un tag `ip | X.X.X.X` în lista de sesiuni. Filtrabil cu Filters → Add → Metadata: ip.
+
+13. **RustFS beta refuză writes pe single-disk** (BUG MAJOR descoperit 2026-05-25) — OpenReplay `scripts/docker-compose` folosește `rustfs/rustfs:1.0.0-beta.1` ca storage S3-compatible default. Pe single-disk setup (cum e Hetzner cu un `miniodata` volume), RustFS răspunde la orice `MakeBucket` și `PutObject` cu **HTTP 500 "Storage resources are insufficient for the write operation"** (EC:0 erasure coding refuză writes). Rezultatul: TOATE recording-urile sunt pierdute silently (storage service primește AccessDenied de la S3 și log-uri `failed to upload mob file`, dar pipeline-ul continuă).
 
     **Fix**: înlocuit cu MinIO real (`quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z`) în `docker-compose.yaml` service `minio`. MinIO accept-ă single-disk fără probleme. Setări:
     ```yaml
