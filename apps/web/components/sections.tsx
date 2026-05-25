@@ -2,9 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
 import { Ic } from './icons';
 import { toast } from './Toaster';
-import { DEMOS, FEED as FEED_FALLBACK, TESTI, TOP } from '@/lib/seed-data';
+import { ManeaPlayer } from './ManeaPlayer';
+import { DEMOS, FEED as FEED_FALLBACK, TESTI, TOP, VOICES } from '@/lib/seed-data';
+import { api } from '@/lib/api';
 import { formatPrice, siteSupportEmail, siteUrl } from '@/lib/site-shared';
 import { useSite } from '@/lib/site-context';
 import { getLegalPath } from '@/lib/legal-slugs';
@@ -81,27 +85,86 @@ export function PriceStrip() {
 
 export function QuickListen({ playing, onPlay }: { playing: string | null; onPlay: (id: string) => void }) {
   const t = useTranslations('quickListen');
+  const site = useSite();
+  const useLive = site.topSource === 'live';
+
+  // Generări reale când admin a comutat sursa pe „live". Limităm la 6 ca să nu
+  // depășim grid-ul orizontal. Sort popular ca să arătăm cele mai ascultate.
+  const { data: live } = useQuery({
+    queryKey: ['quick-listen-live'],
+    queryFn: () => api.publicGenerations({ limit: 6, sort: 'popular', period: 'all' }),
+    staleTime: 60_000,
+    enabled: useLive,
+  });
+
+  const liveItems = useLive ? (live?.items ?? []) : [];
+
+  // Fallback la DEMOS hardcoded dacă admin e pe „seed" SAU site-ul live n-a
+  // generat încă nimic.
+  if (!useLive || liveItems.length === 0) {
+    return (
+      <section className="qlisten">
+        <div className="head">
+          <h3>{t('title')}</h3>
+          <span className="more">{t('more', { count: DEMOS.length })}</span>
+        </div>
+        <div className="ql-scroll">
+          {DEMOS.map((d) => {
+            const isP = playing === d.id;
+            return (
+              <div key={d.id} className={`ql-card ${isP ? 'playing' : ''}`} onClick={() => onPlay(d.id)}>
+                <div className="cover">
+                  <div className="vinyl"></div>
+                  <button className="play-mini" aria-label="Play">
+                    {isP ? <Ic.Pause s={14} /> : <Ic.Play s={14} />}
+                  </button>
+                </div>
+                <div className="ttl">{d.ttl}</div>
+                <div className="by">{d.by}</div>
+                <div className="heat">{d.heat}</div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
+  // Render live: card-uri cu ManeaPlayer pe care userul îl ascultă direct.
   return (
     <section className="qlisten">
       <div className="head">
         <h3>{t('title')}</h3>
-        <span className="more">{t('more', { count: DEMOS.length })}</span>
+        <span className="more">{t('more', { count: liveItems.length })}</span>
       </div>
       <div className="ql-scroll">
-        {DEMOS.map((d) => {
-          const isP = playing === d.id;
+        {liveItems.map((r) => {
+          const voiceNm = VOICES.find((v) => v.id === r.voiceArtist)?.nm ?? r.voiceArtist;
           return (
-            <div key={d.id} className={`ql-card ${isP ? 'playing' : ''}`} onClick={() => onPlay(d.id)}>
+            <Link
+              key={r.id}
+              href={`/m/${r.id}`}
+              className="ql-card"
+              style={{ textDecoration: 'none' }}
+            >
               <div className="cover">
                 <div className="vinyl"></div>
-                <button className="play-mini" aria-label="Play">
-                  {isP ? <Ic.Pause s={14} /> : <Ic.Play s={14} />}
+                <button className="play-mini" aria-label="Play" onClick={(e) => e.preventDefault()}>
+                  <Ic.Play s={14} />
                 </button>
               </div>
-              <div className="ttl">{d.ttl}</div>
-              <div className="by">{d.by}</div>
-              <div className="heat">{d.heat}</div>
-            </div>
+              <div className="ttl" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {t('forSomeone', { name: r.recipientName })}
+              </div>
+              <div className="by" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {voiceNm}
+              </div>
+              {r.audioUrl && (
+                <div onClick={(e) => e.preventDefault()} style={{ marginTop: 6 }}>
+                  <ManeaPlayer audioUrl={r.audioUrl} compact />
+                </div>
+              )}
+            </Link>
           );
         })}
       </div>
@@ -157,8 +220,26 @@ export function NowPlaying({ playing, onClose }: { playing: string; onClose: () 
 
 export function Leaderboard() {
   const [playing, setPlaying] = useState<number | null>(null);
-  const mid = Math.ceil(TOP.length / 2);
-  const cols = [TOP.slice(0, mid), TOP.slice(mid)];
+  const site = useSite();
+  const useLive = site.topSource === 'live';
+
+  // Top live când admin a setat sursa pe „live". Cere 10 ca să umplem 2 coloane.
+  const { data } = useQuery({
+    queryKey: ['leaderboard-live'],
+    queryFn: () => api.topList('week', 10),
+    staleTime: 60_000,
+    enabled: useLive,
+  });
+
+  const liveItems = (useLive && data?.source === 'live' && data.items) ? data.items : null;
+
+  // Adaptăm forma `liveItems` la {rk, ttl, by, pl} ca să reutilizăm același JSX.
+  const rows = liveItems
+    ? liveItems.map((t) => ({ rk: t.rk, ttl: t.ttl, by: t.by, pl: t.pl }))
+    : TOP.map((t) => ({ rk: t.rk, ttl: t.ttl, by: t.by, pl: t.pl }));
+
+  const mid = Math.ceil(rows.length / 2);
+  const cols = [rows.slice(0, mid), rows.slice(mid)];
   return (
     <div className="lb-grid">
       {cols.map((col, ci) => (

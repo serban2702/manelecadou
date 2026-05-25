@@ -49,7 +49,7 @@ export const getSiteConfig = cache(async (): Promise<SiteConfig> => {
         'Host': host,
         'X-Forwarded-Host': host,
       },
-      next: { revalidate: 30, tags: [`site-config:${host}`] },
+      next: { revalidate: 10, tags: [`site-config:${host}`] },
     });
     if (!res.ok) return fallback;
     return (await res.json()) as SiteConfig;

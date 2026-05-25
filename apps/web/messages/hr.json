@@ -47,7 +47,8 @@
   },
   "quickListen": {
     "title": "🎧 Slušaj sad",
-    "more": "{count} demo snimki"
+    "more": "{count} demo snimki",
+    "forSomeone": "Za {name}"
   },
   "cookie": {
     "title": "Buraz, kolačići",

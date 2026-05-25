@@ -46,7 +46,8 @@
   },
   "quickListen": {
     "title": "🎧 Чуй сега",
-    "more": "{count} демо"
+    "more": "{count} демо",
+    "forSomeone": "За {name}"
   },
   "cookie": {
     "title": "Брат, бисквитки",

@@ -53,6 +53,11 @@ export interface SiteConfig {
   hiddenMode?: boolean;
   /** Dacă true, LangSwitcher-ul din topbar e afișat. Default false. */
   langSwitcherEnabled?: boolean;
+  /** Sursa pentru leaderboard /top + carduri „Ascultă acum" de pe homepage:
+   *  - 'seed': liste hardcoded (placeholder demo, util pentru site-uri noi)
+   *  - 'live': generări reale din DB, sortate după plays. Comută aici după
+   *    ce site-ul are suficiente manele publice. */
+  topSource?: 'seed' | 'live';
   maintenanceMessage?: Record<string, string>;
   /** Lista IP-uri scutite de maintenance + hidden mode (exact match sau wildcard "*"). */
   ipWhitelist?: string[];

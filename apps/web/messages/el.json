@@ -46,7 +46,8 @@
   },
   "quickListen": {
     "title": "🎧 Άκου τώρα",
-    "more": "{count} demo"
+    "more": "{count} demo",
+    "forSomeone": "Για τον/την {name}"
   },
   "cookie": {
     "title": "Ρε φίλε, cookies",

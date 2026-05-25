@@ -47,7 +47,8 @@
   },
   "quickListen": {
     "title": "🎧 Şimdi dinle",
-    "more": "{count} demo"
+    "more": "{count} demo",
+    "forSomeone": "{name} için"
   },
   "cookie": {
     "title": "Kanka, çerezler",

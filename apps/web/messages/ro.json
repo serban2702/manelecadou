@@ -46,7 +46,8 @@
   },
   "quickListen": {
     "title": "🎧 Ascultă acum",
-    "more": "{count} demo-uri"
+    "more": "{count} demo-uri",
+    "forSomeone": "Pentru {name}"
   },
   "cookie": {
     "title": "Bă fine, cookie-uri",

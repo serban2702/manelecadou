@@ -47,7 +47,8 @@
   },
   "quickListen": {
     "title": "🎧 Poslušaj zdaj",
-    "more": "{count} demo posnetkov"
+    "more": "{count} demo posnetkov",
+    "forSomeone": "Za {name}"
   },
   "cookie": {
     "title": "Frend, piškotki",

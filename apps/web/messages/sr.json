@@ -47,7 +47,8 @@
   },
   "quickListen": {
     "title": "🎧 Slušaj sad",
-    "more": "{count} demo snimaka"
+    "more": "{count} demo snimaka",
+    "forSomeone": "Za {name}"
   },
   "cookie": {
     "title": "Brate, kolačići",

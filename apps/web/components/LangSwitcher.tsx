@@ -29,12 +29,10 @@ export function LangSwitcher() {
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  // Sursa de adevăr: flag-ul `langSwitcherEnabled` din configul site-ului (DB).
-  // Fallback la env-ul vechi `NEXT_PUBLIC_SHOW_LANG_SWITCHER` doar dacă siteul nu
-  // are setarea (ex. fallback config la cold-start). Default: ascuns.
-  const envFallback = (process.env.NEXT_PUBLIC_SHOW_LANG_SWITCHER ?? 'false') !== 'false';
-  const show = site.langSwitcherEnabled ?? envFallback;
-  if (!show) return null;
+  // Strict opt-in via flag-ul din DB (admin /sites → „Meniu selectare limbă").
+  // Default ascuns. Fără env fallback — un build cu NEXT_PUBLIC_SHOW_LANG_SWITCHER
+  // greșit nu mai poate „învia" switcher-ul împotriva setării din admin.
+  if (site.langSwitcherEnabled !== true) return null;
 
   const meta = LOCALE_META[isLocale(current) ? current : 'ro'];
 
