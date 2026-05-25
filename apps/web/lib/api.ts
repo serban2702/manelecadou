@@ -324,6 +324,9 @@ export const api = {
     tipAmount?: number;
     premium?: boolean;
     promoCode?: string;
+    /** Override email destinație. Dacă lipsește, backend-ul îl rezolvă din
+     *  contul logat / guest-ul curent. */
+    email?: string;
   }) =>
     request<{ url: string; paymentId: string }>('/payments/checkout-session', {
       method: 'POST',
@@ -347,6 +350,9 @@ export const api = {
     tipAmount?: number;
     premium?: boolean;
     promoCode?: string;
+    /** Override email destinație. Dacă lipsește, backend-ul îl rezolvă din
+     *  contul logat / guest-ul curent. */
+    email?: string;
   }) =>
     request<{ url: string; paymentId: string; generationId: string }>(
       '/payments/checkout-direct',

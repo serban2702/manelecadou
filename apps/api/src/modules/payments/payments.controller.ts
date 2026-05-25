@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { IsBoolean, IsInt, IsObject, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { IsBoolean, IsEmail, IsInt, IsObject, IsOptional, IsUUID, Max, Min } from 'class-validator';
 import { PaymentsService } from './payments.service';
 import { GuestSessionsService } from '../guest-sessions/guest-sessions.service';
 import { OptionalJwtAuthGuard } from '../../common/jwt.guard';
@@ -40,6 +40,12 @@ class CheckoutDto {
 
   @IsOptional()
   promoCode?: string;
+
+  /** Override email destinație (input editabil pe step 5). Dacă lipsește,
+   *  folosim email-ul contului logat / guest-ului curent. */
+  @IsOptional()
+  @IsEmail()
+  email?: string;
 }
 
 class DirectCheckoutDto {
@@ -55,6 +61,11 @@ class DirectCheckoutDto {
 
   @IsOptional()
   promoCode?: string;
+
+  /** Override email destinație (input editabil pe step 5). */
+  @IsOptional()
+  @IsEmail()
+  email?: string;
 
   // Câmpurile generation — validare minimă (DTO-ul de pe createGeneration are
   // class-validator decorators dar îl primim ca obiect plain pentru flexibilitate).
@@ -133,7 +144,7 @@ export class PaymentsController {
       tipAmount: body.tipAmount ?? 0,
       premium: body.premium ?? false,
       promoCode: body.promoCode,
-      email: await this.resolveEmail(user, guestId),
+      email: body.email ?? (await this.resolveEmail(user, guestId)),
       site,
     });
   }
@@ -158,7 +169,7 @@ export class PaymentsController {
       tipAmount: body.tipAmount ?? body.generation.tipAmount ?? 0,
       premium: body.premium ?? body.generation.premium ?? false,
       promoCode: body.promoCode,
-      email: await this.resolveEmail(user, guestId),
+      email: body.email ?? (await this.resolveEmail(user, guestId)),
       site,
     });
   }

@@ -264,7 +264,21 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   const [generationId, setGenerationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [emailDraft, setEmailDraft] = useState('');
+  const [emailDraftTouched, setEmailDraftTouched] = useState(false);
   const [autoFilled, setAutoFilled] = useState(false);
+
+  // Prefill draft-ul cu email-ul de pe sesiune (user logat / guest deja salvat),
+  // dar fără să suprascriem ce a tastat userul (când e editabil).
+  useEffect(() => {
+    if (!emailDraftTouched && session.email && emailDraft !== session.email) {
+      setEmailDraft(session.email);
+    }
+  }, [session.email, emailDraftTouched, emailDraft]);
+
+  const onEmailDraftChange = useCallback((v: string) => {
+    setEmailDraftTouched(true);
+    setEmailDraft(v);
+  }, []);
   const [promoCode, setPromoCode] = useState('');
   const [promoApplied, setPromoApplied] = useState<{ code: string; discountCents: number } | null>(null);
   const [promoError, setPromoError] = useState<string | null>(null);
@@ -357,18 +371,23 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     (!demoEnabled && step === 4);
 
   async function submitDemo() {
-    if (!session.email) {
-      const candidate = emailDraft.trim();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
-        setError(tGen('humanError.emailInvalid'));
-        return;
-      }
-      try {
-        await api.setGuestEmail(candidate);
-        await session.refresh();
-      } catch {
-        setError(tGen('humanError.emailSaveFailed'));
-        return;
+    const candidate = emailDraft.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
+      setError(tGen('humanError.emailInvalid'));
+      return;
+    }
+    // Pentru guests: persistăm email-ul curent (poate fi modificat față de cel
+    // anterior). Pentru users logați, nu schimbăm email-ul contului — folosim
+    // candidatul doar ca destinație pentru această comandă (server-side).
+    if (!session.email || candidate !== session.email) {
+      if (!session.email) {
+        try {
+          await api.setGuestEmail(candidate);
+          await session.refresh();
+        } catch {
+          setError(tGen('humanError.emailSaveFailed'));
+          return;
+        }
       }
     }
     setSubmitting(true);
@@ -413,6 +432,7 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
         tipAmount: data.tipAmount || 0,
         premium: data.premium,
         promoCode: promoApplied?.code,
+        email: emailDraft.trim() || undefined,
       });
       window.location.href = url;
     } catch (e) {
@@ -429,12 +449,15 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
    *  API, care creează generation pending + payment + Stripe Checkout într-o
    *  singură cerere. Redirect direct la Stripe.  */
   async function startDirectCheckout() {
+    const candidate = emailDraft.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
+      setError(tGen('humanError.emailInvalid'));
+      return;
+    }
+    // Pentru guests fără email salvat: persistăm acum. Pentru users / guests
+    // cu email deja prezent dar care l-au modificat aici: trimitem email-ul
+    // ca override la checkout, fără să atingem contul.
     if (!session.email) {
-      const candidate = emailDraft.trim();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
-        setError(tGen('humanError.emailInvalid'));
-        return;
-      }
       try {
         await api.setGuestEmail(candidate);
         await session.refresh();
@@ -469,6 +492,7 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
         tipAmount: data.tipAmount || 0,
         premium: data.premium,
         promoCode: promoApplied?.code,
+        email: candidate,
       });
       setGenerationId(gid);
       window.location.href = url;
@@ -526,7 +550,7 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
             data={data}
             email={session.email}
             emailDraft={emailDraft}
-            onEmailChange={setEmailDraft}
+            onEmailChange={onEmailDraftChange}
             freeDemoUsed={session.freeDemoUsed}
             generation={poll ?? null}
             onSubmit={submitDemo}
@@ -539,7 +563,7 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
             data={data}
             email={session.email}
             emailDraft={emailDraft}
-            onEmailChange={setEmailDraft}
+            onEmailChange={onEmailDraftChange}
             updTip={(v) => upd('tipAmount', v)}
             updPremium={(v) => upd('premium', v)}
             onPay={startDirectCheckout}
@@ -843,7 +867,7 @@ function StyleStep({ data, upd, playing, onPlay, styles }: any & { styles: Style
               </div>
               <button
                 className={`play-it ${isP ? 'playing' : ''}`}
-                onClick={(e) => { e.stopPropagation(); onPlay(`style-${s.id}`); }}
+                onClick={(e) => { e.stopPropagation(); upd('style', s.id); onPlay(`style-${s.id}`); }}
                 {...(idx === 0 ? { 'data-hint': 'true', 'data-hint-label': tg('styleHint') } : {})}
               >
                 {isP ? <Ic.Pause s={11} /> : <Ic.Play s={11} />}
@@ -1059,7 +1083,7 @@ function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Arr
               </div>
               <button
                 className={`play-it ${isP ? 'playing' : ''}`}
-                onClick={(e) => { e.stopPropagation(); onPlay(`voice-${v.id}`); }}
+                onClick={(e) => { e.stopPropagation(); upd('voice', v.id); onPlay(`voice-${v.id}`); }}
                 {...(idx === 0 ? { 'data-hint': 'true', 'data-hint-label': tg('step3.voiceHint') } : {})}
               >
                 {isP ? <Ic.Pause s={11} /> : <Ic.Play s={11} />}
@@ -1238,13 +1262,12 @@ function DemoStep({
           <input
             type="email"
             placeholder={tg('step5Demo.emailPlaceholder')}
-            value={email ?? emailDraft}
+            value={emailDraft}
             onChange={(e) => onEmailChange(e.target.value)}
-            readOnly={!!email}
             required
           />
-          <div style={{ fontSize: 11, color: email ? 'var(--gold-2)' : 'rgba(255,245,220,0.5)', marginTop: 4 }}>
-            {email ? `${tg('step5Demo.emailSentTo')} ${email}` : tg('step5Demo.emailHint')}
+          <div style={{ fontSize: 11, color: emailDraft ? 'var(--gold-2)' : 'rgba(255,245,220,0.5)', marginTop: 4 }}>
+            {emailDraft ? `${tg('step5Demo.emailSentTo')} ${emailDraft}` : tg('step5Demo.emailHint')}
           </div>
         </div>
 
@@ -1320,14 +1343,13 @@ function PayFirstStep({
         <input
           type="email"
           placeholder={tg('step5Demo.emailPlaceholder')}
-          value={email ?? emailDraft}
+          value={emailDraft}
           onChange={(e) => onEmailChange(e.target.value)}
-          readOnly={!!email}
           required
         />
-        {email && (
+        {emailDraft && (
           <div style={{ fontSize: 11, color: 'var(--gold-2)', marginTop: 4 }}>
-            {tg('step5PayFirst.emailSentTo')} <b>{email}</b>
+            {tg('step5PayFirst.emailSentTo')} <b>{emailDraft}</b>
           </div>
         )}
       </div>
