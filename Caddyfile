@@ -31,8 +31,24 @@
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
         X-Content-Type-Options "nosniff"
-        X-Frame-Options "SAMEORIGIN"
+        # X-Frame-Options eliminat (deprecated). frame-ancestors permite
+        # player-ul OpenReplay (https://openreplay.manelecadou.ro) să randeze
+        # site-ul în iframe pentru replay vizual fidel. Vezi CLAUDE.md §15.
+        Content-Security-Policy "frame-ancestors 'self' https://openreplay.manelecadou.ro"
         Referrer-Policy "strict-origin-when-cross-origin"
+    }
+}
+
+
+(static_assets_cors) {
+    @static_assets path /_next/static/* /uploads/* /favicon* /icon* /apple-touch-icon* /site.webmanifest
+    header @static_assets {
+        # CORS permisiv pentru assets publice — player-ul OpenReplay (pe
+        # openreplay.manelecadou.ro) refetch CSS/JS/imagini ca să randeze
+        # pagina fidel. Toate astea sunt assets publice oricum.
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+        Cross-Origin-Resource-Policy "cross-origin"
     }
 }
 
@@ -41,6 +57,7 @@
 manelecadou.ro, www.manelecadou.ro {
     import security_headers
     import api_routes
+    import static_assets_cors
 
     handle {
         reverse_proxy web:1500 {
@@ -80,6 +97,7 @@ admin.manelecadou.ro {
 
     import security_headers
     import api_routes
+    import static_assets_cors
 
     handle {
         reverse_proxy web:1500 {
