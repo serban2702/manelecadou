@@ -555,6 +555,12 @@ Dashboard OpenReplay: <https://openreplay.manelecadou.ro> — credentials owner:
     1. `curl -sI -H "Origin: https://openreplay.manelecadou.ro" https://manelecadou.ro/_next/static/css/<HASH>.css` returnează `access-control-allow-origin: *`.
     2. `docker logs assets --tail=30` pe Hetzner — nicio eroare `AccessDenied` la fetch.
     3. `docker run --rm --network=docker-compose_openreplay-net --entrypoint /bin/sh minio/mc -c 'mc alias set m http://minio:9000 KEY SECRET && mc ls -r m/sessions-assets/'` — bucket-ul are CSS-uri și fonturi capturate.
+12ter. **Live sessions + Co-Browse** — plugin `@openreplay/tracker-assist@11.0.15` (pin major to match server v17). Activat în `OpenReplay.tsx` cu `tracker.use(trackerAssist({...}))` ÎNAINTE de `tracker.start()`. Activează:
+   - Lista **/assist** (Co-Browse) — sesiuni active în timp real cu IP-uri și locații.
+   - Live observation (WebSocket) — click ▶ pe orice sesiune live → vezi ce face userul ACUM.
+   - Remote control (WebRTC) — owner cere control, user vede dialog brand-uit ("Echipa Manele Cadou cere să-ți vadă ecranul...") cu Accept/Refuz în culorile site-ului (gold #d4af37 pe negru #0a0606).
+   - Containerul `assist` din OpenReplay stack pe Hetzner gestionează signaling-ul; clienții stabilesc P2P direct.
+
 12bis. **IP attribution pentru anonymous users** — by default OpenReplay arată „Anonymous User" peste tot pentru visitatori ne-logați, imposibil de distins. Setup actual:
    - `GET /api/analytics/whoami` returnează IP-ul real (din `X-Forwarded-For` setat de Caddy).
    - `components/OpenReplay.tsx` la `tracker.start()` apelează whoami și face `tracker.setUserID('ip:<IP>')` + `tracker.setMetadata('ip', <IP>)`.
