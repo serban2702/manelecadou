@@ -144,10 +144,34 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   const baseUrl = site.id === 'fallback' ? APP_URL : siteUrlOf(site);
 
+  // SSR injection a IP-ului real al clientului pentru OpenReplay tracker.
+  // Vezi components/OpenReplay.tsx — fără asta, in-app browsers (TikTok,
+  // Snapchat) care preload-ează pagina + user-i care închid rapid pierd
+  // attribute IP (95% null rate observat în DB Hetzner). Cu IP-ul în HTML,
+  // tracker.setUserID rulează ÎNAINTE de tracker.start() fără await fetch.
+  const clientIp = await (async () => {
+    try {
+      const h = await headers();
+      const xff = h.get('x-forwarded-for');
+      const real = h.get('x-real-ip');
+      const raw = (xff?.split(',')[0]?.trim()) || real?.trim() || '';
+      // Sanitize — păstrăm doar caractere valide pentru IP v4/v6
+      return raw.replace(/[^a-fA-F0-9.:]/g, '').slice(0, 45);
+    } catch {
+      return '';
+    }
+  })();
+  const clientIpScript = clientIp
+    ? `window.__CLIENT_IP__=${JSON.stringify(clientIp)};`
+    : '';
+
   return (
     <html lang={htmlLang} className={`${cinzel.variable} ${manrope.variable}`}>
       <head>
         <style dangerouslySetInnerHTML={{ __html: brandVars }} />
+        {clientIpScript && (
+          <script dangerouslySetInnerHTML={{ __html: clientIpScript }} />
+        )}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(buildOrgJsonLd(site, baseUrl)) }}

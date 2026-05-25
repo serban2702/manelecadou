@@ -53,6 +53,7 @@ const NAV: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, scope: 'both' },
   { href: '/analytics', label: 'Analytics', icon: BarChart3, scope: 'both' },
   { href: '/chat', label: 'Chat', icon: MessageSquare, scope: 'both' },
+  { href: '/ai-memory', label: 'AI Memory', icon: BookOpen, scope: 'both' },
   { href: '/inbox', label: 'Inbox', icon: Inbox, scope: 'both' },
   { href: '/inbox/knowledge', label: 'Knowledge', icon: BookOpen, scope: 'per-site' },
   { href: '/seo-pages', label: 'SEO articles', icon: FileText, scope: 'per-site' },

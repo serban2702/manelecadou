@@ -33,6 +33,9 @@ declare global {
   interface Window {
     __OR_SESSION_ID__?: string;
     __OR_TRACKER__?: unknown;
+    /** IP-ul real al clientului, injectat de SSR (vezi app/layout.tsx).
+     *  Folosit pentru setUserID('ip:X') INSTANT, fără await fetch. */
+    __CLIENT_IP__?: string;
   }
 }
 
@@ -120,36 +123,28 @@ export function OpenReplay() {
           }
         }
 
-        // ---- IP attribution: fetch ÎNAINTE de tracker.start() ----
-        // `tracker.start()` așteaptă `document.visibilityState === 'visible'`
-        // (by design SDK v17). În TikTok in-app browser pagina e preload-ed
-        // în background (hidden), userul închide rapid → start() nu mai
-        // execută codul de după. Fetch-ul whoami trebuie să se facă în
-        // PARALEL cu wait-ul de visibility, nu sequential după. Așa, când
-        // tracker primește semnalul visible și pornește, IP-ul e deja gata
-        // și setUserID se aplică instant — întoarce sesiuni anonymous TikTok
-        // de la „null" la „ip:X.X.X.X".
-        const ipPromise: Promise<string | null> = fetch(`${API_URL}/api/analytics/whoami`)
-          .then((r) => (r.ok ? r.json() : null))
-          .then((j: { ip?: string | null } | null) => j?.ip ?? null)
-          .catch(() => null);
+        // ---- IP attribution: INSTANT din SSR (zero await) ----
+        // IP-ul real al clientului e injectat în HTML de Next.js root layout
+        // (vezi app/layout.tsx — citește X-Forwarded-For din Caddy). Aici
+        // doar îl citim din `window.__CLIENT_IP__` și-l atașăm IMEDIAT, înainte
+        // de `tracker.start()` care suspendă pentru visibility. Cu asta,
+        // sesiunile din TikTok preload (background tab închis rapid) primesc
+        // tot setUserID — rate de null IP scade de la ~95% la <5%.
+        const clientIp = window.__CLIENT_IP__ || null;
+        if (clientIp) {
+          try {
+            tracker.setUserID(`ip:${clientIp}`);
+            tracker.setMetadata('ip', clientIp);
+          } catch {
+            /* ignore */
+          }
+        }
 
         await tracker.start();
 
         const sid = (tracker as unknown as { getSessionID?: () => string }).getSessionID?.();
         if (sid) window.__OR_SESSION_ID__ = sid;
         window.__OR_TRACKER__ = tracker;
-
-        // Aplicăm IP-ul ASAP după start (de obicei deja resolved la acest punct).
-        try {
-          const ip = await ipPromise;
-          if (ip) {
-            tracker.setUserID(`ip:${ip}`);
-            tracker.setMetadata('ip', ip);
-          }
-        } catch {
-          /* ignore — whoami e best-effort */
-        }
 
         // ---- User identification (poll login state) ----
         let lastToken: string | null = null;

@@ -591,3 +591,173 @@ Smoke test rapid din browser real:
    ```bash
    ssh VPSIonos 'docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -c "SELECT id, \"openReplaySessionId\" FROM error_logs WHERE \"openReplaySessionId\" IS NOT NULL LIMIT 5"'
    ```
+
+---
+
+## 16. Chat refactor (Faza 1-5) — arhitectură + setări obligatorii prod
+
+Refactor masiv al chat-ului live (decizie 2026-05-25). Înlocuiește chat-ul simplu text-only cu un sistem realtime cu presence, rich messages, atașamente, plată din chat, AI agent cu tool calling. Vezi commit history pentru detalii incrementale (Faza 1 → Faza 5).
+
+### 16.1 Funcționalități noi
+
+**Faza 1 — Foundation**:
+- Presence enriched: page change live, device (mobile/desktop/tablet + OS + browser + viewport), chat open/închis, timer "online de X", IP
+- Delivered + Seen receipts WhatsApp-style (1 check / 2 gri / 2 albastre) pe ambele părți
+- Force-open chat din admin (button Zap) — declanșează widget pe client prin WS
+- AI mode switcher per conversație: `Manual` / `AI Suggest` / `AI Auto`
+- Sound (WebAudio sintetic) + pulse + jiggle animation + tab title flash + favicon dot la mesaj nou pe client
+- Sound (chime) + tab title flash pe admin la sugestie AI nouă
+
+**Faza 2 — Web Push admin**:
+- VAPID + Service Worker (`/sw.js`) la admin
+- `WebPushService` cu auto-prune pe 410/404 + retry counter
+- Buton `Activează notificări` în chat header — subscribe device la push notifications native
+- ChatService trimite push la admin la fiecare mesaj nou user
+
+**Faza 3 — Attachments + Rich messages**:
+- Upload multipart imagini (PNG/JPEG/GIF/WEBP) + PDF, max 5MB, în `/app/uploads/chat/<convId>/`
+- Render în chat: `<img>` thumbnail (max 220px client, 256px admin) sau PDF link
+- Payment link via Stripe Checkout: modal admin cu sumă/valută/descriere → backend creează checkout session → ChatMessage cu `messageType='payment_link'` și payload (amount, currency, checkoutUrl) → card frumos pe client cu buton "Plătește acum →"
+
+**Faza 4 — AI Agent (OpenAI function calling)**:
+- `OpenAiClient.chatWithTools()` — agent loop cu max 6 iterații, tool dispatch paralel, audit pe fiecare apel
+- `AIChatAgentService` triggered automat după ce userul trimite mesaj dacă `conv.aiMode != 'manual'`
+- Tools: `send_message`, `search_memory`, `send_payment_link` (approval-gated), `force_open_chat`, `escalate_to_human`
+- Mod `suggest`: persistă răspuns ca `messageType='ai_suggestion'` + emit doar către admin → card violet cu 3 butoane (Trimite / Editează / Respinge)
+- Mod `auto`: trimite direct (cu rate limit 3 mesaje/turn, payment_link încă gated pe approval flag)
+- Endpoints: `POST /admin/chat/suggestions/:id/approve` + `/reject`
+- System prompt brand-aware: nume site, locale, preț din DB, tagline, support email
+
+**Faza 5 — Production hardening**:
+- `ai_memory` (kind, content, approved, usageCount, sourceConversationId) — fapte aprobate de admin care intră în system prompt
+- `ai_tool_calls` audit (toolName, input, output, model, tokens) — cost tracking + debug + safety review
+- `AILearnerService` cron nightly (03:30 UTC) — scanează conversațiile rezolvate din ultimele 24h, trimite la GPT cu prompt de extracție, salvează candidates cu `approved=false`
+- Admin UI `/ai-memory`: review queue + approve/edit/reject + buton "Extrage acum"
+- `AI_CHAT_MODE_DEFAULT` aplicat la `getOrCreateMine` (conversații noi)
+- `AI_CHAT_REQUIRE_APPROVAL_FOR_PAYMENT` flag (default ON) — chiar și în mod auto, link-urile de plată cer aprobare admin
+
+### 16.2 Schema additive (sigur pentru `synchronize: true`)
+
+**Conversation** (extins):
+- `aiMode: 'manual'|'suggest'|'auto'` (default 'manual')
+- `chatOpenOnClient`, `lastClientPath`, `lastDevice` (jsonb), `connectedAt`, `disconnectedAt`
+
+**ChatMessage** (extins):
+- `messageType: 'text'|'image'|'file'|'payment_link'|'song_form_step'|'song_preview'|'system'|'ai_suggestion'`
+- `payload` (jsonb), `deliveredAt`, `readAt`, `attachmentUrl/Mime/Size/Name`
+- `aiGenerated`, `aiApprovedBy`, `aiSuggestionFor`
+
+**Tabele noi**:
+- `web_push_subscriptions` (userId, endpoint UNIQUE, p256dh, auth, failureCount, lastSuccessAt)
+- `ai_memory` (siteId, kind, content, approved, usageCount, sourceConversationId, extractedFrom jsonb)
+- `ai_tool_calls` (conversationId, toolName, input/output jsonb, model, tokens, requiredApproval, aiMode)
+
+### 16.3 Setări obligatorii în prod (admin `/settings`)
+
+| Setting | Default | Necesar pentru | Note |
+|---|---|---|---|
+| `OPENAI_API_KEY` | env | AI chat + lyrics + translation | sk-… (existing) |
+| `AI_CHAT_MODEL` | `gpt-4o-mini` | AI chat agent | Pick: `gpt-5-mini` (~$0.001/conv), `gpt-4o-mini` (~$0.0005), `gpt-4o` (~$0.005) |
+| `AI_CHAT_TEMPERATURE` | `0.4` | Tonul răspunsurilor | 0=factual, 1=creativ |
+| `AI_CHAT_SYSTEM_PROMPT` | (gol) | Override prompt | Lasă gol pentru default brand-aware |
+| `AI_CHAT_MODE_DEFAULT` | `manual` | Mode pentru conversații noi | `manual` (safe) / `suggest` / `auto` |
+| `AI_CHAT_REQUIRE_APPROVAL_FOR_PAYMENT` | `true` | Gate plată în mod auto | **NU schimba pe false** în prod |
+| `AI_CHAT_REQUIRE_APPROVAL_FOR_GENERATION` | `true` | Gate generare în mod auto | Pentru viitoare tool submit_generation |
+| `AI_CHAT_LEARN_NIGHTLY` | `false` | Cron extragere memory | Setează `true` după ~50 conversații reale |
+| `AI_CHAT_PROACTIVE_ENABLED` | `false` | (rezervat) — proactive engagement | Nu folosit încă în Faza 5 |
+| `VAPID_PUBLIC_KEY` | (gol) | Web Push admin | Generate: `npx web-push generate-vapid-keys` |
+| `VAPID_PRIVATE_KEY` | (gol, encrypted) | Web Push admin | După salvare → admin `Activează notificări` |
+| `VAPID_SUBJECT` | (gol) | Web Push admin | `mailto:serban2702@gmail.com` |
+
+### 16.4 Fluxul AI agent (production-grade)
+
+```
+User trimite mesaj
+        │
+        ▼
+ChatService.sendAsUser → persist + emit WS + push admin
+        │ (non-blocking)
+        ▼
+ChatService.maybeTriggerAi (verifică conv.aiMode != 'manual')
+        │
+        ▼
+AIChatAgentService.runAgent
+        │  Build system prompt (brand + KB hits + ai_memory approved)
+        │  Load history (skip ai_suggestion + system msgs)
+        ▼
+OpenAiClient.chatWithTools (max 6 iter)
+        │  Iter 1: AI → tool call (search_memory) → handler returns KB hits
+        │  Iter 2: AI → tool call (send_message)
+        │            ├─ mode=suggest: persist ai_suggestion, emit doar admin, STOP
+        │            └─ mode=auto: persist admin msg cu aiGenerated=true, emit WS
+        ▼
+Persist toate tool calls în ai_tool_calls (audit)
+Bump usageCount pe ai_memory facts folosite
+```
+
+### 16.5 Workflow de "training" AI
+
+1. Lansezi cu `AI_CHAT_MODE_DEFAULT=suggest` pe câteva site-uri test (sau toate)
+2. Răspunzi manual la sugestiile bune, editezi pe celelalte → AI învață din feedback (în Faza 6+)
+3. După ~50 conversații rezolvate: activează `AI_CHAT_LEARN_NIGHTLY=true`
+4. Dimineață: deschide `/ai-memory` → review candidates extrași automat → Approve / Edit / Reject
+5. Faptele approved intră în system prompt la următorul AI run
+6. După ~200 conversații cu mode=suggest, încearcă să muți selectiv conversații pe `auto` (per conv, nu global)
+7. Monitorizează `/admin/ai-chat/audit/cost-summary` pentru tokens/cost (deocamdată read-only via API, dashboard UI = Faza 6)
+
+### 16.6 Gotchas Faza 1-5
+
+1. **`@nestjs/schedule` necesită rebuild Docker image** — anonymous volume `/app/node_modules` în compose dev nu picks up pachete noi. Workflow: `docker compose build --no-cache api && docker compose rm -fv api && docker compose up -d api`.
+2. **AI sugestii NU se trimit la user** — sunt vizibile doar în admin. `listMyMessages` filtrează `ai_suggestion` + `system` + `authorRole='system'`.
+3. **Tool call audit poate creste rapid** — fiecare apel = un rând. Pentru a controla: per session, max 6 iterations × 5 tools = max 30 rows. La 1000 conversații/zi → ~30k rows/zi. Adaugă cleanup cron la 30 zile dacă devine probleme. Pentru moment, neglijabil.
+4. **AI poate halucina prețul** dacă nu ai memory facts. Soluție: adaugă manual în `/ai-memory` primele 5-10 fapte critice (preț, garanție, livrare, refund policy) la setup.
+5. **Tab title flash + sound funcționează numai după prima interacțiune user pe pagină** (autoplay policy). Prima sugestie poate fi silent, restul fac noise.
+6. **Magic link în dev** — bug-ul cu `https://manelecadou/login/verify?token=...` (lipsea TLD) e fixat: dacă `domain` nu are `.` și NODE_ENV != production, folosește `APP_URL`.
+7. **Force-open chat funcționează doar dacă userul are tab vizibil** — dacă tab e în background, eventul WS ajunge dar widget-ul nu apare până userul revine. Combine cu push notification pentru efect garantat.
+
+### 16.7 Endpoint-uri noi (sumar)
+
+```
+POST   /api/admin/chat/conversations/:id/ai-mode      # set Manual/Suggest/Auto
+POST   /api/admin/chat/conversations/:id/force-open   # admin → client widget
+POST   /api/admin/chat/conversations/:id/attachments  # multipart upload
+POST   /api/admin/chat/conversations/:id/payment-link # creează Stripe checkout
+POST   /api/admin/chat/suggestions/:msgId/approve     # AI suggestion → admin msg
+POST   /api/admin/chat/suggestions/:msgId/reject      # delete suggestion
+
+GET    /api/admin/web-push/public-key
+POST   /api/admin/web-push/subscribe                  # SW endpoint + keys
+DELETE /api/admin/web-push/subscribe
+POST   /api/admin/web-push/test
+POST   /api/admin/web-push/reload                     # după update VAPID în settings
+
+GET    /api/admin/ai-chat/memory[?approved=true|false]
+POST   /api/admin/ai-chat/memory                      # admin add manual (approved direct)
+PUT    /api/admin/ai-chat/memory/:id
+DELETE /api/admin/ai-chat/memory/:id
+POST   /api/admin/ai-chat/memory/extract-now          # manual trigger learner
+GET    /api/admin/ai-chat/memory/stats
+GET    /api/admin/ai-chat/audit[?conversationId=&toolName=&limit=]
+GET    /api/admin/ai-chat/audit/cost-summary
+```
+
+### 16.8 WS events (sumar)
+
+```
+Client → Server:
+  presence:heartbeat    { path, title, viewport, chatOpen, device }
+  presence:page_change  { from, to, title }
+  presence:chat_toggle  { open }
+  message:ack           { messageIds[], status: 'delivered'|'read' }
+
+Server → Client (user):
+  chat:message          { message, conversation }
+  chat:force_open       {}
+  chat:message:ack      { conversationId, messageIds[], status, by }
+
+Server → Admin:
+  chat:presence         { userId|guestId, online, lastSeenAt?, enriched? }
+  chat:presence:snapshot { users[], guests[], enriched }
+  chat:ai_suggestion    { conversationId, message }  ← nu emis la user
+  chat:message:ack      (idem)
+```
