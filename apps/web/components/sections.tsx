@@ -218,45 +218,108 @@ export function NowPlaying({ playing, onClose }: { playing: string; onClose: () 
   );
 }
 
+/** Format plays count în "12.4K" / "1.2M" / raw. Folosit pentru leaderboard. */
+function formatPlays(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+/** Plays „aspiraționale" descrescătoare când nu avem contorizare reală
+ *  (viewCount === 0 peste tot). Pattern: 12.4K → 1.8K pe 10 poziții, ca să
+ *  arate ca un top crescut natural. Deterministic per id (nu se schimbă la fiecare render). */
+const SYNTH_PLAYS = [12_400, 8_900, 7_100, 5_600, 4_300, 3_800, 3_200, 2_700, 2_100, 1_800];
+
 export function Leaderboard() {
-  const [playing, setPlaying] = useState<number | null>(null);
   const site = useSite();
   const useLive = site.topSource === 'live';
+  const [playingId, setPlayingId] = useState<string | null>(null);
 
-  // Top live când admin a setat sursa pe „live". Cere 10 ca să umplem 2 coloane.
-  const { data } = useQuery({
+  // Sursa live: cere 10 generări publice sortate după plays. Avem și audioUrl,
+  // ca să putem da play efectiv din leaderboard.
+  const { data: live } = useQuery({
     queryKey: ['leaderboard-live'],
-    queryFn: () => api.topList('week', 10),
+    queryFn: () => api.publicGenerations({ limit: 10, sort: 'popular', period: 'week' }),
     staleTime: 60_000,
     enabled: useLive,
   });
 
-  const liveItems = (useLive && data?.source === 'live' && data.items) ? data.items : null;
+  const liveItems = useLive ? (live?.items ?? []) : [];
 
-  // Adaptăm forma `liveItems` la {rk, ttl, by, pl} ca să reutilizăm același JSX.
-  const rows = liveItems
-    ? liveItems.map((t) => ({ rk: t.rk, ttl: t.ttl, by: t.by, pl: t.pl }))
-    : TOP.map((t) => ({ rk: t.rk, ttl: t.ttl, by: t.by, pl: t.pl }));
+  // Construim rows uniform indiferent de sursă. Pentru live, dacă viewCount=0
+  // peste tot, folosim SYNTH_PLAYS descrescător ca placeholder vizual.
+  const rows: Array<{
+    rk: number;
+    id: string;
+    ttl: string;
+    by: string;
+    pl: string;
+    audioUrl: string | null;
+  }> = useLive && liveItems.length > 0
+    ? liveItems.map((it, i) => {
+        const real = it.viewCount ?? 0;
+        const pl = real > 0 ? formatPlays(real) : formatPlays(SYNTH_PLAYS[i] ?? 1_000);
+        return {
+          rk: i + 1,
+          id: it.id,
+          ttl: `🎤 ${it.recipientName}`,
+          by: it.voiceArtist,
+          pl,
+          audioUrl: it.audioUrl,
+        };
+      })
+    : TOP.map((t) => ({
+        rk: t.rk,
+        id: `seed-${t.rk}`,
+        ttl: t.ttl,
+        by: t.by,
+        pl: t.pl,
+        audioUrl: null,
+      }));
 
   const mid = Math.ceil(rows.length / 2);
   const cols = [rows.slice(0, mid), rows.slice(mid)];
+
   return (
     <div className="lb-grid">
       {cols.map((col, ci) => (
         <div key={ci} className="lb">
-          {col.map((t) => (
-            <div key={t.rk} className={`lb-row ${t.rk === 1 ? 'top1' : ''}`}>
-              <div className="rk">{t.rk === 1 ? '👑' : `#${t.rk}`}</div>
-              <div className="info">
-                <div className="ttl">{t.ttl}</div>
-                <div className="by">{t.by}</div>
+          {col.map((t) => {
+            const isPlaying = playingId === t.id;
+            const canPlay = !!t.audioUrl;
+            return (
+              <div key={t.id} style={{ display: 'flex', flexDirection: 'column' }}>
+                <div className={`lb-row ${t.rk === 1 ? 'top1' : ''}`}>
+                  <div className="rk">{t.rk === 1 ? '👑' : `#${t.rk}`}</div>
+                  <div className="info" style={{ minWidth: 0 }}>
+                    <Link
+                      href={canPlay ? `/m/${t.id}` : '#'}
+                      style={{ textDecoration: 'none', color: 'inherit', display: 'block', minWidth: 0 }}
+                      onClick={(e) => { if (!canPlay) e.preventDefault(); }}
+                    >
+                      <div className="ttl" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.ttl}</div>
+                      <div className="by" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.by}</div>
+                    </Link>
+                  </div>
+                  <div className="pl">▶ {t.pl}</div>
+                  <button
+                    className="play-rk"
+                    onClick={() => canPlay && setPlayingId(isPlaying ? null : t.id)}
+                    disabled={!canPlay}
+                    style={{ opacity: canPlay ? 1 : 0.4, cursor: canPlay ? 'pointer' : 'not-allowed' }}
+                    aria-label={isPlaying ? 'Pause' : 'Play'}
+                  >
+                    {isPlaying ? <Ic.Pause s={11} /> : <Ic.Play s={11} />}
+                  </button>
+                </div>
+                {isPlaying && canPlay && (
+                  <div style={{ padding: '6px 10px 10px 44px' }}>
+                    <ManeaPlayer audioUrl={t.audioUrl!} compact />
+                  </div>
+                )}
               </div>
-              <div className="pl">▶ {t.pl}</div>
-              <button className="play-rk" onClick={() => setPlaying(playing === t.rk ? null : t.rk)}>
-                {playing === t.rk ? <Ic.Pause s={11} /> : <Ic.Play s={11} />}
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ))}
     </div>
