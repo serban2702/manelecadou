@@ -388,6 +388,20 @@
     "styleHint": "Stil",
     "step2Title": "2. Za koju prigodu?",
     "step2Sub": "Odaberi jednu. Prilagodit ćemo tekst.",
+    "nudge": {
+      "bannerOne": "Još nedostaje: {label}.",
+      "bannerMany": "Prije nego što nastaviš, popuni: {labels}.",
+      "fieldStyle": "stil",
+      "fieldOcc": "prigoda",
+      "fieldName": "ime osobe",
+      "fieldMsg": "poruka",
+      "fieldVoice": "glas izvođača",
+      "hintStyle": "👆 Odaberi stil za nastavak.",
+      "hintOcc": "👆 Odaberi prigodu.",
+      "hintName": "👆 Upiši ime osobe za koju je pjesma.",
+      "hintMsg": "👆 Napiši kratku poruku — ili pritisni „✨ Novi prijedlog\".",
+      "hintVoice": "👆 Odaberi izvođača."
+    },
     "step3": {
       "title": "3. Detalji, glas i (opcionalno) tvoj tekst",
       "sub": "Što konkretnije, to bolje zvuči.",

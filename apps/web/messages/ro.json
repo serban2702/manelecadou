@@ -386,6 +386,20 @@
     "styleHint": "Stil",
     "step2Title": "2. Pentru ce ocazie?",
     "step2Sub": "Alege una. Adaptăm versurile.",
+    "nudge": {
+      "bannerOne": "Mai e nevoie de: {label}.",
+      "bannerMany": "Înainte să continui, completează: {labels}.",
+      "fieldStyle": "stilul",
+      "fieldOcc": "ocazia",
+      "fieldName": "numele persoanei",
+      "fieldMsg": "mesajul",
+      "fieldVoice": "vocea artistului",
+      "hintStyle": "👆 Alege un stil ca să continui.",
+      "hintOcc": "👆 Alege o ocazie.",
+      "hintName": "👆 Scrie numele persoanei pentru care e maneaua.",
+      "hintMsg": "👆 Scrie un mesaj scurt — sau apasă „✨ Sugestie nouă\".",
+      "hintVoice": "👆 Alege un artist."
+    },
     "step3": {
       "title": "3. Detalii, voce și (opțional) versurile tale",
       "sub": "Cu cât mai concret, cu atât mai tare iese.",

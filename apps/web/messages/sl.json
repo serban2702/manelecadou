@@ -388,6 +388,20 @@
     "styleHint": "Slog",
     "step2Title": "2. Za kakšno priložnost?",
     "step2Sub": "Izberi eno. Prilagodimo besedilo.",
+    "nudge": {
+      "bannerOne": "Manjka še: {label}.",
+      "bannerMany": "Preden nadaljuješ, izpolni: {labels}.",
+      "fieldStyle": "slog",
+      "fieldOcc": "priložnost",
+      "fieldName": "ime osebe",
+      "fieldMsg": "sporočilo",
+      "fieldVoice": "glas izvajalca",
+      "hintStyle": "👆 Izberi slog za nadaljevanje.",
+      "hintOcc": "👆 Izberi priložnost.",
+      "hintName": "👆 Vpiši ime osebe, za katero je pesem.",
+      "hintMsg": "👆 Napiši kratko sporočilo — ali pritisni „✨ Nov predlog\".",
+      "hintVoice": "👆 Izberi izvajalca."
+    },
     "step3": {
       "title": "3. Podrobnosti, glas in (po želji) tvoje besedilo",
       "sub": "Bolj kot je konkretno, bolje zveni.",

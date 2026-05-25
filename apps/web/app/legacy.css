@@ -404,6 +404,29 @@ input, textarea, select { font-family: inherit; }
 
 .voice-list { display: flex; flex-direction: column; gap: 8px; }
 @media (min-width: 1200px) { .voice-list { display: grid; grid-template-columns: 1fr 1fr; } }
+
+/* ============ Wizard validation nudge ============ */
+@keyframes nudgeShake {
+  0%   { transform: translateX(0); }
+  20%  { transform: translateX(-4px); }
+  40%  { transform: translateX(4px); }
+  60%  { transform: translateX(-3px); }
+  80%  { transform: translateX(3px); }
+  100% { transform: translateX(0); }
+}
+.nudge-outline {
+  border-radius: 12px;
+  outline: 2px solid rgba(255,120,120,0.55);
+  outline-offset: 4px;
+  animation: nudgeShake 0.4s ease;
+  box-shadow: 0 0 0 6px rgba(220,38,38,0.08);
+}
+.nudge-field input,
+.nudge-field textarea {
+  border-color: rgba(255,120,120,0.7) !important;
+  box-shadow: 0 0 0 3px rgba(220,38,38,0.18) !important;
+  animation: nudgeShake 0.4s ease;
+}
 .voice-pick {
   display: flex; align-items: center; gap: 10px;
   padding: 10px;

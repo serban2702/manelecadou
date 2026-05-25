@@ -388,6 +388,20 @@
     "styleHint": "Stil",
     "step2Title": "2. Hangi vesileyle?",
     "step2Sub": "Birini seç. Sözleri ona göre uyarlarız.",
+    "nudge": {
+      "bannerOne": "Eksik: {label}.",
+      "bannerMany": "Devam etmeden önce şunları doldur: {labels}.",
+      "fieldStyle": "stil",
+      "fieldOcc": "vesile",
+      "fieldName": "kişinin adı",
+      "fieldMsg": "mesaj",
+      "fieldVoice": "sanatçı sesi",
+      "hintStyle": "👆 Devam etmek için bir stil seç.",
+      "hintOcc": "👆 Bir vesile seç.",
+      "hintName": "👆 Şarkının kime olduğunu yaz.",
+      "hintMsg": "👆 Kısa bir mesaj yaz — ya da „✨ Yeni öneri\" tuşuna bas.",
+      "hintVoice": "👆 Bir sanatçı seç."
+    },
     "step3": {
       "title": "3. Detaylar, ses ve (opsiyonel) senin sözlerin",
       "sub": "Ne kadar net olursan, o kadar iyi çıkar.",

@@ -283,6 +283,12 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   const [promoApplied, setPromoApplied] = useState<{ code: string; discountCents: number } | null>(null);
   const [promoError, setPromoError] = useState<string | null>(null);
 
+  // „Nudge" pe încercare de continuare cu câmpuri incomplete. Setat când userul
+  // dă „Continuă →" pe un step invalid; afișează banner + outline roșu pe
+  // câmpurile lipsă + scroll la primul lipsă. Se șterge la schimbare de step
+  // sau când câmpurile lipsă devin completate.
+  const [nudgeStep, setNudgeStep] = useState<number | null>(null);
+
   const { data: poll } = useGenerationPolling(generationId);
 
   const upd = <K extends keyof Data>(k: K, v: Data[K]) =>
@@ -351,7 +357,53 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   };
 
   const lastStep = totalSteps - 1;
-  const next = () => setStep((s) => Math.min(lastStep, s + 1));
+
+  // Câmpurile lipsă pentru un step dat (folosite în nudge + canNext).
+  const missingFieldsFor = (i: number): string[] => {
+    if (i === 0) return data.style ? [] : ['style'];
+    if (i === 1) return data.occ ? [] : ['occ'];
+    if (i === 2) {
+      const m: string[] = [];
+      if (!data.name?.trim()) m.push('name');
+      if (!data.msg?.trim()) m.push('msg');
+      if (!data.voice) m.push('voice');
+      return m;
+    }
+    return [];
+  };
+
+  const currentMissing = missingFieldsFor(step);
+
+  // Auto-clear nudge când userul a completat câmpurile lipsă.
+  useEffect(() => {
+    if (nudgeStep !== null && missingFieldsFor(nudgeStep).length === 0) {
+      setNudgeStep(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.style, data.occ, data.name, data.msg, data.voice, nudgeStep]);
+
+  // Reset nudge la schimbare de step (nu vrem să-l ducem cu noi).
+  useEffect(() => { setNudgeStep(null); }, [step]);
+
+  const next = () => {
+    const missing = missingFieldsFor(step);
+    if (missing.length > 0) {
+      setNudgeStep(step);
+      // scroll + focus pe primul câmp lipsă (cu un mic delay ca să apuce React să rendere-ze clasa nudge)
+      setTimeout(() => {
+        const el = document.querySelector<HTMLElement>(`[data-nudge-target="${missing[0]}"]`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          const input = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'
+            ? (el as HTMLInputElement | HTMLTextAreaElement)
+            : el.querySelector<HTMLInputElement | HTMLTextAreaElement>('input, textarea');
+          input?.focus({ preventScroll: true });
+        }
+      }, 50);
+      return;
+    }
+    setStep((s) => Math.min(lastStep, s + 1));
+  };
   const prev = () => setStep((s) => Math.max(0, s - 1));
 
   const reset = () => {
@@ -364,14 +416,9 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     setAutoFilled(false);
   };
 
-  const canNext =
-    (step === 0 && !!data.style) ||
-    (step === 1 && !!data.occ) ||
-    (step === 2 && !!data.name && !!data.msg && !!data.voice) ||
-    step === 3 ||
-    (demoEnabled && step === 4 && !!poll?.paidUnlocked) ||
-    (demoEnabled && step === 5) ||
-    (!demoEnabled && step === 4);
+  // (canNext eliminat — validarea pe „Continuă →" se face acum în handler-ul
+  //  `next()` prin missingFieldsFor() + nudge, ca să dăm feedback util
+  //  utilizatorului în loc să dezactivăm tăcut butonul.)
 
   async function submitDemo() {
     const candidate = emailDraft.trim();
@@ -535,9 +582,9 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
       />
       <div className="gen-body">
         {step === 0 && (
-          <StyleStep data={data} upd={upd} playing={playing} onPlay={onPlay} styles={effectiveStyles} />
+          <StyleStep data={data} upd={upd} playing={playing} onPlay={onPlay} styles={effectiveStyles} nudgeActive={nudgeStep === 0} />
         )}
-        {step === 1 && <OccStep data={data} upd={upd} occasions={effectiveOccasions} />}
+        {step === 1 && <OccStep data={data} upd={upd} occasions={effectiveOccasions} nudgeActive={nudgeStep === 1} />}
         {step === 2 && (
           <DetailsStep
             data={data}
@@ -545,6 +592,7 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
             playing={playing}
             onPlay={onPlay}
             voices={effectiveVoices}
+            nudgeFields={nudgeStep === 2 ? currentMissing : []}
           />
         )}
         {step === 3 && <DedicStep data={data} upd={upd} />}
@@ -600,6 +648,9 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
           />
         )}
       </div>
+      {nudgeStep === step && currentMissing.length > 0 && (
+        <NudgeBanner missing={currentMissing} />
+      )}
       <div className="gen-foot">
         {step > 0 && step < lastStep && !generationId && (
           <button className="btn btn-ghost btn-sm" onClick={prev}>← {tCommon('back')}</button>
@@ -608,16 +659,53 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
         {step < 4 && (
           <button
             className="btn btn-gold btn-sm"
-            disabled={!canNext}
             onClick={next}
-            style={{ opacity: canNext ? 1 : 0.4 }}
-            data-hint={canNext ? 'true' : undefined}
+            data-hint="true"
             data-hint-label={tCommon('next')}
           >
             {tCommon('next')} →
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Banner roșu afișat sub conținutul step-ului când userul a încercat să
+ *  treacă mai departe fără să completeze tot. Listează în text uman câmpurile
+ *  lipsă. Câmpurile lipsă au în paralel highlight individual. */
+function NudgeBanner({ missing }: { missing: string[] }) {
+  const tg = useTranslations('generator');
+  const labelFor = (f: string) => {
+    switch (f) {
+      case 'style': return tg('nudge.fieldStyle');
+      case 'occ': return tg('nudge.fieldOcc');
+      case 'name': return tg('nudge.fieldName');
+      case 'msg': return tg('nudge.fieldMsg');
+      case 'voice': return tg('nudge.fieldVoice');
+      default: return f;
+    }
+  };
+  const labels = missing.map(labelFor);
+  const text = labels.length === 1
+    ? tg('nudge.bannerOne', { label: labels[0] })
+    : tg('nudge.bannerMany', { labels: labels.join(', ') });
+  return (
+    <div
+      role="alert"
+      style={{
+        margin: '0 14px 12px',
+        padding: '10px 12px',
+        borderRadius: 10,
+        background: 'linear-gradient(135deg, rgba(220,38,38,0.18), rgba(220,38,38,0.08))',
+        border: '1px solid rgba(255,120,120,0.45)',
+        color: '#ffd4d4',
+        fontSize: 13,
+        fontWeight: 600,
+        animation: 'nudgeShake 0.4s ease',
+      }}
+    >
+      ⚠️ {text}
     </div>
   );
 }
@@ -843,14 +931,23 @@ function humanizeGenError(err: string | null | undefined, t: TFn): string {
 }
 
 // ============ STEP 1 ============
-function StyleStep({ data, upd, playing, onPlay, styles }: any & { styles: StyleOption[] }) {
+function StyleStep({ data, upd, playing, onPlay, styles, nudgeActive }: any & { styles: StyleOption[]; nudgeActive?: boolean }) {
   const tg = useTranslations('generator');
   const tStyles = useTranslations('styles');
+  const isNudged = !!nudgeActive && !data.style;
   return (
     <>
       <h3>{tg('step1Title')}</h3>
       <p className="ld">{tg('step1Sub')}</p>
-      <div className="style-list">
+      {isNudged && (
+        <div style={{ marginTop: 4, marginBottom: 10, fontSize: 13, color: '#ffb3b3', fontWeight: 700 }}>
+          {tg('nudge.hintStyle')}
+        </div>
+      )}
+      <div
+        className={`style-list ${isNudged ? 'nudge-outline' : ''}`}
+        data-nudge-target={isNudged ? 'style' : undefined}
+      >
         {(styles as StyleOption[]).map((s, idx) => {
           const isP = playing === `style-${s.id}`;
           let nm = s.nm;
@@ -885,14 +982,23 @@ function StyleStep({ data, upd, playing, onPlay, styles }: any & { styles: Style
 }
 
 // ============ STEP 2 ============
-function OccStep({ data, upd, occasions }: any & { occasions: Array<{ id: string; em: string; nm: string }> }) {
+function OccStep({ data, upd, occasions, nudgeActive }: any & { occasions: Array<{ id: string; em: string; nm: string }>; nudgeActive?: boolean }) {
   const tOcc = useTranslations('occasions');
   const tg = useTranslations('generator');
+  const isNudged = !!nudgeActive && !data.occ;
   return (
     <>
       <h3>{tg('step2Title')}</h3>
       <p className="ld">{tg('step2Sub')}</p>
-      <div className="occ-list">
+      {isNudged && (
+        <div style={{ marginTop: 4, marginBottom: 10, fontSize: 13, color: '#ffb3b3', fontWeight: 700 }}>
+          {tg('nudge.hintOcc')}
+        </div>
+      )}
+      <div
+        className={`occ-list ${isNudged ? 'nudge-outline' : ''}`}
+        data-nudge-target={isNudged ? 'occ' : undefined}
+      >
         {occasions.map((o: { id: string; em: string; nm: string; ic?: any }) => {
           let nm = o.nm;
           if ((tOcc as any).has?.(o.id)) nm = tOcc(o.id as any);
@@ -949,8 +1055,11 @@ function siteVoicesToOptions(
 }
 
 // ============ STEP 3 — Detalii + Voce + Versuri ============
-function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Array<{ id: string; nm: string; tg: string; av: string }> }) {
+function DetailsStep({ data, upd, playing, onPlay, voices, nudgeFields = [] }: any & { voices: Array<{ id: string; nm: string; tg: string; av: string }>; nudgeFields?: string[] }) {
   const tg = useTranslations('generator');
+  const nudgeName = nudgeFields.includes('name');
+  const nudgeMsg = nudgeFields.includes('msg');
+  const nudgeVoice = nudgeFields.includes('voice');
   const site = useSite();
   const [showLyricsEditor, setShowLyricsEditor] = useState(!!data.customLyrics);
   const [suggesting, setSuggesting] = useState(false);
@@ -997,13 +1106,21 @@ function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Arr
       <h3>{tg('step3.title')}</h3>
       <p className="ld">{tg('step3.sub')}</p>
 
-      <div className="field">
+      <div className={`field ${nudgeName ? 'nudge-field' : ''}`}>
         <label>{tg('step3.nameLabel')}</label>
-        <input type="text" placeholder={tg('step3.namePlaceholder')}
-          value={data.name} onChange={(e) => upd('name', e.target.value)} maxLength={40} />
+        <input
+          type="text" placeholder={tg('step3.namePlaceholder')}
+          value={data.name} onChange={(e) => upd('name', e.target.value)} maxLength={40}
+          data-nudge-target={nudgeName ? 'name' : undefined}
+        />
+        {nudgeName && (
+          <div style={{ marginTop: 6, fontSize: 12, color: '#ffb3b3', fontWeight: 700 }}>
+            {tg('nudge.hintName')}
+          </div>
+        )}
       </div>
 
-      <div className="field">
+      <div className={`field ${nudgeMsg ? 'nudge-field' : ''}`}>
         <label>
           {tg('step3.messageLabel')}
           <button
@@ -1023,8 +1140,15 @@ function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Arr
         </label>
         <textarea
           placeholder={tg('step3.messagePlaceholder')}
-          value={data.msg} onChange={(e) => upd('msg', e.target.value)} maxLength={600} />
+          value={data.msg} onChange={(e) => upd('msg', e.target.value)} maxLength={600}
+          data-nudge-target={nudgeMsg ? 'msg' : undefined}
+        />
         <div className="cc">{data.msg.length}/600</div>
+        {nudgeMsg && (
+          <div style={{ marginTop: 4, fontSize: 12, color: '#ffb3b3', fontWeight: 700 }}>
+            {tg('nudge.hintMsg')}
+          </div>
+        )}
         {suggestError && (
           <div style={{ marginTop: 4, fontSize: 11, color: '#ff8888' }}>{suggestError}</div>
         )}
@@ -1074,7 +1198,15 @@ function DetailsStep({ data, upd, playing, onPlay, voices }: any & { voices: Arr
       </div>
 
       <h3 style={{ marginTop: 22 }}>{tg('step3.voicesTitle')}</h3>
-      <div className="voice-list">
+      {nudgeVoice && (
+        <div style={{ marginTop: 4, marginBottom: 8, fontSize: 13, color: '#ffb3b3', fontWeight: 700 }}>
+          {tg('nudge.hintVoice')}
+        </div>
+      )}
+      <div
+        className={`voice-list ${nudgeVoice ? 'nudge-outline' : ''}`}
+        data-nudge-target={nudgeVoice ? 'voice' : undefined}
+      >
         {(voices as Array<{ id: string; nm: string; tg: string; av: string; ic?: any }>).map((v, idx) => {
           const isP = playing === `voice-${v.id}`;
           return (
