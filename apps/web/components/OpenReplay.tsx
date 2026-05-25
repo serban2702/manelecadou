@@ -47,7 +47,10 @@ export function OpenReplay() {
 
     (async () => {
       try {
-        const { default: Tracker } = await import('@openreplay/tracker');
+        const [{ default: Tracker }, assistMod] = await Promise.all([
+          import('@openreplay/tracker'),
+          import('@openreplay/tracker-assist').catch(() => ({ default: null })),
+        ]);
         if (cancelled) return;
 
         // Setări max-data: vrem să vedem cât mai mult.
@@ -88,6 +91,34 @@ export function OpenReplay() {
             ],
           },
         });
+
+        // Plugin Assist — activează live sessions + co-browse în dashboard
+        // (`/co-browse` și pictograma `live` în lista de sesiuni). Comunicarea
+        // pentru control remote e WebRTC peer-to-peer; pentru observation only
+        // (no remote control), e WebSocket via containerul `assist` de pe Hetzner.
+        // Config-uri default: live observation pornește la apel din dashboard,
+        // userul vede un widget discret în colț doar dacă e cerută remote control.
+        const assistPluginFactory = (assistMod as { default?: unknown }).default as
+          | ((opts?: Record<string, unknown>) => unknown)
+          | null;
+        if (assistPluginFactory && typeof assistPluginFactory === 'function') {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (tracker as any).use(
+              assistPluginFactory({
+                // Aspect: badge "Assist active" / call dialog folosesc culorile site-ului
+                callConfirm: {
+                  text: 'Echipa Manele Cadou cere să-ți vadă ecranul pentru a te ajuta. Accepți?',
+                  style: { background: '#d4af37', color: '#0a0606' },
+                  confirmBtn: { text: 'Accept', style: { background: '#0a0606', color: '#d4af37' } },
+                  declineBtn: { text: 'Refuz', style: { background: 'transparent', color: '#d4af37', border: '1px solid #d4af37' } },
+                },
+              }),
+            );
+          } catch (err) {
+            console.warn('[OpenReplay] Assist plugin failed', err);
+          }
+        }
 
         // NOTĂ: `tracker.start()` așteaptă `document.visibilityState === 'visible'`
         // înainte să facă POST la /ingest/v1/web/start. În tab-uri background
