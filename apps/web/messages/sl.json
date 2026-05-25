@@ -575,7 +575,8 @@
       "generic": "Napaka pri generiranju. Poskusi znova.",
       "stripeNotConfigured": "Plačila še niso aktivirana. Nastavi STRIPE_SECRET_KEY v .env.",
       "stripeShort": "Plačila še niso aktivirana.",
-      "checkoutFailed": "Nisem mogel odpreti plačila. Poskusi znova."
+      "checkoutFailed": "Nisem mogel odpreti plačila. Poskusi znova.",
+      "paymentCanceled": "Plačilo je bilo preklicano. Vaši podatki so shranjeni — poskusite znova, ko boste pripravljeni."
     }
   },
   "giftMini": {
@@ -987,5 +988,19 @@
       "cum-functioneaza": "⚙️ Kako deluje",
       "long-tail": "📚 Vodniki"
     }
+  },
+  "checkoutCancelPage": {
+    "title": "Plačilo je preklicano",
+    "lead": "Nismo vam zaračunali — vse je v redu.",
+    "detail": "Če je bila napaka ali ste spremenili način plačila, poskusite znova od tukaj. Podatki iz obrazca so shranjeni.",
+    "retryCta": "Poskusi znova",
+    "supportCta": "Pomoč"
+  },
+  "checkoutSuccessPage": {
+    "title": "Plačilo potrjeno!",
+    "lead": "Hvala — podrobnosti prispejo na vaš e-naslov v nekaj minutah.",
+    "detail": "Če ste kupili pesem, jo boste našli v „Moje pesmi\", takoj ko bo pripravljena.",
+    "mineCta": "Moje pesmi",
+    "homeCta": "Domov"
   }
 }

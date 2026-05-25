@@ -575,7 +575,8 @@
       "generic": "Üretim hatası. Tekrar dene.",
       "stripeNotConfigured": "Ödemeler henüz aktif değil. .env'de STRIPE_SECRET_KEY ayarla.",
       "stripeShort": "Ödemeler henüz aktif değil.",
-      "checkoutFailed": "Ödemeyi açamadım. Tekrar dene."
+      "checkoutFailed": "Ödemeyi açamadım. Tekrar dene.",
+      "paymentCanceled": "Ödeme iptal edildi. Verileriniz kaydedildi — hazır olduğunuzda tekrar deneyin."
     }
   },
   "giftMini": {
@@ -987,5 +988,19 @@
       "cum-functioneaza": "⚙️ Nasıl çalışır",
       "long-tail": "📚 Rehberler"
     }
+  },
+  "checkoutCancelPage": {
+    "title": "Ödeme iptal edildi",
+    "lead": "Sizden ücret almadık — her şey yolunda.",
+    "detail": "Yanlışlıkla iptal ettiyseniz veya ödeme yöntemini değiştirmek istiyorsanız, buradan tekrar deneyin. Form verileriniz kaydedildi.",
+    "retryCta": "Tekrar dene",
+    "supportCta": "Destek"
+  },
+  "checkoutSuccessPage": {
+    "title": "Ödeme onaylandı!",
+    "lead": "Teşekkürler — detaylar birkaç dakika içinde e-postanıza gelecek.",
+    "detail": "Bir şarkı satın aldıysanız, hazır olur olmaz „Şarkılarım\" bölümünde bulacaksınız.",
+    "mineCta": "Şarkılarım",
+    "homeCta": "Ana sayfa"
   }
 }

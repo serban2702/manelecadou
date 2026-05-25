@@ -575,7 +575,8 @@
       "generic": "Greška u generiranju. Pokušaj ponovo.",
       "stripeNotConfigured": "Plaćanja još nisu aktivirana. Postavi STRIPE_SECRET_KEY u .env.",
       "stripeShort": "Plaćanja još nisu aktivirana.",
-      "checkoutFailed": "Nisam uspio otvoriti plaćanje. Pokušaj ponovo."
+      "checkoutFailed": "Nisam uspio otvoriti plaćanje. Pokušaj ponovo.",
+      "paymentCanceled": "Plaćanje je otkazano. Vaši podaci su spremljeni — pokušajte ponovno kada budete spremni."
     }
   },
   "giftMini": {
@@ -987,5 +988,19 @@
       "cum-functioneaza": "⚙️ Kako funkcionira",
       "long-tail": "📚 Vodiči"
     }
+  },
+  "checkoutCancelPage": {
+    "title": "Plaćanje je otkazano",
+    "lead": "Nismo vas naplatili — sve je u redu.",
+    "detail": "Ako je bila greška ili ste promijenili način plaćanja, pokušajte ponovno odavde. Podaci iz obrasca su spremljeni.",
+    "retryCta": "Pokušaj ponovno",
+    "supportCta": "Pomoć"
+  },
+  "checkoutSuccessPage": {
+    "title": "Plaćanje potvrđeno!",
+    "lead": "Hvala — detalji stižu na vašu e-poštu za nekoliko minuta.",
+    "detail": "Ako ste kupili pjesmu, naći ćete je u „Moje pjesme\" čim bude gotova.",
+    "mineCta": "Moje pjesme",
+    "homeCta": "Početna"
   }
 }
