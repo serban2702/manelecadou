@@ -263,6 +263,50 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   const [submitting, setSubmitting] = useState(false);
   const [generationId, setGenerationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Restore după cancel din Stripe (pay-first flow). Backend redirectează la
+  // `/?paymentCanceled=1&genId=<id>` când userul anulează plata în Stripe
+  // Checkout — vezi `payments.service.ts` cancelPath. Fetch generation-ul
+  // pending, restore form data și ducem wizard-ul la step 5 (index 4) cu un
+  // banner de eroare. Reluarea plății refolosește același generationId
+  // (fără să creeze unul nou).
+  const restoreAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (demoEnabled) return; // doar pay-first
+    if (restoreAttemptedRef.current) return;
+    const canceled = search.get('paymentCanceled');
+    const genId = search.get('genId');
+    if (canceled !== '1' || !genId) return;
+    restoreAttemptedRef.current = true;
+    (async () => {
+      try {
+        const gen = await api.getGeneration(genId);
+        if (gen && !gen.paidUnlocked) {
+          setData({
+            style: gen.style ?? '',
+            occ: gen.occasion ?? '',
+            name: gen.recipientName ?? '',
+            msg: gen.message ?? '',
+            voice: gen.voiceArtist ?? '',
+            customLyrics: gen.customLyrics ?? '',
+            dedic: gen.dedication ?? '',
+            tipAmount: gen.tipAmount ?? 0,
+            premium: !!gen.premium,
+          });
+          setGenerationId(gen.id);
+          setStep(4);
+          setError(tGen('humanError.paymentCanceled'));
+        }
+      } catch {
+        // Generation nu mai există / eroare — lăsăm userul să reia de la 0.
+      } finally {
+        if (typeof window !== 'undefined') {
+          window.history.replaceState({}, '', '/#generator');
+        }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoEnabled]);
   const [emailDraft, setEmailDraft] = useState('');
   const [emailDraftTouched, setEmailDraftTouched] = useState(false);
   const [autoFilled, setAutoFilled] = useState(false);
@@ -527,24 +571,39 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
         value: total,
         currency: site.currency,
       });
-      const { url, generationId: gid } = await api.createDirectCheckoutSession({
-        generation: {
-          style: data.style,
-          occasion: data.occ,
-          recipientName: data.name,
-          message: data.msg,
-          dedication: data.dedic || undefined,
-          voiceArtist: data.voice,
-          customLyrics: data.customLyrics || undefined,
+      // Dacă deja avem un generationId (restore după cancel din Stripe),
+      // refolosim acelaș generation pending. Altfel creăm unul nou.
+      let url: string;
+      if (generationId) {
+        const r = await api.createCheckoutSession({
+          generationId,
           tipAmount: data.tipAmount || 0,
           premium: data.premium,
-        },
-        tipAmount: data.tipAmount || 0,
-        premium: data.premium,
-        promoCode: promoApplied?.code,
-        email: candidate,
-      });
-      setGenerationId(gid);
+          promoCode: promoApplied?.code,
+          email: candidate,
+        });
+        url = r.url;
+      } else {
+        const r = await api.createDirectCheckoutSession({
+          generation: {
+            style: data.style,
+            occasion: data.occ,
+            recipientName: data.name,
+            message: data.msg,
+            dedication: data.dedic || undefined,
+            voiceArtist: data.voice,
+            customLyrics: data.customLyrics || undefined,
+            tipAmount: data.tipAmount || 0,
+            premium: data.premium,
+          },
+          tipAmount: data.tipAmount || 0,
+          premium: data.premium,
+          promoCode: promoApplied?.code,
+          email: candidate,
+        });
+        setGenerationId(r.generationId);
+        url = r.url;
+      }
       window.location.href = url;
     } catch (e) {
       setError(

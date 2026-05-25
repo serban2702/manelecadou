@@ -245,9 +245,17 @@ export class PaymentsService {
     const successPath = input.generationId
       ? `/m/${input.generationId}?paymentId=${payment.id}&success=1`
       : `/checkout/success?paymentId=${payment.id}`;
-    const cancelPath = input.generationId
-      ? `/m/${input.generationId}?paymentId=${payment.id}&cancel=1`
-      : `/checkout/cancel?paymentId=${payment.id}`;
+    // Pay-first (site.demoEnabled=false): la cancel, generation-ul e `pending`
+    // și `/m/<id>` ar arăta progress bar mincinos (vezi IN_PROGRESS_STATUSES
+    // care include `pending`). Trimitem userul înapoi pe wizard la step 5 cu
+    // datele restaurate ca să poată reîncerca plata.
+    const isPayFirst = site.demoEnabled === false;
+    const cancelPath =
+      isPayFirst && input.generationId
+        ? `/?paymentCanceled=1&genId=${input.generationId}#generator`
+        : input.generationId
+          ? `/m/${input.generationId}?paymentId=${payment.id}&cancel=1`
+          : `/checkout/cancel?paymentId=${payment.id}`;
 
     const brand = site.stripe?.productName ?? site.name;
     // Trimitem la Stripe prețul ÎNTREG (baseTotal) și aplicăm discount-ul ca

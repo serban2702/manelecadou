@@ -573,7 +573,8 @@
       "generic": "Eroare la generare. Încearcă din nou.",
       "stripeNotConfigured": "Plățile nu sunt încă activate. Setează STRIPE_SECRET_KEY în .env.",
       "stripeShort": "Plățile nu sunt încă activate.",
-      "checkoutFailed": "Nu s-a putut deschide plata. Încearcă din nou."
+      "checkoutFailed": "Nu s-a putut deschide plata. Încearcă din nou.",
+      "paymentCanceled": "Plata a fost anulată. Datele tale sunt salvate — încearcă din nou când ești gata."
     }
   },
   "giftMini": {
