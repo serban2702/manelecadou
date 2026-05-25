@@ -49,7 +49,9 @@ export function OpenReplay() {
 
     (async () => {
       try {
+        console.log('[OpenReplay] before import');
         const { default: Tracker } = await import('@openreplay/tracker');
+        console.log('[OpenReplay] import ok, Tracker=', typeof Tracker);
         if (cancelled) return;
 
         // Setări max-data: vrem să vedem cât mai mult.
@@ -83,7 +85,9 @@ export function OpenReplay() {
           },
         });
 
-        await tracker.start();
+        console.log('[OpenReplay] before start()');
+        const startRes = await tracker.start();
+        console.log('[OpenReplay] start returned:', startRes);
 
         const sid = (tracker as unknown as { getSessionID?: () => string }).getSessionID?.();
         if (sid) window.__OR_SESSION_ID__ = sid;
