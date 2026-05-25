@@ -544,3 +544,16 @@ Dashboard OpenReplay: <https://openreplay.manelecadou.ro> — credentials owner:
 5. **`install.sh` resetează docker-compose.yaml** via `git checkout` — vezi 15.3.
 6. **NPM ↔ openreplay-net** trebuie persistat în compose-ul NPM (`external: true`), altfel `docker compose restart` NPM rupe legătura.
 7. **`openReplaySessionId` populare automată** — nu trebuie să modifici call-site-urile `repo.create()`. Subscriber-ul din `common/openreplay.subscriber.ts` îl pune din AsyncLocalStorage. Funcționează doar pentru INSERT-uri în contextul unui HTTP request (nu pentru background jobs — acolo `getOpenReplaySessionId()` returnează `null` și e ok).
+8. **`tracker.start()` așteaptă `document.visibilityState === 'visible'`** — by design în SDK v18+. În tab-uri background (sau headless Chrome / Chrome MCP cu vizibilitate hidden) promise-ul rămâne suspended până când documentul devine vizibil. Așa că pentru testing din Chrome MCP / agenți browser, fie aduci tab-ul în foreground, fie dispatch-uiești manual `visibilitychange` cu `document.visibilityState` patched la `'visible'`. Pe browsere reale (user real cu tab activ) pornește instant — confirmat 2026-05-25 cu 4 sesiuni capturate din traffic România.
+9. **Build args Docker** — `NEXT_PUBLIC_OPENREPLAY_PROJECT_KEY` e build-time (Next.js inline-uiește valoarea în chunks). Dacă schimbi cheia în `.env`, **TREBUIE** `make deploy-web` (NU doar restart) ca să rebuild imaginea. Plus, dacă build cache păstrează layer-ul vechi de `pnpm run build`, forțează `docker compose build --no-cache web`.
+
+### 15.8 Verificare integrare
+
+Smoke test rapid din browser real:
+1. Vizitezi https://manelecadou.ro
+2. F12 → Network → filter `openreplay` → ar trebui POST la `/ingest/v1/web/tags`, `/ingest/v1/web/i`
+3. Dashboard https://openreplay.manelecadou.ro/1/sessions → sesiunea apare în max 60s
+4. SQL pe Ionos după 1 click:
+   ```bash
+   ssh VPSIonos 'docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -c "SELECT id, \"openReplaySessionId\" FROM error_logs WHERE \"openReplaySessionId\" IS NOT NULL LIMIT 5"'
+   ```

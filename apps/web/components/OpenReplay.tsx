@@ -38,8 +38,6 @@ declare global {
 
 export function OpenReplay() {
   useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.log('[OpenReplay] mount, key set:', !!PROJECT_KEY, 'ingest:', INGEST_POINT);
     if (!PROJECT_KEY) return;
     if (typeof window === 'undefined') return;
     if (window.__OR_TRACKER__) return;
@@ -49,9 +47,7 @@ export function OpenReplay() {
 
     (async () => {
       try {
-        console.log('[OpenReplay] before import');
         const { default: Tracker } = await import('@openreplay/tracker');
-        console.log('[OpenReplay] import ok, Tracker=', typeof Tracker);
         if (cancelled) return;
 
         // Setări max-data: vrem să vedem cât mai mult.
@@ -62,14 +58,43 @@ export function OpenReplay() {
         // Câmpurile sensibile (parole) sunt mascate de SDK automat
         // (input[type=password]).
         // Stripe Elements (card) trăiesc în iframe cross-origin → invizibile by design.
+        // Setări max-data: vrem să vedem cât mai mult.
+        // - defaultInputMode: 0 (Plain) → toate inputurile vizibile by default
+        // - obscureTextEmails / obscureTextNumbers: false → vede emailuri / cifre
+        // - captureIFrames: true → înregistrează iframe-uri same-origin
+        // - network.capturePayload: true → record body fetch/xhr
+        // Câmpurile sensibile (parole) sunt mascate automat de SDK
+        // (input[type=password]). Stripe Elements (carduri) trăiesc în iframe
+        // cross-origin → invizibile by design.
         const tracker = new Tracker({
           projectKey: PROJECT_KEY,
           ingestPoint: INGEST_POINT || undefined,
+          defaultInputMode: 0,
+          obscureTextEmails: false,
+          obscureTextNumbers: false,
+          captureIFrames: true,
+          captureResourceTimings: true,
+          capturePerformance: true,
+          network: {
+            failuresOnly: false,
+            sessionTokenHeader: false,
+            captureInIframes: true,
+            capturePayload: true,
+            ignoreHeaders: [
+              'authorization',
+              'cookie',
+              'set-cookie',
+              'x-csrf-token',
+            ],
+          },
         });
 
-        console.log('[OpenReplay] before start()');
-        const startRes = await tracker.start();
-        console.log('[OpenReplay] start returned:', startRes);
+        // NOTĂ: `tracker.start()` așteaptă `document.visibilityState === 'visible'`
+        // înainte să facă POST la /ingest/v1/web/start. În tab-uri background
+        // (sau headless Chrome cu visibility hidden) promise-ul rămâne suspended
+        // până când documentul devine vizibil. E by design — evită sesiuni
+        // inutile de la pre-render / background tabs.
+        await tracker.start();
 
         const sid = (tracker as unknown as { getSessionID?: () => string }).getSessionID?.();
         if (sid) window.__OR_SESSION_ID__ = sid;
