@@ -561,11 +561,14 @@ Dashboard OpenReplay: <https://openreplay.manelecadou.ro> — credentials owner:
    - Remote control (WebRTC) — owner cere control, user vede dialog brand-uit ("Echipa Manele Cadou cere să-ți vadă ecranul...") cu Accept/Refuz în culorile site-ului (gold #d4af37 pe negru #0a0606).
    - Containerul `assist` din OpenReplay stack pe Hetzner gestionează signaling-ul; clienții stabilesc P2P direct.
 
-12bis. **IP attribution pentru anonymous users** — by default OpenReplay arată „Anonymous User" peste tot pentru visitatori ne-logați, imposibil de distins. Setup actual:
-   - `GET /api/analytics/whoami` returnează IP-ul real (din `X-Forwarded-For` setat de Caddy).
-   - `components/OpenReplay.tsx` la `tracker.start()` apelează whoami și face `tracker.setUserID('ip:<IP>')` + `tracker.setMetadata('ip', <IP>)`.
+12bis. **IP attribution pentru anonymous users** — by default OpenReplay arată „Anonymous User" peste tot pentru visitatori ne-logați, imposibil de distins. Setup actual (final, 2026-05-25, după 2 iterații):
+   - **IP-ul e injectat în HTML prin SSR**: `app/layout.tsx` (server component) citește `x-forwarded-for` din `headers()` și emite `<script>window.__CLIENT_IP__='X.X.X.X'</script>` în `<head>`, înainte de orice JS client.
+   - **Tracker citește instant**: `components/OpenReplay.tsx` face `tracker.setUserID('ip:<IP>')` + `tracker.setMetadata('ip', <IP>)` ÎNAINTE de `await tracker.start()` — zero fetch, zero await, funcționează indiferent de visibility.
+   - **De ce nu doar `/api/analytics/whoami`**: investigarea în DB Hetzner (2026-05-25) a arătat 95% null IP pe TikTok in-app browser. Cauza: TikTok preloads pagina în background (visibility hidden), userul închide rapid → tracker.start() suspendă, codul de după (whoami fetch) nu mai rulează. SSR injection rezolvă pentru că IP-ul e disponibil instant la mount client.
+   - Endpoint `/api/analytics/whoami` rămâne ca fallback debug (nu mai e folosit de tracker, dar e util pentru verificări manuale).
    - În dashboard, **trebuie declarat `ip` ca metadata field**: Preferences → Projects → My First Project → Metadata → "+ Add Metadata" → Field Name: `ip`. (Făcut o singură dată; persistă în Postgres.)
-   - În UI sesiunile arată acum `ip:X.X.X.X` în header (în loc de "Anonymous User") și un tag `ip | X.X.X.X` în lista de sesiuni. Filtrabil cu Filters → Add → Metadata: ip.
+   - În UI sesiunile arată `ip:X.X.X.X` în header (în loc de "Anonymous User") și un tag `ip | X.X.X.X` în lista de sesiuni. Filtrabil cu Filters → Add → Metadata: ip.
+   - **Verificare rate de null**: `ssh Hetzner 'docker exec -e PGPASSWORD=<COMMON_PG_PASSWORD> postgres psql -U postgres -d postgres -c "SELECT user_browser, COUNT(*) FILTER (WHERE user_id IS NULL)*100/COUNT(*) AS null_pct FROM public.sessions WHERE project_id=1 GROUP BY user_browser"'`.
 
 13. **RustFS beta refuză writes pe single-disk** (BUG MAJOR descoperit 2026-05-25) — OpenReplay `scripts/docker-compose` folosește `rustfs/rustfs:1.0.0-beta.1` ca storage S3-compatible default. Pe single-disk setup (cum e Hetzner cu un `miniodata` volume), RustFS răspunde la orice `MakeBucket` și `PutObject` cu **HTTP 500 "Storage resources are insufficient for the write operation"** (EC:0 erasure coding refuză writes). Rezultatul: TOATE recording-urile sunt pierdute silently (storage service primește AccessDenied de la S3 și log-uri `failed to upload mob file`, dar pipeline-ul continuă).
 
