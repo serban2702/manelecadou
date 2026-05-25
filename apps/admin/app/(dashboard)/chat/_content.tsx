@@ -153,12 +153,12 @@ export default function AdminChatPage() {
                     )}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <div className="text-sm font-semibold text-foreground truncate flex items-center gap-2">
+                      <div className="text-sm font-semibold text-foreground truncate flex items-center gap-2 min-w-0">
                         <PresenceDot online={c.online} />
                         {c.userId ? (
-                          <User className="h-3.5 w-3.5 text-muted-foreground" />
+                          <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                         ) : (
-                          <span className="h-3.5 w-3.5 rounded-full border border-dashed border-muted-foreground" />
+                          <span className="h-3.5 w-3.5 rounded-full border border-dashed border-muted-foreground shrink-0" />
                         )}
                         <span className="truncate">{conversationLabel(c)}</span>
                       </div>
@@ -168,9 +168,15 @@ export default function AdminChatPage() {
                         </Badge>
                       )}
                     </div>
-                    {/* Site badge — vizibil mereu (păstrăm orientarea cross-tenant chiar și
-                        când selectorul e pe un site, ca să nu te confunzi când scimbi). */}
-                    <div className="mt-1">
+                    {/* IP-ul ultimei sesiuni — pentru guests și pentru users cu email.
+                        Always rendered cu fallback ca să fie vizibil chiar și fără presence. */}
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <code
+                        className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-secondary/40 text-muted-foreground"
+                        title="Ultimul IP cunoscut (din analytics_sessions)"
+                      >
+                        {c.ip ?? 'IP necunoscut'}
+                      </code>
                       <SiteBadge siteId={c.siteId} />
                     </div>
                     <div className="text-xs text-muted-foreground mt-1 flex items-center justify-between gap-2">
@@ -190,16 +196,6 @@ export default function AdminChatPage() {
                           : 'fără mesaje'}
                       </span>
                     </div>
-                    {c.ip && (
-                      <div className="mt-1">
-                        <code
-                          className="text-[10px] font-mono px-1 py-0.5 rounded bg-secondary/40 text-muted-foreground"
-                          title="Ultimul IP cunoscut"
-                        >
-                          {c.ip}
-                        </code>
-                      </div>
-                    )}
                   </button>
                 );
               })
