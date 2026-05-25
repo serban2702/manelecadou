@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@openreplay/tracker':
-        specifier: ^18.0.10
-        version: 18.0.10
+        specifier: 17.2.10
+        version: 17.2.10
       '@tanstack/react-query':
         specifier: ^5.59.20
         version: 5.100.6(react@18.3.1)
@@ -372,8 +372,8 @@ packages:
   '@openreplay/network-proxy@1.2.5':
     resolution: {integrity: sha512-POexzfkWLH+kCk0+R05sg5+fyZYD2xgs7hkUWJxXcsfJ9B4Bn2unDJO03AyzfkH884cCLMuZk4jBDqZgCA5S1w==}
 
-  '@openreplay/tracker@18.0.10':
-    resolution: {integrity: sha512-SaPhmxKqAw1l4iJPSvrbjmVHk5S9kMxvksR/chPLhIJGFKu2yPz9aAP5M3yK4foKlGlTQxhOvHXjtfJ3vU6WwQ==}
+  '@openreplay/tracker@17.2.10':
+    resolution: {integrity: sha512-vtG98V57TygDB9qIjL0g8dL3NuPUvtALx4WdYv8cb1dycTruvteCo/wbkYCjWlh42PXx1YuEPzDNFdFXliZZ0w==}
     engines: {node: '>=14.0'}
 
   '@parcel/watcher-android-arm64@2.5.6':
@@ -2352,7 +2352,7 @@ snapshots:
 
   '@openreplay/network-proxy@1.2.5': {}
 
-  '@openreplay/tracker@18.0.10':
+  '@openreplay/tracker@17.2.10':
     dependencies:
       '@openreplay/network-proxy': 1.2.5
       error-stack-parser: 2.1.4
