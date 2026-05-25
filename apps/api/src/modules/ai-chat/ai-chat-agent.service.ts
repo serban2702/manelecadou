@@ -170,7 +170,7 @@ export class AIChatAgentService {
     const brand = site?.name ?? 'Manele Cadou';
     const tagline = site?.brand?.tagline ?? '';
     const locale = site?.locale ?? 'ro';
-    const price = site ? `${(site.basePriceCents / 100).toFixed(2)} ${site.currency}` : '49.99 RON';
+    const price = site ? `${(site.basePriceCents / 100).toFixed(2)} ${site.currency}` : '29.99 RON';
 
     const basePrompt = `Ești asistentul "${brand}" — un AI prietenos care răspunde clienților în chat-ul live.
 ${tagline ? `Tagline: "${tagline}"` : ''}
