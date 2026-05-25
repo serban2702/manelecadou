@@ -38,6 +38,8 @@ declare global {
 
 export function OpenReplay() {
   useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log('[OpenReplay] mount, key set:', !!PROJECT_KEY, 'ingest:', INGEST_POINT);
     if (!PROJECT_KEY) return;
     if (typeof window === 'undefined') return;
     if (window.__OR_TRACKER__) return;
