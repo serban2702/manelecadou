@@ -37,7 +37,18 @@ export function SiteShell({ children, hideStickyCta: _ignored }: { children: Rea
     { href: getPagePath(site.locale, 'top'), label: tNav('top') },
   ];
 
+  // Banner-ul „🍪 Cookie-uri" e ascuns temporar (decizie 2026-05-26): marketing
+  // cookies active din prima secundă, fără prompt. Pentru re-activare, scoate
+  // `HIDE_COOKIE_BANNER = true` și restaurează `setCookieOpen(true)`.
+  const HIDE_COOKIE_BANNER = true;
+
   useEffect(() => {
+    if (HIDE_COOKIE_BANNER) {
+      if (typeof window !== 'undefined' && !window.localStorage.getItem('mc_cookie_consent')) {
+        window.localStorage.setItem('mc_cookie_consent', 'all');
+      }
+      return;
+    }
     if (typeof window !== 'undefined' && !window.localStorage.getItem('mc_cookie_consent')) {
       setCookieOpen(true);
     }
@@ -133,7 +144,7 @@ export function SiteShell({ children, hideStickyCta: _ignored }: { children: Rea
       <LiveFeed />
       <ChatWidget />
       {rouletteOpen && <RouletteWheel onClose={() => setRouletteOpen(false)} />}
-      {cookieOpen && <Cookie onClose={closeCookie} />}
+      {!HIDE_COOKIE_BANNER && cookieOpen && <Cookie onClose={closeCookie} />}
 
       {/* Sticky CTA mobile scos la cererea userului — ocupa spațiu prețios
           pe ecranele mici și acoperea conținutul. CTA-ul rămâne în header

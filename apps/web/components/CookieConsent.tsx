@@ -4,22 +4,23 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { getConsent, setConsent } from '@/lib/tracker';
 
+// Banner ascuns temporar — decizie userului (2026-05-26): marketing cookies
+// active din prima secundă, fără prompt. Componenta rămâne în repo ca să fie
+// ușor de re-activat când businessul va crește. Pentru re-activare: șterge
+// `HIDE_BANNER = true` și early-return de mai jos.
+const HIDE_BANNER = true;
+
 export function CookieConsent() {
   const t = useTranslations('cookieBanner');
   const [show, setShow] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const dnt =
-      navigator.doNotTrack === '1' ||
-      (window as unknown as { doNotTrack?: string }).doNotTrack === '1';
-    if (dnt) return;
-    if (getConsent() === 'unknown') {
-      const t = setTimeout(() => setShow(true), 800);
-      return () => clearTimeout(t);
-    }
+    // Asigură că marketing-ul e activ implicit, chiar dacă banner-ul e ascuns.
+    if (getConsent() !== 'granted') setConsent('granted');
   }, []);
 
+  if (HIDE_BANNER) return null;
   if (!show) return null;
 
   const accept = () => {
