@@ -547,11 +547,27 @@ Dashboard OpenReplay: <https://openreplay.manelecadou.ro> — credentials owner:
 8. **`tracker.start()` așteaptă `document.visibilityState === 'visible'`** — by design în SDK v18+. În tab-uri background (sau headless Chrome / Chrome MCP cu vizibilitate hidden) promise-ul rămâne suspended până când documentul devine vizibil. Așa că pentru testing din Chrome MCP / agenți browser, fie aduci tab-ul în foreground, fie dispatch-uiești manual `visibilitychange` cu `document.visibilityState` patched la `'visible'`. Pe browsere reale (user real cu tab activ) pornește instant — confirmat 2026-05-25 cu 4 sesiuni capturate din traffic România.
 9. **Build args Docker** — `NEXT_PUBLIC_OPENREPLAY_PROJECT_KEY` e build-time (Next.js inline-uiește valoarea în chunks). Dacă schimbi cheia în `.env`, **TREBUIE** `make deploy-web` (NU doar restart) ca să rebuild imaginea. Plus, dacă build cache păstrează layer-ul vechi de `pnpm run build`, forțează `docker compose build --no-cache web`.
 10. **SDK tracker MUST match server major version** — `@openreplay/tracker` pe npm e mereu cea mai nouă (v18+). Server-ul self-hosted din `scripts/docker-compose` rulează v17 (fix at install time 2026-05-25). Mismatch → dashboard arată „Tracker version X ahead of current Y" și **replay vizual broken** (CSS/snapshot decoding fail). Pin tracker la versiunea major a serverului: `"@openreplay/tracker": "17.2.10"` (exact, fără `^`). Când upgrade-uiezi serverul Hetzner (`git pull` + `docker compose up -d --pull always`), verifică versiunea nouă cu `docker exec api env | grep -i version` sau curl la `/api/healthz` și update tracker SDK la matching major.
-11. **Player iframe + CORS pe assets** — Player-ul OpenReplay (pe `openreplay.manelecadou.ro`) randează site-ul **într-un iframe**, refetchând CSS/JS/imagini din originul real. Caddy trebuie să permită:
-    - `Content-Security-Policy: frame-ancestors 'self' https://openreplay.manelecadou.ro` (în loc de `X-Frame-Options: SAMEORIGIN` care e deprecated și nu acceptă multiple origins). Aplicat global în `security_headers` snippet.
-    - CORS permisiv pe `/_next/static/*`, `/uploads/*`, favicons, web manifest. Snippet `static_assets_cors` în Caddyfile face asta cu `Access-Control-Allow-Origin: *` + `Cross-Origin-Resource-Policy: cross-origin`.
+11. **Player iframe + CORS pe assets** — Player-ul OpenReplay (pe `openreplay.manelecadou.ro`) randează site-ul **într-un iframe**, dar **NU** face refetch CSS/JS de la originul real (manelecadou.ro). În schimb, OpenReplay are un service `assets` care la momentul recording face download la CSS/fonturi/imagini și le stochează în bucket-ul MinIO `sessions-assets`. Player-ul citește din acel bucket. Setări necesare pe Caddy:
+    - `Content-Security-Policy: frame-ancestors 'self' https://openreplay.manelecadou.ro` (în loc de `X-Frame-Options: SAMEORIGIN` care e deprecated). Aplicat global în `security_headers`.
+    - CORS permisiv pe `/_next/static/*`, `/uploads/*`, favicons, web manifest — pentru ca `assets` service să poată download cu un User-Agent diferit. Snippet `static_assets_cors` în Caddyfile.
 
-    Dacă upgrade-uiezi Next.js sau Caddy și se rupe replay-ul vizual, verifică headerele pe `/_next/static/css/...` și `X-Frame-Options` ar trebui să NU mai apară. Vezi `Caddyfile` și commit `a7c7cde`.
+    Dacă upgrade-uiezi Next.js sau Caddy și se rupe replay-ul vizual, verifică:
+    1. `curl -sI -H "Origin: https://openreplay.manelecadou.ro" https://manelecadou.ro/_next/static/css/<HASH>.css` returnează `access-control-allow-origin: *`.
+    2. `docker logs assets --tail=30` pe Hetzner — nicio eroare `AccessDenied` la fetch.
+    3. `docker run --rm --network=docker-compose_openreplay-net --entrypoint /bin/sh minio/mc -c 'mc alias set m http://minio:9000 KEY SECRET && mc ls -r m/sessions-assets/'` — bucket-ul are CSS-uri și fonturi capturate.
+12. **RustFS beta refuză writes pe single-disk** (BUG MAJOR descoperit 2026-05-25) — OpenReplay `scripts/docker-compose` folosește `rustfs/rustfs:1.0.0-beta.1` ca storage S3-compatible default. Pe single-disk setup (cum e Hetzner cu un `miniodata` volume), RustFS răspunde la orice `MakeBucket` și `PutObject` cu **HTTP 500 "Storage resources are insufficient for the write operation"** (EC:0 erasure coding refuză writes). Rezultatul: TOATE recording-urile sunt pierdute silently (storage service primește AccessDenied de la S3 și log-uri `failed to upload mob file`, dar pipeline-ul continuă).
+
+    **Fix**: înlocuit cu MinIO real (`quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z`) în `docker-compose.yaml` service `minio`. MinIO accept-ă single-disk fără probleme. Setări:
+    ```yaml
+    image: quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: <COMMON_S3_KEY din common.env>
+      MINIO_ROOT_PASSWORD: <COMMON_S3_SECRET din common.env>
+    ```
+    **Atenție**: volume `miniodata` trebuie șters complet după switch (RustFS și MinIO au formate de storage incompatibile). Dacă apare bug-ul după update, recreează volume + re-run `minio-migration`.
+
+    **Verificare sănătate**: `docker run --rm --network=docker-compose_openreplay-net --entrypoint /bin/sh minio/mc -c "mc alias set m http://minio:9000 KEY SECRET && mc admin info m"` — vrem `1 drive online, 0 drives offline`, fără erori. Plus `mc ls m/` trebuie să arate 9 bucket-uri: `mobs`, `sessions-assets`, `static`, `sourcemaps`, `sessions-mobile-assets`, `quickwit`, `vault-data`, `records`, `spots`.
 
 ### 15.8 Verificare integrare
 
