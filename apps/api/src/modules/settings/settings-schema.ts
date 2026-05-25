@@ -169,7 +169,7 @@ export const SETTINGS_SCHEMA: SettingCategory[] = [
     settings: [
       { key: 'VAPID_PUBLIC_KEY', label: 'VAPID public key', kind: 'string', hotReload: true, placeholder: 'B...' },
       { key: 'VAPID_PRIVATE_KEY', label: 'VAPID private key', kind: 'secret', encrypted: true, hotReload: true },
-      { key: 'VAPID_SUBJECT', label: 'VAPID subject (mailto:)', kind: 'string', hotReload: true, placeholder: 'mailto:serban2702@gmail.com' },
+      { key: 'VAPID_SUBJECT', label: 'VAPID subject (mailto:)', kind: 'string', hotReload: true, placeholder: 'mailto:contact@manelecadou.ro' },
     ],
   },
   {
