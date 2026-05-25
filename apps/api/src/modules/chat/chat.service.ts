@@ -227,7 +227,11 @@ export class ChatService {
    * Listare conversații pentru admin. Cross-tenant „all" e prea zgomotos pentru
    * inbox — forțăm un site activ. Adminul comută între site-uri prin selector.
    */
-  async listAllConversations(siteId: string | null): Promise<ConversationWithPresence[]> {
+  async listAllConversations(
+    siteId: string | null,
+    opts: { q?: string } = {},
+  ): Promise<ConversationWithPresence[]> {
+    const q = opts.q?.trim();
     // Listing-ul e cross-tenant când nu ai un site activ — UI-ul afișează badge-ul
     // siteId per conversație ca să distingi vizual. Acțiunile write rămân scoped la conversație
     // (ex: reply ia siteId din entitate, nu din header).
@@ -237,24 +241,56 @@ export class ChatService {
     // împinse după index 200 și dispăreau din UI. Fix: NULLS LAST + includem și conversațiile
     // online (chiar fără mesaje) prin OR pe ID-urile din presence snapshot, ca să nu cadă
     // bucket 1 (online fără mesaje) când avem 200+ goi.
-    const onlineIds = this.gateway.snapshot();
     const qb = this.conv.createQueryBuilder('c');
     if (siteId) qb.where('c.siteId = :siteId', { siteId });
-    // Filtrăm la conversațiile relevante: cu mesaje SAU cu user/guest online acum.
-    const relevanceClauses: string[] = ['c."lastMessageAt" IS NOT NULL'];
-    const relevanceParams: Record<string, unknown> = {};
-    if (onlineIds.users.length > 0) {
-      relevanceClauses.push('c."userId" IN (:...onlineUsers)');
-      relevanceParams.onlineUsers = onlineIds.users;
+
+    if (q) {
+      // SEARCH MODE: scanăm TOATE conversațiile (inclusiv offline+fără mesaje filtrate
+      // în mod normal). Match pe: email, prefix ID (user/guest), IP — analytics_sessions
+      // pentru IP-uri persistate + WS handshake pentru IP-uri vii care n-au ajuns încă în DB.
+      const like = `%${q}%`;
+      const ipMatchedIds = await this.findIdsByIpSearch(q);
+      const wsMatched = this.gateway.findIdsByIp(q);
+      const matchedUserIds = Array.from(new Set([...ipMatchedIds.userIds, ...wsMatched.userIds]));
+      const matchedGuestIds = Array.from(new Set([...ipMatchedIds.guestIds, ...wsMatched.guestIds]));
+
+      const clauses: string[] = [
+        'c.email ILIKE :like',
+        'c."userId"::text ILIKE :like',
+        'c."guestId"::text ILIKE :like',
+      ];
+      const params: Record<string, unknown> = { like };
+      if (matchedUserIds.length > 0) {
+        clauses.push('c."userId" IN (:...ipUserIds)');
+        params.ipUserIds = matchedUserIds;
+      }
+      if (matchedGuestIds.length > 0) {
+        clauses.push('c."guestId" IN (:...ipGuestIds)');
+        params.ipGuestIds = matchedGuestIds;
+      }
+      qb.andWhere(`(${clauses.join(' OR ')})`, params);
+      // Search nu limităm la 200 doar la 100 ca să nu împlinim DOM-ul.
+      qb.orderBy('c."lastMessageAt"', 'DESC', 'NULLS LAST')
+        .addOrderBy('c."updatedAt"', 'DESC')
+        .take(100);
+    } else {
+      // DEFAULT: filtrăm la conversațiile relevante — cu mesaje SAU online acum.
+      const onlineIds = this.gateway.snapshot();
+      const relevanceClauses: string[] = ['c."lastMessageAt" IS NOT NULL'];
+      const relevanceParams: Record<string, unknown> = {};
+      if (onlineIds.users.length > 0) {
+        relevanceClauses.push('c."userId" IN (:...onlineUsers)');
+        relevanceParams.onlineUsers = onlineIds.users;
+      }
+      if (onlineIds.guests.length > 0) {
+        relevanceClauses.push('c."guestId" IN (:...onlineGuests)');
+        relevanceParams.onlineGuests = onlineIds.guests;
+      }
+      qb.andWhere(`(${relevanceClauses.join(' OR ')})`, relevanceParams);
+      qb.orderBy('c."lastMessageAt"', 'DESC', 'NULLS LAST')
+        .addOrderBy('c."updatedAt"', 'DESC')
+        .take(200);
     }
-    if (onlineIds.guests.length > 0) {
-      relevanceClauses.push('c."guestId" IN (:...onlineGuests)');
-      relevanceParams.onlineGuests = onlineIds.guests;
-    }
-    qb.andWhere(`(${relevanceClauses.join(' OR ')})`, relevanceParams);
-    qb.orderBy('c."lastMessageAt"', 'DESC', 'NULLS LAST')
-      .addOrderBy('c."updatedAt"', 'DESC')
-      .take(200);
     const all = await qb.getMany();
 
     const userIds = all.map((c) => c.userId).filter((v): v is string => !!v);
@@ -329,6 +365,35 @@ export class ChatService {
     });
 
     return augmented;
+  }
+
+  /** Caută în analytics_sessions toate user/guest IDs care au cel puțin o sesiune
+   *  cu IP-ul potrivit pe substring. Folosit la search-ul după IP din admin chat
+   *  (acoperă inclusiv conversații care nu mai sunt active sau n-au scris mesaje). */
+  private async findIdsByIpSearch(
+    needle: string,
+  ): Promise<{ userIds: string[]; guestIds: string[] }> {
+    const like = `%${needle}%`;
+    const [userRows, guestRows] = await Promise.all([
+      this.analyticsSessions
+        .createQueryBuilder('s')
+        .select('DISTINCT s."userId"', 'userId')
+        .where('s.ip ILIKE :like', { like })
+        .andWhere('s."userId" IS NOT NULL')
+        .limit(500)
+        .getRawMany<{ userId: string }>(),
+      this.analyticsSessions
+        .createQueryBuilder('s')
+        .select('DISTINCT s."guestId"', 'guestId')
+        .where('s.ip ILIKE :like', { like })
+        .andWhere('s."guestId" IS NOT NULL')
+        .limit(500)
+        .getRawMany<{ guestId: string }>(),
+    ]);
+    return {
+      userIds: userRows.map((r) => r.userId),
+      guestIds: guestRows.map((r) => r.guestId),
+    };
   }
 
   /** DISTINCT ON pe chat_messages — întoarce rolul ultimului mesaj per conversație.

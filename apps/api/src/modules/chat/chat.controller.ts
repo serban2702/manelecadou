@@ -103,8 +103,8 @@ export class AdminChatController {
   constructor(private readonly svc: ChatService) {}
 
   @Get('conversations')
-  list(@CurrentSiteId() siteId: string | null) {
-    return this.svc.listAllConversations(siteId);
+  list(@CurrentSiteId() siteId: string | null, @Query('q') q?: string) {
+    return this.svc.listAllConversations(siteId, { q });
   }
 
   @Get('conversations/:id')

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { ro } from 'date-fns/locale';
-import { Crown, MessageCircle, Send, User, Wifi, WifiOff } from 'lucide-react';
+import { Crown, MessageCircle, Search, Send, User, Wifi, WifiOff, X } from 'lucide-react';
 import { ChatApi } from '@/lib/api';
 import { useAsync } from '@/lib/hooks/use-async';
 import { useAdminChatSocket, type PresenceEvent } from '@/lib/chat-socket';
@@ -23,11 +23,20 @@ export default function AdminChatPage() {
   const [active, setActive] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [livePresence, setLivePresence] = useState<Map<string, boolean>>(new Map());
+  const [searchInput, setSearchInput] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Debounce 250ms — userul tastează IP-ul, evităm să spamăm API-ul la fiecare tastă.
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQuery(searchInput.trim()), 250);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   const { data: convs, refetch: refetchConvs } = useAsync(
-    () => ChatApi.list(),
-    [],
-    { refetchInterval: 30_000 },
+    () => ChatApi.list(searchQuery ? { q: searchQuery } : {}),
+    [searchQuery],
+    // În modul search nu auto-refresh — userul controlează prin tastare. Altfel 30s.
+    { refetchInterval: searchQuery ? undefined : 30_000 },
   );
 
   const { data: thread, refetch: refetchThread } = useAsync(
@@ -140,10 +149,40 @@ export default function AdminChatPage() {
             </span>
             <Badge variant="muted">{list.length}</Badge>
           </div>
+          {/* Search după IP, email, sau prefix ID. În modul search includem ȘI conversațiile
+              filtrate normal (offline + fără mesaje) — utile pentru a lăsa mesaj pentru când
+              userul se întoarce. */}
+          <div className="p-2 border-b border-border">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Caută IP, email, ID..."
+                className="w-full h-8 pl-7 pr-7 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 placeholder:text-muted-foreground/60"
+              />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => setSearchInput('')}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 h-5 w-5 rounded hover:bg-secondary flex items-center justify-center text-muted-foreground"
+                  title="Șterge search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            {searchQuery && (
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1.5 px-1">
+                Mod search · include conversații inactive
+              </div>
+            )}
+          </div>
           <div className="flex-1 overflow-y-auto">
             {list.length === 0 ? (
               <div className="p-6 text-muted-foreground text-sm text-center">
-                Nici o conversație încă.
+                {searchQuery ? `Nicio conversație pentru „${searchQuery}".` : 'Nici o conversație încă.'}
               </div>
             ) : (
               list.map((c) => {

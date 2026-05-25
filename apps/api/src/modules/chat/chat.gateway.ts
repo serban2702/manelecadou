@@ -223,6 +223,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return null;
   }
 
+  /** Întoarce userIds/guestIds al căror IP capturat din WS conține `needle`.
+   *  Folosit la search după IP în admin chat — completează rezultatele care nu
+   *  apar încă în `analytics_sessions`. Case-insensitive substring match. */
+  findIdsByIp(needle: string): { userIds: string[]; guestIds: string[] } {
+    const n = needle.toLowerCase();
+    const userIds: string[] = [];
+    const guestIds: string[] = [];
+    for (const [id, ip] of this.lastIpByUser) {
+      if (ip.toLowerCase().includes(n)) userIds.push(id);
+    }
+    for (const [id, ip] of this.lastIpByGuest) {
+      if (ip.toLowerCase().includes(n)) guestIds.push(id);
+    }
+    return { userIds, guestIds };
+  }
+
   private extractIp(client: Socket): string | null {
     const xff = client.handshake.headers['x-forwarded-for'];
     const raw = Array.isArray(xff) ? xff[0] : xff;
