@@ -1,6 +1,8 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { RequestLoggerMiddleware } from './common/request-logger.middleware';
+import { OpenReplayMiddleware } from './common/openreplay.middleware';
+import { OpenReplaySubscriber } from './common/openreplay.subscriber';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
@@ -83,10 +85,13 @@ import { SeoPagesModule } from './modules/seo-pages/seo-pages.module';
   ],
   providers: [
     { provide: APP_GUARD, useClass: CustomThrottlerGuard },
+    OpenReplaySubscriber,
   ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(RequestLoggerMiddleware).forRoutes('*');
+    // OpenReplay middleware ÎNAINTE de request logger ca să propage
+    // session-id-ul în AsyncLocalStorage pentru toate handlerele + DB writes.
+    consumer.apply(OpenReplayMiddleware, RequestLoggerMiddleware).forRoutes('*');
   }
 }

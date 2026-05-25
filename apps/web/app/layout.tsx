@@ -12,6 +12,7 @@ import { CookieConsent } from '@/components/CookieConsent';
 import { ConfirmDialogProvider } from '@/components/ConfirmDialog';
 import { Toaster } from '@/components/Toaster';
 import { ClientErrorReporter } from '@/components/ClientErrorReporter';
+import { OpenReplay } from '@/components/OpenReplay';
 import { MaintenancePage } from '@/components/MaintenancePage';
 import { LOCALE_META, isLocale } from '@/i18n/locales';
 import { getSiteConfig, siteSupportEmail, siteUrl as siteUrlOf } from '@/lib/site-config';
@@ -173,6 +174,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <ConfirmDialogProvider />
                 <Toaster />
                 <ClientErrorReporter />
+                <OpenReplay />
               </Providers>
             </SiteProvider>
           </NextIntlClientProvider>

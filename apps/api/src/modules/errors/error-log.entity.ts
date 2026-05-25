@@ -55,6 +55,13 @@ export class ErrorLog {
   @Column({ type: 'jsonb', nullable: true })
   meta!: Record<string, unknown> | null;
 
+  /** ID-ul sesiunii OpenReplay (self-hosted) la momentul erorii.
+   *  Permite jump direct de la o eroare în Postgres la sesiunea video.
+   *  Populat automat din header X-OpenReplay-SessionID via TypeORM subscriber. */
+  @Index()
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  openReplaySessionId!: string | null;
+
   /** Marcat ca rezolvat din admin */
   @Column({ type: 'boolean', default: false })
   resolved!: boolean;

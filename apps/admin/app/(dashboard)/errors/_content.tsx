@@ -35,6 +35,12 @@ import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/cn';
 import { SiteBadge } from '@/components/site-badge';
 
+/** Root URL al dashboard-ului OpenReplay self-hosted. Folosit pentru a construi
+ *  link-uri către sesiuni înregistrate, atașate fiecărei erori care a sosit
+ *  într-un request HTTP de la un client cu tracker activ. */
+const OPENREPLAY_DASHBOARD =
+  process.env.NEXT_PUBLIC_OPENREPLAY_DASHBOARD_URL ?? 'https://openreplay.manelecadou.ro';
+
 const LEVEL_VARIANT: Record<string, BadgeProps['variant']> = {
   error: 'destructive',
   warn: 'warning',
@@ -305,6 +311,17 @@ export default function AdminErrorsPage() {
                         </span>
                       )}
                       {e.ip && <span>IP: {e.ip}</span>}
+                      {e.openReplaySessionId && (
+                        <a
+                          href={`${OPENREPLAY_DASHBOARD}/sessions/${e.openReplaySessionId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-primary hover:underline font-medium"
+                          title="Deschide sesiunea în OpenReplay"
+                        >
+                          ▶ Watch replay
+                        </a>
+                      )}
                     </div>
                     {e.userAgent && (
                       <div className="text-[10px] text-muted-foreground/70 mt-1 truncate font-mono">

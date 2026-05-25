@@ -63,6 +63,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getAccessToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
+  // OpenReplay session-id, dacă tracker-ul a pornit (vezi components/OpenReplay.tsx).
+  // Permite backend-ului să coreleze rândul din DB (errors / payments / generations)
+  // cu sesiunea video — jump direct din admin în replay.
+  if (typeof window !== 'undefined') {
+    const orSid = window.__OR_SESSION_ID__;
+    if (orSid) headers.set('X-OpenReplay-SessionID', orSid);
+  }
+
   const url = path.startsWith('http') ? path : `${API_URL}/api${path}`;
   const res = await fetch(url, { ...init, headers });
 

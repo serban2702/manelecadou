@@ -123,6 +123,12 @@ export class Generation {
   @Column({ type: 'integer', default: 0 })
   retryCount!: number;
 
+  /** ID-ul sesiunii OpenReplay (self-hosted) la momentul creării generation-ului.
+   *  Populat automat din header X-OpenReplay-SessionID via TypeORM subscriber. */
+  @Index()
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  openReplaySessionId!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

@@ -417,3 +417,130 @@ Stripe webhook trebuie configurat o singură dată după primul deploy:
 2. URL: `https://manelecadou.ro/api/payments/webhook`
 3. Events: `checkout.session.completed`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `charge.refunded`
 4. Copiază Signing secret (`whsec_...`) → admin `/settings` SAU `.env` `STRIPE_WEBHOOK_SECRET=...` + `make deploy-api`.
+
+---
+
+## 15. OpenReplay self-hosted (al doilea VPS — Hetzner)
+
+Tracking de sesiuni full-fidelity (DOM + network + console + performance) self-hosted. Decizie 2026-05-25: tracking din prima secundă, **fără banner consent**, masking doar pe câmpuri auto-detectate (parole + iframe Stripe). Riscul GDPR/ePrivacy în EU e asumat.
+
+### 15.1 Infrastructură
+
+| Resursă | Valoare |
+|---------|---------|
+| VPS | **Hetzner** (server shared cu alte 2 apps — catalog, melodia-ta) |
+| IP | `138.201.249.234` |
+| SSH alias | `Hetzner` (`~/.ssh/config`, user `root`, key `~/.ssh/hetzner`, port `22`) |
+| Path remote | `/home/apps/manele/openreplay` |
+| Hostname | `Freevox-srl` |
+| RAM | 62GB / 8 vCPU / 431GB SSD / 8GB swap |
+| OS | Ubuntu 24.04.4 LTS |
+| Domeniu | `openreplay.manelecadou.ro` |
+
+**Important**: NU e VPS dedicat. Pe el rulează deja:
+- **Nginx Proxy Manager** (`nginx-proxy-manager-npm-1`) care ocupă `:80/:443/:81` — termină TLS pentru toate domeniile
+- 2 alte aplicații Docker (`catalog_virtual_*`, `melodia-ta_*`) — NU le atinge
+- `notifications-app`, `redisinsight_client`
+
+### 15.2 Arhitectură
+
+```
+Browser ── HTTPS ──► Cloudflare DNS ──► Hetzner :443
+                                          │
+                                          ▼ (NPM termină TLS cu LE)
+                                       NPM nginx
+                                          │
+                                          ▼ (proxy HTTP intern)
+                            nginx-openreplay:80 (docker DNS)
+                                          │
+                                          ▼
+                              OpenReplay stack (~22 containere
+                              docker-compose, Caddy DISABLED)
+```
+
+NPM container e atașat **permanent** la rețeaua Docker `docker-compose_openreplay-net` (vezi `/home/nginx-proxy-manager/docker-compose.yml` — am adăugat rețeaua ca `external: true`), deci poate vorbi cu serviciile OpenReplay prin DNS-ul intern.
+
+### 15.3 Cum a fost instalat
+
+OpenReplay nu are docker-compose oficial production-ready (recomandă Helm/k3s). Dar pe serverul shared cu NPM, helm/k3s ar fi intrat în conflict pe `:80/:443`. Am folosit `scripts/docker-compose/` din repo-ul OpenReplay cu **2 patch-uri obligatorii**:
+
+1. `nginx-openreplay` capătă `ports: ["127.0.0.1:9000:80"]` (fallback debug; NPM nu folosește mapping-ul direct, ci DNS-ul Docker)
+2. Serviciul `caddy` capătă `profiles: [disabled]` → nu pornește la `docker compose up`
+
+⚠️ **Atenție la `install.sh`** — face `git checkout -- *.yaml` la rerun, **resetează patch-urile**. Dacă rulezi installer-ul iar, re-aplică patch-urile din `scripts/openreplay/install-notes.md` (script Python documentat).
+
+Comenzi utile pe Hetzner:
+```bash
+ssh Hetzner
+cd /home/apps/manele/openreplay/scripts/docker-compose
+
+# Status:
+docker ps --filter "network=docker-compose_openreplay-net"
+
+# Restart toate serviciile:
+COMPOSE_PROFILES=migration docker compose up -d
+
+# Stop:
+docker compose --profile migration down
+
+# Logs un serviciu (ex frontend, api, sink, ender):
+docker compose logs -f --tail=200 frontend
+
+# Update OpenReplay (pull versiune nouă):
+cd /home/apps/manele/openreplay && git pull
+cd scripts/docker-compose && COMPOSE_PROFILES=migration docker compose up -d --pull always
+# DUPĂ git pull verifică că patch-urile docker-compose.yaml (nginx ports + caddy profiles) sunt prezente, altfel re-aplică
+```
+
+### 15.4 Integrare cu manelecadou (Ionos)
+
+**Frontend** (`apps/web`):
+- `@openreplay/tracker@18` (v18+ include network capture, nu mai e nevoie de plugin)
+- `components/OpenReplay.tsx` — init la mount, max-data config (`defaultInputMode: Plain`, no obscure emails/numbers, `captureIFrames`, network cu payload), identify user prin `/api/users/me` polling la 30s
+- `lib/api.ts` — atașează `X-OpenReplay-SessionID` la fiecare fetch
+- Build args propagate prin `docker-compose.prod.yml`: `NEXT_PUBLIC_OPENREPLAY_PROJECT_KEY` + `NEXT_PUBLIC_OPENREPLAY_INGEST_POINT`
+
+**Backend** (`apps/api`):
+- `common/openreplay-context.ts` — `AsyncLocalStorage` + extract header
+- `common/openreplay.middleware.ts` — wraps fiecare request în context
+- `common/openreplay.subscriber.ts` — TypeORM subscriber la `beforeInsert` pe `Payment | Generation | ErrorLog`, populează automat `openReplaySessionId` din storage
+- Cele 3 entități au coloană dedicată `openReplaySessionId varchar(64) nullable index` (safe ✅ — adăugare coloană via `synchronize: true`)
+- Înregistrat în `app.module.ts` ca middleware global + provider
+
+**Admin** (`apps/admin`):
+- Pagina `/errors` are link `▶ Watch replay` direct la `https://openreplay.manelecadou.ro/sessions/<id>` pentru fiecare error cu `openReplaySessionId`
+
+### 15.5 NPM Proxy Host (pentru recreare după disaster)
+
+Dacă NPM-ul pierde config-ul, recreează Proxy Host:
+
+| Tab | Câmp | Valoare |
+|-----|------|---------|
+| Details | Domain Names | `openreplay.manelecadou.ro` |
+| Details | Scheme | `http` |
+| Details | Forward Hostname / IP | `nginx-openreplay` |
+| Details | Forward Port | `80` |
+| Details | Websockets Support | **ON** (critic) |
+| Details | Block Common Exploits | ON |
+| SSL | Certificate | Request a new SSL Certificate (LE) |
+| SSL | Force SSL | ON |
+| SSL | HTTP/2 | ON |
+| Advanced | Custom Nginx Config | `client_max_body_size 200M; proxy_buffering off; proxy_request_buffering off; proxy_read_timeout 600s; proxy_send_timeout 600s;` |
+
+NPM UI: tunel SSH `ssh -L 8081:127.0.0.1:81 Hetzner` → http://127.0.0.1:8081.
+
+### 15.6 Project key
+
+Project key OpenReplay e în `/home/manele/.env` pe **Ionos** (NU Hetzner): `NEXT_PUBLIC_OPENREPLAY_PROJECT_KEY=...`. Pentru a-l schimba: edit `.env` + `make deploy-web` (e build arg, deci necesită rebuild web).
+
+Dashboard OpenReplay: <https://openreplay.manelecadou.ro> — credentials owner: primul cont creat la signup.
+
+### 15.7 Gotchas OpenReplay
+
+1. **Caddy din OpenReplay must stay disabled** — încearcă să bind :80/:443 care sunt ale NPM. Patch-ul `profiles: [disabled]` în `docker-compose.yaml`.
+2. **Cloudflare proxy off** pentru `openreplay.manelecadou.ro` (la fel ca pentru toate domeniile de site). Altfel WAF/rate limiting Cloudflare blochează ingest chunks.
+3. **Websockets ON în NPM** — Assist live + ingest streaming nu merg fără.
+4. **`client_max_body_size 200M`** în NPM custom config — fără asta, sourcemap upload și recording chunks mari sunt rejected cu 413.
+5. **`install.sh` resetează docker-compose.yaml** via `git checkout` — vezi 15.3.
+6. **NPM ↔ openreplay-net** trebuie persistat în compose-ul NPM (`external: true`), altfel `docker compose restart` NPM rupe legătura.
+7. **`openReplaySessionId` populare automată** — nu trebuie să modifici call-site-urile `repo.create()`. Subscriber-ul din `common/openreplay.subscriber.ts` îl pune din AsyncLocalStorage. Funcționează doar pentru INSERT-uri în contextul unui HTTP request (nu pentru background jobs — acolo `getOpenReplaySessionId()` returnează `null` și e ok).

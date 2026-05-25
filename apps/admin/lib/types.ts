@@ -134,6 +134,7 @@ export interface AdminError {
   statusCode: number | null; userId: string | null; guestId: string | null;
   ip: string | null; userAgent: string | null; resolved: boolean; createdAt: string;
   siteId?: string | null;
+  openReplaySessionId?: string | null;
 }
 
 export interface AdminGiftCode {

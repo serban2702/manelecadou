@@ -58,6 +58,12 @@ export class Payment {
   @Column({ type: 'varchar', length: 64, nullable: true })
   failureCode!: string | null;
 
+  /** ID-ul sesiunii OpenReplay (self-hosted) la momentul creării plății.
+   *  Populat automat din header X-OpenReplay-SessionID via TypeORM subscriber. */
+  @Index()
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  openReplaySessionId!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 
