@@ -218,12 +218,10 @@ export class ChatService {
   // ============ ADMIN ============
   /**
    * Întoarce conversațiile augmentate cu `online` + `lastSeenAt`, ordonate astfel:
-   *  1. Online + cu mesaje necitite (descrescător după unread)
-   *  2. Online + cu mesaje citite (descrescător după lastMessageAt)
-   *  3. Online + fără mesaje
-   *  4. Offline + cu mesaje necitite
-   *  5. Offline + cu mesaje citite
-   *  6. La final: orice conversație fără mesaje (offline sau fără presence)
+   *  1. Online (user activ pe site) + cu mesaje
+   *  2. Online fără mesaje
+   *  3. Offline + cu mesaje
+   *  4. Offline fără mesaje
    */
   /**
    * Listare conversații pentru admin. Cross-tenant „all" e prea zgomotos pentru
@@ -271,18 +269,15 @@ export class ChatService {
 
     /**
      * Bucket priority:
-     * 0 = online + unread, 1 = online + read, 2 = online + no msgs,
-     * 3 = offline + unread, 4 = offline + read, 5 = no messages (offline)
+     * 0 = online + cu mesaje, 1 = online fără mesaje,
+     * 2 = offline + cu mesaje, 3 = offline fără mesaje.
      */
     const bucket = (c: ConversationWithPresence) => {
       const hasMsgs = !!c.lastMessageAt;
-      const hasUnread = c.unreadByAdmin > 0;
-      if (c.online && hasUnread) return 0;
-      if (c.online && hasMsgs) return 1;
-      if (c.online && !hasMsgs) return 2;
-      if (!c.online && hasUnread) return 3;
-      if (!c.online && hasMsgs) return 4;
-      return 5;
+      if (c.online && hasMsgs) return 0;
+      if (c.online) return 1;
+      if (hasMsgs) return 2;
+      return 3;
     };
 
     augmented.sort((a, b) => {

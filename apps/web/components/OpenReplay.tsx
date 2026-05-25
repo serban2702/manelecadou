@@ -100,6 +100,24 @@ export function OpenReplay() {
         if (sid) window.__OR_SESSION_ID__ = sid;
         window.__OR_TRACKER__ = tracker;
 
+        // ---- IP attribution pentru anonymous users ----
+        // Dashboard-ul OpenReplay arată „Anonymous User" pentru sesiunile fără
+        // userID. Setăm `setUserID('ip:<X>')` ca fallback ca să distingi vizual
+        // sesiunile diferite în lista din /sessions. Real user e suprapus mai
+        // jos (după login).
+        try {
+          const res = await fetch(`${API_URL}/api/analytics/whoami`);
+          if (res.ok) {
+            const { ip } = (await res.json()) as { ip?: string | null };
+            if (ip) {
+              tracker.setUserID(`ip:${ip}`);
+              tracker.setMetadata('ip', ip);
+            }
+          }
+        } catch {
+          /* ignore — whoami e best-effort */
+        }
+
         // ---- User identification (poll login state) ----
         let lastToken: string | null = null;
         const identify = async () => {

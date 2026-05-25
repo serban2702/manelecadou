@@ -92,16 +92,14 @@ export default function AdminChatPage() {
         return liveOnline === undefined ? c : { ...c, online: liveOnline as boolean };
       })
       .sort((a, b) => {
-        // Re-aplicăm bucket sort în client (ordering live).
+        // Re-aplicăm bucket sort în client (ordering live):
+        // 1. online + mesaje, 2. online, 3. offline + mesaje, 4. offline.
         const bucket = (x: typeof a) => {
           const hasMsgs = !!x.lastMessageAt;
-          const hasUnread = x.unreadByAdmin > 0;
-          if (x.online && hasUnread) return 0;
-          if (x.online && hasMsgs) return 1;
-          if (x.online && !hasMsgs) return 2;
-          if (!x.online && hasUnread) return 3;
-          if (!x.online && hasMsgs) return 4;
-          return 5;
+          if (x.online && hasMsgs) return 0;
+          if (x.online) return 1;
+          if (hasMsgs) return 2;
+          return 3;
         };
         const ba = bucket(a);
         const bb = bucket(b);

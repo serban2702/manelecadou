@@ -49,6 +49,17 @@ export class AnalyticsPublicController {
   /** Endpoint public — folosit de tracker-ul din browser. Rate-limit moderat. */
   @Throttle({ medium: { limit: 120, ttl: 60_000 } })
   @UseGuards(OptionalJwtAuthGuard)
+  /** Returnează IP-ul real al clientului (din `X-Forwarded-For` setat de Caddy).
+   *  Folosit de OpenReplay tracker (apps/web/components/OpenReplay.tsx) ca să
+   *  poată trimite `setUserID('ip:<X>')` la sesiunile anonimoase — astfel
+   *  poți distinge utilizatorii din dashboard fără să te bazezi pe geo
+   *  approximate. NU expune nimic sensibil — IP-ul oricum era în log-uri. */
+  @SkipThrottle()
+  @Get('whoami')
+  whoami(@Req() req: Request) {
+    return { ip: clientIp(req) };
+  }
+
   @Post('track')
   @HttpCode(204)
   async track(
