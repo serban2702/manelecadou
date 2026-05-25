@@ -288,9 +288,12 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   const upd = <K extends keyof Data>(k: K, v: Data[K]) =>
     setData((d) => ({ ...d, [k]: v }));
 
-  // Auto-fill mesaj la prima trecere prin step 2 dacă msg e gol
+  // Auto-fill mesaj la prima trecere prin step 2 dacă msg e gol.
+  // DEZACTIVAT (2026-05-25) — userii voiau câmpul gol ca să scrie ei. Pentru
+  // a reactiva, treci AUTOFILL_MSG_ENABLED pe true.
+  const AUTOFILL_MSG_ENABLED = false;
   useEffect(() => {
-    if (step === 2 && !autoFilled && !data.msg && (data.style || data.occ)) {
+    if (AUTOFILL_MSG_ENABLED && step === 2 && !autoFilled && !data.msg && (data.style || data.occ)) {
       // Pentru RO folosim SAMPLES variate cu hint de stil (mai colorat).
       // Pentru alte locale, folosim template-ul localizat din messages.
       const sug = site.locale === 'ro'
