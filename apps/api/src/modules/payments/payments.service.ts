@@ -40,6 +40,17 @@ interface CheckoutInput {
   promoCode?: string;
   email?: string;
   site: Site;
+  /**
+   * Suprascrie suma calculată din site pricing. Folosit de chat admin payment
+   * links unde admin alege liber prețul (ex. 5 RON pentru un caz special).
+   * În cents. Dacă e setat, NU se aplică tipSurcharge sau premiumExtra.
+   * Min 50 cents (limita Stripe).
+   */
+  overrideAmount?: number;
+  /** Suprascrie valuta din site (opțional). 3-letter ISO. */
+  overrideCurrency?: string;
+  /** Descriere custom pentru produsul Stripe (opțional). */
+  overrideProductName?: string;
 }
 
 @Injectable()
@@ -197,7 +208,12 @@ export class PaymentsService {
     if (!stripe) throw new ServiceUnavailableException('Stripe not configured');
     const site = input.site;
 
-    const baseTotal = this.siteTotal(site, input.tipAmount ?? 0, !!input.premium);
+    // Admin chat poate suprascrie suma calculată cu un custom. Min 50 cents = limita Stripe.
+    const hasOverride = typeof input.overrideAmount === 'number' && input.overrideAmount > 0;
+    const baseTotal = hasOverride
+      ? Math.max(50, Math.round(input.overrideAmount!))
+      : this.siteTotal(site, input.tipAmount ?? 0, !!input.premium);
+    const effectiveCurrency = (input.overrideCurrency ?? site.currency).toUpperCase();
     let promoCodeId: string | undefined;
     let appliedDiscountCents = 0;
     if (input.promoCode) {
@@ -269,11 +285,11 @@ export class PaymentsService {
       {
         quantity: 1,
         price_data: {
-          currency: site.currency.toLowerCase(),
+          currency: effectiveCurrency.toLowerCase(),
           unit_amount: baseTotal,
           product_data: {
-            name: i18nProductName(site.locale, brand, !!input.premium),
-            description: input.tipAmount
+            name: input.overrideProductName ?? i18nProductName(site.locale, brand, !!input.premium),
+            description: input.tipAmount && !hasOverride
               ? i18nDedicDesc(site.locale, input.tipAmount, site.currency)
               : undefined,
           },
@@ -286,7 +302,7 @@ export class PaymentsService {
       try {
         const coupon = await stripe.coupons.create({
           amount_off: appliedDiscountCents,
-          currency: site.currency.toLowerCase(),
+          currency: effectiveCurrency.toLowerCase(),
           duration: 'once',
           name: input.promoCode ? `Promo ${input.promoCode}` : 'Reducere',
           max_redemptions: 1,

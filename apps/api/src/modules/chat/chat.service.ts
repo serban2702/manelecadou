@@ -749,18 +749,26 @@ export class ChatService implements OnModuleInit {
     const site = await this.sites.findById(conv.siteId);
     if (!site) throw new NotFoundException('Site nu există');
 
-    // Creează Checkout Session prin PaymentsService (refoloseste logica existentă).
+    const description = opts.description?.trim() || `Manea personalizată${opts.premium ? ' (premium)' : ''}`;
+    const customAmount = typeof opts.amount === 'number' && opts.amount > 0 ? Math.round(opts.amount) : undefined;
+    const customCurrency = opts.currency?.toUpperCase();
+
+    // Creează Checkout Session prin PaymentsService — propagă override-urile din
+    // modal (admin poate alege liber suma/valuta/descrierea, NU se folosește site pricing).
     const checkout = await this.payments.createCheckoutSession({
       userId: conv.userId,
       guestId: conv.guestId,
       premium: !!opts.premium,
       email: conv.email ?? undefined,
       site,
+      overrideAmount: customAmount,
+      overrideCurrency: customCurrency,
+      overrideProductName: description,
     });
 
-    const amount = opts.amount ?? site.basePriceCents + (opts.premium ? site.premiumExtraCents : 0);
-    const currency = (opts.currency ?? site.currency).toUpperCase();
-    const description = opts.description?.trim() || `Manea personalizată${opts.premium ? ' (premium)' : ''}`;
+    // Computăm amount/currency efective pentru payload-ul mesajului (ce vede userul în card)
+    const amount = customAmount ?? site.basePriceCents + (opts.premium ? site.premiumExtraCents : 0);
+    const currency = customCurrency ?? site.currency.toUpperCase();
 
     const msg = this.msg.create({
       conversationId: conv.id,
