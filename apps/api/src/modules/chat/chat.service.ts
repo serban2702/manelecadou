@@ -691,7 +691,7 @@ export class ChatService implements OnModuleInit {
 
     // Auto-translate DEZACTIVAT (2026-05-26) — admin trimite verbatim.
     const finalBody = trimmed;
-    const translationMeta: { original: string; targetLang: string; consensus: number } | null = null;
+    const translationMeta: { original: string; targetLang: string; consensus: number } | null = null as { original: string; targetLang: string; consensus: number } | null;
 
     const msg = this.msg.create({
       conversationId: conv.id,
