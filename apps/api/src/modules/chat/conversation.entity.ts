@@ -151,4 +151,13 @@ export class Conversation {
   /** Momentul claim-ului. */
   @Column({ type: 'timestamptz', nullable: true })
   assignedAt!: Date | null;
+
+  /** Marcată ca favorită de admin (pentru filtru rapid în sidebar). */
+  @Column({ type: 'boolean', default: false })
+  @Index()
+  isFavorite!: boolean;
+
+  /** Notă privată a adminului — pentru when reviens la conversație (TODO, status...). */
+  @Column({ type: 'text', nullable: true })
+  adminNote!: string | null;
 }

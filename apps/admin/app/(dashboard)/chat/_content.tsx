@@ -16,6 +16,7 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  Mail,
   MessageCircle,
   Monitor,
   MoreVertical,
@@ -28,6 +29,7 @@ import {
   Send,
   Smartphone,
   Sparkles,
+  Star,
   Tablet,
   Trash2,
   User,
@@ -383,6 +385,12 @@ export default function AdminChatPage() {
   const [editingMessage, setEditingMessage] = useState<AdminChatMessage | null>(null);
   /** Mesaj în curs de ștergere (null = niciunul). */
   const [deletingMessage, setDeletingMessage] = useState<AdminChatMessage | null>(null);
+  /** Modal setare email sesiune. */
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  /** Modal editare notă privată admin. */
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  /** Filtru sidebar: arată doar favoritele. */
+  const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
 
   async function onFileChosen(f: File) {
     setPendingFile(f);
@@ -464,7 +472,8 @@ export default function AdminChatPage() {
 
   const list = useMemo(() => {
     const base = convs ?? [];
-    return base
+    const filtered = showOnlyFavorites ? base.filter((c) => c.isFavorite) : base;
+    return filtered
       .map((c) => {
         const liveOnline =
           (c.userId && livePresence.get(`u:${c.userId}`)) ||
@@ -480,6 +489,8 @@ export default function AdminChatPage() {
             };
       })
       .sort((a, b) => {
+        // Favoritele rămân pinned în top indiferent de prezență
+        if (!!a.isFavorite !== !!b.isFavorite) return a.isFavorite ? -1 : 1;
         const bucket = (x: typeof a) => {
           const role = x.lastMessageRole;
           if (x.online) {
@@ -499,7 +510,7 @@ export default function AdminChatPage() {
         const bt = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
         return bt - at;
       });
-  }, [convs, livePresence, enriched]);
+  }, [convs, livePresence, enriched, showOnlyFavorites]);
 
   /** Etichetă afișată în sidebar + header thread.
    *  Prioritate: subject redenumit > email > prefix user/guest. */
@@ -543,9 +554,25 @@ export default function AdminChatPage() {
         <aside className="w-72 shrink-0 bg-card border border-border rounded-xl overflow-hidden flex flex-col">
           <div className="p-3 border-b border-border flex items-center justify-between">
             <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-              {showArchived ? 'Arhivate' : 'Conversații'}
+              {showOnlyFavorites ? 'Favorite' : showArchived ? 'Arhivate' : 'Conversații'}
             </span>
             <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowOnlyFavorites((v) => !v);
+                  setActive(null);
+                }}
+                title={showOnlyFavorites ? 'Vezi toate' : 'Vezi doar favoritele'}
+                className={cn(
+                  'h-6 w-6 rounded flex items-center justify-center transition',
+                  showOnlyFavorites
+                    ? 'bg-yellow-500/20 text-yellow-400'
+                    : 'text-muted-foreground hover:bg-secondary',
+                )}
+              >
+                <Star className={cn('h-3.5 w-3.5', showOnlyFavorites && 'fill-current')} />
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -644,6 +671,14 @@ export default function AdminChatPage() {
                       <div className="flex items-center gap-1.5">
                         {e?.chatOpen && (
                           <span title="Chat deschis pe client"><MessageCircle className="h-3 w-3 text-success" /></span>
+                        )}
+                        {c.isFavorite && (
+                          <span title="Favorit"><Star className="h-3 w-3 text-yellow-400 fill-current" /></span>
+                        )}
+                        {c.adminNote && (
+                          <span title={`Notă: ${c.adminNote.slice(0, 60)}${c.adminNote.length > 60 ? '…' : ''}`}>
+                            <Pencil className="h-3 w-3 text-blue-400" />
+                          </span>
                         )}
                         {c.aiMode && c.aiMode !== 'manual' && (
                           <span title={`AI ${c.aiMode}`}><Bot className="h-3 w-3 text-primary" /></span>
@@ -751,6 +786,57 @@ export default function AdminChatPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setShowEmailModal(true)}
+                      title={
+                        thread.conversation.email
+                          ? `Email setat: ${thread.conversation.email}. Click pentru a schimba.`
+                          : 'Setează email pe sesiune (ca și cum userul l-ar fi completat)'
+                      }
+                      className={cn(
+                        'inline-flex items-center justify-center h-8 w-8 rounded-md border transition-colors',
+                        thread.conversation.email
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/20'
+                          : 'bg-secondary/40 border-border text-muted-foreground hover:bg-secondary',
+                      )}
+                    >
+                      <Mail className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await ChatApi.setFavorite(thread.conversation.id, !thread.conversation.isFavorite);
+                        refetchThread();
+                        refetchConvs();
+                      }}
+                      title={thread.conversation.isFavorite ? 'Scoate din favorite' : 'Marchează ca favorit'}
+                      className={cn(
+                        'inline-flex items-center justify-center h-8 w-8 rounded-md border transition-colors',
+                        thread.conversation.isFavorite
+                          ? 'bg-yellow-500/15 border-yellow-500/40 text-yellow-500 hover:bg-yellow-500/25'
+                          : 'bg-secondary/40 border-border text-muted-foreground hover:bg-secondary',
+                      )}
+                    >
+                      <Star className={cn('h-3.5 w-3.5', thread.conversation.isFavorite && 'fill-current')} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowNoteModal(true)}
+                      title={
+                        thread.conversation.adminNote
+                          ? `Notă: ${thread.conversation.adminNote.slice(0, 80)}${thread.conversation.adminNote.length > 80 ? '…' : ''}`
+                          : 'Adaugă notă privată (pentru când revii la conversație)'
+                      }
+                      className={cn(
+                        'inline-flex items-center justify-center h-8 w-8 rounded-md border transition-colors',
+                        thread.conversation.adminNote
+                          ? 'bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/20'
+                          : 'bg-secondary/40 border-border text-muted-foreground hover:bg-secondary',
+                      )}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
                     <AssignmentPill
                       assignedAdminId={thread.conversation.assignedAdminId ?? null}
                       assignedAdminEmail={thread.conversation.assignedAdminEmail ?? null}
@@ -800,6 +886,19 @@ export default function AdminChatPage() {
                 </div>
                 {/* Enriched presence panel */}
                 <PresencePanel enriched={activeEnriched} fallbackOnline={thread.conversation.online} fallbackLastSeen={thread.conversation.lastSeenAt} fallbackIp={thread.conversation.ip} />
+                {/* Notă privată admin (vizibilă doar aici) */}
+                {thread.conversation.adminNote && (
+                  <button
+                    type="button"
+                    onClick={() => setShowNoteModal(true)}
+                    className="mt-2 w-full text-left text-xs bg-blue-500/10 border border-blue-500/30 text-blue-300 rounded-md p-2 hover:bg-blue-500/15 transition-colors"
+                  >
+                    <div className="flex items-start gap-2">
+                      <Pencil className="h-3 w-3 mt-0.5 shrink-0" />
+                      <span className="whitespace-pre-wrap break-words">{thread.conversation.adminNote}</span>
+                    </div>
+                  </button>
+                )}
               </header>
 
               {userTyping.has(active) && (
@@ -985,6 +1084,34 @@ export default function AdminChatPage() {
         />
       )}
 
+      {/* Modal setare email sesiune */}
+      {showEmailModal && thread && (
+        <SetEmailModal
+          current={thread.conversation.email ?? ''}
+          onClose={() => setShowEmailModal(false)}
+          onSave={async (email) => {
+            await ChatApi.setEmail(thread.conversation.id, email);
+            setShowEmailModal(false);
+            refetchThread();
+            refetchConvs();
+          }}
+        />
+      )}
+
+      {/* Modal notă admin */}
+      {showNoteModal && thread && (
+        <AdminNoteModal
+          current={thread.conversation.adminNote ?? ''}
+          onClose={() => setShowNoteModal(false)}
+          onSave={async (note) => {
+            await ChatApi.setNote(thread.conversation.id, note);
+            setShowNoteModal(false);
+            refetchThread();
+            refetchConvs();
+          }}
+        />
+      )}
+
       {/* Modal editare mesaj admin */}
       {editingMessage && (
         <EditMessageModal
@@ -1017,6 +1144,7 @@ export default function AdminChatPage() {
       {/* Modal preview versuri AI */}
       {showLyricsModal && (
         <LyricsPreviewModal
+          conversationId={active}
           onClose={() => setShowLyricsModal(false)}
           onInsertInDraft={(text) => {
             setDraft((d) => (d ? `${d}\n\n${text}` : text));
@@ -1030,6 +1158,49 @@ export default function AdminChatPage() {
 
 /** Valute suportate de Stripe + uzuale pentru multi-tenant (RO/BG/GR/CZ/etc.). */
 const CURRENCY_OPTIONS = ['RON', 'EUR', 'USD', 'BGN', 'HUF', 'PLN', 'CZK', 'GBP', 'TRY', 'RSD'];
+
+/** Aplică rezultatul AI summarize peste setterii unei forme (DemoPaymentModal/LyricsPreviewModal). */
+function applyOrderToForm(
+  r: {
+    style: string | null;
+    occasion: string | null;
+    recipientName: string | null;
+    message: string | null;
+    voiceArtist: string | null;
+    dedication: string | null;
+    tipAmount: number | null;
+    premium: boolean | null;
+    email: string | null;
+  },
+  setters: {
+    setStyleId?: (v: string) => void;
+    setOccasionId?: (v: string) => void;
+    setRecipientName?: (v: string) => void;
+    setMessage?: (v: string) => void;
+    setVoiceId?: (v: string) => void;
+    setDedication?: (v: string) => void;
+    setTipAmount?: (v: number) => void;
+    setPremium?: (v: boolean) => void;
+    setEmail?: (v: string) => void;
+  },
+) {
+  const styleMatch = r.style && GEN_STYLES.find((s) => s.name.toLowerCase() === r.style!.toLowerCase());
+  if (styleMatch && setters.setStyleId) setters.setStyleId(styleMatch.id);
+  const occMatch = r.occasion && GEN_OCCASIONS.find((o) => o.name.toLowerCase() === r.occasion!.toLowerCase());
+  if (occMatch && setters.setOccasionId) setters.setOccasionId(occMatch.id);
+  if (r.recipientName && setters.setRecipientName) setters.setRecipientName(r.recipientName);
+  if (r.message && setters.setMessage) setters.setMessage(r.message);
+  if (r.voiceArtist && setters.setVoiceId) {
+    // Fuzzy: caut un voice care conține preferința AI (ex. "masculină" → primul cu gender m)
+    const lower = r.voiceArtist.toLowerCase();
+    const match = GEN_VOICES.find((v) => v.name.toLowerCase().includes(lower) || v.tag.toLowerCase().includes(lower));
+    if (match) setters.setVoiceId(match.id);
+  }
+  if (r.dedication && setters.setDedication) setters.setDedication(r.dedication);
+  if (typeof r.tipAmount === 'number' && setters.setTipAmount) setters.setTipAmount(r.tipAmount);
+  if (typeof r.premium === 'boolean' && setters.setPremium) setters.setPremium(r.premium);
+  if (r.email && setters.setEmail) setters.setEmail(r.email);
+}
 
 function PaymentLinkModal({
   siteId,
@@ -1723,6 +1894,25 @@ function DemoPaymentModal({
   const [productName, setProductName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiPrefilling, setAiPrefilling] = useState(false);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+
+  async function aiPrefill() {
+    setAiPrefilling(true);
+    setError(null);
+    try {
+      const r = await ChatApi.summarizeOrder(conversationId);
+      applyOrderToForm(r, {
+        setStyleId, setOccasionId, setRecipientName, setMessage,
+        setVoiceId, setDedication, setTipAmount, setPremium, setEmail,
+      });
+      setAiSummary(r.summary);
+    } catch (e) {
+      setError(`Eșec AI pre-fill: ${(e as Error).message}`);
+    } finally {
+      setAiPrefilling(false);
+    }
+  }
 
   async function submit() {
     if (!recipientName.trim() || !message.trim()) {
@@ -1775,10 +1965,25 @@ function DemoPaymentModal({
           <Sparkles className="h-5 w-5 text-primary" />
           <h3 className="text-base font-semibold">Generează demo + trimite link plată</h3>
         </div>
-        <p className="text-xs text-muted-foreground mb-4">
+        <p className="text-xs text-muted-foreground mb-3">
           Suno generează acum melodia. Userul primește 30 secunde demo în chat. La plata link-ului,
           versiunea completă se deblochează automat și i se trimite linkul.
         </p>
+
+        <button
+          type="button"
+          onClick={aiPrefill}
+          disabled={aiPrefilling}
+          className="w-full mb-3 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-60"
+        >
+          {aiPrefilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {aiPrefilling ? 'AI extrage datele...' : '✨ Pre-completează din conversație'}
+        </button>
+        {aiSummary && (
+          <div className="mb-3 text-[11px] text-muted-foreground bg-secondary/30 border border-border rounded p-2 italic">
+            {aiSummary}
+          </div>
+        )}
 
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -2262,9 +2467,11 @@ function TypingPill({ label }: { label: string }) {
 }
 
 function LyricsPreviewModal({
+  conversationId,
   onClose,
   onInsertInDraft,
 }: {
+  conversationId: string | null;
   onClose: () => void;
   onInsertInDraft: (text: string) => void;
 }) {
@@ -2280,6 +2487,26 @@ function LyricsPreviewModal({
   const [result, setResult] = useState<{ draft: string; refined?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [aiPrefilling, setAiPrefilling] = useState(false);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+
+  async function aiPrefill() {
+    if (!conversationId) return;
+    setAiPrefilling(true);
+    setError(null);
+    try {
+      const r = await ChatApi.summarizeOrder(conversationId);
+      applyOrderToForm(r, {
+        setStyleId, setOccasionId, setRecipientName, setMessage,
+        setVoiceId, setDedication, setTipAmount,
+      });
+      setAiSummary(r.summary);
+    } catch (e) {
+      setError(`Eșec AI pre-fill: ${(e as Error).message}`);
+    } finally {
+      setAiPrefilling(false);
+    }
+  }
 
   async function generate() {
     if (!recipientName.trim() || !message.trim()) {
@@ -2327,10 +2554,29 @@ function LyricsPreviewModal({
         className="bg-card border border-border rounded-xl w-full max-w-2xl p-5 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2 mb-3">
           <Sparkles className="h-5 w-5 text-primary" />
           <h3 className="text-base font-semibold">Generează versuri pentru manea</h3>
         </div>
+
+        {!result && conversationId && (
+          <>
+            <button
+              type="button"
+              onClick={aiPrefill}
+              disabled={aiPrefilling}
+              className="w-full mb-3 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-60"
+            >
+              {aiPrefilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {aiPrefilling ? 'AI extrage datele...' : '✨ Pre-completează din conversație'}
+            </button>
+            {aiSummary && (
+              <div className="mb-3 text-[11px] text-muted-foreground bg-secondary/30 border border-border rounded p-2 italic">
+                {aiSummary}
+              </div>
+            )}
+          </>
+        )}
 
         {!result && (
           <>
@@ -2524,6 +2770,139 @@ function ConfirmDeleteMessageModal({
           <Button variant="destructive" onClick={onConfirm}>
             <Trash2 className="h-3.5 w-3.5" />
             Șterge (Enter)
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Setează emailul pe sesiunea curentă (ca și cum userul l-ar fi completat). */
+function SetEmailModal({
+  current,
+  onClose,
+  onSave,
+}: {
+  current: string;
+  onClose: () => void;
+  onSave: (email: string) => void | Promise<void>;
+}) {
+  const [email, setEmail] = useState(current);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  async function save() {
+    if (!validEmail) {
+      setError('Email invalid');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await onSave(email.trim().toLowerCase());
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-card border border-border rounded-xl w-full max-w-sm p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-base font-semibold mb-1">Setează email pe sesiune</h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          Atribui un email direct pe sesiunea curentă. Util când ai obținut adresa
+          prin chat și vrei să o salvezi fără să ceri userului să o introducă în formular.
+        </p>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') onClose();
+            if (e.key === 'Enter' && validEmail) {
+              e.preventDefault();
+              save();
+            }
+          }}
+          placeholder="client@example.com"
+          autoFocus
+          className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none"
+        />
+        {error && <div className="text-xs text-destructive bg-destructive/10 rounded p-2 mt-2">{error}</div>}
+        <div className="flex justify-end gap-2 mt-4">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Anulează</Button>
+          <Button onClick={save} disabled={busy || !validEmail}>
+            {busy ? <Loader2 className="animate-spin" /> : null}
+            Salvează
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Editează nota privată admin (vizibilă doar în admin UI). */
+function AdminNoteModal({
+  current,
+  onClose,
+  onSave,
+}: {
+  current: string;
+  onClose: () => void;
+  onSave: (note: string | null) => void | Promise<void>;
+}) {
+  const [note, setNote] = useState(current);
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    setBusy(true);
+    try {
+      await onSave(note.trim() || null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-card border border-border rounded-xl w-full max-w-md p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-base font-semibold mb-1">Notă privată admin</h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          Vizibilă doar în admin UI. Folosește pentru status, context sau TODO pentru când revii la conversație.
+        </p>
+        <Textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={5}
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') onClose();
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              save();
+            }
+          }}
+          placeholder="ex. Aștept să primesc emailul, sau: comandă suspendată până vineri..."
+        />
+        <div className="flex justify-end gap-2 mt-4">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Anulează</Button>
+          {current && (
+            <Button variant="destructive" onClick={() => onSave(null)} disabled={busy}>
+              Șterge nota
+            </Button>
+          )}
+          <Button onClick={save} disabled={busy}>
+            {busy ? <Loader2 className="animate-spin" /> : null}
+            Salvează (Cmd+Enter)
           </Button>
         </div>
       </div>

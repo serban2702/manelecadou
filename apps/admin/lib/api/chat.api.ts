@@ -54,6 +54,35 @@ export class ChatApi {
   static reply(id: string, body: string): Promise<AdminChatMessage> {
     return http.post(`/admin/chat/conversations/${id}/messages`, { body });
   }
+  /** Setează email pe sesiunea conversației (guest sau user). */
+  static setEmail(id: string, email: string): Promise<AdminChatConversation> {
+    return http.patch(`/admin/chat/conversations/${id}/email`, { email });
+  }
+  /** Toggle favorite pe conversație. */
+  static setFavorite(id: string, favorite: boolean): Promise<AdminChatConversation> {
+    return http.patch(`/admin/chat/conversations/${id}/favorite`, { favorite });
+  }
+  /** Setează nota privată admin (null pentru clear). */
+  static setNote(id: string, note: string | null): Promise<AdminChatConversation> {
+    return http.patch(`/admin/chat/conversations/${id}/note`, { note });
+  }
+  /** AI extract date pentru wizard din transcript-ul conversației. */
+  static summarizeOrder(id: string): Promise<{
+    style: string | null;
+    occasion: string | null;
+    recipientName: string | null;
+    message: string | null;
+    voiceArtist: string | null;
+    dedication: string | null;
+    tipAmount: number | null;
+    premium: boolean | null;
+    email: string | null;
+    customLyrics: string | null;
+    summary: string;
+  }> {
+    return http.post(`/admin/chat/conversations/${id}/summarize-order`, {});
+  }
+
   /** Editează un mesaj admin existent. */
   static editMessage(messageId: string, body: string): Promise<AdminChatMessage> {
     return http.patch(`/admin/chat/messages/${messageId}`, { body });

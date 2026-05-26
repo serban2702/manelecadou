@@ -17,6 +17,7 @@ import { User } from '../users/user.entity';
 import { AnalyticsSession } from '../analytics/analytics-session.entity';
 import { ChatGateway } from './chat.gateway';
 import { TranslationService } from '../../openai/translation.service';
+import { OpenAiClient } from '../../openai/openai.client';
 import { WebPushService } from '../web-push/web-push.service';
 import { ChatAttachmentsService } from './chat-attachments.service';
 import { PaymentsService } from '../payments/payments.service';
@@ -52,6 +53,7 @@ export class ChatService implements OnModuleInit {
     @Inject(forwardRef(() => ChatGateway))
     private readonly gateway: ChatGateway,
     private readonly translation: TranslationService,
+    private readonly openai: OpenAiClient,
     private readonly webPush: WebPushService,
     private readonly attachments: ChatAttachmentsService,
     private readonly payments: PaymentsService,
@@ -1559,6 +1561,171 @@ export class ChatService implements OnModuleInit {
         status: 'read',
         by: 'admin',
       });
+    }
+  }
+
+  // ============== Email pe sesiune, favorite, note, AI summarize ==============
+
+  /**
+   * Atribuie email pe sesiunea curentă (guest sau user) — folosit când adminul
+   * obține emailul prin chat și vrea să-l seteze direct fără să cerem userului.
+   * Pentru guest setează și pe GuestSession. Pentru user logat, doar pe conv
+   * (nu modificăm email-ul user-ului — ar fi nesigur fără verificare).
+   */
+  async setConversationEmail(conversationId: string, email: string): Promise<Conversation> {
+    const cleaned = email.trim().toLowerCase();
+    if (!cleaned.includes('@') || cleaned.length < 5) {
+      throw new ForbiddenException('Email invalid');
+    }
+    const conv = await this.getConversation(conversationId);
+    conv.email = cleaned;
+    if (conv.guestId) {
+      try {
+        const { GuestSessionsService } = await import('../guest-sessions/guest-sessions.service');
+        const guests = this.moduleRef.get(GuestSessionsService, { strict: false });
+        await guests.setEmail(conv.guestId, cleaned);
+      } catch {
+        /* best-effort */
+      }
+    }
+    const saved = await this.conv.save(conv);
+    this.gateway.emitConversationUpdated(saved);
+    return saved;
+  }
+
+  /** Marchează conversația ca favorită (sau o scoate din favorite). */
+  async setFavorite(conversationId: string, favorite: boolean): Promise<Conversation> {
+    const conv = await this.getConversation(conversationId);
+    conv.isFavorite = !!favorite;
+    const saved = await this.conv.save(conv);
+    this.gateway.emitConversationUpdated(saved);
+    return saved;
+  }
+
+  /** Setează nota privată admin pe conversație (null pentru a o șterge). */
+  async setAdminNote(conversationId: string, note: string | null): Promise<Conversation> {
+    const conv = await this.getConversation(conversationId);
+    conv.adminNote = note?.trim() || null;
+    const saved = await this.conv.save(conv);
+    this.gateway.emitConversationUpdated(saved);
+    return saved;
+  }
+
+  /**
+   * Trimite întreaga conversație la OpenAI ca să extragă datele pentru wizard
+   * (style, occasion, recipientName, message, voiceArtist, dedication, etc.).
+   * Returnează un obiect parțial — câmpurile lipsă sunt null/undefined.
+   * Folosit pentru pre-completarea modalurilor de generare versuri / demo + plată.
+   */
+  async summarizeOrderFromConversation(conversationId: string): Promise<{
+    style: string | null;
+    occasion: string | null;
+    recipientName: string | null;
+    message: string | null;
+    voiceArtist: string | null;
+    dedication: string | null;
+    tipAmount: number | null;
+    premium: boolean | null;
+    email: string | null;
+    customLyrics: string | null;
+    summary: string;
+  }> {
+    const conv = await this.getConversation(conversationId);
+    const msgs = await this.msg.find({
+      where: { conversationId: conv.id, deletedAt: IsNull() },
+      order: { createdAt: 'ASC' },
+      take: 200,
+    });
+    const transcript = msgs
+      .filter((m) => m.messageType !== 'ai_suggestion' && m.messageType !== 'system')
+      .map((m) => `[${m.authorRole.toUpperCase()}] ${m.body}`)
+      .join('\n');
+
+    if (!transcript.trim()) {
+      return {
+        style: null,
+        occasion: null,
+        recipientName: null,
+        message: null,
+        voiceArtist: null,
+        dedication: null,
+        tipAmount: null,
+        premium: null,
+        email: conv.email ?? null,
+        customLyrics: null,
+        summary: 'Conversație goală — nu sunt date de extras.',
+      };
+    }
+
+    const STYLES = [
+      'Clasică de pahar', 'Modernă', 'Orientală', 'Cu trompetă', 'De jale',
+      'Comercială', 'De opulență', 'De iubire', 'Tallava', 'Kuchek', 'Trapanele',
+    ];
+    const OCCASIONS = [
+      'Zi de naștere', 'Nuntă', 'Botez', 'Cumătrie', 'Aniversare cuplu',
+      'Pentru șef', 'Declarație', 'Roast prieten', 'Naș/fin', 'Înmormântare',
+      'Motivațională', 'Altă ocazie',
+    ];
+
+    const system = `Ești un asistent care extrage datele pentru o comandă de manea personalizată dintr-o conversație de chat între admin și client.
+
+Citește întregul transcript și returnează DOAR un JSON valid cu următoarele câmpuri (toate opționale — pune null dacă info nu apare):
+{
+  "style": null | "Clasică de pahar" | "Modernă" | "Orientală" | "Cu trompetă" | "De jale" | "Comercială" | "De opulență" | "De iubire" | "Tallava" | "Kuchek" | "Trapanele",
+  "occasion": null | "Zi de naștere" | "Nuntă" | "Botez" | "Cumătrie" | "Aniversare cuplu" | "Pentru șef" | "Declarație" | "Roast prieten" | "Naș/fin" | "Înmormântare" | "Motivațională" | "Altă ocazie",
+  "recipientName": null | "<numele beneficiarului, scurt>",
+  "message": null | "<mesajul/dedicația sentimentală, 1-3 propoziții>",
+  "voiceArtist": null | "<preferință voce, ex. 'masculină', 'feminină', 'gravă'>",
+  "dedication": null | "<de la cine, ex. 'de la Andrei și echipa'>",
+  "tipAmount": null | <număr întreg, suma de bani dedicată în RON, ex. 500>,
+  "premium": null | true | false,
+  "email": null | "<emailul clientului dacă apare>",
+  "customLyrics": null | "<versurile complete dacă userul le-a furnizat explicit>",
+  "summary": "<1-2 propoziții rezumat al conversației pentru context>"
+}
+
+Reguli:
+- style trebuie să fie EXACT unul din valorile listate (fuzzy match — "clasica" → "Clasică de pahar")
+- occasion la fel — EXACT unul din valorile listate
+- recipientName, message, dedication trebuie să fie ce a furnizat clientul, nu inventat
+- Dacă nu ești sigur, pune null
+- NU explica, NU adăuga text înainte/după JSON, doar JSON pur`;
+
+    try {
+      const r = await this.openai.json<{
+        style: string | null;
+        occasion: string | null;
+        recipientName: string | null;
+        message: string | null;
+        voiceArtist: string | null;
+        dedication: string | null;
+        tipAmount: number | null;
+        premium: boolean | null;
+        email: string | null;
+        customLyrics: string | null;
+        summary: string;
+      }>({
+        system,
+        user: `Stiluri valide: ${STYLES.join(', ')}\nOcazii valide: ${OCCASIONS.join(', ')}\n\nTranscript:\n${transcript}`,
+        temperature: 0.2,
+        maxTokens: 800,
+      });
+      const d = r.data ?? {};
+      return {
+        style: d.style ?? null,
+        occasion: d.occasion ?? null,
+        recipientName: d.recipientName ?? null,
+        message: d.message ?? null,
+        voiceArtist: d.voiceArtist ?? null,
+        dedication: d.dedication ?? null,
+        tipAmount: typeof d.tipAmount === 'number' ? d.tipAmount : null,
+        premium: typeof d.premium === 'boolean' ? d.premium : null,
+        email: d.email ?? conv.email ?? null,
+        customLyrics: d.customLyrics ?? null,
+        summary: d.summary ?? 'Rezumat indisponibil.',
+      };
+    } catch (e) {
+      throw new ForbiddenException(`Eșec extragere AI: ${(e as Error).message}`);
     }
   }
 

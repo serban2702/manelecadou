@@ -352,6 +352,30 @@ export class AdminChatController {
     );
   }
 
+  /** Setează email pe sesiunea curentă (guest sau user). */
+  @Patch('conversations/:id/email')
+  setEmail(@Param('id') id: string, @Body() body: { email: string }) {
+    return this.svc.setConversationEmail(id, body.email);
+  }
+
+  /** Marchează conversația ca favorită (toggle). */
+  @Patch('conversations/:id/favorite')
+  setFavorite(@Param('id') id: string, @Body() body: { favorite: boolean }) {
+    return this.svc.setFavorite(id, body.favorite);
+  }
+
+  /** Setează nota privată admin pe conversație (string sau null pentru clear). */
+  @Patch('conversations/:id/note')
+  setNote(@Param('id') id: string, @Body() body: { note: string | null }) {
+    return this.svc.setAdminNote(id, body.note);
+  }
+
+  /** AI extract: rezumă conversația și extrage datele pentru wizard de comandă. */
+  @Post('conversations/:id/summarize-order')
+  summarizeOrder(@Param('id') id: string) {
+    return this.svc.summarizeOrderFromConversation(id);
+  }
+
   /** Editează body-ul unui mesaj admin existent. WS update live. */
   @Patch('messages/:id')
   editMessage(@Param('id') id: string, @Body() body: { body: string }) {

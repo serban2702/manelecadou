@@ -110,6 +110,9 @@ export interface AdminChatConversation {
   assignedAdminId?: string | null;
   assignedAdminEmail?: string | null;
   assignedAt?: string | null;
+  // Favorite + note
+  isFavorite?: boolean;
+  adminNote?: string | null;
 }
 
 export interface AdminChatMessage {
