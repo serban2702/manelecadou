@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations, useLocale } from 'next-intl';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/providers';
-import { useChatSocket, type MessageAckEvent } from '@/lib/chat-socket';
+import { useChatSocket, type MessageAckEvent, type TypingEvent } from '@/lib/chat-socket';
 import { useSite } from '@/lib/site-context';
 
 /** Sunet scurt sintetic via WebAudio — fără dependențe externe sau fișiere. */
@@ -127,6 +127,10 @@ export function ChatWidget() {
   const [sending, setSending] = useState(false);
   const [pulsing, setPulsing] = useState(false);
   const [lastMsgId, setLastMsgId] = useState<string | null>(null);
+  const [adminTyping, setAdminTyping] = useState(false);
+  const adminTypingExpiry = useRef<number>(0);
+  const userTypingLastEmit = useRef<number>(0);
+  const userTypingStopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const qc = useQueryClient();
 
   const { data } = useQuery({
@@ -166,12 +170,47 @@ export function ChatWidget() {
     );
   }, [qc]);
 
-  const { setChatOpen, ack } = useChatSocket({
+  const handleTyping = useCallback((e: TypingEvent) => {
+    if (e.from !== 'admin') return;
+    if (e.isTyping) {
+      adminTypingExpiry.current = Date.now() + 4500;
+      setAdminTyping(true);
+    } else {
+      setAdminTyping(false);
+    }
+  }, []);
+
+  const { setChatOpen, ack, sendTyping } = useChatSocket({
     enabled: ready,
     onMessage: handleMessage,
     onForceOpen: handleForceOpen,
     onAck: handleAck,
+    onTyping: handleTyping,
   });
+
+  // Auto-cleanup admin typing după expirare
+  useEffect(() => {
+    if (!adminTyping) return;
+    const t = setInterval(() => {
+      if (Date.now() > adminTypingExpiry.current) setAdminTyping(false);
+    }, 500);
+    return () => clearInterval(t);
+  }, [adminTyping]);
+
+  /** Emit typing user (max 1/sec) + stop auto după 2s fără activitate. */
+  function emitUserTyping(text: string) {
+    const conv = data?.conversation?.id;
+    if (!conv || text.length === 0) return;
+    const now = Date.now();
+    if (now - userTypingLastEmit.current > 1000) {
+      sendTyping(conv, true);
+      userTypingLastEmit.current = now;
+    }
+    if (userTypingStopTimer.current) clearTimeout(userTypingStopTimer.current);
+    userTypingStopTimer.current = setTimeout(() => {
+      if (conv) sendTyping(conv, false);
+    }, 2000);
+  }
 
   // Detectează mesaj nou de la admin → sunet + pulse + (titlu flash via hook)
   const lastAdminMsg = useMemo(
@@ -573,6 +612,40 @@ export function ChatWidget() {
                 </div>
               );
             })}
+            {adminTyping && (
+              <div
+                style={{
+                  alignSelf: 'flex-start',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 10px',
+                  borderRadius: 12,
+                  background: 'rgba(241,200,77,0.1)',
+                  border: '1px solid var(--line)',
+                  fontSize: 11,
+                  color: 'var(--gold)',
+                  fontStyle: 'italic',
+                }}
+              >
+                <style jsx>{`
+                  @keyframes tdots {
+                    0%, 80%, 100% { opacity: 0.2; transform: scale(0.7); }
+                    40% { opacity: 1; transform: scale(1); }
+                  }
+                  .td { width: 4px; height: 4px; border-radius: 50%; background: currentColor; display: inline-block; }
+                  .td:nth-child(1) { animation: tdots 1.2s infinite ease-in-out 0s; }
+                  .td:nth-child(2) { animation: tdots 1.2s infinite ease-in-out 0.18s; }
+                  .td:nth-child(3) { animation: tdots 1.2s infinite ease-in-out 0.36s; }
+                `}</style>
+                <span style={{ display: 'inline-flex', gap: 2 }}>
+                  <span className="td" />
+                  <span className="td" />
+                  <span className="td" />
+                </span>
+                <span>Operatorul scrie...</span>
+              </div>
+            )}
           </div>
 
           {/* Input */}
@@ -586,7 +659,10 @@ export function ChatWidget() {
           >
             <textarea
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                emitUserTyping(e.target.value);
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();

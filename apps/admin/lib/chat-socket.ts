@@ -59,15 +59,24 @@ export interface AiSuggestionEvent {
   message: ChatMessageEvent['message'];
 }
 
+export interface TypingEvent {
+  conversationId: string;
+  isTyping: boolean;
+  from: 'admin' | 'user';
+  userId?: string;
+  guestId?: string;
+}
+
 interface UseChatSocketArgs {
   onMessage?: (e: ChatMessageEvent) => void;
   onPresence?: (e: PresenceEvent) => void;
   onSnapshot?: (s: PresenceSnapshot) => void;
   onAck?: (e: MessageAckEvent) => void;
   onAiSuggestion?: (e: AiSuggestionEvent) => void;
+  onTyping?: (e: TypingEvent) => void;
 }
 
-export function useAdminChatSocket({ onMessage, onPresence, onSnapshot, onAck, onAiSuggestion }: UseChatSocketArgs = {}) {
+export function useAdminChatSocket({ onMessage, onPresence, onSnapshot, onAck, onAiSuggestion, onTyping }: UseChatSocketArgs = {}) {
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
 
@@ -89,6 +98,7 @@ export function useAdminChatSocket({ onMessage, onPresence, onSnapshot, onAck, o
     if (onSnapshot) socket.on('chat:presence:snapshot', onSnapshot);
     if (onAck) socket.on('chat:message:ack', onAck);
     if (onAiSuggestion) socket.on('chat:ai_suggestion', onAiSuggestion);
+    if (onTyping) socket.on('chat:typing', onTyping);
 
     return () => {
       socket.disconnect();

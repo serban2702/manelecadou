@@ -46,11 +46,18 @@ export interface DeviceInfo {
   viewport?: { w: number; h: number };
 }
 
+export interface TypingEvent {
+  conversationId: string;
+  isTyping: boolean;
+  from: 'admin' | 'user';
+}
+
 interface UseChatSocketArgs {
   enabled?: boolean;
   onMessage?: (e: IncomingChatMessage) => void;
   onForceOpen?: () => void;
   onAck?: (e: MessageAckEvent) => void;
+  onTyping?: (e: TypingEvent) => void;
 }
 
 /** Detectează device-ul din window (fallback peste user-agent server-side). */
@@ -83,7 +90,7 @@ function detectDevice(): DeviceInfo {
  * Conexiune WebSocket pentru chat user (sau guest).
  * Trimite presence heartbeat (10s) + reacționează la page changes.
  */
-export function useChatSocket({ enabled = true, onMessage, onForceOpen, onAck }: UseChatSocketArgs = {}) {
+export function useChatSocket({ enabled = true, onMessage, onForceOpen, onAck, onTyping }: UseChatSocketArgs = {}) {
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const lastPathRef = useRef<string | null>(null);
@@ -121,6 +128,7 @@ export function useChatSocket({ enabled = true, onMessage, onForceOpen, onAck }:
     if (onMessage) socket.on('chat:message', onMessage);
     if (onForceOpen) socket.on('chat:force_open', onForceOpen);
     if (onAck) socket.on('chat:message:ack', onAck);
+    if (onTyping) socket.on('chat:typing', onTyping);
 
     // Heartbeat la 15s (suficient pentru presence; idle aging < 30s la admin)
     const hbInterval = window.setInterval(sendHeartbeat, 15_000);
@@ -161,9 +169,6 @@ export function useChatSocket({ enabled = true, onMessage, onForceOpen, onAck }:
 
   return {
     connected,
-    sendTyping: (conversationId: string, isTyping: boolean) => {
-      socketRef.current?.emit('chat:typing', { conversationId, isTyping });
-    },
     /** Anunță serverul că widgetul s-a deschis/închis. */
     setChatOpen: (open: boolean) => {
       chatOpenRef.current = open;
@@ -173,6 +178,10 @@ export function useChatSocket({ enabled = true, onMessage, onForceOpen, onAck }:
     ack: (messageIds: string[], status: 'delivered' | 'read') => {
       if (!messageIds.length) return;
       socketRef.current?.emit('message:ack', { messageIds, status });
+    },
+    /** Trimite eveniment typing (admin sau client). conversationId îl știe gateway-ul din identity. */
+    sendTyping: (conversationId: string, isTyping: boolean) => {
+      socketRef.current?.emit('chat:typing', { conversationId, isTyping });
     },
   };
 }

@@ -25,6 +25,18 @@ export class ChatApi {
   static deleteConversation(id: string): Promise<{ ok: true; deletedMessages: number }> {
     return http.delete(`/admin/chat/conversations/${id}`);
   }
+  static previewLyrics(dto: {
+    style: string;
+    occasion: string;
+    recipientName: string;
+    message: string;
+    voiceArtist: string;
+    dedication?: string;
+    tipAmount?: number;
+    refine?: boolean;
+  }): Promise<{ draft: string; refined?: string; locale: string }> {
+    return http.post('/admin/chat/lyrics/preview', dto);
+  }
   static thread(id: string): Promise<{ conversation: AdminChatConversation; messages: AdminChatMessage[] }> {
     return http.get(`/admin/chat/conversations/${id}`);
   }

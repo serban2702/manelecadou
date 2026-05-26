@@ -67,6 +67,17 @@ class ArchiveDto {
   archived?: boolean;
 }
 
+class LyricsPreviewDto {
+  @IsString() @MinLength(1) @MaxLength(64) style!: string;
+  @IsString() @MinLength(1) @MaxLength(64) occasion!: string;
+  @IsString() @MinLength(1) @MaxLength(120) recipientName!: string;
+  @IsString() @MinLength(1) @MaxLength(600) message!: string;
+  @IsString() @MinLength(1) @MaxLength(64) voiceArtist!: string;
+  @IsOptional() @IsString() @MaxLength(120) dedication?: string;
+  @IsOptional() @IsNumber() @Min(0) tipAmount?: number;
+  @IsOptional() @IsBoolean() refine?: boolean;
+}
+
 class LaunchGenerationDto {
   @IsString() paymentId!: string;
   @IsString() @MinLength(1) @MaxLength(64) style!: string;
@@ -256,6 +267,15 @@ export class AdminChatController {
   @Post('suggestions/:messageId/reject')
   rejectSuggestion(@Param('messageId') messageId: string) {
     return this.svc.rejectAiSuggestion(messageId);
+  }
+
+  /** Generează un preview de versuri (writer + opțional critic). Nu salvează nimic. */
+  @Post('lyrics/preview')
+  previewLyrics(
+    @Body() dto: LyricsPreviewDto,
+    @CurrentSiteId() siteId: string | null,
+  ) {
+    return this.svc.previewLyrics({ ...dto, siteId });
   }
 
   /** Lansează manual o generare pentru un paymentId deja plătit (ad-hoc admin link). */

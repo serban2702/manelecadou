@@ -39,6 +39,7 @@ import {
   useAdminChatSocket,
   type MessageAckEvent,
   type PresenceEvent,
+  type TypingEvent,
 } from '@/lib/chat-socket';
 import type { AdminChatMessage, AiChatMode, EnrichedPresence } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
@@ -96,8 +97,14 @@ export default function AdminChatPage() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [renameTarget, setRenameTarget] = useState<{ id: string; current: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null);
+  const [showLyricsModal, setShowLyricsModal] = useState(false);
+  // Typing indicator state — map<conversationId, expiresAt timestamp>
+  const [userTyping, setUserTyping] = useState<Map<string, number>>(new Map());
   // Long-press support pentru mobil
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Throttle admin typing emit
+  const lastTypingEmitRef = useRef<number>(0);
+  const typingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [draft, setDraft] = useState('');
   const [livePresence, setLivePresence] = useState<Map<string, boolean>>(new Map());
   const [enriched, setEnriched] = useState<Map<string, EnrichedPresence>>(new Map());
@@ -198,7 +205,20 @@ export default function AdminChatPage() {
     });
   }, []);
 
-  const { connected: wsConnected, joinConversation, leaveConversation } = useAdminChatSocket({
+  const { connected: wsConnected, joinConversation, leaveConversation, sendTyping } = useAdminChatSocket({
+    onTyping: (e: TypingEvent) => {
+      // Doar dacă vine de la user (nu eco-uri admin) și e activ
+      if (e.from !== 'user') return;
+      setUserTyping((prev) => {
+        const next = new Map(prev);
+        if (e.isTyping) {
+          next.set(e.conversationId, Date.now() + 4000); // expires în 4s
+        } else {
+          next.delete(e.conversationId);
+        }
+        return next;
+      });
+    },
     onMessage: () => {
       refetchConvs();
       refetchThread();
@@ -356,6 +376,39 @@ export default function AdminChatPage() {
     setPendingFile(null);
     setPendingPreview(null);
   }
+
+  /** Emit typing event throttled (max 1/sec) + auto-stop după 2s fără activitate. */
+  function emitAdminTyping() {
+    if (!active) return;
+    const now = Date.now();
+    if (now - lastTypingEmitRef.current > 1000) {
+      sendTyping(active, true);
+      lastTypingEmitRef.current = now;
+    }
+    if (typingStopTimerRef.current) clearTimeout(typingStopTimerRef.current);
+    typingStopTimerRef.current = setTimeout(() => {
+      if (active) sendTyping(active, false);
+    }, 2000);
+  }
+
+  // Cleanup typing expirat (4s sliding window)
+  useEffect(() => {
+    const tick = setInterval(() => {
+      setUserTyping((prev) => {
+        const now = Date.now();
+        let changed = false;
+        const next = new Map(prev);
+        for (const [convId, expiresAt] of next) {
+          if (expiresAt <= now) {
+            next.delete(convId);
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 1000);
+    return () => clearInterval(tick);
+  }, []);
 
   async function sendPaymentLink(opts: { amount?: number; currency?: string; description?: string; premium?: boolean }) {
     if (!active) return;
@@ -568,6 +621,12 @@ export default function AdminChatPage() {
                         📍 {e.currentPath}
                       </div>
                     )}
+                    {userTyping.has(c.id) && (
+                      <div className="mt-1 text-[11px] text-success flex items-center gap-1">
+                        <TypingDots />
+                        <span>scrie...</span>
+                      </div>
+                    )}
                     <div className="text-xs text-muted-foreground mt-1 flex items-center justify-between gap-2">
                       <span className={c.online ? 'text-success font-medium' : ''}>
                         {c.online
@@ -642,6 +701,11 @@ export default function AdminChatPage() {
                 <PresencePanel enriched={activeEnriched} fallbackOnline={thread.conversation.online} fallbackLastSeen={thread.conversation.lastSeenAt} fallbackIp={thread.conversation.ip} />
               </header>
 
+              {userTyping.has(active) && (
+                <div className="px-4 pt-2 pb-0">
+                  <TypingPill label="Clientul scrie" />
+                </div>
+              )}
               <div ref={scroller} className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
                 {thread.messages.length === 0 && (
                   <div className="m-auto text-muted-foreground text-sm">Mesaj nul.</div>
@@ -711,9 +775,21 @@ export default function AdminChatPage() {
                 >
                   <CreditCard className="h-4 w-4" />
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowLyricsModal(true)}
+                  title="Generează versuri pentru manea (preview AI)"
+                  className="h-[60px] w-[42px] p-0"
+                >
+                  <Sparkles className="h-4 w-4" />
+                </Button>
                 <Textarea
                   value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
+                  onChange={(e) => {
+                    setDraft(e.target.value);
+                    if (e.target.value.length > 0) emitAdminTyping();
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                       e.preventDefault();
@@ -813,6 +889,17 @@ export default function AdminChatPage() {
           label={deleteTarget.label}
           onClose={() => setDeleteTarget(null)}
           onConfirm={() => deleteConv(deleteTarget.id)}
+        />
+      )}
+
+      {/* Modal preview versuri AI */}
+      {showLyricsModal && (
+        <LyricsPreviewModal
+          onClose={() => setShowLyricsModal(false)}
+          onInsertInDraft={(text) => {
+            setDraft((d) => (d ? `${d}\n\n${text}` : text));
+            setShowLyricsModal(false);
+          }}
         />
       )}
     </div>
@@ -1367,6 +1454,191 @@ function PaymentCard({
         />
       )}
     </>
+  );
+}
+
+/** Cele 3 puncte animate care apar lângă „scrie...". */
+function TypingDots() {
+  return (
+    <>
+      <style jsx>{`
+        @keyframes tdots {
+          0%, 80%, 100% { opacity: 0.2; transform: scale(0.7); }
+          40% { opacity: 1; transform: scale(1); }
+        }
+        .td { width: 4px; height: 4px; border-radius: 50%; background: currentColor; display: inline-block; }
+        .td:nth-child(1) { animation: tdots 1.2s infinite ease-in-out 0s; }
+        .td:nth-child(2) { animation: tdots 1.2s infinite ease-in-out 0.18s; }
+        .td:nth-child(3) { animation: tdots 1.2s infinite ease-in-out 0.36s; }
+      `}</style>
+      <span className="inline-flex items-center gap-0.5 mr-0.5">
+        <span className="td" />
+        <span className="td" />
+        <span className="td" />
+      </span>
+    </>
+  );
+}
+
+function TypingPill({ label }: { label: string }) {
+  return (
+    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-success/10 border border-success/30 text-success text-xs">
+      <TypingDots />
+      <span>{label}...</span>
+    </div>
+  );
+}
+
+function LyricsPreviewModal({
+  onClose,
+  onInsertInDraft,
+}: {
+  onClose: () => void;
+  onInsertInDraft: (text: string) => void;
+}) {
+  const [styleId, setStyleId] = useState(GEN_STYLES[1].id);
+  const [occasionId, setOccasionId] = useState(GEN_OCCASIONS[0].id);
+  const [recipientName, setRecipientName] = useState('');
+  const [message, setMessage] = useState('');
+  const [voiceId, setVoiceId] = useState(GEN_VOICES[0].id);
+  const [dedication, setDedication] = useState('');
+  const [tipAmount, setTipAmount] = useState(0);
+  const [refine, setRefine] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ draft: string; refined?: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function generate() {
+    if (!recipientName.trim() || !message.trim()) {
+      setError('Numele beneficiarului și mesajul sunt obligatorii');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const styleName = GEN_STYLES.find((s) => s.id === styleId)?.name ?? styleId;
+      const occasionName = GEN_OCCASIONS.find((o) => o.id === occasionId)?.name ?? occasionId;
+      const r = await ChatApi.previewLyrics({
+        style: styleName,
+        occasion: occasionName,
+        recipientName: recipientName.trim(),
+        message: message.trim(),
+        voiceArtist: voiceId,
+        dedication: dedication.trim() || undefined,
+        tipAmount: tipAmount > 0 ? tipAmount : undefined,
+        refine,
+      });
+      setResult({ draft: r.draft, refined: r.refined });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const finalLyrics = result?.refined ?? result?.draft ?? '';
+
+  async function copyToClipboard() {
+    if (!finalLyrics) return;
+    try {
+      await navigator.clipboard.writeText(finalLyrics);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {/* ignore */}
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-card border border-border rounded-xl w-full max-w-2xl p-5 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <Sparkles className="h-5 w-5 text-primary" />
+          <h3 className="text-base font-semibold">Generează versuri pentru manea</h3>
+        </div>
+
+        {!result && (
+          <>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Stil</label>
+                  <select value={styleId} onChange={(e) => setStyleId(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none">
+                    {GEN_STYLES.map((s) => <option key={s.id} value={s.id}>{s.emoji} {s.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Ocazie</label>
+                  <select value={occasionId} onChange={(e) => setOccasionId(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none">
+                    {GEN_OCCASIONS.map((o) => <option key={o.id} value={o.id}>{o.emoji} {o.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Beneficiar — pentru cine</label>
+                <input type="text" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="ex. Costel, Mariana, șefu' Florin..." maxLength={120} className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Mesaj / dedicație ({message.length}/600)</label>
+                <Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} maxLength={600} placeholder="ex. La mulți ani, șefule! Să dea Domnu' să luăm bonus..." />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Voce / artist</label>
+                  <select value={voiceId} onChange={(e) => setVoiceId(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none">
+                    {GEN_VOICES.map((v) => <option key={v.id} value={v.id}>{v.name} — {v.tag}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">De la (opțional)</label>
+                  <input type="text" value={dedication} onChange={(e) => setDedication(e.target.value)} maxLength={120} placeholder="ex. de la Andrei și echipa" className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Sumă dedicată (lei, opțional)</label>
+                <input type="number" min={0} step={100} value={tipAmount || ''} onChange={(e) => setTipAmount(parseInt(e.target.value || '0', 10) || 0)} placeholder="ex. 500" className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
+              </div>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" checked={refine} onChange={(e) => setRefine(e.target.checked)} />
+                <span>Rafinează cu pass-ul de critic (rezultate mai bune, +5s)</span>
+              </label>
+              {error && <div className="text-xs text-destructive bg-destructive/10 rounded p-2">{error}</div>}
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <Button variant="ghost" onClick={onClose} disabled={busy}>Anulează</Button>
+              <Button onClick={generate} disabled={busy || !recipientName.trim() || !message.trim()}>
+                {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
+                {busy ? 'Generez...' : 'Generează versuri'}
+              </Button>
+            </div>
+          </>
+        )}
+
+        {result && (
+          <>
+            <div className="rounded-lg border border-border bg-secondary/20 p-3 mb-3 max-h-[50vh] overflow-y-auto">
+              <pre className="text-xs whitespace-pre-wrap font-mono text-foreground">{finalLyrics}</pre>
+            </div>
+            <div className="flex flex-wrap justify-between items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setResult(null)}>← Înapoi la formular</Button>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={copyToClipboard}>
+                  {copied ? <Check className="h-3.5 w-3.5" /> : null}
+                  {copied ? 'Copiat!' : 'Copy text'}
+                </Button>
+                <Button size="sm" onClick={() => onInsertInDraft(finalLyrics)}>
+                  <Send className="h-3.5 w-3.5" />
+                  Inserează în răspuns
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

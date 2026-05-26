@@ -21,6 +21,7 @@ import { ChatAttachmentsService } from './chat-attachments.service';
 import { PaymentsService } from '../payments/payments.service';
 import { SitesService } from '../sites/sites.service';
 import { SettingsService } from '../settings/settings.service';
+import { LyricsService } from '../lyrics/lyrics.module';
 
 /** Pragul în secunde sub care o sesiune e considerată "online". */
 const ONLINE_WINDOW_SEC = 120;
@@ -54,8 +55,66 @@ export class ChatService implements OnModuleInit {
     private readonly payments: PaymentsService,
     private readonly sites: SitesService,
     private readonly chatSettings: SettingsService,
+    private readonly lyrics: LyricsService,
     private readonly moduleRef: ModuleRef,
   ) {}
+
+  /**
+   * Generează un preview de versuri pentru o manea folosind exact aceleași
+   * prompt-uri ca wizard-ul user (writer + critic). Admin folosește butonul
+   * '✨ Versuri' din chat input pentru a previzualiza înainte de a lansa generare.
+   */
+  async previewLyrics(args: {
+    siteId: string | null;
+    style: string;
+    occasion: string;
+    recipientName: string;
+    message: string;
+    voiceArtist: string;
+    dedication?: string;
+    tipAmount?: number;
+    refine?: boolean;
+  }): Promise<{ draft: string; refined?: string; locale: string }> {
+    const site = args.siteId ? await this.sites.findById(args.siteId) : null;
+    const draft = await this.lyrics.writeDraft({
+      style: args.style,
+      occasion: args.occasion,
+      recipientName: args.recipientName,
+      message: args.message,
+      voiceArtist: args.voiceArtist,
+      dedication: args.dedication,
+      tipAmount: args.tipAmount,
+      currency: site?.currency ?? 'RON',
+      locale: site?.locale ?? 'ro',
+      siteId: args.siteId ?? undefined,
+      writerSystemPrompt: site?.suno?.writerSystemPrompt,
+      writerUserTemplate: site?.suno?.writerUserTemplate,
+    });
+    const result: { draft: string; refined?: string; locale: string } = {
+      draft,
+      locale: site?.locale ?? 'ro',
+    };
+    if (args.refine) {
+      result.refined = await this.lyrics.refineDraft(
+        {
+          style: args.style,
+          occasion: args.occasion,
+          recipientName: args.recipientName,
+          message: args.message,
+          voiceArtist: args.voiceArtist,
+          dedication: args.dedication,
+          tipAmount: args.tipAmount,
+          currency: site?.currency ?? 'RON',
+          locale: site?.locale ?? 'ro',
+          siteId: args.siteId ?? undefined,
+          criticSystemPrompt: site?.suno?.criticSystemPrompt,
+          criticUserTemplate: site?.suno?.criticUserTemplate,
+        },
+        draft,
+      );
+    }
+    return result;
+  }
 
   /** Citeste AI_CHAT_MODE_DEFAULT (manual|suggest|auto) pentru conversații noi. */
   private async getDefaultAiMode(): Promise<'manual' | 'suggest' | 'auto'> {

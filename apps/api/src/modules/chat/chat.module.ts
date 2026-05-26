@@ -17,6 +17,7 @@ import { WebPushModule } from '../web-push/web-push.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { SitesModule } from '../sites/sites.module';
 import { SettingsModule } from '../settings/settings.module';
+import { LyricsModule } from '../lyrics/lyrics.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { SettingsModule } from '../settings/settings.module';
     PaymentsModule,
     SitesModule,
     SettingsModule,
+    LyricsModule,
   ],
   providers: [ChatService, ChatGateway, ChatAttachmentsService, AdminGuard],
   exports: [ChatService, ChatGateway],
