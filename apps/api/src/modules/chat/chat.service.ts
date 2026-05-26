@@ -1376,10 +1376,18 @@ export class ChatService implements OnModuleInit {
 
   /** Forțează deschiderea chat-ului pe partea de client (admin sau AI). */
   async forceOpenChat(conversationId: string): Promise<{ ok: true; online: boolean }> {
+    return this.forceToggleChat(conversationId, true);
+  }
+
+  /** Forțează închiderea sau deschiderea widget-ului pe client. */
+  async forceToggleChat(
+    conversationId: string,
+    open: boolean,
+  ): Promise<{ ok: true; online: boolean; open: boolean }> {
     const c = await this.getConversation(conversationId);
     const online = this.gateway.isOnline({ userId: c.userId, guestId: c.guestId });
-    this.gateway.forceOpenChat({ userId: c.userId, guestId: c.guestId });
-    return { ok: true, online };
+    this.gateway.forceToggleChat({ userId: c.userId, guestId: c.guestId }, open);
+    return { ok: true, online, open };
   }
 
   /** Marchează toate mesajele admin → user dintr-o conversație ca delivered (folosit la listMyMessages). */

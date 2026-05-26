@@ -344,6 +344,14 @@ export default function AdminChatPage() {
     }
   }
 
+  async function forceCloseChat() {
+    if (!active) return;
+    const r = await ChatApi.forceClose(active);
+    if (!r.online) {
+      alert('Utilizatorul nu este online acum.');
+    }
+  }
+
   /** Claim/release conversația curentă pentru admin-ul logat. */
   async function toggleAssignment(release: boolean) {
     if (!active) return;
@@ -737,15 +745,31 @@ export default function AdminChatPage() {
                       mode={thread.conversation.aiMode ?? 'manual'}
                       onChange={setAiMode}
                     />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={forceOpenChat}
-                      title="Forțează deschiderea chatului pe client"
-                    >
-                      <Zap className="h-3.5 w-3.5" />
-                      Force open
-                    </Button>
+                    {(() => {
+                      const clientChatOpen =
+                        activeEnriched?.chatOpen ?? thread.conversation.chatOpenOnClient ?? false;
+                      return clientChatOpen ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={forceCloseChat}
+                          title="Închide forțat widget-ul de chat pe client"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          Force close
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={forceOpenChat}
+                          title="Forțează deschiderea chatului pe client"
+                        >
+                          <Zap className="h-3.5 w-3.5" />
+                          Force open
+                        </Button>
+                      );
+                    })()}
                   </div>
                 </div>
                 {/* Enriched presence panel */}

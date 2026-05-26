@@ -286,14 +286,20 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return key ? this.enriched.get(key) ?? null : null;
   }
 
-  /** Force open chat pe client (admin sau AI). */
-  forceOpenChat(target: { userId: string | null; guestId: string | null }) {
+  /** Force open/close chat pe client (admin sau AI). */
+  forceToggleChat(target: { userId: string | null; guestId: string | null }, open: boolean) {
+    const event = open ? 'chat:force_open' : 'chat:force_close';
     if (target.userId) {
-      this.server.to(userRoom(target.userId)).emit('chat:force_open', { at: Date.now() });
+      this.server.to(userRoom(target.userId)).emit(event, { at: Date.now() });
     }
     if (target.guestId) {
-      this.server.to(guestRoom(target.guestId)).emit('chat:force_open', { at: Date.now() });
+      this.server.to(guestRoom(target.guestId)).emit(event, { at: Date.now() });
     }
+  }
+
+  /** @deprecated păstrat pentru backward-compat — folosește forceToggleChat. */
+  forceOpenChat(target: { userId: string | null; guestId: string | null }) {
+    this.forceToggleChat(target, true);
   }
 
   getKnownIp(target: { userId: string | null; guestId: string | null }): string | null {

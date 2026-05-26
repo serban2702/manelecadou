@@ -153,6 +153,10 @@ export function ChatWidget() {
     setOpen(true);
   }, []);
 
+  const handleForceClose = useCallback(() => {
+    setOpen(false);
+  }, []);
+
   const handleAck = useCallback((ev: MessageAckEvent) => {
     // Update local cache pentru a reflecta delivered/read pe mesajele user → admin
     qc.setQueryData<{ messages: Array<{ id: string; deliveredAt?: string | null; readAt?: string | null }>; conversation: unknown } | undefined>(
@@ -184,6 +188,7 @@ export function ChatWidget() {
     enabled: ready,
     onMessage: handleMessage,
     onForceOpen: handleForceOpen,
+    onForceClose: handleForceClose,
     onAck: handleAck,
     onTyping: handleTyping,
   });

@@ -257,10 +257,17 @@ export class AdminChatController {
     return { ok: true, aiMode: conv.aiMode };
   }
 
-  /** Forțează deschiderea chat-ului pe client (admin sau AI). */
+  /**
+   * Forțează deschiderea SAU închiderea chat-ului pe client.
+   * Body opțional: `{ open: boolean }` — default `true` (backward-compat).
+   */
   @Post('conversations/:id/force-open')
-  async forceOpen(@Param('id') id: string) {
-    return this.svc.forceOpenChat(id);
+  async forceOpen(
+    @Param('id') id: string,
+    @Body() body?: { open?: boolean },
+  ) {
+    const open = body?.open !== false;
+    return this.svc.forceToggleChat(id, open);
   }
 
   /** Upload atașament (imagine / PDF) — multipart 'file', optional caption în body. */

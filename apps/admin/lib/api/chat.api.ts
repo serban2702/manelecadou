@@ -46,8 +46,12 @@ export class ChatApi {
   static setAiMode(id: string, mode: AiChatMode): Promise<{ ok: true; aiMode: AiChatMode }> {
     return http.post(`/admin/chat/conversations/${id}/ai-mode`, { mode });
   }
-  static forceOpen(id: string): Promise<{ ok: true; online: boolean }> {
-    return http.post(`/admin/chat/conversations/${id}/force-open`, {});
+  static forceOpen(id: string): Promise<{ ok: true; online: boolean; open: boolean }> {
+    return http.post(`/admin/chat/conversations/${id}/force-open`, { open: true });
+  }
+  /** Forțează închiderea widget-ului pe client. */
+  static forceClose(id: string): Promise<{ ok: true; online: boolean; open: boolean }> {
+    return http.post(`/admin/chat/conversations/${id}/force-open`, { open: false });
   }
   /**
    * Claim/release conversație.
