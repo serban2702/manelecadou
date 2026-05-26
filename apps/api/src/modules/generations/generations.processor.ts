@@ -210,7 +210,7 @@ export class GenerationsProcessor extends WorkerHost {
         text: tpl.text,
         from: site?.fromEmail ?? undefined,
       },
-      { site },
+      { site, kind: 'generation_ready', userId: gen.ownerUserId ?? null, relatedId: gen.id },
     );
   }
 }

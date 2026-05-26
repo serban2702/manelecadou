@@ -6,6 +6,8 @@ import { MailgunMailProvider } from './providers/mailgun.provider';
 import { SettingsService } from '../modules/settings/settings.service';
 import type { Site, SiteMailConfig } from '../modules/sites/site.entity';
 import { decryptSecret } from '../common/crypto.util';
+import { OutboundEmailModule } from '../modules/outbound-email/outbound-email.module';
+import { OutboundEmailService } from '../modules/outbound-email/outbound-email.service';
 
 export type MailSiteRef = Site | { id?: string; slug?: string; mailConfig?: SiteMailConfig; fromEmail?: string | null; supportEmail?: string | null } | null | undefined;
 
@@ -17,6 +19,12 @@ export type MailSiteRef = Site | { id?: string; slug?: string; mailConfig?: Site
 export interface SendMailExtra {
   /** Site-ul curent (cu mailConfig). Decriptarea secretelor are loc aici. */
   site?: MailSiteRef;
+  /** Categorie funcțională pentru audit (ex: magic_link, gift_code, generation_done). */
+  kind?: string;
+  /** ID-ul userului care a triggered email-ul (opțional). */
+  userId?: string | null;
+  /** ID-ul entității asociate (paymentId, generationId, giftCodeId etc.). */
+  relatedId?: string | null;
 }
 
 @Injectable()
@@ -27,6 +35,7 @@ export class MailerService {
     private readonly smtp: SmtpMailProvider,
     private readonly mailgun: MailgunMailProvider,
     private readonly settings: SettingsService,
+    private readonly outboundLog: OutboundEmailService,
   ) {}
 
   /**
@@ -112,18 +121,67 @@ export class MailerService {
   /** Trimite și întoarce rezultatul detaliat al provider-ului. */
   async sendDetailed(opts: SendMailOptions, extra?: SendMailExtra): Promise<SendMailResult> {
     const { provider, ctx } = await this.resolveContext(extra?.site);
+    // Audit row creat ÎNAINTE de send — prinde și crash-urile provider-elor.
+    // Failure-urile la insert (DB down) nu trebuie să blocheze trimiterea mail-ului.
+    const siteId = (extra?.site as { id?: string } | undefined)?.id ?? null;
+    let logId: string | null = null;
+    try {
+      const row = await this.outboundLog.record({
+        siteId,
+        kind: extra?.kind ?? null,
+        to: opts.to,
+        fromAddress: opts.from ?? ctx.fromEmail ?? null,
+        replyTo: opts.replyTo ?? ctx.replyTo ?? null,
+        subject: opts.subject,
+        html: opts.html,
+        text: opts.text ?? null,
+        userId: extra?.userId ?? null,
+        relatedId: extra?.relatedId ?? null,
+      });
+      logId = row.id;
+    } catch (logErr) {
+      this.logger.warn(`outbound-email log insert failed: ${(logErr as Error).message}`);
+    }
+
     try {
       const result = await provider.send(opts, ctx);
       if (result.sent) {
         this.logger.log(
           `mail sent via ${result.provider} src=${ctx.source}${ctx.siteSlug ? ' site=' + ctx.siteSlug : ''} to=${opts.to} id=${result.messageId ?? '-'}`,
         );
+        if (logId) {
+          await this.outboundLog
+            .markSent(logId, {
+              provider: result.provider,
+              providerMessageId: result.messageId,
+              providerNotes: result.notes,
+            })
+            .catch((e) => this.logger.warn(`outbound-email markSent failed: ${(e as Error).message}`));
+        }
       } else {
         this.logger.warn(`mail not sent (${result.notes ?? 'unknown'}) to=${opts.to}`);
+        if (logId) {
+          // Provider a întors `sent=false` (ex. noop în dev) — păstrăm `queued` cu note
+          // sau marcăm sent cu nota „dev-noop", la alegere. Aici: marcăm sent dacă e noop
+          // (deja procesat — nu va mai fi retry) ca să nu apară fals în coada „queued".
+          await this.outboundLog
+            .markSent(logId, {
+              provider: result.provider,
+              providerMessageId: result.messageId,
+              providerNotes: result.notes ?? 'not sent',
+            })
+            .catch((e) => this.logger.warn(`outbound-email markSent(noop) failed: ${(e as Error).message}`));
+        }
       }
       return result;
     } catch (err) {
-      this.logger.error(`mail provider ${provider.name} failed: ${(err as Error).message}`);
+      const msg = (err as Error).message ?? String(err);
+      this.logger.error(`mail provider ${provider.name} failed: ${msg}`);
+      if (logId) {
+        await this.outboundLog
+          .markFailed(logId, msg, provider.name)
+          .catch((e) => this.logger.warn(`outbound-email markFailed failed: ${(e as Error).message}`));
+      }
       throw err;
     }
   }
@@ -149,7 +207,7 @@ function safeDecrypt(value: string | undefined | null): string | undefined {
 }
 
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, OutboundEmailModule],
   providers: [SmtpMailProvider, MailgunMailProvider, MailerService],
   exports: [MailerService],
 })

@@ -9,6 +9,7 @@ import {
 import { ErrorLog } from '../modules/errors/error-log.entity';
 import { Generation } from '../modules/generations/generation.entity';
 import { Payment } from '../modules/payments/payment.entity';
+import { OutboundEmail } from '../modules/outbound-email/outbound-email.entity';
 import { getOpenReplaySessionId } from './openreplay-context';
 
 /**
@@ -31,7 +32,8 @@ export class OpenReplaySubscriber implements EntitySubscriberInterface {
     if (
       target !== Payment &&
       target !== Generation &&
-      target !== ErrorLog
+      target !== ErrorLog &&
+      target !== OutboundEmail
     ) {
       return;
     }

@@ -93,7 +93,7 @@ export class AuthService {
         text: tpl.text,
         from: site?.fromEmail ?? undefined,
       },
-      { site },
+      { site, kind: 'magic_link', userId: existingUser?.id ?? null },
     );
 
     this.logger.log(`magic link issued for ${normalizedEmail} (site=${siteId ?? 'none'})`);
@@ -317,7 +317,7 @@ export class AuthService {
           html: tpl.html,
           text: tpl.text,
         },
-        { site: userSite },
+        { site: userSite, kind: 'gdpr_admin_notify', userId: user.id, relatedId: user.id },
       );
     }
     this.logger.log(`GDPR ${type} request from ${user.email} → notified ${adminEmails.length} admins`);

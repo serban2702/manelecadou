@@ -48,6 +48,7 @@ const DatabaseAdmin   = dynamic(() => import('../database/_content'),        { s
 const Sites           = dynamic(() => import('../sites/_content'),           { ssr: false, loading: Loading });
 const SiteConfig      = dynamic(() => import('../site/_content'),            { ssr: false, loading: Loading });
 const AiMemory        = dynamic(() => import('../ai-memory/_content'),       { ssr: false, loading: Loading });
+const Emails          = dynamic(() => import('../emails/_content'),          { ssr: false, loading: Loading });
 
 const ROUTES: Record<string, ComponentType> = {
   '/':                   Dashboard,
@@ -70,6 +71,7 @@ const ROUTES: Record<string, ComponentType> = {
   '/sites':              Sites,
   '/site':               SiteConfig,
   '/ai-memory':          AiMemory,
+  '/emails':             Emails,
 };
 
 export default function CatchAll() {

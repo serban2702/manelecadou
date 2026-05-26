@@ -177,6 +177,28 @@ export interface AdminError {
   openReplaySessionId?: string | null;
 }
 
+export interface AdminOutboundEmail {
+  id: string;
+  siteId: string | null;
+  kind: string | null;
+  status: 'queued' | 'sent' | 'failed';
+  to: string;
+  fromAddress: string | null;
+  replyTo?: string | null;
+  subject: string;
+  html?: string | null;
+  text?: string | null;
+  provider: string | null;
+  providerMessageId: string | null;
+  providerNotes?: string | null;
+  errorMessage: string | null;
+  userId: string | null;
+  relatedId: string | null;
+  openReplaySessionId: string | null;
+  createdAt: string;
+  finalizedAt: string | null;
+}
+
 export interface AdminGiftCode {
   id: string; code: string; tier: 'single' | 'pack3' | 'pack10';
   usesLeft: number; totalUses: number;

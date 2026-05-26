@@ -109,7 +109,7 @@ export class GiftCodesService {
             text: tpl.text,
             from: site?.fromEmail ?? undefined,
           },
-          { site },
+          { site, kind: 'gift_code', userId: buyer?.id ?? null, relatedId: created.id },
         );
       } catch (err) {
         this.logger.warn(`Failed to email gift code ${created.code}: ${(err as Error).message}`);

@@ -62,7 +62,7 @@ export class AdminController {
         text: body.body,
         from: site?.fromEmail ?? undefined,
       },
-      { site },
+      { site, kind: 'admin_test' },
     );
   }
 

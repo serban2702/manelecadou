@@ -439,7 +439,7 @@ export class GenerationsService {
           text: tpl.text,
           from: site?.fromEmail ?? undefined,
         },
-        { site },
+        { site, kind: 'payment_success', userId: gen.ownerUserId ?? null, relatedId: payment.id },
       );
     } catch (err) {
       this.logger.warn(

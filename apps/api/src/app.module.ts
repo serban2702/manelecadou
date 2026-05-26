@@ -38,6 +38,7 @@ import { TiktokModule } from './modules/tiktok/tiktok.module';
 import { SeoPagesModule } from './modules/seo-pages/seo-pages.module';
 import { WebPushModule } from './modules/web-push/web-push.module';
 import { AiChatModule } from './modules/ai-chat/ai-chat.module';
+import { OutboundEmailModule } from './modules/outbound-email/outbound-email.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { AiChatModule } from './modules/ai-chat/ai-chat.module';
     }),
     DatabaseModule,
     SitesModule,
+    OutboundEmailModule,
     MailerModule,
     HealthModule,
     GuestSessionsModule,
