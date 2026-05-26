@@ -172,28 +172,32 @@ export class OpenAiClient {
         };
       }
 
-      // Execută fiecare tool call în paralel
-      const results = await Promise.all(
-        requestedCalls.map(async (tc) => {
-          const name = tc.function.name;
-          const handler = opts.toolHandlers[name];
-          let parsedArgs: Record<string, unknown> = {};
-          try {
-            parsedArgs = tc.function.arguments ? JSON.parse(tc.function.arguments) : {};
-          } catch {
-            return { tc, output: null, error: `invalid args JSON: ${tc.function.arguments}` };
-          }
-          if (!handler) {
-            return { tc, output: null, error: `unknown tool: ${name}` };
-          }
-          try {
-            const output = await handler(parsedArgs);
-            return { tc, output, error: undefined };
-          } catch (e) {
-            return { tc, output: null, error: (e as Error).message };
-          }
-        }),
-      );
+      // Execută SECVENȚIAL (nu paralel) — dacă AI cere 2 tool calls identice
+      // în același iter, al doilea vede state-ul actualizat de primul (ex.
+      // ctx.suggestionMsgId setat → blochează duplicate). Plus assertNotManual
+      // în fiecare handler vede mode-ul actual ÎNAINTE de a doua execuție.
+      const results: Array<{ tc: ToolCallSummary; output: unknown; error: string | undefined }> = [];
+      for (const tc of requestedCalls) {
+        const name = tc.function.name;
+        const handler = opts.toolHandlers[name];
+        let parsedArgs: Record<string, unknown> = {};
+        try {
+          parsedArgs = tc.function.arguments ? JSON.parse(tc.function.arguments) : {};
+        } catch {
+          results.push({ tc, output: null, error: `invalid args JSON: ${tc.function.arguments}` });
+          continue;
+        }
+        if (!handler) {
+          results.push({ tc, output: null, error: `unknown tool: ${name}` });
+          continue;
+        }
+        try {
+          const output = await handler(parsedArgs);
+          results.push({ tc, output, error: undefined });
+        } catch (e) {
+          results.push({ tc, output: null, error: (e as Error).message });
+        }
+      }
 
       // Push tool messages cu rezultate + audit
       for (const r of results) {

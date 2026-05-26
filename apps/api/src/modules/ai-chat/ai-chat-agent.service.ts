@@ -31,6 +31,9 @@ const REQUIRED_WIZARD_FIELDS: Array<keyof WizardData> = ['style', 'occasion', 'r
 @Injectable()
 export class AIChatAgentService {
   private readonly logger = new Logger('AIChatAgent');
+  /** Lock per-conversație — un singur AI run în paralel per conv. Previne ca
+   *  3 mesaje user trimise rapid să declanșeze 3 run-uri AI care răspund toate. */
+  private runningRuns = new Set<string>();
 
   constructor(
     @InjectRepository(Conversation) private readonly conv: Repository<Conversation>,
@@ -53,20 +56,31 @@ export class AIChatAgentService {
    * Verifică aiMode + dispatch agent run.
    */
   async maybeRun(conversationId: string, userMessageId: string): Promise<void> {
-    // Small delay (200ms) — dă o fereastră admin-ului să schimbe pe Manual dacă vede
-    // imediat mesajul nou și nu vrea AI să răspundă. NU rezolvă races complete dar
-    // ajută pentru cazul „adminul reacționează rapid".
-    await new Promise((r) => setTimeout(r, 200));
+    // 1. Lock per-conv — dacă există deja un run în desfășurare, skip total.
+    //    Previne ca 3 mesaje user trimise rapid să declanșeze 3 răspunsuri AI.
+    if (this.runningRuns.has(conversationId)) {
+      this.logger.log(`skip AI for conv=${conversationId.slice(0, 8)} — run already in progress`);
+      return;
+    }
+    // 2. Delay 800ms — fereastră ca admin să poată schimba pe Manual înainte ca
+    //    AI să pornească, ȘI ca să se „adune" mesajele consecutive user (debounce
+    //    natural — dacă userul scrie 2 mesaje în <800ms, doar primul declanșează
+    //    runAgent, al doilea găsește lock activ și skipează).
+    await new Promise((r) => setTimeout(r, 800));
+    if (this.runningRuns.has(conversationId)) return; // alt run a pornit între timp
     const conv = await this.conv.findOne({ where: { id: conversationId } });
     if (!conv) return;
     if (conv.aiMode === 'manual') {
       this.logger.log(`skip AI for conv=${conversationId.slice(0, 8)} — mode=manual`);
       return;
     }
+    this.runningRuns.add(conversationId);
     try {
       await this.runAgent(conv, userMessageId);
     } catch (e) {
       this.logger.warn(`agent failed for conv=${conversationId.slice(0, 8)}: ${(e as Error).message}`);
+    } finally {
+      this.runningRuns.delete(conversationId);
     }
   }
 
@@ -115,6 +129,7 @@ export class AIChatAgentService {
       mode: conv.aiMode,
       suggestionMsgId: null,
       sentRealMessages: 0,
+      sentTexts: [],
       escalated: false,
       paymentLinkSent: false,
       // settings flags pentru approval gates
@@ -626,20 +641,25 @@ INTERZIS:
 
     const isFirst = ctx.sentRealMessages === 0 && !ctx.suggestionMsgId;
 
-    if (ctx.mode === 'suggest' && ctx.suggestionMsgId) {
-      return {
-        sent: false,
-        messageType: 'duplicate_blocked',
-        status: 'SUGGESTION_ALREADY_PENDING',
-        instruction: 'You already sent ONE suggestion this turn. Stop calling tools and END your turn now.',
-      };
-    }
-    if (ctx.mode === 'auto' && ctx.sentRealMessages >= 3) {
+    // Hard limit: max UN SINGUR mesaj per run (suggest sau auto). Reduce
+    // dramatic riscul de spam. Dacă AI vrea să spună mai mult, concatenează în
+    // un singur send_message.
+    if (ctx.suggestionMsgId || ctx.sentRealMessages >= 1) {
       return {
         sent: false,
         messageType: 'rate_limited',
-        status: 'TOO_MANY_MESSAGES_THIS_TURN',
-        instruction: 'You already sent 3 messages this turn. Stop calling tools and END your turn now.',
+        status: 'ALREADY_SENT_ONE_MESSAGE_THIS_TURN',
+        instruction: 'You already sent ONE message this turn. STOP — do not call any other tool. End your turn now.',
+      };
+    }
+    // Dedupe pe text exact (în caz că AI încearcă să retrimită prin alt nume de tool)
+    const normalized = trimmed.toLowerCase().replace(/\s+/g, ' ');
+    if (ctx.sentTexts.some((t) => t === normalized)) {
+      return {
+        sent: false,
+        messageType: 'duplicate_text',
+        status: 'DUPLICATE_TEXT_BLOCKED',
+        instruction: 'You already sent this exact text. STOP — do not repeat.',
       };
     }
 
@@ -683,13 +703,12 @@ INTERZIS:
     await this.conv.save(ctx.conv);
     this.gateway.emitMessage({ message: saved, conversation: ctx.conv });
     ctx.sentRealMessages++;
+    ctx.sentTexts.push(normalized);
     return {
       sent: isFirst,
       messageType: 'text',
       status: 'MESSAGE_DELIVERED_TO_USER',
-      instruction: ctx.sentRealMessages >= 2
-        ? 'You sent 2 messages already. End your turn now unless you have new critical info.'
-        : 'Message delivered. Consider ending your turn unless follow-up is needed.',
+      instruction: 'Message delivered. Your turn is COMPLETE. Do NOT send more messages or call other tools. End now.',
     };
   }
 
@@ -900,6 +919,7 @@ interface AgentCtx {
   mode: 'manual' | 'suggest' | 'auto';
   suggestionMsgId: string | null;
   sentRealMessages: number;
+  sentTexts: string[]; // ce a fost trimis pe acest run — pentru dedupe
   escalated: boolean;
   paymentLinkSent: boolean;
   requireApprovalForPayment: boolean;
