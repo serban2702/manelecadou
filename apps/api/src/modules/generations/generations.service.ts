@@ -24,7 +24,8 @@ import { paymentSuccessTemplate } from '../../mailer/templates/templates';
 import { brandingFromSite } from '../../mailer/branding';
 import { SitesService } from '../sites/sites.service';
 
-export const GENERATIONS_QUEUE = 'generations';
+export { GENERATIONS_QUEUE } from './generations.constants';
+import { GENERATIONS_QUEUE } from './generations.constants';
 
 @Injectable()
 export class GenerationsService {

@@ -453,26 +453,64 @@ REGULI STRICTE:
       },
       {
         name: 'wizard_update',
-        description: 'Salvează unul sau mai multe câmpuri în wizardul de comandă. Folosește după ce userul răspunde la o întrebare. Normalize valorile (ex. „moderna" → „Modernă"). Câmpurile cerute pentru a putea finaliza: style, occasion, recipientName, message, voiceArtist.',
+        description: 'Salvează datele de comandă colectate de la user. Apelează după CE userul îți răspunde — extrage TOATE câmpurile dintr-un singur call (userul de obicei spune tot odată într-un mesaj lung). Câmpurile MINIME pentru a putea finaliza: recipientName + message + email. dedicatorName e optional. recipientGender e întrebat doar pentru conv scurte (< 8 user msgs).',
         parameters: {
           type: 'object',
           properties: {
-            style: { type: 'string', description: `Unul din: ${STYLES.join(', ')}` },
-            occasion: { type: 'string', description: `Una din: ${OCCASIONS.join(', ')}` },
-            recipientName: { type: 'string', description: 'Numele persoanei pentru care e manea (1-120 char).' },
-            message: { type: 'string', description: 'Mesajul/dedicarea sentimentală pe care vrea s-o transmită (max 600 char).' },
-            voiceArtist: { type: 'string', description: 'Preferință voce (ex. „masculină grav", „feminină", „classic").' },
-            dedication: { type: 'string', description: 'Opțional: text scurt dedicare audio (max 120 char).' },
-            customLyrics: { type: 'string', description: 'Opțional: versuri custom complete furnizate de user.' },
-            premium: { type: 'boolean', description: 'Opțional: dacă userul vrea variantă premium (+20 RON).' },
-            email: { type: 'string', description: 'Email-ul user-ului (necesar pentru livrare). Doar dacă e guest fără email.' },
+            recipientName: { type: 'string', description: 'Numele persoanei care primește manea (1-120 char). OBLIGATORIU.' },
+            dedicatorName: { type: 'string', description: 'Numele celui care dedică („De la"). OPTIONAL — doar dacă userul l-a dat.' },
+            message: { type: 'string', description: 'Mesajul/contextul personalizat (max 1000 char). Include detalii autobiografice dacă userul le-a dat (locuri, ani, momente, copii, etc.).' },
+            email: { type: 'string', description: 'Email-ul user-ului (necesar pentru livrare).' },
+            recipientGender: { type: 'string', enum: ['M', 'F'], description: 'Sex destinatar. Folosit pentru inferarea vocii când userul nu o cere explicit.' },
+            customLyrics: { type: 'string', description: 'OPTIONAL: versuri custom complete furnizate explicit de user.' },
+            premium: { type: 'boolean', description: 'OPTIONAL: dacă userul a cerut explicit variantă premium (+20 RON).' },
           },
         },
       },
       {
         name: 'wizard_finalize',
-        description: 'Finalizează comanda: creează generation pending în DB + Stripe Checkout cu generationId + trimite payment_link în chat. Cere ca toate câmpurile minime să fie complete (style, occasion, recipientName, message, voiceArtist) și user-ul să aibă email. Apelează DOAR după ce userul a confirmat datele recapitulate.',
+        description: 'Finalizează comanda. AI infereaza automat style/occasion/voiceArtist din transcript (NU mai cere userului). Țese contextul conversațional în mesajul melodiei (locuri/ani/momente). Creează Generation pending + Stripe Checkout + payment_link în chat. Apelează DUPĂ ce ai recipientName + message + email salvate.',
         parameters: { type: 'object', properties: {} },
+      },
+      {
+        name: 'quote_price_with_offer',
+        description: 'Verifică dacă userul are deja un cod promo activ (câștigat la roata norocului) și formulează automat anunțul de preț cu/fără ofertă. AI doar îl apelează — NU mai trimite manual mesajul cu preț, tool-ul îl trimite singur.',
+        parameters: { type: 'object', properties: {} },
+      },
+      {
+        name: 'issue_discount_offer',
+        description: 'Emite UN cod 1-shot pentru user (max 20% reducere) când userul cere explicit reducere. Codul e restricționat la email-ul lui (dacă e cunoscut) și valid 24h. Tool-ul trimite singur mesajul cu cod + redus în chat.',
+        parameters: {
+          type: 'object',
+          properties: {
+            percentage: { type: 'integer', minimum: 1, maximum: 20, description: 'Procent reducere (max 20).' },
+          },
+          required: ['percentage'],
+        },
+      },
+      {
+        name: 'play_sample',
+        description: 'Trimite în chat un link cu o mostră audio pentru ca userul să asculte un stil sau o voce de pe site. Tool-ul trimite singur mesajul cu link-ul.',
+        parameters: {
+          type: 'object',
+          properties: {
+            kind: { type: 'string', enum: ['style', 'voice'], description: 'Tip mostră.' },
+            id: { type: 'string', description: 'ID-ul stilului (ex. clasic, modern) sau vocii (florinel, mariana).' },
+          },
+          required: ['kind', 'id'],
+        },
+      },
+      {
+        name: 'send_empathy',
+        description: 'Trimite UN mesaj de empatie/compasiune (condoleanțe, „să-ți trăiască copiii" etc.). Hard cap 2 per conv — al 3-lea apel returnează limit_reached. Tool-ul trimite singur mesajul.',
+        parameters: {
+          type: 'object',
+          properties: {
+            trigger: { type: 'string', enum: ['decedat', 'copii', 'aniversare_lunga', 'bolnav', 'altul'], description: 'Tipul triggerului detectat.' },
+            text: { type: 'string', description: 'Textul exact al mesajului de empatie (ton Irina, scurt, cu emoji).' },
+          },
+          required: ['trigger', 'text'],
+        },
       },
       {
         name: 'force_open_chat',
@@ -513,6 +551,10 @@ REGULI STRICTE:
       wizard_finalize: async () => this.handleWizardFinalize(ctx),
       force_open_chat: async (args) => this.handleForceOpen(ctx, String(args.reason ?? '')),
       check_order_status: async () => this.handleCheckOrderStatus(ctx),
+      quote_price_with_offer: async () => this.handleQuotePrice(ctx),
+      issue_discount_offer: async (args) => this.handleIssueDiscount(ctx, Number(args.percentage ?? 0)),
+      play_sample: async (args) => this.handlePlaySample(ctx, String(args.kind ?? 'voice'), String(args.id ?? '')),
+      send_empathy: async (args) => this.handleSendEmpathy(ctx, String(args.trigger ?? 'altul'), String(args.text ?? '')),
       escalate_to_human: async (args) => this.handleEscalate(ctx, String(args.reason ?? 'unspecified')),
     };
   }
@@ -647,10 +689,15 @@ REGULI STRICTE:
     const state = this.getOrInitWizardState(conv);
     const updates: Partial<WizardData> = {};
 
+    if (typeof args.recipientName === 'string' && args.recipientName.trim()) updates.recipientName = args.recipientName.trim().slice(0, 120);
+    if (typeof args.dedicatorName === 'string' && args.dedicatorName.trim()) updates.dedicatorName = args.dedicatorName.trim().slice(0, 120);
+    if (typeof args.message === 'string' && args.message.trim()) updates.message = args.message.trim().slice(0, 1000);
+    if (typeof args.recipientGender === 'string' && (args.recipientGender === 'M' || args.recipientGender === 'F')) {
+      updates.recipientGender = args.recipientGender;
+    }
+    // Legacy fields — AI poate seta dacă userul a spus explicit (păstrăm compat).
     if (typeof args.style === 'string' && args.style.trim()) updates.style = this.normalizeStyle(args.style);
     if (typeof args.occasion === 'string' && args.occasion.trim()) updates.occasion = this.normalizeOccasion(args.occasion);
-    if (typeof args.recipientName === 'string' && args.recipientName.trim()) updates.recipientName = args.recipientName.trim().slice(0, 120);
-    if (typeof args.message === 'string' && args.message.trim()) updates.message = args.message.trim().slice(0, 600);
     if (typeof args.voiceArtist === 'string' && args.voiceArtist.trim()) updates.voiceArtist = args.voiceArtist.trim().slice(0, 64);
     if (typeof args.dedication === 'string') updates.dedication = args.dedication.trim().slice(0, 120);
     if (typeof args.customLyrics === 'string' && args.customLyrics.length > 10) updates.customLyrics = args.customLyrics.trim().slice(0, 4000);
@@ -743,14 +790,18 @@ REGULI STRICTE:
     }
 
     try {
-      // 1. Crează Generation pending
+      // 1a. Inferează AUTOMAT style/occasion/voiceArtist din transcript dacă userul
+      //     n-a setat explicit. Țesem și contextul din chat în message.
+      const inference = await this.inferCreativeFields(conv, state.data, site);
+
+      // 1b. Crează Generation pending cu valorile inferate (sau user_said dacă există)
       const generation = await this.generations.createPendingForPayment(
         {
-          style: state.data.style!,
-          occasion: state.data.occasion!,
+          style: inference.style.value,
+          occasion: inference.occasion.value,
           recipientName: state.data.recipientName!,
-          message: state.data.message!,
-          voiceArtist: state.data.voiceArtist!,
+          message: inference.message.value, // mesaj posibil enrich-uit cu context
+          voiceArtist: inference.voiceArtist.value,
           dedication: state.data.dedication,
           customLyrics: state.data.customLyrics,
           premium: !!state.data.premium,
@@ -762,6 +813,23 @@ REGULI STRICTE:
           siteId: conv.siteId,
         },
       );
+
+      // 1c. Persistă audit pe Generation — ce a inferat AI și de unde
+      try {
+        await this.generations['repo']
+          .createQueryBuilder()
+          .update('generations')
+          .set({
+            dedicatorName: state.data.dedicatorName ?? null,
+            recipientGender: state.data.recipientGender ?? null,
+            inferredFromChat: true,
+            inferenceMeta: inference as unknown as Record<string, unknown>,
+          })
+          .where('id = :id', { id: generation.id })
+          .execute();
+      } catch (e) {
+        this.logger.warn(`audit inference write failed: ${(e as Error).message}`);
+      }
 
       // 2. Crează Stripe Checkout legat de Generation
       const checkout = await this.payments.createCheckoutSession({
@@ -1114,6 +1182,383 @@ REGULI STRICTE:
     const saved = await this.msg.save(m);
     this.gateway.emitAiSuggestion({ conversation: ctx.conv, message: saved });
     return { ok: true, message: 'Escalated. Operator notified.' };
+  }
+
+  // ============== INFERARE CREATIVĂ (Faza 6 — Irina virtuală) ==============
+
+  /**
+   * Inferează automat style/occasion/voiceArtist din transcriptul conversației +
+   * datele wizard. Toate câmpurile au `source: 'user_said' | 'inferred' | 'default'`
+   * pentru audit. Folosim un single OpenAI call lightweight (gpt-4o-mini) ca să nu
+   * adăugăm latență mare la finalize.
+   *
+   * Plus: enrich message-ul cu context autobiografic din chat (locuri/ani/momente
+   * pe care userul le-a menționat — ele trebuie să intre în versurile manelei).
+   */
+  private async inferCreativeFields(
+    conv: Conversation,
+    wizardData: WizardData,
+    site: Awaited<ReturnType<SitesService['findById']>>,
+  ): Promise<{
+    style: { value: string; source: 'user_said' | 'inferred' | 'default' };
+    occasion: { value: string; source: 'user_said' | 'inferred' | 'default' };
+    voiceArtist: { value: string; source: 'user_said' | 'inferred' | 'default' };
+    message: { value: string; source: 'user_said' | 'inferred' | 'enriched' };
+  }> {
+    // Fallback rapid dacă user a setat deja totul explicit — nu mai cheltuim API call
+    const userSetAll =
+      !!wizardData.style && !!wizardData.occasion && !!wizardData.voiceArtist;
+
+    // Default-uri site-aware
+    const fallbackStyle = STYLES[0]; // Clasică de pahar
+    const fallbackOccasion = OCCASIONS[0]; // Zi de naștere
+    const fallbackVoice = wizardData.recipientGender === 'F' ? VOICE_DEFAULTS.F : VOICE_DEFAULTS.M;
+
+    // Iau ultimele 25 mesaje user pentru context
+    const userMsgs = await this.msg.find({
+      where: { conversationId: conv.id, authorRole: 'user' },
+      order: { createdAt: 'ASC' },
+      take: 25,
+    });
+    const transcript = userMsgs.map((m) => m.body).join('\n').slice(0, 4000);
+
+    // Single OpenAI call pentru inferare + enrich message
+    let inferred: {
+      style?: string;
+      occasion?: string;
+      voiceArtist?: string;
+      enrichedMessage?: string;
+    } = {};
+
+    try {
+      const sysPrompt = `Ești un assistant de extracție de date pentru o platformă manele AI.
+
+Pe baza conversației user-ului de mai jos și a datelor wizard deja colectate, extrage:
+
+1. **style** — unul EXACT din: ${STYLES.join(', ')}
+2. **occasion** — una EXACT din: ${OCCASIONS.join(', ')}
+3. **voiceArtist** — alege ID din: florinel (M caldă clasic), ticu (M trap), adita (M modern club), nicu (M energic), mariana (F caldă), gigi (F luminoasă). Match cu sexul destinatarului (M pentru femeie dedicata, F pentru bărbat dedicat) sau cu preferința explicită.
+4. **enrichedMessage** — versiunea îmbogățită a mesajului inițial: include detalii autobiografice menționate de user (locuri unde s-au cunoscut, ani, momente importante, copii, profesie, etc.) ÎN MOD NATURAL, nu listate. Păstrează tonul mesajului original. Max 800 char.
+
+REGULI:
+- Dacă userul a SPUS explicit ceva ("vreau ceva clasic", "voce de femeie") → folosește exact.
+- Dacă wizardData are deja câmp setat → respectă-l, nu schimba.
+- Pentru style/occasion/voice fără indicii clare → alege default-uri logice (zi de naștere → Modernă, voce match sex recipient).
+
+Returnează STRICT JSON: {"style": "...", "occasion": "...", "voiceArtist": "...", "enrichedMessage": "..."}`;
+
+      const userPrompt = `WIZARD DATA actuală:
+- recipientName: ${wizardData.recipientName ?? '?'}
+- dedicatorName: ${wizardData.dedicatorName ?? '?'}
+- recipientGender: ${wizardData.recipientGender ?? '?'}
+- message original: ${wizardData.message ?? '?'}
+- style (dacă user a spus): ${wizardData.style ?? 'INFERĂ'}
+- occasion (dacă user a spus): ${wizardData.occasion ?? 'INFERĂ'}
+- voiceArtist (dacă user a spus): ${wizardData.voiceArtist ?? 'INFERĂ'}
+
+TRANSCRIPT USER (ultimele mesaje):
+${transcript}`;
+
+      const inferResult = await this.openai.chatWithTools({
+        messages: [
+          { role: 'system', content: sysPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        tools: [],
+        toolHandlers: {},
+        temperature: 0.3,
+        maxIterations: 1,
+        maxTokens: 600,
+        // Force JSON response (modern OpenAI: response_format: json_object)
+      });
+
+      const raw = inferResult.finalContent?.trim() ?? '';
+      // Extragere JSON robust (poate veni cu ```json wrappers)
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        inferred = JSON.parse(jsonMatch[0]);
+      }
+    } catch (e) {
+      this.logger.warn(`inferCreativeFields openai failed: ${(e as Error).message}`);
+      // continue cu fallback-uri
+    }
+
+    // Construire rezultat final cu source tracking
+    const pick = <T>(
+      userVal: T | undefined,
+      inferredVal: T | undefined,
+      defaultVal: T,
+    ): { value: T; source: 'user_said' | 'inferred' | 'default' } => {
+      if (userVal !== undefined && userVal !== null && (typeof userVal !== 'string' || userVal.trim()))
+        return { value: userVal, source: 'user_said' };
+      if (inferredVal !== undefined && inferredVal !== null && (typeof inferredVal !== 'string' || (inferredVal as unknown as string).trim()))
+        return { value: inferredVal, source: 'inferred' };
+      return { value: defaultVal, source: 'default' };
+    };
+
+    const styleResult = pick<string>(wizardData.style, inferred.style, fallbackStyle);
+    const occasionResult = pick<string>(wizardData.occasion, inferred.occasion, fallbackOccasion);
+
+    // Normalize style/occasion la denumiri exacte
+    styleResult.value = this.normalizeStyle(styleResult.value);
+    occasionResult.value = this.normalizeOccasion(occasionResult.value);
+
+    // Voice: dacă user a setat string custom (legacy „masculină grav"), îl păstrăm,
+    // altfel folosim ID-ul preset inferat sau fallback pe gender.
+    const voiceResult = pick<string>(wizardData.voiceArtist, inferred.voiceArtist, fallbackVoice);
+
+    // Message: dacă AI a enrich-uit cu context, folosim enriched; altfel originalul
+    const enrichedMsg = inferred.enrichedMessage?.trim() ?? '';
+    const originalMsg = wizardData.message ?? '';
+    const messageResult =
+      enrichedMsg.length > originalMsg.length && enrichedMsg.includes(originalMsg.slice(0, 30))
+        ? ({ value: enrichedMsg.slice(0, 1000), source: 'enriched' as const })
+        : ({ value: originalMsg, source: 'user_said' as const });
+
+    return { style: styleResult, occasion: occasionResult, voiceArtist: voiceResult, message: messageResult };
+  }
+
+  // ============== HANDLERS NOI Faza 6 ==============
+
+  /** Quote price + verifică dacă userul are deja un cod câștigat la roată. */
+  private async handleQuotePrice(ctx: AgentCtx): Promise<unknown> {
+    const check = await this.assertNotManual(ctx);
+    if (check.aborted) return { aborted: true, status: 'ABORTED_MANUAL_MODE' };
+    if (!ctx.conv.siteId) return { error: 'no_site' };
+
+    const site = await this.sites.findById(ctx.conv.siteId);
+    if (!site) return { error: 'site_not_found' };
+
+    const basePrice = site.basePriceCents;
+    const currency = site.currency.toUpperCase();
+
+    // Verifică cod câștigat la roata norocului pentru acest user/guest
+    const ownerId = ctx.conv.userId ?? ctx.conv.guestId;
+    let appliedCode: { code: string; pctOff: number; finalPrice: number } | null = null;
+
+    if (ownerId) {
+      try {
+        const raw: Array<{ awardedCode: string; promoCodeId: string }> = await this.conv.manager.query(
+          `SELECT rs."awardedCode", rs."awardedPromoCodeId" AS "promoCodeId"
+           FROM roulette_spins rs
+           WHERE (rs."userId" = $1 OR rs."guestId" = $1) AND rs."awardedCode" IS NOT NULL
+           ORDER BY rs."createdAt" DESC LIMIT 1`,
+          [ownerId],
+        );
+        if (raw.length > 0 && raw[0].promoCodeId) {
+          const promo: Array<{ discountType: string; discountValue: number; usedCount: number; maxUses: number; active: boolean }> = await this.conv.manager.query(
+            `SELECT "discountType", "discountValue", "usedCount", "maxUses", active FROM promo_codes WHERE id = $1`,
+            [raw[0].promoCodeId],
+          );
+          if (promo.length > 0 && promo[0].active && (promo[0].maxUses === 0 || promo[0].usedCount < promo[0].maxUses)) {
+            const p = promo[0];
+            const pctOff = p.discountType === 'percent' ? p.discountValue : Math.round((p.discountValue / basePrice) * 100);
+            const finalCents = p.discountType === 'percent'
+              ? Math.round(basePrice * (100 - p.discountValue) / 100)
+              : Math.max(0, basePrice - p.discountValue);
+            appliedCode = { code: raw[0].awardedCode, pctOff, finalPrice: finalCents };
+          }
+        }
+      } catch (e) {
+        this.logger.warn(`quote_price roata check failed: ${(e as Error).message}`);
+      }
+    }
+
+    const baseFormatted = `${(basePrice / 100).toFixed(2)} ${currency.toLowerCase() === 'ron' ? 'lei' : currency}`;
+    let msgText: string;
+    if (appliedCode) {
+      const finalFormatted = `${(appliedCode.finalPrice / 100).toFixed(2)} ${currency.toLowerCase() === 'ron' ? 'lei' : currency}`;
+      msgText = `Maneaua costa ${baseFormatted} dar tu ai deja codul ${appliedCode.code} cu ${appliedCode.pctOff}% reducere — deci ${finalFormatted}. Sunteti de acord?`;
+    } else {
+      // Pattern verbatim al Irinei
+      msgText = `Maneaua costa ${baseFormatted} la care puteti sa mai beneficiati de o oferta. Sunteti de acord?`;
+    }
+
+    // Trimite mesajul direct (bypass send_message dedupe — e o acțiune distinctă)
+    const m = this.msg.create({
+      conversationId: ctx.conv.id,
+      siteId: ctx.conv.siteId,
+      authorRole: ctx.mode === 'suggest' ? 'system' : 'admin',
+      authorId: null,
+      body: msgText,
+      messageType: ctx.mode === 'suggest' ? 'ai_suggestion' : 'text',
+      aiGenerated: true,
+      detectedLang: site.locale,
+    });
+    const saved = await this.msg.save(m);
+
+    if (ctx.mode === 'suggest') {
+      this.gateway.emitAiSuggestion({ conversation: ctx.conv, message: saved });
+      return { sent: false, status: 'SUGGESTION_PERSISTED', appliedCode: appliedCode?.code ?? null };
+    }
+
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+      .where('id = :id', { id: ctx.conv.id })
+      .execute();
+    this.gateway.emitMessage({ message: saved, conversation: ctx.conv });
+    ctx.sentRealMessages++;
+
+    return {
+      sent: true,
+      status: 'PRICE_QUOTED',
+      appliedCode: appliedCode?.code ?? null,
+      instruction: 'Quote trimis. Așteaptă confirmarea userului. TERMINĂ TURUL.',
+    };
+  }
+
+  /** Emite un cod 1-shot pentru user la cererea de reducere (max 20%). */
+  private async handleIssueDiscount(ctx: AgentCtx, percentage: number): Promise<unknown> {
+    const check = await this.assertNotManual(ctx);
+    if (check.aborted) return { aborted: true };
+    if (!ctx.conv.siteId) return { error: 'no_site' };
+    const pct = Math.max(1, Math.min(20, Math.round(percentage)));
+
+    // Generăm un cod aleator de 8 chars
+    const code = 'AI' + Math.random().toString(36).slice(2, 8).toUpperCase();
+    const restrictEmail = ctx.conv.email ?? null;
+    const validUntil = new Date(Date.now() + 24 * 3600 * 1000);
+
+    try {
+      await this.conv.manager.query(
+        `INSERT INTO promo_codes (id, "siteId", code, "discountType", "discountValue", "validUntil", "maxUses", "usedCount", "restrictedToEmail", active, note, source, "aiIssued", "createdAt", "updatedAt")
+         VALUES (uuid_generate_v4(), $1, $2, 'percent', $3, $4, 1, 0, $5, true, 'AI Irina — reducere la cerere', 'ai_request', true, NOW(), NOW())`,
+        [ctx.conv.siteId, code, pct, validUntil, restrictEmail],
+      );
+    } catch (e) {
+      this.logger.warn(`issue_discount failed: ${(e as Error).message}`);
+      return { error: 'issue_failed', message: (e as Error).message };
+    }
+
+    const site = await this.sites.findById(ctx.conv.siteId);
+    if (!site) return { error: 'site_not_found' };
+    const baseCents = site.basePriceCents;
+    const finalCents = Math.round(baseCents * (100 - pct) / 100);
+    const cur = site.currency.toLowerCase() === 'ron' ? 'lei' : site.currency.toUpperCase();
+    const finalFmt = `${(finalCents / 100).toFixed(2)} ${cur}`;
+
+    const text = `Te inteleg complet. Iti pot oferi codul ${code} cu ${pct}% reducere — deci ${finalFmt}. Codul e valid 24h${restrictEmail ? ` pe email-ul tau` : ''}. Vrei sa continuam? ✨`;
+
+    const m = this.msg.create({
+      conversationId: ctx.conv.id,
+      siteId: ctx.conv.siteId,
+      authorRole: ctx.mode === 'suggest' ? 'system' : 'admin',
+      authorId: null,
+      body: text,
+      messageType: ctx.mode === 'suggest' ? 'ai_suggestion' : 'text',
+      aiGenerated: true,
+      detectedLang: 'ro',
+    });
+    const saved = await this.msg.save(m);
+
+    if (ctx.mode === 'suggest') {
+      this.gateway.emitAiSuggestion({ conversation: ctx.conv, message: saved });
+      return { sent: false, code, percentage: pct };
+    }
+
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+      .where('id = :id', { id: ctx.conv.id })
+      .execute();
+    this.gateway.emitMessage({ message: saved, conversation: ctx.conv });
+    ctx.sentRealMessages++;
+
+    return { sent: true, code, percentage: pct, finalCents, status: 'DISCOUNT_ISSUED' };
+  }
+
+  /** Trimite un link cu o mostră audio (style sau voice) pentru ascultare pe site. */
+  private async handlePlaySample(ctx: AgentCtx, kind: string, id: string): Promise<unknown> {
+    const check = await this.assertNotManual(ctx);
+    if (check.aborted) return { aborted: true };
+    if (!ctx.conv.siteId) return { error: 'no_site' };
+    const site = await this.sites.findById(ctx.conv.siteId);
+    if (!site) return { error: 'site_not_found' };
+
+    const samples = kind === 'style' ? site.suno?.styleSamples : site.suno?.voiceSamples;
+    const entry = samples?.[id];
+    if (!entry?.audioUrl) {
+      return { error: 'sample_not_found', kind, id, instruction: 'Sample inexistent. Alege alt id sau spune userului că mostra nu e disponibilă.' };
+    }
+
+    const label = kind === 'style' ? 'stilul' : 'voce';
+    const text = `Asculta o mostra de ${label} aici 🎵: ${entry.audioUrl}`;
+
+    const m = this.msg.create({
+      conversationId: ctx.conv.id,
+      siteId: ctx.conv.siteId,
+      authorRole: ctx.mode === 'suggest' ? 'system' : 'admin',
+      authorId: null,
+      body: text,
+      messageType: ctx.mode === 'suggest' ? 'ai_suggestion' : 'text',
+      aiGenerated: true,
+      detectedLang: site.locale,
+    });
+    const saved = await this.msg.save(m);
+    if (ctx.mode === 'suggest') {
+      this.gateway.emitAiSuggestion({ conversation: ctx.conv, message: saved });
+      return { sent: false, audioUrl: entry.audioUrl };
+    }
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+      .where('id = :id', { id: ctx.conv.id })
+      .execute();
+    this.gateway.emitMessage({ message: saved, conversation: ctx.conv });
+    ctx.sentRealMessages++;
+    return { sent: true, audioUrl: entry.audioUrl, status: 'SAMPLE_SENT' };
+  }
+
+  /** Trimite mesaj de empatie (condoleanțe, „să-ți trăiască") cu cap 2/conv. */
+  private async handleSendEmpathy(ctx: AgentCtx, trigger: string, text: string): Promise<unknown> {
+    const check = await this.assertNotManual(ctx);
+    if (check.aborted) return { aborted: true };
+    const conv = await this.conv.findOne({ where: { id: ctx.conv.id }, select: ['id', 'siteId', 'empathyMessagesSent'] });
+    if (!conv) return { error: 'conv_gone' };
+    if ((conv.empathyMessagesSent ?? 0) >= 2) {
+      return { sent: false, status: 'LIMIT_REACHED', instruction: 'Ai trimis deja 2 mesaje de empatie pe această conv. NU mai trimite. Treci la flow normal.' };
+    }
+    const cleaned = text.trim().slice(0, 400);
+    if (!cleaned) return { sent: false, status: 'EMPTY_TEXT' };
+
+    const m = this.msg.create({
+      conversationId: ctx.conv.id,
+      siteId: ctx.conv.siteId,
+      authorRole: ctx.mode === 'suggest' ? 'system' : 'admin',
+      authorId: null,
+      body: cleaned,
+      messageType: ctx.mode === 'suggest' ? 'ai_suggestion' : 'text',
+      aiGenerated: true,
+      detectedLang: 'ro',
+      payload: { empathyTrigger: trigger },
+    });
+    const saved = await this.msg.save(m);
+
+    // Increment counter atomic
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ empathyMessagesSent: () => '"empathyMessagesSent" + 1' })
+      .where('id = :id', { id: ctx.conv.id })
+      .execute();
+
+    if (ctx.mode === 'suggest') {
+      this.gateway.emitAiSuggestion({ conversation: ctx.conv, message: saved });
+      return { sent: false, status: 'SUGGESTION_PERSISTED', trigger };
+    }
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+      .where('id = :id', { id: ctx.conv.id })
+      .execute();
+    this.gateway.emitMessage({ message: saved, conversation: ctx.conv });
+    ctx.sentRealMessages++;
+    return { sent: true, status: 'EMPATHY_SENT', trigger, instruction: 'Mesaj empatie trimis. Continuă cu flow-ul normal (preț / detalii / etc.) la următorul mesaj user.' };
   }
 
   // ============== AUDIT ==============

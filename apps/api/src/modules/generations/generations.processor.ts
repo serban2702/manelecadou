@@ -7,7 +7,7 @@ import { Repository } from 'typeorm';
 import { Job } from 'bullmq';
 
 import { Generation } from './generation.entity';
-import { GENERATIONS_QUEUE } from './generations.service';
+import { GENERATIONS_QUEUE } from './generations.constants';
 import { SunoProvider } from '../suno/suno.types';
 import { LyricsService } from '../lyrics/lyrics.module';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
