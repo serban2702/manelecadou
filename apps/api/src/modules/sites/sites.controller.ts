@@ -332,6 +332,7 @@ export class AdminSitesController {
       sslEnabled: s.sslEnabled,
       maintenanceMode: s.maintenanceMode,
       hiddenMode: s.hiddenMode,
+      aiChatModeDefault: s.aiChatModeDefault ?? null,
       langSwitcherEnabled: s.langSwitcherEnabled ?? false,
       maintenanceMessage: s.maintenanceMessage ?? {},
       ipWhitelist: s.ipWhitelist ?? [],

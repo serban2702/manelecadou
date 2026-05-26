@@ -2003,15 +2003,26 @@ function QuickRepliesTab({ onInsert }: { onInsert: (text: string) => void }) {
               type="button"
               onClick={() => onInsert(r.text)}
               title={r.text}
-              className="flex-1 text-left text-xs px-3 py-2 rounded-md border transition-colors hover:brightness-110"
+              className="flex-1 min-w-0 text-left text-xs px-3 py-2 rounded-md border transition-colors hover:brightness-110"
               style={{
                 background: `${r.color}22`,
                 borderColor: `${r.color}55`,
                 color: r.color,
               }}
             >
-              <div className="font-semibold truncate">{r.label}</div>
-              <div className="text-[10px] opacity-70 truncate font-normal">{r.text}</div>
+              <div className="font-semibold break-words">{r.label}</div>
+              <div
+                className="text-[10px] opacity-70 font-normal leading-snug"
+                style={{
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {r.text}
+              </div>
             </button>
             <button
               type="button"

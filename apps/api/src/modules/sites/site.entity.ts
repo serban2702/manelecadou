@@ -397,6 +397,16 @@ export class Site {
   hiddenMode!: boolean; // dacă true, Caddy/Next.js închid conexiunea cu 444 (ERR_EMPTY_RESPONSE)
 
   /**
+   * Modul AI default pentru conversații noi pe acest site (override global
+   * AI_CHAT_MODE_DEFAULT). NULL → folosește setarea globală. Valori:
+   *  - 'manual'  → AI nu intervine (default safe)
+   *  - 'suggest' → AI propune răspunsuri, admin aprobă
+   *  - 'auto'    → AI răspunde direct cu guardrails
+   */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  aiChatModeDefault!: 'manual' | 'suggest' | 'auto' | null;
+
+  /**
    * Dacă true, meniul de selectare limbă (LangSwitcher din topbar) e afișat.
    * Default false fiindcă pe site-urile multi-tenant convenția e "un domeniu
    * = o limbă". Activează când vrei să dai vizitatorului control manual peste

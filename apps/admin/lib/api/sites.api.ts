@@ -94,6 +94,8 @@ export interface SiteDto {
   sslEnabled: boolean;
   maintenanceMode: boolean;
   hiddenMode: boolean;
+  /** Mod AI chat inițial pentru conversații noi (override global). NULL = global. */
+  aiChatModeDefault: 'manual' | 'suggest' | 'auto' | null;
   /** Afișează meniul de selectare limbă în topbar. Default false (un domeniu = o limbă). */
   langSwitcherEnabled: boolean;
   maintenanceMessage: Record<string, string>;

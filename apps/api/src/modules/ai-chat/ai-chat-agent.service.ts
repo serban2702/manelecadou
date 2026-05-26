@@ -34,6 +34,8 @@ export class AIChatAgentService {
   /** Lock per-conversație — un singur AI run în paralel per conv. Previne ca
    *  3 mesaje user trimise rapid să declanșeze 3 run-uri AI care răspund toate. */
   private runningRuns = new Set<string>();
+  /** Flag „mesaj nou venit în timpul rulării" — la finalul run-ului re-trigger. */
+  private pendingFollowup = new Map<string, string>(); // convId → latestUserMsgId
 
   constructor(
     @InjectRepository(Conversation) private readonly conv: Repository<Conversation>,
@@ -56,18 +58,20 @@ export class AIChatAgentService {
    * Verifică aiMode + dispatch agent run.
    */
   async maybeRun(conversationId: string, userMessageId: string): Promise<void> {
-    // 1. Lock per-conv — dacă există deja un run în desfășurare, skip total.
-    //    Previne ca 3 mesaje user trimise rapid să declanșeze 3 răspunsuri AI.
+    // 1. Lock per-conv — dacă există deja un run în desfășurare, marchez ca pending
+    //    ca să re-rulez la final cu mesajul cel mai recent.
     if (this.runningRuns.has(conversationId)) {
-      this.logger.log(`skip AI for conv=${conversationId.slice(0, 8)} — run already in progress`);
+      this.pendingFollowup.set(conversationId, userMessageId);
+      this.logger.log(`AI run in progress for conv=${conversationId.slice(0, 8)} — pending followup`);
       return;
     }
     // 2. Delay 800ms — fereastră ca admin să poată schimba pe Manual înainte ca
-    //    AI să pornească, ȘI ca să se „adune" mesajele consecutive user (debounce
-    //    natural — dacă userul scrie 2 mesaje în <800ms, doar primul declanșează
-    //    runAgent, al doilea găsește lock activ și skipează).
+    //    AI să pornească, ȘI ca să se „adune" mesajele consecutive user.
     await new Promise((r) => setTimeout(r, 800));
-    if (this.runningRuns.has(conversationId)) return; // alt run a pornit între timp
+    if (this.runningRuns.has(conversationId)) {
+      this.pendingFollowup.set(conversationId, userMessageId);
+      return;
+    }
     const conv = await this.conv.findOne({ where: { id: conversationId } });
     if (!conv) return;
     if (conv.aiMode === 'manual') {
@@ -81,6 +85,18 @@ export class AIChatAgentService {
       this.logger.warn(`agent failed for conv=${conversationId.slice(0, 8)}: ${(e as Error).message}`);
     } finally {
       this.runningRuns.delete(conversationId);
+    }
+
+    // Dacă în timpul rulării a venit alt user message, re-rulez (recursiv,
+    // dar lock-ul previne paralelism). Folosesc setImmediate ca să nu blocăm
+    // call stack-ul curent (sendAsUser așteaptă răspunsul asincron).
+    const pendingId = this.pendingFollowup.get(conversationId);
+    if (pendingId) {
+      this.pendingFollowup.delete(conversationId);
+      this.logger.log(`re-running AI for conv=${conversationId.slice(0, 8)} on pending msg`);
+      setImmediate(() => {
+        void this.maybeRun(conversationId, pendingId);
+      });
     }
   }
 
@@ -101,12 +117,14 @@ export class AIChatAgentService {
       return;
     }
 
-    const history = await this.msg.find({
+    // Iau ultimele 30 mesaje (DESC + reverse) — `take: 50` cu ASC anterior lua
+    // mesajele cele mai VECHI, ceea ce pentru convs lungi pierdea contextul recent.
+    const recentDesc = await this.msg.find({
       where: { conversationId: conv.id },
-      order: { createdAt: 'ASC' },
-      take: 50,
+      order: { createdAt: 'DESC' },
+      take: 30,
     });
-    const last20 = history.slice(-20);
+    const last20 = recentDesc.reverse();
 
     const site = conv.siteId ? await this.sites.findById(conv.siteId) : null;
     const memoryFacts = await this.loadActiveMemory(conv.siteId);

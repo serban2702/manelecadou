@@ -831,6 +831,28 @@ function StatusTab({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto) => 
           value={form.langSwitcherEnabled ?? false}
           onChange={(v) => setForm({ ...form, langSwitcherEnabled: v })}
         />
+        <Field label="Mod AI chat default (conversații noi)">
+          <select
+            value={form.aiChatModeDefault ?? ''}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                aiChatModeDefault: (e.target.value || null) as 'manual' | 'suggest' | 'auto' | null,
+              })
+            }
+            className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
+          >
+            <option value="">Default global (din /settings)</option>
+            <option value="manual">Manual — AI nu intervine</option>
+            <option value="suggest">AI Suggest — propune răspunsuri, admin aprobă</option>
+            <option value="auto">AI Auto — răspunde direct cu guardrails</option>
+          </select>
+          <p className="text-[11px] text-muted-foreground mt-1">
+            Mod inițial pentru conversații noi pe acest site. Override-uri per
+            conversație din pagina /chat. Schimbarea NU afectează conversațiile
+            existente.
+          </p>
+        </Field>
         <Field label="Sursă date /top">
           <select
             value={form.topSource ?? 'seed'}

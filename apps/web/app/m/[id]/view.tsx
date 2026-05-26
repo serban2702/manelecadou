@@ -219,6 +219,10 @@ function ShareGenerationViewInner() {
         <PaywallSection generationId={g.id} />
       )}
 
+      {g.status === 'succeeded' && (
+        <ShareSection recipientName={g.recipientName ?? 'cadou'} />
+      )}
+
       {g.lyrics && (
         <details style={{ marginTop: 18 }}>
           <summary style={{ fontSize: 13, color: 'var(--gold)', cursor: 'pointer', fontWeight: 600 }}>
@@ -507,6 +511,130 @@ function PaywallSection({ generationId }: { generationId: string }) {
           </button>
         )}
         {promoError && <div style={{ marginTop: 6, fontSize: 12, color: '#ff8888' }}>{promoError}</div>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Buton share: Web Share API pe mobile, fallback grid pentru desktop
+ * (Facebook, WhatsApp, X/Twitter, Copy link).
+ */
+function ShareSection({ recipientName }: { recipientName: string }) {
+  const [copied, setCopied] = useState(false);
+  const [shared, setShared] = useState(false);
+
+  function getUrl() {
+    if (typeof window === 'undefined') return '';
+    return window.location.href;
+  }
+  function getText() {
+    return `🎵 Ascultă maneaua personalizată pentru ${recipientName}`;
+  }
+
+  async function tryNativeShare() {
+    if (typeof navigator === 'undefined' || !('share' in navigator)) return false;
+    try {
+      await navigator.share({ title: 'Maneaua mea', text: getText(), url: getUrl() });
+      setShared(true);
+      setTimeout(() => setShared(false), 2000);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(getUrl());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {/* ignore */}
+  }
+
+  const hasNative = typeof navigator !== 'undefined' && 'share' in navigator;
+
+  return (
+    <div style={{
+      marginTop: 20, padding: 16, borderRadius: 12,
+      background: 'rgba(241,200,77,0.06)',
+      border: '1px solid rgba(241,200,77,0.2)',
+    }}>
+      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
+        Share
+      </div>
+      <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
+        Trimite-i melodia destinatarului sau prietenilor.
+      </div>
+
+      {hasNative && (
+        <button
+          type="button"
+          onClick={tryNativeShare}
+          className="btn btn-gold"
+          style={{ width: '100%', marginBottom: 10 }}
+        >
+          {shared ? '✓ Trimis' : '📤 Trimite cuiva'}
+        </button>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+        <a
+          href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(getUrl())}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            padding: '10px 12px', borderRadius: 8,
+            background: '#1877f2', color: '#fff',
+            textDecoration: 'none', fontSize: 13, fontWeight: 600,
+          }}
+        >
+          📘 Facebook
+        </a>
+        <a
+          href={`https://wa.me/?text=${encodeURIComponent(getText() + ' ' + getUrl())}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            padding: '10px 12px', borderRadius: 8,
+            background: '#25d366', color: '#fff',
+            textDecoration: 'none', fontSize: 13, fontWeight: 600,
+          }}
+        >
+          💬 WhatsApp
+        </a>
+        <a
+          href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(getText())}&url=${encodeURIComponent(getUrl())}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            padding: '10px 12px', borderRadius: 8,
+            background: '#000', color: '#fff',
+            textDecoration: 'none', fontSize: 13, fontWeight: 600,
+          }}
+        >
+          𝕏 Twitter
+        </a>
+        <button
+          type="button"
+          onClick={copyLink}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            padding: '10px 12px', borderRadius: 8,
+            background: 'rgba(241,200,77,0.15)', color: 'var(--gold)',
+            border: '1px solid rgba(241,200,77,0.4)',
+            cursor: 'pointer', fontSize: 13, fontWeight: 600,
+          }}
+        >
+          {copied ? '✓ Copiat' : '🔗 Copiază link'}
+        </button>
+      </div>
+
+      <div style={{ fontSize: 11, opacity: 0.6, marginTop: 10, lineHeight: 1.4 }}>
+        💡 Pentru Instagram: copiază linkul, deschide app-ul și lipește-l în story sau bio.
       </div>
     </div>
   );

@@ -118,8 +118,24 @@ export class ChatService implements OnModuleInit {
     return result;
   }
 
-  /** Citeste AI_CHAT_MODE_DEFAULT (manual|suggest|auto) pentru conversații noi. */
-  private async getDefaultAiMode(): Promise<'manual' | 'suggest' | 'auto'> {
+  /**
+   * Citeste modul AI default pentru conversații noi. Prioritate:
+   *  1. site.aiChatModeDefault (per-site override) dacă siteId e pasat
+   *  2. setarea globală AI_CHAT_MODE_DEFAULT
+   *  3. fallback 'manual'
+   */
+  private async getDefaultAiMode(siteId?: string | null): Promise<'manual' | 'suggest' | 'auto'> {
+    if (siteId) {
+      try {
+        const site = await this.sites.findById(siteId);
+        const siteMode = site?.aiChatModeDefault;
+        if (siteMode === 'suggest' || siteMode === 'auto' || siteMode === 'manual') {
+          return siteMode;
+        }
+      } catch {
+        /* fallback global */
+      }
+    }
     const raw = (await this.chatSettings.get('AI_CHAT_MODE_DEFAULT')).trim().toLowerCase();
     if (raw === 'suggest' || raw === 'auto' || raw === 'manual') return raw;
     return 'manual';
@@ -284,7 +300,7 @@ export class ChatService implements OnModuleInit {
       const existing = await this.conv.findOne({ where: scopedWhere({ userId: ctx.userId }) });
       if (existing) return existing;
       const u = await this.users.findOne({ where: { id: ctx.userId } });
-      const defaultMode = await this.getDefaultAiMode();
+      const defaultMode = await this.getDefaultAiMode(ctx.siteId);
       const created = this.conv.create({
         userId: ctx.userId,
         siteId: ctx.siteId,
@@ -298,7 +314,7 @@ export class ChatService implements OnModuleInit {
     const existing = await this.conv.findOne({ where: scopedWhere({ guestId: ctx.guestId }) });
     if (existing) return existing;
     const g = await this.guests.findOne({ where: { id: ctx.guestId } });
-    const defaultMode = await this.getDefaultAiMode();
+    const defaultMode = await this.getDefaultAiMode(ctx.siteId);
     const created = this.conv.create({
       guestId: ctx.guestId,
       siteId: ctx.siteId,
