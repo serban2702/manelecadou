@@ -65,6 +65,8 @@ class LaunchGenerationDto {
   @IsOptional() @IsString() @MaxLength(120) dedication?: string;
   @IsOptional() @IsString() @MaxLength(4000) customLyrics?: string;
   @IsOptional() @IsBoolean() premium?: boolean;
+  /** Email pentru livrare — necesar dacă guest nu l-a setat încă. */
+  @IsOptional() @IsString() @MaxLength(320) email?: string;
 }
 
 @UseGuards(OptionalJwtAuthGuard)

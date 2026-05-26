@@ -57,6 +57,7 @@ export class ChatApi {
       dedication?: string;
       customLyrics?: string;
       premium?: boolean;
+      email?: string;
     },
   ): Promise<{ generationId: string }> {
     return http.post(`/admin/chat/conversations/${conversationId}/launch-generation`, dto);

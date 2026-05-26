@@ -538,6 +538,7 @@ export default function AdminChatPage() {
                     key={m.id}
                     m={m}
                     ackOverride={ackOverride.get(m.id)}
+                    conversationEmail={thread.conversation.email ?? null}
                     onSuggestionAction={() => {
                       refetchThread();
                       refetchConvs();
@@ -796,10 +797,12 @@ function PaymentLinkModal({
 function ChatBubble({
   m,
   ackOverride,
+  conversationEmail,
   onSuggestionAction,
 }: {
   m: AdminChatMessage;
   ackOverride?: { deliveredAt?: string; readAt?: string };
+  conversationEmail?: string | null;
   onSuggestionAction?: () => void;
 }) {
   // Render special pentru AI suggestion
@@ -859,7 +862,11 @@ function ChatBubble({
         </a>
       )}
       {m.messageType === 'payment_link' && m.payload && (
-        <PaymentCard payload={m.payload as PaymentPayload} conversationId={m.conversationId} />
+        <PaymentCard
+          payload={m.payload as PaymentPayload}
+          conversationId={m.conversationId}
+          conversationEmail={conversationEmail ?? null}
+        />
       )}
       {display}
       {fromAdmin && (
@@ -1105,7 +1112,15 @@ interface PaymentPayload {
   paidAt?: string;
 }
 
-function PaymentCard({ payload, conversationId }: { payload: PaymentPayload; conversationId: string }) {
+function PaymentCard({
+  payload,
+  conversationId,
+  conversationEmail,
+}: {
+  payload: PaymentPayload;
+  conversationId: string;
+  conversationEmail?: string | null;
+}) {
   const amount = payload.amount ?? 0;
   const currency = payload.currency ?? 'RON';
   const isPaid = payload.status === 'paid';
@@ -1174,6 +1189,7 @@ function PaymentCard({ payload, conversationId }: { payload: PaymentPayload; con
           conversationId={conversationId}
           paymentId={payload.paymentId}
           defaultPremium={!!payload.premium}
+          defaultEmail={conversationEmail}
           onClose={() => setShowLaunchModal(false)}
           onLaunched={() => setShowLaunchModal(false)}
         />
@@ -1182,47 +1198,105 @@ function PaymentCard({ payload, conversationId }: { payload: PaymentPayload; con
   );
 }
 
-const GEN_STYLES = ['Clasică de pahar', 'Modernă', 'Orientală', 'Cu trompetă', 'De jale', 'Comercială', 'De opulență', 'De iubire', 'Tallava', 'Kuchek', 'Trapanele'];
-const GEN_OCCASIONS = ['Zi de naștere', 'Nuntă', 'Botez', 'Cumătrie', 'Aniversare cuplu', 'Pentru șef', 'Declarație', 'Roast prieten', 'Naș/fin', 'Înmormântare', 'Motivațională', 'Altă ocazie'];
+/** Stilurile, ocaziile și vocile — replicate exact din wizard-ul user
+ *  (apps/web/lib/seed-data.ts). ID-ul intern coincide cu ce trimite formularul. */
+const GEN_STYLES = [
+  { id: 'clasic', emoji: '🎻', name: 'Clasică de pahar' },
+  { id: 'modern', emoji: '🎹', name: 'Modernă' },
+  { id: 'oriental', emoji: '🪘', name: 'Orientală' },
+  { id: 'trompeta', emoji: '🎺', name: 'Cu trompetă' },
+  { id: 'romantica', emoji: '💔', name: 'De jale' },
+  { id: 'comerciala', emoji: '💃', name: 'Comercială' },
+  { id: 'opulenta', emoji: '👑', name: 'De opulență' },
+  { id: 'iubire', emoji: '❤️', name: 'De iubire' },
+  { id: 'tallava', emoji: '🎷', name: 'Tallava' },
+  { id: 'kuchek', emoji: '🥁', name: 'Kuchek' },
+  { id: 'trapanele', emoji: '🎧', name: 'Trapanele' },
+  { id: 'pahar', emoji: '🍷', name: 'De pahar' },
+];
+
+const GEN_OCCASIONS = [
+  { id: 'zi', emoji: '🎂', name: 'Zi naștere' },
+  { id: 'nunta', emoji: '💒', name: 'Nuntă' },
+  { id: 'botez', emoji: '👶', name: 'Botez' },
+  { id: 'cumatrie', emoji: '🍷', name: 'Cumătrie' },
+  { id: 'cuplu', emoji: '❤️', name: 'Aniv. cuplu' },
+  { id: 'sef', emoji: '💼', name: 'Pentru șef' },
+  { id: 'dragoste', emoji: '😍', name: 'Declarație' },
+  { id: 'roast', emoji: '🤡', name: 'Roast prieten' },
+  { id: 'nas', emoji: '🤝', name: 'Naș / fin' },
+  { id: 'inmorm', emoji: '🕯️', name: 'Înmormântare' },
+  { id: 'motiv', emoji: '💪', name: 'Motivațională' },
+  { id: 'altul', emoji: '✨', name: 'Altă ocazie' },
+];
+
+const GEN_VOICES = [
+  { id: 'florinel', name: 'Florinel de Aur', tag: 'voce caldă, clasic' },
+  { id: 'adi', name: 'Adi Șampanie', tag: 'modern, club' },
+  { id: 'ticu', name: 'Țicu Diamante', tag: 'trap-manea, tânăr' },
+  { id: 'mariana', name: 'Mariana Trandafir', tag: 'voce feminină' },
+  { id: 'nicu', name: 'Nicu Mercedes', tag: 'orientală, plâns' },
+  { id: 'gigi', name: 'Gigi Cash', tag: 'comercial, voios' },
+];
 
 function LaunchGenerationModal({
   conversationId,
   paymentId,
   defaultPremium,
+  defaultEmail,
   onClose,
   onLaunched,
 }: {
   conversationId: string;
   paymentId: string;
   defaultPremium: boolean;
+  defaultEmail?: string | null;
   onClose: () => void;
   onLaunched: () => void;
 }) {
-  const [style, setStyle] = useState(GEN_STYLES[1]);
-  const [occasion, setOccasion] = useState(GEN_OCCASIONS[0]);
+  const [styleId, setStyleId] = useState(GEN_STYLES[1].id); // Modernă default
+  const [occasionId, setOccasionId] = useState(GEN_OCCASIONS[0].id); // Zi naștere
   const [recipientName, setRecipientName] = useState('');
   const [message, setMessage] = useState('');
-  const [voiceArtist, setVoiceArtist] = useState('masculină');
+  const [voiceId, setVoiceId] = useState(GEN_VOICES[0].id); // Florinel
   const [dedication, setDedication] = useState('');
+  const [email, setEmail] = useState(defaultEmail ?? '');
+  const [customLyricsOpen, setCustomLyricsOpen] = useState(false);
+  const [customLyrics, setCustomLyrics] = useState('');
   const [premium, setPremium] = useState(defaultPremium);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function validate(): string | null {
+    if (!recipientName.trim()) return 'Numele beneficiarului e obligatoriu';
+    if (!message.trim()) return 'Mesajul / dedicația e obligatorie';
+    if (recipientName.trim().length > 120) return 'Numele beneficiarului prea lung (max 120)';
+    if (message.trim().length > 600) return 'Mesajul prea lung (max 600)';
+    if (dedication && dedication.length > 120) return 'Dedicația „de la" prea lungă (max 120)';
+    if (customLyrics && customLyrics.length > 4000) return 'Versurile prea lungi (max 4000)';
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return 'Email invalid';
+    return null;
+  }
+
   async function launch() {
-    if (!recipientName.trim() || !message.trim()) {
-      setError('Numele beneficiarului și mesajul sunt obligatorii');
-      return;
-    }
+    const err = validate();
+    if (err) { setError(err); return; }
     setBusy(true);
     setError(null);
     try {
+      const styleName = GEN_STYLES.find((s) => s.id === styleId)?.name ?? styleId;
+      const occasionName = GEN_OCCASIONS.find((o) => o.id === occasionId)?.name ?? occasionId;
       await ChatApi.launchGeneration(conversationId, {
-        paymentId, style, occasion,
+        paymentId,
+        style: styleName,
+        occasion: occasionName,
         recipientName: recipientName.trim(),
         message: message.trim(),
-        voiceArtist: voiceArtist.trim() || 'masculină',
+        voiceArtist: voiceId,
         dedication: dedication.trim() || undefined,
+        customLyrics: customLyrics.trim() || undefined,
         premium,
+        email: email.trim() || undefined,
       });
       onLaunched();
     } catch (e) {
@@ -1234,58 +1308,155 @@ function LaunchGenerationModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-card border border-border rounded-xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="bg-card border border-border rounded-xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center gap-2 mb-4">
           <Zap className="h-5 w-5 text-primary" />
           <h3 className="text-base font-semibold">Lansează generare (plată confirmată)</h3>
         </div>
         <div className="space-y-3">
+          {/* Stil + Ocazie */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Stil</label>
-              <select value={style} onChange={(e) => setStyle(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none">
-                {GEN_STYLES.map((s) => <option key={s}>{s}</option>)}
+              <select
+                value={styleId}
+                onChange={(e) => setStyleId(e.target.value)}
+                className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none"
+              >
+                {GEN_STYLES.map((s) => (
+                  <option key={s.id} value={s.id}>{s.emoji} {s.name}</option>
+                ))}
               </select>
             </div>
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Ocazie</label>
-              <select value={occasion} onChange={(e) => setOccasion(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none">
-                {GEN_OCCASIONS.map((o) => <option key={o}>{o}</option>)}
+              <select
+                value={occasionId}
+                onChange={(e) => setOccasionId(e.target.value)}
+                className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none"
+              >
+                {GEN_OCCASIONS.map((o) => (
+                  <option key={o.id} value={o.id}>{o.emoji} {o.name}</option>
+                ))}
               </select>
             </div>
           </div>
+
+          {/* Beneficiar */}
           <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Beneficiar (nume)</label>
-            <input type="text" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="ex. Maria" className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
+            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">
+              Beneficiar — pentru cine e maneaua
+            </label>
+            <input
+              type="text"
+              value={recipientName}
+              onChange={(e) => setRecipientName(e.target.value)}
+              placeholder="ex. Costel, Mariana, șefu' Florin..."
+              maxLength={120}
+              className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none"
+            />
           </div>
+
+          {/* Mesaj */}
           <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Mesaj / dedicație (ce vrea să-i transmită)</label>
-            <Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} placeholder="ex. La mulți ani Maria, să fii sănătoasă și să-ți meargă bine la facultate!" />
+            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">
+              Mesaj / ce vrea să-i transmită <span className="text-muted-foreground/60">({message.length}/600)</span>
+            </label>
+            <Textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={3}
+              maxLength={600}
+              placeholder="ex. La mulți ani, șefule! Să dea Domnu' să luăm bonus de Crăciun..."
+            />
           </div>
+
+          {/* Voce + Dedicație "de la" */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Voce</label>
-              <input type="text" value={voiceArtist} onChange={(e) => setVoiceArtist(e.target.value)} placeholder="masculină, feminină, grav..." className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
+              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Voce / artist</label>
+              <select
+                value={voiceId}
+                onChange={(e) => setVoiceId(e.target.value)}
+                className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none"
+              >
+                {GEN_VOICES.map((v) => (
+                  <option key={v.id} value={v.id}>{v.name} — {v.tag}</option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Dedicație audio (opțional)</label>
-              <input type="text" value={dedication} onChange={(e) => setDedication(e.target.value)} maxLength={120} className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
+              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">
+                Dedicație „de la" (opțional)
+              </label>
+              <input
+                type="text"
+                value={dedication}
+                onChange={(e) => setDedication(e.target.value)}
+                maxLength={120}
+                placeholder="ex. de la Andrei și echipa"
+                className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none"
+              />
             </div>
           </div>
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
+
+          {/* Email */}
+          <div>
+            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">
+              Email pentru livrare {defaultEmail ? <span className="text-emerald-500 font-normal normal-case">(deja setat: {defaultEmail})</span> : <span className="text-destructive">*</span>}
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder={defaultEmail || 'client@email.ro'}
+              className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none"
+            />
+          </div>
+
+          {/* Custom lyrics expandable */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setCustomLyricsOpen((v) => !v)}
+              className="text-xs uppercase tracking-wider text-muted-foreground font-semibold hover:text-foreground flex items-center gap-1.5"
+            >
+              📝 Versuri custom (opțional) <span className="text-[10px] normal-case">{customLyricsOpen ? '— ascunde' : '— activează'}</span>
+            </button>
+            {customLyricsOpen && (
+              <Textarea
+                value={customLyrics}
+                onChange={(e) => setCustomLyrics(e.target.value)}
+                rows={4}
+                maxLength={4000}
+                placeholder={`Scrie aici versurile dacă vrei. Lasă gol = AI scrie pe baza mesajului.\n\nRefren:\n...\nCuplet:\n...`}
+                className="mt-1.5 font-mono text-xs"
+              />
+            )}
+            {customLyricsOpen && (
+              <div className="text-[10px] text-muted-foreground mt-1">{customLyrics.length}/4000</div>
+            )}
+          </div>
+
+          {/* Premium */}
+          <label className="flex items-center gap-2 text-sm cursor-pointer pt-1">
             <input type="checkbox" checked={premium} onChange={(e) => setPremium(e.target.checked)} />
-            Variantă premium
+            <span>👑 Variantă <b>Premium</b> — calitate audio 4× superioară</span>
           </label>
+
           {error && <div className="text-xs text-destructive bg-destructive/10 rounded p-2">{error}</div>}
           <div className="text-[11px] text-muted-foreground bg-secondary/30 rounded p-2">
-            Plata e deja confirmată. Generarea pornește imediat după Launch — userul va primi mesaj + email când e gata.
+            Plata e deja confirmată. Generarea pornește imediat după Launch — userul va primi mesaj automat în chat + email când e gata (~90s).
           </div>
         </div>
         <div className="flex justify-end gap-2 mt-5">
           <Button variant="ghost" onClick={onClose} disabled={busy}>Anulează</Button>
           <Button onClick={launch} disabled={busy || !recipientName.trim() || !message.trim()}>
             {busy ? <Loader2 className="animate-spin" /> : <Zap />}
-            Lansează
+            Lansează generare
           </Button>
         </div>
       </div>

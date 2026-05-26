@@ -797,6 +797,7 @@ export class ChatService implements OnModuleInit {
       dedication?: string;
       customLyrics?: string;
       premium?: boolean;
+      email?: string;
     },
   ): Promise<{ generationId: string }> {
     const conv = await this.getConversation(conversationId);
@@ -820,6 +821,18 @@ export class ChatService implements OnModuleInit {
 
     const site = await this.sites.findById(conv.siteId);
     const locale = site?.locale ?? 'ro';
+
+    // Email collection — pentru guest care n-a setat email
+    if (dto.email && conv.guestId) {
+      try {
+        const { GuestSessionsService } = await import('../guest-sessions/guest-sessions.service');
+        const guests = this.moduleRef.get(GuestSessionsService, { strict: false });
+        await guests.setEmail(conv.guestId, dto.email);
+        conv.email = dto.email.toLowerCase().trim();
+      } catch {
+        // ignore — caz în care nu putem seta, GenerationsService o să zică oricum
+      }
+    }
 
     // create() cu type='full' + paymentId → queue direct
     const generation = await generations.create(
