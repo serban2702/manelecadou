@@ -171,6 +171,12 @@ export interface OrderDetail {
     finalizedAt: string | null;
   }>;
   chat: {
+    /** Cum am legat conversația de comandă:
+     *  - wizard_gen: wizardState.generationId == gen.id (cel mai sigur)
+     *  - wizard_payment: wizardState.paymentId == payment.id
+     *  - message_payload: găsit prin payload de mesaj (payment_link / song_preview)
+     *  - recent_fallback: cea mai recentă conv a user/guest (NU garantat legată!) */
+    linkType: 'wizard_gen' | 'wizard_payment' | 'message_payload' | 'recent_fallback' | null;
     conversation: {
       id: string;
       subject: string;

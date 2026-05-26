@@ -75,6 +75,7 @@ export function OrderDetailModal({ id, onClose }: { id: string; onClose: () => v
 
 function OrderTabs({ data }: { data: OrderDetail }) {
   const chatCount = data.chat?.messages.length ?? 0;
+  const chatFallback = data.chat?.linkType === 'recent_fallback';
   const sunoCount = data.sunoLogs.length;
   const lyricsCount = data.lyricsLogs.length;
   const emailCount = data.outboundEmails.length;
@@ -91,7 +92,11 @@ function OrderTabs({ data }: { data: OrderDetail }) {
         <TabsTrigger value="suno">Suno ({sunoCount})</TabsTrigger>
         <TabsTrigger value="openai">OpenAI ({lyricsCount})</TabsTrigger>
         <TabsTrigger value="emails">Email ({emailCount})</TabsTrigger>
-        {chatCount > 0 && <TabsTrigger value="chat">Chat ({chatCount})</TabsTrigger>}
+        {chatCount > 0 && (
+          <TabsTrigger value="chat">
+            Chat ({chatCount}){chatFallback ? '?' : ''}
+          </TabsTrigger>
+        )}
         {toolCount > 0 && <TabsTrigger value="ai-tools">AI tools ({toolCount})</TabsTrigger>}
         <TabsTrigger value="analytics">Sursă ({eventCount})</TabsTrigger>
         <TabsTrigger value="timeline">Cronologie ({data.timeline.length})</TabsTrigger>
@@ -560,9 +565,30 @@ function EmailsTab({ data }: { data: OrderDetail }) {
 
 function ChatTab({ data }: { data: OrderDetail }) {
   if (!data.chat) return <Empty title="Fără conversație" />;
-  const { conversation, messages } = data.chat;
+  const { conversation, messages, linkType } = data.chat;
+  const isFallback = linkType === 'recent_fallback';
   return (
     <div className="space-y-4">
+      {isFallback && (
+        <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+          ⚠ <strong>Conversație nelegată direct de comandă.</strong> Nu am găsit o
+          legătură explicită (wizardState sau payment_link) între această
+          comandă și o conversație de chat. Afișăm cea mai recentă conversație
+          a clientului — poate fi pe altă temă.
+        </div>
+      )}
+      {linkType && !isFallback && (
+        <div className="text-[10px] text-muted-foreground">
+          Legătură:{' '}
+          <code>
+            {linkType === 'wizard_gen'
+              ? 'wizard.generationId'
+              : linkType === 'wizard_payment'
+                ? 'wizard.paymentId'
+                : 'message.payload'}
+          </code>
+        </div>
+      )}
       <Card title="Conversație" icon={<MessageSquare className="h-4 w-4" />}>
         <Kv k="ID" v={conversation.id} mono />
         <Kv k="Subject" v={conversation.subject} />

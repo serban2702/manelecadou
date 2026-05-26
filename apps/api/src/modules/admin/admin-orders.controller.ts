@@ -122,21 +122,72 @@ export class AdminOrdersController {
         })
       : [];
 
-    // Chat conversation — căutăm prin (user/guest) + siteId. Acoperă cazul când
-    // chat-ul a generat comanda prin wizard, dar și cazul când customer-ul
-    // a vorbit pe chat și apoi a comandat din site.
+    // Chat conversation — încercăm 3 strategii în ordine de încredere:
+    // 1. wizardState.generationId == gen.id (chat AI sales a creat exact comanda asta)
+    // 2. wizardState.paymentId == payment.id
+    // 3. Mesaje cu payload legate de payment/generation (ex: payment_link emis în chat)
+    // 4. Fallback: cea mai recentă conv a user/guest (cu warning în UI)
+    //
+    // Asta evită bug-ul în care un client cu multe conversații nelegate vede
+    // chat random sub o comandă cu care n-are legătură.
     let conversation: Conversation | null = null;
-    if (ownerUserId) {
-      conversation = await this.conversations.findOne({
-        where: { userId: ownerUserId },
-        order: { updatedAt: 'DESC' },
-      });
+    let conversationLinkType: 'wizard_gen' | 'wizard_payment' | 'message_payload' | 'recent_fallback' | null = null;
+
+    if (generation) {
+      conversation = await this.conversations
+        .createQueryBuilder('c')
+        .where(`(c."wizardState"->>'generationId') = :gid`, { gid: generation.id })
+        .getOne();
+      if (conversation) conversationLinkType = 'wizard_gen';
     }
-    if (!conversation && ownerGuestId) {
-      conversation = await this.conversations.findOne({
-        where: { guestId: ownerGuestId },
-        order: { updatedAt: 'DESC' },
-      });
+    if (!conversation && payment) {
+      conversation = await this.conversations
+        .createQueryBuilder('c')
+        .where(`(c."wizardState"->>'paymentId') = :pid`, { pid: payment.id })
+        .getOne();
+      if (conversation) conversationLinkType = 'wizard_payment';
+    }
+    if (!conversation && payment) {
+      // Mesaje cu payment_link în payload care țintesc plata asta
+      const msg = await this.chatMessages
+        .createQueryBuilder('m')
+        .where(`(m.payload->>'paymentId') = :pid`, { pid: payment.id })
+        .orderBy('m.createdAt', 'DESC')
+        .getOne();
+      if (msg) {
+        conversation = await this.conversations.findOne({ where: { id: msg.conversationId } });
+        if (conversation) conversationLinkType = 'message_payload';
+      }
+    }
+    if (!conversation && generation) {
+      // Mesaje cu generationId în payload (song_preview, song_form_step)
+      const msg = await this.chatMessages
+        .createQueryBuilder('m')
+        .where(`(m.payload->>'generationId') = :gid`, { gid: generation.id })
+        .orderBy('m.createdAt', 'DESC')
+        .getOne();
+      if (msg) {
+        conversation = await this.conversations.findOne({ where: { id: msg.conversationId } });
+        if (conversation) conversationLinkType = 'message_payload';
+      }
+    }
+    // Fallback final: cea mai recentă conversație a user/guest. Marcăm
+    // explicit ca `recent_fallback` ca UI să avertizeze că legătura nu e
+    // garantată (poate fi orice altă conversație a clientului).
+    if (!conversation) {
+      if (ownerUserId) {
+        conversation = await this.conversations.findOne({
+          where: { userId: ownerUserId },
+          order: { updatedAt: 'DESC' },
+        });
+      }
+      if (!conversation && ownerGuestId) {
+        conversation = await this.conversations.findOne({
+          where: { guestId: ownerGuestId },
+          order: { updatedAt: 'DESC' },
+        });
+      }
+      if (conversation) conversationLinkType = 'recent_fallback';
     }
 
     let chatMessages: ChatMessage[] = [];
@@ -152,17 +203,63 @@ export class AdminOrdersController {
       });
     }
 
-    // Analytics: cea mai recentă sesiune asociată user/guest + eventurile
-    // purchase_init / purchase_success care leagă paymentId.
+    // Analytics: încercăm să găsim sesiunea EXACTĂ care a generat comanda.
+    // Strategia 1: prin event purchase_init/purchase_success cu transaction_id
+    //   sau content_id == paymentId/generationId.
+    // Strategia 2: sesiunea user/guest cea mai apropiată de createdAt (±30 min).
+    // Strategia 3: cea mai recentă sesiune (fallback, poate fi nelegată).
     let analyticsSession: AnalyticsSession | null = null;
-    if (ownerGuestId || ownerUserId) {
+
+    if (payment || generation) {
+      const eqb = this.analyticsEvents.createQueryBuilder('e');
+      const conds: string[] = [];
+      const params: Record<string, string> = {};
+      if (payment) {
+        conds.push(`(e.props->>'transaction_id') = :pid`);
+        conds.push(`e.eventId = :pid`);
+        params.pid = payment.id;
+      }
+      if (generation) {
+        conds.push(`(e.props->>'content_id') = :gid`);
+        conds.push(`e.eventId = :gid`);
+        params.gid = generation.id;
+      }
+      const linkedEvent = await eqb
+        .where(`(${conds.join(' OR ')})`, params)
+        .orderBy('e.createdAt', 'DESC')
+        .getOne();
+      if (linkedEvent?.sessionKey) {
+        analyticsSession = await this.analyticsSessions.findOne({
+          where: { sessionKey: linkedEvent.sessionKey },
+        });
+      }
+    }
+
+    if (!analyticsSession && (ownerGuestId || ownerUserId)) {
+      const anchor = generation?.createdAt ?? payment?.createdAt;
       const qb = this.analyticsSessions
         .createQueryBuilder('s')
         .orderBy('s.lastActivityAt', 'DESC')
         .limit(1);
       if (ownerUserId) qb.andWhere('s."userId" = :uid', { uid: ownerUserId });
       else if (ownerGuestId) qb.andWhere('s."guestId" = :gid', { gid: ownerGuestId });
+      if (anchor) {
+        const from = new Date(anchor.getTime() - 30 * 60_000);
+        const to = new Date(anchor.getTime() + 30 * 60_000);
+        qb.andWhere('s."lastActivityAt" BETWEEN :from AND :to', { from, to });
+      }
       analyticsSession = await qb.getOne();
+
+      // Ultimul fallback: cea mai recentă sesiune (poate să nu fie cea exactă)
+      if (!analyticsSession) {
+        const qb2 = this.analyticsSessions
+          .createQueryBuilder('s')
+          .orderBy('s.lastActivityAt', 'DESC')
+          .limit(1);
+        if (ownerUserId) qb2.andWhere('s."userId" = :uid', { uid: ownerUserId });
+        else if (ownerGuestId) qb2.andWhere('s."guestId" = :gid', { gid: ownerGuestId });
+        analyticsSession = await qb2.getOne();
+      }
     }
 
     let analyticsEvents: AnalyticsEvent[] = [];
@@ -468,6 +565,7 @@ export class AdminOrdersController {
       })),
       chat: conversation
         ? {
+            linkType: conversationLinkType,
             conversation: {
               id: conversation.id,
               subject: conversation.subject,
