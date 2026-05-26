@@ -252,22 +252,33 @@ export function ChatWidget() {
           70% { box-shadow: 0 8px 24px rgba(241,200,77,0.45), 0 0 0 18px rgba(241,200,77,0); }
           100% { box-shadow: 0 8px 24px rgba(241,200,77,0.45), 0 0 0 0 rgba(241,200,77,0); }
         }
+        @keyframes chat-pulse-soft {
+          0% { box-shadow: 0 8px 24px rgba(241,200,77,0.45), 0 0 0 0 rgba(241,200,77,0.35); }
+          70% { box-shadow: 0 8px 24px rgba(241,200,77,0.45), 0 0 0 12px rgba(241,200,77,0); }
+          100% { box-shadow: 0 8px 24px rgba(241,200,77,0.45), 0 0 0 0 rgba(241,200,77,0); }
+        }
         @keyframes chat-jiggle {
           0%,100% { transform: rotate(0deg); }
-          15% { transform: rotate(-8deg) scale(1.05); }
-          30% { transform: rotate(8deg) scale(1.05); }
-          45% { transform: rotate(-6deg); }
-          60% { transform: rotate(6deg); }
-          75% { transform: rotate(-3deg); }
+          15% { transform: rotate(-12deg) scale(1.08); }
+          30% { transform: rotate(12deg) scale(1.08); }
+          45% { transform: rotate(-8deg); }
+          60% { transform: rotate(8deg); }
+          75% { transform: rotate(-4deg); }
         }
-        .chat-btn-pulse { animation: chat-pulse-ring 1.2s ease-out infinite, chat-jiggle 0.9s ease-in-out 3; }
+        /* Burst — mesaj NOU venit + chat închis (3s puternic) */
+        .chat-btn-burst { animation: chat-pulse-ring 1.2s ease-out 3, chat-jiggle 0.9s ease-in-out 3; }
+        /* Continuu — atâta timp cât există unread + chat închis (subtil) */
+        .chat-btn-unread { animation: chat-pulse-soft 1.8s ease-out infinite; }
       `}</style>
 
       {!open && (
         <button
           onClick={() => setOpen(true)}
           aria-label={t('openAria')}
-          className={pulsing ? 'chat-btn-pulse' : ''}
+          className={[
+            pulsing ? 'chat-btn-burst' : '',
+            unread > 0 && !pulsing ? 'chat-btn-unread' : '',
+          ].filter(Boolean).join(' ')}
           style={{
             position: 'fixed', right: 18, bottom: 18, zIndex: 50,
             width: 58, height: 58, borderRadius: '50%',

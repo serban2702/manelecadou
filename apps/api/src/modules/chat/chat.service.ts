@@ -119,6 +119,20 @@ export class ChatService implements OnModuleInit {
     for (const [convId, msgs] of byConv) {
       const c = await this.conv.findOne({ where: { id: convId } });
       if (!c) continue;
+
+      // Când userul confirmă că a CITIT mesaje admin → resetăm unreadByUser
+      // (badge-ul dispare). Pentru ACK delivered nu facem nimic — userul doar a
+      // primit, n-a deschis încă.
+      if (!actor.isAdmin && status === 'read' && c.unreadByUser > 0) {
+        c.unreadByUser = 0;
+        await this.conv.save(c);
+      }
+      // Simetric: când adminul confirmă citirea (deschide thread-ul) → reset unreadByAdmin.
+      if (actor.isAdmin && status === 'read' && c.unreadByAdmin > 0) {
+        c.unreadByAdmin = 0;
+        await this.conv.save(c);
+      }
+
       this.gateway.emitMessageAck({
         conversation: c,
         messageIds: msgs.map((m) => m.id),
@@ -237,7 +251,8 @@ export class ChatService implements OnModuleInit {
   async listMyMessages(ctx: OwnerCtx): Promise<{ conversation: Conversation; messages: ChatMessage[] }> {
     const conversation = await this.getOrCreateMine(ctx);
     // Marchează ca delivered toate mesajele admin → user (client le-a primit).
-    // Read se setează separat când userul deschide widgetul (via WS chat_toggle + message:ack).
+    // Read + reset unreadByUser se setează separat când userul deschide widgetul
+    // (via WS chat_toggle + message:ack — vezi handleAckFromSocket).
     await this.markAllAdminMessagesDelivered(conversation.id);
     const all = await this.msg.find({
       where: { conversationId: conversation.id },
@@ -247,10 +262,10 @@ export class ChatService implements OnModuleInit {
     const messages = all.filter(
       (m) => m.messageType !== 'ai_suggestion' && m.messageType !== 'system' && m.authorRole !== 'system',
     );
-    if (conversation.unreadByUser > 0) {
-      conversation.unreadByUser = 0;
-      await this.conv.save(conversation);
-    }
+    // BUG-FIX 2026-05-26: NU mai resetăm unreadByUser aici. Polling-ul (la 30-60s)
+    // și refetch-ul după WS chat:message apelau listMyMessages care reseta
+    // contorul ÎNAINTE ca UI-ul să-l fi consumat → badge-ul rămânea mereu 0.
+    // Reset-ul are loc acum doar prin ACK explicit (user a deschis chatul).
     return { conversation, messages };
   }
 
