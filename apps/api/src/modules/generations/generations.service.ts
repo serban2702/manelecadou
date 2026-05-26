@@ -347,6 +347,10 @@ export class GenerationsService {
     gen.status = 'succeeded';
     gen.error = null;
     gen.completedAt = new Date();
+    // Oprim auto-retry-ul — admin a livrat manual. Job-urile delayed deja
+    // existente în BullMQ se vor activa eventual, dar processor-ul va vedea
+    // providerJobId='manual' + status='succeeded' și va da skip.
+    gen.nextRetryAt = null;
     const saved = await this.repo.save(gen);
 
     this.logger.warn(`[admin-manual-upload] generation=${saved.id} bonus=${!!bonusBuffer}`);
@@ -385,6 +389,8 @@ export class GenerationsService {
     gen.providerJobId = null;
     gen.completedAt = null;
     gen.retryCount = (gen.retryCount ?? 0) + 1;
+    gen.nextRetryAt = null;
+    gen.lastRetryAt = new Date();
     const saved = await this.repo.save(gen);
 
     await this.queue.add(

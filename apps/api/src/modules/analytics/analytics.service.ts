@@ -6,6 +6,7 @@ import Stripe from 'stripe';
 import { AnalyticsEvent } from './analytics-event.entity';
 import { AnalyticsSession } from './analytics-session.entity';
 import { Payment } from '../payments/payment.entity';
+import { Generation } from '../generations/generation.entity';
 import { User } from '../users/user.entity';
 import { TrackEventDto } from './dto';
 import { AnalyticsForwarders } from './forwarders';
@@ -30,6 +31,7 @@ export class AnalyticsService {
     @InjectRepository(AnalyticsEvent) private readonly events: Repository<AnalyticsEvent>,
     @InjectRepository(AnalyticsSession) private readonly sessions: Repository<AnalyticsSession>,
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
+    @InjectRepository(Generation) private readonly generations: Repository<Generation>,
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly config: ConfigService,
     private readonly forwarders: AnalyticsForwarders,
@@ -969,6 +971,24 @@ export class AnalyticsService {
             props: purchaseEvent.props,
           }
         : null,
+      generation: await (async () => {
+        // Generarea legată direct prin paymentId (cel mai sigur link).
+        const g = await this.generations.findOne({ where: { paymentId: p.id } });
+        if (!g) return null;
+        return {
+          id: g.id,
+          type: g.type,
+          status: g.status,
+          recipientName: g.recipientName,
+          paidUnlocked: g.paidUnlocked,
+          audioUrl: g.audioUrl,
+          retryCount: g.retryCount ?? 0,
+          nextRetryAt: g.nextRetryAt ? g.nextRetryAt.toISOString() : null,
+          lastRetryAt: g.lastRetryAt ? g.lastRetryAt.toISOString() : null,
+          providerJobId: g.providerJobId,
+          createdAt: g.createdAt,
+        };
+      })(),
     };
   }
 

@@ -61,6 +61,25 @@ export interface AdminGeneration {
   completedAt: string | null;
   error: string | null;
   siteId?: string | null;
+  paymentId?: string | null;
+  paidUnlocked?: boolean;
+  retryCount?: number;
+  /** Următoarea reîncercare automată plănuită (ISO). NULL = nu mai retry-uim. */
+  nextRetryAt?: string | null;
+  lastRetryAt?: string | null;
+  /** Marker upload manual din admin (sare peste Suno API). */
+  providerJobId?: string | null;
+  /** Email-ul owner-ului (user.email sau guest.email). Populat de listGenerations. */
+  ownerEmail?: string | null;
+  /** Plata legată de această generare (via paymentId). Populat de listGenerations. */
+  payment?: {
+    id: string;
+    amount: number;
+    currency: string;
+    status: string;
+    provider: string;
+    createdAt: string;
+  } | null;
 }
 
 export type AiChatMode = 'manual' | 'suggest' | 'auto';
@@ -171,6 +190,17 @@ export interface AdminPayment {
   failureCode?: string | null;
   /** Email-ul plătitorului (user.email sau guest.email). */
   email?: string | null;
+  /** Generarea legată (când `generations.paymentId == payment.id`). */
+  generation?: {
+    id: string;
+    status: string;
+    type: 'demo' | 'full';
+    recipientName: string;
+    paidUnlocked: boolean;
+    audioUrl: string | null;
+    nextRetryAt: string | null;
+    retryCount: number;
+  } | null;
 }
 
 export interface AdminError {

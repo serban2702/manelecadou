@@ -188,4 +188,18 @@ export interface PaymentDetail {
   user: { id: string; email: string; name: string | null } | null;
   session: AnalyticsSessionRow | null;
   relatedEvent: { type: string; createdAt: string; props: Record<string, unknown> | null } | null;
+  /** Generarea legată (când `generations.paymentId == payment.id`). */
+  generation: {
+    id: string;
+    type: 'demo' | 'full';
+    status: string;
+    recipientName: string;
+    paidUnlocked: boolean;
+    audioUrl: string | null;
+    retryCount: number;
+    nextRetryAt: string | null;
+    lastRetryAt: string | null;
+    providerJobId: string | null;
+    createdAt: string;
+  } | null;
 }

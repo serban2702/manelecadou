@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useAsync } from "@/lib/hooks/use-async";
 import { format } from 'date-fns';
 import { ro } from 'date-fns/locale';
-import { CreditCard, RotateCcw } from 'lucide-react';
+import { CreditCard, Music2, RotateCcw } from 'lucide-react';
 import { AdminApi, AnalyticsApi } from '@/lib/api';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -55,6 +55,7 @@ export default function PaymentsPage() {
               <TableHead className="w-[110px]">Status</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Owner</TableHead>
+              <TableHead>Comandă</TableHead>
               <TableHead>ID</TableHead>
             </TableRow>
           </TableHeader>
@@ -98,6 +99,45 @@ export default function PaymentsPage() {
                     : p.guestId
                       ? `guest:${p.guestId.slice(0, 8)}`
                       : '—'}
+                </TableCell>
+                <TableCell className="text-xs">
+                  {p.generation ? (
+                    <a
+                      href={`/m/${p.generation.id}`}
+                      target="_blank"
+                      rel="noopener"
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex flex-col items-start gap-0.5 hover:underline"
+                      title={`Generation ${p.generation.id} · ${p.generation.status}`}
+                    >
+                      <span className="inline-flex items-center gap-1 font-medium">
+                        <Music2 className="h-3 w-3" />
+                        {p.generation.recipientName}
+                      </span>
+                      <span className="flex items-center gap-1 text-[10px]">
+                        <Badge
+                          variant={
+                            p.generation.status === 'succeeded'
+                              ? 'success'
+                              : p.generation.status === 'failed'
+                                ? 'destructive'
+                                : 'muted'
+                          }
+                          className="text-[10px]"
+                        >
+                          {p.generation.status}
+                        </Badge>
+                        {p.generation.status === 'failed' && p.generation.nextRetryAt && (
+                          <span className="text-amber-300">⏱ retry</span>
+                        )}
+                        {p.generation.paidUnlocked && (
+                          <Badge variant="success" className="text-[10px]">paid</Badge>
+                        )}
+                      </span>
+                    </a>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <code className="text-xs text-muted-foreground">{p.id.slice(0, 8)}</code>
@@ -226,6 +266,79 @@ function PaymentDetailDrawer({ id, onClose }: { id: string; onClose: () => void 
                 <Kv k="Email" v={data.user.email} />
                 <Kv k="Nume" v={data.user.name ?? '—'} />
                 <Kv k="ID" v={data.user.id} mono />
+              </Section>
+            )}
+
+            {data.generation && (
+              <Section title="Comandă (generation)">
+                <Kv
+                  k="Destinatar"
+                  v={
+                    <a
+                      href={`/m/${data.generation.id}`}
+                      target="_blank"
+                      rel="noopener"
+                      className="text-primary hover:underline"
+                    >
+                      {data.generation.recipientName}
+                    </a>
+                  }
+                />
+                <Kv k="ID" v={data.generation.id} mono />
+                <Kv k="Tip" v={data.generation.type} />
+                <Kv
+                  k="Status"
+                  v={
+                    <Badge
+                      variant={
+                        data.generation.status === 'succeeded'
+                          ? 'success'
+                          : data.generation.status === 'failed'
+                            ? 'destructive'
+                            : 'muted'
+                      }
+                    >
+                      {data.generation.status}
+                    </Badge>
+                  }
+                />
+                <Kv k="Deblocat (paid)" v={data.generation.paidUnlocked ? 'da' : 'nu'} />
+                {data.generation.retryCount > 0 && (
+                  <Kv k="Încercări" v={String(data.generation.retryCount)} />
+                )}
+                {data.generation.nextRetryAt && (
+                  <Kv
+                    k="Auto-retry"
+                    v={
+                      <span className="text-amber-300">
+                        {format(new Date(data.generation.nextRetryAt), "d MMM HH:mm:ss", { locale: ro })}
+                      </span>
+                    }
+                  />
+                )}
+                {data.generation.audioUrl && (
+                  <Kv
+                    k="Audio"
+                    v={
+                      <a
+                        href={data.generation.audioUrl}
+                        target="_blank"
+                        rel="noopener"
+                        className="text-primary hover:underline"
+                      >
+                        MP3 ↗
+                      </a>
+                    }
+                  />
+                )}
+                <div className="pt-2">
+                  <a
+                    href={`/generations?focus=${data.generation.id}`}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    → Vezi în Generări (retry / upload manual / unlock)
+                  </a>
+                </div>
               </Section>
             )}
 

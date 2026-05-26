@@ -1,9 +1,9 @@
 'use client';
 
 import { useAsync } from "@/lib/hooks/use-async";
-import { format } from 'date-fns';
+import { format, formatDistanceToNowStrict } from 'date-fns';
 import { ro } from 'date-fns/locale';
-import { ExternalLink, Music2, RefreshCw, Trash2, Unlock, Upload } from 'lucide-react';
+import { CreditCard, ExternalLink, Music2, RefreshCw, Trash2, Unlock, Upload } from 'lucide-react';
 import { useState } from 'react';
 import { AdminApi } from '@/lib/api';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
@@ -154,6 +154,7 @@ export default function GenerationsPage() {
               <TableHead>Destinatar</TableHead>
               <TableHead>Style / Voice</TableHead>
               <TableHead>Owner</TableHead>
+              <TableHead>Plată</TableHead>
               <TableHead>Audio</TableHead>
               <TableHead className="text-right">Acțiuni</TableHead>
             </TableRow>
@@ -175,7 +176,25 @@ export default function GenerationsPage() {
                     <Badge variant={g.type === 'demo' ? 'info' : 'success'}>{g.type}</Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={STATUS_VARIANT[g.status] ?? 'muted'}>{g.status}</Badge>
+                    <div className="flex flex-col gap-0.5">
+                      <Badge variant={STATUS_VARIANT[g.status] ?? 'muted'}>{g.status}</Badge>
+                      {g.status === 'failed' && g.nextRetryAt && (
+                        <span
+                          className="text-[10px] text-amber-300"
+                          title={`Auto-retry #${(g.retryCount ?? 0) + 1} la ${format(new Date(g.nextRetryAt), "HH:mm:ss")}`}
+                        >
+                          ⏱ retry în {formatDistanceToNowStrict(new Date(g.nextRetryAt), { locale: ro })}
+                        </span>
+                      )}
+                      {(g.retryCount ?? 0) > 0 && !g.nextRetryAt && g.status !== 'succeeded' && (
+                        <span className="text-[10px] text-muted-foreground">
+                          {g.retryCount} încercări
+                        </span>
+                      )}
+                      {g.providerJobId === 'manual' && (
+                        <span className="text-[10px] text-emerald-300">upload manual</span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     {paid ? (
@@ -190,12 +209,40 @@ export default function GenerationsPage() {
                     <code>{g.voiceArtist}</code>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {g.ownerUserId ? (
-                      <code title={g.ownerUserId}>user:{g.ownerUserId.slice(0, 8)}</code>
-                    ) : g.ownerGuestId ? (
-                      <code title={g.ownerGuestId}>guest:{g.ownerGuestId.slice(0, 8)}</code>
+                    <div className="flex flex-col gap-0.5">
+                      {g.ownerEmail && (
+                        <span className="text-foreground truncate max-w-[180px]" title={g.ownerEmail}>
+                          {g.ownerEmail}
+                        </span>
+                      )}
+                      {g.ownerUserId ? (
+                        <code title={g.ownerUserId}>user:{g.ownerUserId.slice(0, 8)}</code>
+                      ) : g.ownerGuestId ? (
+                        <code title={g.ownerGuestId}>guest:{g.ownerGuestId.slice(0, 8)}</code>
+                      ) : (
+                        '—'
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {g.payment ? (
+                      <a
+                        href={`/payments?focus=${g.payment.id}`}
+                        className="inline-flex flex-col items-start gap-0.5 hover:underline"
+                        title={`Payment ${g.payment.id} · ${g.payment.provider}`}
+                      >
+                        <span className="font-mono tabular-nums">
+                          {(g.payment.amount / 100).toFixed(2)} {g.payment.currency}
+                        </span>
+                        <Badge variant={g.payment.status === 'paid' ? 'success' : g.payment.status === 'failed' ? 'destructive' : 'muted'} className="text-[10px]">
+                          <CreditCard className="h-2.5 w-2.5" />
+                          {g.payment.status}
+                        </Badge>
+                      </a>
+                    ) : g.type === 'demo' ? (
+                      <span className="text-muted-foreground">demo gratuit</span>
                     ) : (
-                      '—'
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
                   <TableCell>

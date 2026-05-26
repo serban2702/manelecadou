@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AnalyticsEvent } from './analytics-event.entity';
 import { AnalyticsSession } from './analytics-session.entity';
 import { Payment } from '../payments/payment.entity';
+import { Generation } from '../generations/generation.entity';
 import { User } from '../users/user.entity';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsAdminController, AnalyticsPublicController } from './analytics.controller';
@@ -15,7 +16,7 @@ import { SitesModule } from '../sites/sites.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AnalyticsEvent, AnalyticsSession, Payment, User]),
+    TypeOrmModule.forFeature([AnalyticsEvent, AnalyticsSession, Payment, Generation, User]),
     ConfigModule,
     AuthModule,
     SitesModule,

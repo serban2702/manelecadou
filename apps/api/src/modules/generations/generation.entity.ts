@@ -123,6 +123,19 @@ export class Generation {
   @Column({ type: 'integer', default: 0 })
   retryCount!: number;
 
+  /** Următoarea reîncercare automată plănuită pentru cazurile în care Suno e
+   *  căzut. Setat când job-ul eșuează la o generation plătită (sau type='full').
+   *  Worker-ul BullMQ are job-ul deja la coadă cu `delay`; câmpul ăsta e doar
+   *  pentru afișare în admin („Auto-retry în 5 min"). NULL = nu mai retry-uim
+   *  automat (success, refund, sau admin a încărcat manual). */
+  @Column({ type: 'timestamptz', nullable: true })
+  nextRetryAt!: Date | null;
+
+  /** Timestamp-ul ultimei reîncercări automate (separate de manual `retry`).
+   *  Folosit pentru afișare în admin + debug. */
+  @Column({ type: 'timestamptz', nullable: true })
+  lastRetryAt!: Date | null;
+
   /** ID-ul sesiunii OpenReplay (self-hosted) la momentul creării generation-ului.
    *  Populat automat din header X-OpenReplay-SessionID via TypeORM subscriber. */
   @Index()

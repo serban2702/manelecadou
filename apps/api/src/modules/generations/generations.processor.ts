@@ -1,10 +1,10 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Job } from 'bullmq';
+import { Job, Queue } from 'bullmq';
 
 import { Generation } from './generation.entity';
 import { GENERATIONS_QUEUE } from './generations.constants';
@@ -33,8 +33,23 @@ export class GenerationsProcessor extends WorkerHost {
     private readonly sites: SitesService,
     private readonly audio: AudioProcessorService,
     private readonly moduleRef: ModuleRef,
+    @InjectQueue(GENERATIONS_QUEUE) private readonly queue: Queue,
   ) {
     super();
+  }
+
+  /** Backoff exponențial pentru auto-retry când Suno e căzut.
+   *  retryCount=0 → 1 min, 1 → 3 min, 2 → 5 min, 3 → 15 min, 4 → 30 min, 5+ → 60 min.
+   *  Cap practic la 50 reîncercări (~50 ore) — peste asta admin trebuie să intervină. */
+  private nextRetryDelayMs(retryCount: number): number {
+    const minutes = [1, 3, 5, 15, 30, 60][Math.min(retryCount, 5)] ?? 60;
+    return minutes * 60_000;
+  }
+
+  /** Câte retry-uri automate maxim pentru o generation plătită. ~50 ore total
+   *  cu backoff-ul de mai sus. Pentru type='demo' fără paidUnlocked → 3. */
+  private maxAutoRetries(gen: Generation): number {
+    return gen.paidUnlocked || gen.type === 'full' ? 50 : 3;
   }
 
   /** Lazy notification către ChatService — apelat după ce generation termină
@@ -56,6 +71,20 @@ export class GenerationsProcessor extends WorkerHost {
     const gen = await this.repo.findOne({ where: { id: generationId } });
     if (!gen) {
       this.logger.warn(`generation ${generationId} not found`);
+      return;
+    }
+
+    // Dacă între enqueue și pick-up admin a încărcat manual fișierul (sau o
+    // tentativă anterioară a reușit între timp), sărim peste — nu suprascriem.
+    if (gen.status === 'succeeded' || gen.providerJobId === 'manual') {
+      this.logger.log(
+        `generation ${gen.id} already done (status=${gen.status}, providerJobId=${gen.providerJobId}); skipping`,
+      );
+      // Curățăm marker-ul de auto-retry — nu mai e nevoie.
+      if (gen.nextRetryAt) {
+        gen.nextRetryAt = null;
+        await this.repo.save(gen);
+      }
       return;
     }
 
@@ -163,6 +192,7 @@ export class GenerationsProcessor extends WorkerHost {
 
       gen.status = 'succeeded';
       gen.completedAt = new Date();
+      gen.nextRetryAt = null;
       await this.repo.save(gen);
       this.logger.log(`generation ${gen.id} succeeded with ${result.tracks.length} tracks`);
 
@@ -172,8 +202,34 @@ export class GenerationsProcessor extends WorkerHost {
       gen.status = 'failed';
       gen.error = err instanceof Error ? err.message : String(err);
       gen.completedAt = new Date();
-      await this.repo.save(gen);
-      this.logger.error(`generation ${gen.id} failed: ${gen.error}`);
+      gen.lastRetryAt = new Date();
+
+      // Auto-retry când Suno cade: pentru orice generation cu payment plătit
+      // (paidUnlocked sau type='full'), reîncercăm la nesfârșit cu backoff
+      // exponențial până când reușește SAU admin încarcă manual fișierul.
+      // Pentru demouri necontract-uite, ne oprim după câteva încercări.
+      const maxRetries = this.maxAutoRetries(gen);
+      const shouldAutoRetry = (gen.retryCount ?? 0) < maxRetries;
+      if (shouldAutoRetry) {
+        gen.retryCount = (gen.retryCount ?? 0) + 1;
+        const delayMs = this.nextRetryDelayMs(gen.retryCount - 1);
+        gen.nextRetryAt = new Date(Date.now() + delayMs);
+        await this.repo.save(gen);
+        await this.queue.add(
+          'generate',
+          { generationId: gen.id },
+          { delay: delayMs, removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
+        );
+        this.logger.warn(
+          `generation ${gen.id} failed (try #${gen.retryCount}/${maxRetries}): ${gen.error}; auto-retry in ${Math.round(delayMs / 60_000)}min`,
+        );
+      } else {
+        gen.nextRetryAt = null;
+        await this.repo.save(gen);
+        this.logger.error(
+          `generation ${gen.id} failed permanently (try ${gen.retryCount}/${maxRetries}): ${gen.error}`,
+        );
+      }
       void this.notifyChat(gen.id, 'failed');
     }
   }

@@ -174,10 +174,64 @@ export class AdminController {
 
   @Get('generations')
   async listGenerations(@Query('limit') limit = '50', @CurrentSiteId() siteId: string | null) {
-    return this.generations.find({
+    const gens = await this.generations.find({
       where: siteId ? { siteId } : {},
       order: { createdAt: 'DESC' },
       take: Math.min(Number(limit) || 50, 200),
+    });
+    if (gens.length === 0) return [];
+
+    // Pentru fiecare generare, recuperăm payment-ul legat (via paymentId direct
+    // SAU prin generations.id == payments.generation — căutăm cel mai recent
+    // paid). Plus emailul owner-ului. Astfel admin vede într-un singur tabel
+    // suma plătită + cardul + statusul plății, fără să comute pe pagina Plăți.
+    const paymentIds = Array.from(
+      new Set(gens.map((g) => g.paymentId).filter((x): x is string => !!x)),
+    );
+    const userIds = Array.from(
+      new Set(gens.map((g) => g.ownerUserId).filter((x): x is string => !!x)),
+    );
+    const guestIds = Array.from(
+      new Set(gens.map((g) => g.ownerGuestId).filter((x): x is string => !!x)),
+    );
+
+    const [pays, usersList, guestsList] = await Promise.all([
+      paymentIds.length
+        ? this.payments.find({ where: paymentIds.map((id) => ({ id })) })
+        : Promise.resolve([]),
+      userIds.length
+        ? this.users.find({ where: userIds.map((id) => ({ id })) })
+        : Promise.resolve([]),
+      guestIds.length
+        ? this.guests.find({ where: guestIds.map((id) => ({ id })) })
+        : Promise.resolve([]),
+    ]);
+
+    const payById = new Map(pays.map((p) => [p.id, p]));
+    const userEmail = new Map(usersList.map((u) => [u.id, u.email]));
+    const guestEmail = new Map(guestsList.map((g) => [g.id, g.email]));
+
+    return gens.map((g) => {
+      const p = g.paymentId ? payById.get(g.paymentId) : undefined;
+      const email = g.ownerUserId
+        ? userEmail.get(g.ownerUserId) ?? null
+        : g.ownerGuestId
+          ? guestEmail.get(g.ownerGuestId) ?? null
+          : null;
+      return {
+        ...g,
+        ownerEmail: email,
+        payment: p
+          ? {
+              id: p.id,
+              amount: p.amount,
+              currency: p.currency,
+              status: p.status,
+              provider: p.provider,
+              createdAt: p.createdAt,
+            }
+          : null,
+      };
     });
   }
 
@@ -212,14 +266,43 @@ export class AdminController {
     const userEmail = new Map(usersList.map((u) => [u.id, u.email]));
     const guestEmail = new Map(guestsList.map((g) => [g.id, g.email]));
 
-    return payments.map((p) => ({
-      ...p,
-      email: p.userId
-        ? userEmail.get(p.userId) ?? null
-        : p.guestId
-          ? guestEmail.get(p.guestId) ?? null
+    // Generarea legată: cel mai des e `generations.paymentId == payment.id`.
+    // Acoperim ambele direcții (paymentId direct + lookup invers prin guest/user)
+    // dar prima e suficientă pentru 99% din cazuri.
+    const paymentIdList = payments.map((p) => p.id);
+    const linkedGens = paymentIdList.length
+      ? await this.generations
+          .createQueryBuilder('g')
+          .where('g."paymentId" IN (:...ids)', { ids: paymentIdList })
+          .getMany()
+      : [];
+    const genByPaymentId = new Map(
+      linkedGens.map((g) => [g.paymentId as string, g]),
+    );
+
+    return payments.map((p) => {
+      const g = genByPaymentId.get(p.id) ?? null;
+      return {
+        ...p,
+        email: p.userId
+          ? userEmail.get(p.userId) ?? null
+          : p.guestId
+            ? guestEmail.get(p.guestId) ?? null
+            : null,
+        generation: g
+          ? {
+              id: g.id,
+              status: g.status,
+              type: g.type,
+              recipientName: g.recipientName,
+              paidUnlocked: g.paidUnlocked,
+              audioUrl: g.audioUrl,
+              nextRetryAt: g.nextRetryAt,
+              retryCount: g.retryCount,
+            }
           : null,
-    }));
+      };
+    });
   }
 
   @Get('payments/:id/stripe-details')
