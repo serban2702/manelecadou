@@ -1106,14 +1106,6 @@ function ChatBubble({
         {fromAdmin ? <Crown className="h-3 w-3" /> : <User className="h-3 w-3" />}
         {fromAdmin ? 'Admin' : 'User'} · {format(new Date(m.createdAt), 'HH:mm', { locale: ro })}
         {m.aiGenerated && <Badge variant="muted" className="h-4 px-1 text-[9px]"><Bot className="h-2.5 w-2.5" /> AI</Badge>}
-        {hasTranslation && (
-          <TranslationToggle
-            detectedLang={m.detectedLang}
-            hasRoTranslation={true}
-            consensus={m.translationConsensus}
-            onChange={setMode}
-          />
-        )}
       </div>
       {m.attachmentUrl && m.attachmentMime?.startsWith('image/') && (
         // eslint-disable-next-line @next/next/no-img-element
