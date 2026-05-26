@@ -3,7 +3,8 @@
 import { useAsync } from "@/lib/hooks/use-async";
 import { format } from 'date-fns';
 import { ro } from 'date-fns/locale';
-import { ExternalLink, Music2, RefreshCw, Trash2, Unlock } from 'lucide-react';
+import { ExternalLink, Music2, RefreshCw, Trash2, Unlock, Upload } from 'lucide-react';
+import { useState } from 'react';
 import { AdminApi } from '@/lib/api';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,16 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useToast } from '@/components/ui/use-toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { SiteBadge } from '@/components/site-badge';
 import { useSitesMap } from '@/lib/hooks/use-sites-map';
 
@@ -42,6 +53,35 @@ export default function GenerationsPage() {
     [],
     { refetchInterval: 5000 },
   );
+  const [uploadFor, setUploadFor] = useState<{ id: string; recipient: string } | null>(null);
+  const [mainFile, setMainFile] = useState<File | null>(null);
+  const [bonusFile, setBonusFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function submitUpload() {
+    if (!uploadFor || !mainFile) return;
+    setUploading(true);
+    try {
+      await AdminApi.generationManualUpload(uploadFor.id, mainFile, bonusFile);
+      toast({
+        variant: 'success',
+        title: 'Upload reușit',
+        description: 'Status → succeeded. Owner-ul a primit email + chat notify.',
+      });
+      setUploadFor(null);
+      setMainFile(null);
+      setBonusFile(null);
+      refetch();
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: 'Upload eșuat',
+        description: err instanceof Error ? err.message : 'Eroare necunoscută',
+      });
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function forceUnlock(id: string) {
     const ok = await confirmDialog({
@@ -186,6 +226,15 @@ export default function GenerationsPage() {
                           Regenerează
                         </Button>
                       )}
+                      <Button
+                        variant="secondary"
+                        size="xs"
+                        onClick={() => setUploadFor({ id: g.id, recipient: g.recipientName })}
+                        title="Încarcă manual cele 2 versiuni generate extern pe Suno"
+                      >
+                        <Upload />
+                        Upload manual
+                      </Button>
                       {!paid && (
                         <Button variant="success" size="xs" onClick={() => forceUnlock(g.id)}>
                           <Unlock />
@@ -203,6 +252,70 @@ export default function GenerationsPage() {
           </TableBody>
         </Table>
       )}
+
+      <Dialog
+        open={uploadFor !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setUploadFor(null);
+            setMainFile(null);
+            setBonusFile(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upload manual Suno — {uploadFor?.recipient}</DialogTitle>
+            <DialogDescription>
+              Încarcă cele 2 versiuni MP3 generate extern pe Suno. ffmpeg le va converti la 128kbps
+              și va genera demo-urile (30s + fade-out). La final, owner-ul primește email + chat
+              notification, exact ca la generarea automată.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="main-file">Versiunea principală * (obligatoriu)</Label>
+              <Input
+                id="main-file"
+                type="file"
+                accept="audio/mpeg,audio/mp3,audio/wav,audio/*"
+                onChange={(e) => setMainFile(e.target.files?.[0] ?? null)}
+              />
+              {mainFile && (
+                <span className="text-xs text-muted-foreground">
+                  {mainFile.name} · {(mainFile.size / 1024 / 1024).toFixed(2)} MB
+                </span>
+              )}
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="bonus-file">Versiunea bonus (opțional)</Label>
+              <Input
+                id="bonus-file"
+                type="file"
+                accept="audio/mpeg,audio/mp3,audio/wav,audio/*"
+                onChange={(e) => setBonusFile(e.target.files?.[0] ?? null)}
+              />
+              {bonusFile && (
+                <span className="text-xs text-muted-foreground">
+                  {bonusFile.name} · {(bonusFile.size / 1024 / 1024).toFixed(2)} MB
+                </span>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setUploadFor(null)} disabled={uploading}>
+              Anulează
+            </Button>
+            <Button onClick={submitUpload} disabled={!mainFile || uploading} loading={uploading}>
+              <Upload />
+              Încarcă și marchează succeeded
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

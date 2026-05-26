@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { IsEmail, IsEnum, IsString, MinLength } from 'class-validator';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -246,6 +247,44 @@ export class AdminController {
     g.paidUnlocked = true;
     await this.generations.save(g);
     return { ok: true };
+  }
+
+  /**
+   * Manual upload: admin generează pe Suno extern și încarcă cele 2 versiuni
+   * direct (multipart cu field-urile `main` și optional `bonus`, max 25MB fiecare).
+   * Sare peste lyrics + suno API; setează status=succeeded și trimite email + chat
+   * notification owner-ului. ffmpeg re-encode-ează la mp3 128k indiferent de format.
+   */
+  @Post('generations/:id/manual-upload')
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'main', maxCount: 1 },
+        { name: 'bonus', maxCount: 1 },
+      ],
+      { limits: { fileSize: 25 * 1024 * 1024 } },
+    ),
+  )
+  async manualUpload(
+    @Param('id') id: string,
+    @UploadedFiles()
+    files: {
+      main?: Array<{ buffer: Buffer; originalname: string; size: number; mimetype: string }>;
+      bonus?: Array<{ buffer: Buffer; originalname: string; size: number; mimetype: string }>;
+    },
+  ) {
+    const main = files?.main?.[0];
+    const bonus = files?.bonus?.[0];
+    if (!main) throw new BadRequestException('Lipsește fișierul principal (field: main)');
+    const g = await this.generationsService.adminManualUpload(id, main.buffer, bonus?.buffer ?? null);
+    return {
+      ok: true,
+      status: g.status,
+      audioUrl: g.audioUrl,
+      bonusAudioUrl: g.bonusAudioUrl,
+      demoAudioUrl: g.demoAudioUrl,
+      demoBonusAudioUrl: g.demoBonusAudioUrl,
+    };
   }
 
   @Post('generations/:id/retry')

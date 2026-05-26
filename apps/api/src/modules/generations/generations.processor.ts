@@ -40,7 +40,7 @@ export class GenerationsProcessor extends WorkerHost {
   /** Lazy notification către ChatService — apelat după ce generation termină
    *  (succes sau eșec). Lazy load pentru a evita dependency circular între
    *  GenerationsModule și ChatModule (chat importă payments care importă generations). */
-  private async notifyChat(generationId: string, status: 'succeeded' | 'failed'): Promise<void> {
+  async notifyChat(generationId: string, status: 'succeeded' | 'failed'): Promise<void> {
     try {
       const mod = await import('../chat/chat.service');
       const chat = this.moduleRef.get(mod.ChatService, { strict: false });
@@ -178,7 +178,7 @@ export class GenerationsProcessor extends WorkerHost {
     }
   }
 
-  private async notifyOwner(gen: Generation): Promise<void> {
+  async notifyOwner(gen: Generation): Promise<void> {
     let email: string | null = null;
     if (gen.ownerUserId) {
       const u = await this.users.findOne({ where: { id: gen.ownerUserId } });

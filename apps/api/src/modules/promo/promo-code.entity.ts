@@ -54,6 +54,18 @@ export class PromoCode {
   @Column({ type: 'varchar', length: 200, nullable: true })
   note!: string | null;
 
+  /**
+   * Sursa codului: 'admin' (creat manual din /promo), 'roata' (câștigat la roata norocului),
+   * 'ai_request' (emis de AI Irina la cererea userului, max 20%).
+   * NULL pentru date legacy (înainte de tracking).
+   */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  source!: 'admin' | 'roata' | 'ai_request' | null;
+
+  /** Dacă true, codul a fost emis de AI agent (audit pentru a urmări costul reducerilor). */
+  @Column({ type: 'boolean', default: false })
+  aiIssued!: boolean;
+
   @CreateDateColumn()
   createdAt!: Date;
 

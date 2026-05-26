@@ -34,6 +34,19 @@ export class AdminApi {
   static generationRetry(id: string): Promise<{ ok: boolean; status: string; retryCount: number }> {
     return http.post(`/admin/generations/${id}/retry`);
   }
+  static generationManualUpload(
+    id: string,
+    main: File,
+    bonus: File | null,
+  ): Promise<{ ok: boolean; status: string; audioUrl: string; bonusAudioUrl: string | null }> {
+    const fd = new FormData();
+    fd.append('main', main);
+    if (bonus) fd.append('bonus', bonus);
+    return http.post(`/admin/generations/${id}/manual-upload`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120_000,
+    });
+  }
   static paymentStripeDetails(id: string): Promise<{
     name: string | null;
     email: string | null;

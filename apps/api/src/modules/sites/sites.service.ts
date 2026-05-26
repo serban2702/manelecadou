@@ -88,7 +88,37 @@ export class SitesService {
 
   async update(id: string, patch: Partial<Site>): Promise<Site> {
     if (patch.domain) patch.domain = patch.domain.toLowerCase().replace(/^www\./, '');
+
+    // Mass-propagation pentru aiChatModeDefault: dacă adminul schimbă modul AI
+    // default al unui site, propagăm pe TOATE conversațiile site-ului (admin poate
+    // apoi face manual override per conv din /chat). Vrem ca un singur click în
+    // /sites să schimbe comportamentul tuturor chat-urilor existente, nu doar al
+    // celor noi. Înainte de UPDATE site facem comparare cu valoarea curentă.
+    let shouldPropagateAiMode = false;
+    let newAiMode: 'manual' | 'suggest' | 'auto' | null = null;
+    if (patch.aiChatModeDefault !== undefined) {
+      const current = await this.repo.findOne({ where: { id }, select: ['id', 'aiChatModeDefault'] });
+      if (current && current.aiChatModeDefault !== patch.aiChatModeDefault) {
+        shouldPropagateAiMode = true;
+        newAiMode = patch.aiChatModeDefault;
+      }
+    }
+
     await this.repo.update({ id }, patch);
+
+    if (shouldPropagateAiMode && newAiMode) {
+      // Propagăm pe toate conversațiile site-ului cu UPDATE direct (nu save full
+      // entity — evită race condition pe wizardState etc.).
+      const result = await this.repo.manager.query(
+        `UPDATE conversations SET "aiMode" = $1 WHERE "siteId" = $2`,
+        [newAiMode, id],
+      );
+      this.logger.log(
+        `aiChatModeDefault changed for site ${id.slice(0, 8)} → '${newAiMode}'. ` +
+        `Propagated to ${result?.[1] ?? 'all'} existing conversations.`,
+      );
+    }
+
     this.invalidateCache();
     const site = await this.findById(id);
     if (!site) throw new NotFoundException('Site negăsit');

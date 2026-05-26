@@ -10,8 +10,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { ModuleRef } from '@nestjs/core';
 
 import { Generation } from './generation.entity';
+import { AudioProcessorService } from './audio-processor.service';
+import { GenerationsProcessor } from './generations.processor';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { User } from '../users/user.entity';
 import { Payment } from '../payments/payment.entity';
@@ -36,6 +39,8 @@ export class GenerationsService {
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
     private readonly sites: SitesService,
+    private readonly audio: AudioProcessorService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   async create(
@@ -289,6 +294,71 @@ export class GenerationsService {
       { generationId: saved.id },
       { removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
     );
+
+    return saved;
+  }
+
+  /**
+   * Admin manual upload: cazul în care admin generează melodia pe Suno EXTERN
+   * (UI-ul nativ Suno) și încarcă cele 2 versiuni direct, sărind peste pipeline-ul
+   * automat (lyrics + suno API). Folosit când Suno API e instabil sau când admin
+   * vrea control complet asupra rezultatului.
+   *
+   * Salvează `main.mp3` (obligatoriu) și optional `bonus.mp3`, generează demo-uri
+   * (30s + fade-out) pentru fiecare, setează status='succeeded', marchează
+   * `paidUnlocked` dacă deja era plătită (nu se schimbă, doar se păstrează),
+   * apoi rulează notify-ul standard (email owner + chat WS).
+   */
+  async adminManualUpload(
+    generationId: string,
+    mainBuffer: Buffer,
+    bonusBuffer: Buffer | null,
+  ): Promise<Generation> {
+    const gen = await this.repo.findOne({ where: { id: generationId } });
+    if (!gen) throw new NotFoundException('Generation not found');
+    if (!mainBuffer || mainBuffer.length === 0) {
+      throw new ConflictException('main_file_required');
+    }
+
+    // 1. Salvăm fișierul principal + demo
+    const main = await this.audio.saveAndMakeDemo(gen.id, mainBuffer, 'full');
+    gen.audioUrl = main.fullUrl;
+    gen.demoAudioUrl = main.demoUrl;
+
+    // 2. Bonus opțional
+    if (bonusBuffer && bonusBuffer.length > 0) {
+      const bonus = await this.audio.saveAndMakeDemo(gen.id, bonusBuffer, 'bonus');
+      gen.bonusAudioUrl = bonus.fullUrl;
+      gen.demoBonusAudioUrl = bonus.demoUrl;
+    } else {
+      gen.bonusAudioUrl = null;
+      gen.demoBonusAudioUrl = null;
+    }
+
+    // 3. Marker — providerJobId 'manual' ca să fie ușor de filtrat în /generations
+    gen.providerJobId = 'manual';
+    gen.tracks = [
+      { audioUrl: main.fullUrl, durationSec: gen.durationSec, coverUrl: gen.coverUrl ?? undefined },
+      ...(bonusBuffer
+        ? [{ audioUrl: gen.bonusAudioUrl!, durationSec: gen.durationSec, coverUrl: gen.coverUrl ?? undefined }]
+        : []),
+    ];
+    gen.status = 'succeeded';
+    gen.error = null;
+    gen.completedAt = new Date();
+    const saved = await this.repo.save(gen);
+
+    this.logger.warn(`[admin-manual-upload] generation=${saved.id} bonus=${!!bonusBuffer}`);
+
+    // 4. Notify owner (email + chat) — lazy load processor pentru a refolosi
+    //    aceeași logică ca pipeline-ul automat (template, branding, locale).
+    try {
+      const proc = this.moduleRef.get(GenerationsProcessor, { strict: false });
+      await proc.notifyOwner(saved);
+      void proc.notifyChat(saved.id, 'succeeded');
+    } catch (err) {
+      this.logger.error(`notify after manual upload failed: ${(err as Error).message}`);
+    }
 
     return saved;
   }

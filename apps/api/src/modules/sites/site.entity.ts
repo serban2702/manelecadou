@@ -407,6 +407,14 @@ export class Site {
   aiChatModeDefault!: 'manual' | 'suggest' | 'auto' | null;
 
   /**
+   * Dacă true, AI-ul Irina trimite proactiv salutul + force_open chat la ~5s după ce
+   * un vizitator nou se conectează WS pe acest site. Anti-spam: doar dacă conv n-are
+   * `greetingSentAt`. Skip pe pagina `/m/[id]` (ascultători nu-s prospects).
+   */
+  @Column({ type: 'boolean', default: false })
+  aiGreetingEnabled!: boolean;
+
+  /**
    * Dacă true, meniul de selectare limbă (LangSwitcher din topbar) e afișat.
    * Default false fiindcă pe site-urile multi-tenant convenția e "un domeniu
    * = o limbă". Activează când vrei să dai vizitatorului control manual peste

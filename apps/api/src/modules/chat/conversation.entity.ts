@@ -28,8 +28,12 @@ export interface WizardData {
   style?: string;
   occasion?: string;
   recipientName?: string;
+  /** „De la" — cine dedică (optional, conform structurii Irinei). */
+  dedicatorName?: string;
   message?: string;
   voiceArtist?: string;
+  /** Sex destinatar (M/F) folosit pt inferarea automată a vocii când userul nu o alege. */
+  recipientGender?: 'M' | 'F';
   dedication?: string;
   customLyrics?: string;
   premium?: boolean;
@@ -160,4 +164,21 @@ export class Conversation {
   /** Notă privată a adminului — pentru when reviens la conversație (TODO, status...). */
   @Column({ type: 'text', nullable: true })
   adminNote!: string | null;
+
+  // ============== AI Sales Agent (Faza 6) — Irina virtuală ==============
+
+  /**
+   * Momentul în care AI-ul a trimis primul salut proactiv pe această conversație.
+   * Anti-spam: dacă != null, NU mai salutăm a doua oară (chiar dacă userul revine
+   * după ore/zile pe site cu același guestId).
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  greetingSentAt!: Date | null;
+
+  /**
+   * Câte mesaje de empatie a trimis AI-ul în această conv (condoleanțe / „să-ți
+   * trăiască" etc.). Hard cap 2 per conv pentru a nu suna fals/spam.
+   */
+  @Column({ type: 'integer', default: 0 })
+  empathyMessagesSent!: number;
 }

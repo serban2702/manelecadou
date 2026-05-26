@@ -129,6 +129,24 @@ export class Generation {
   @Column({ type: 'varchar', length: 64, nullable: true })
   openReplaySessionId!: string | null;
 
+  // ============== AI Sales Agent — fields completate de Irina virtuală ==============
+
+  /** „De la" — cine semnează maneaua. Optional (Irina îl colectează separat de mesaj). */
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  dedicatorName!: string | null;
+
+  /** Sex destinatar (M/F) — folosit pentru inferarea automată a vocii când userul nu o alege explicit. */
+  @Column({ type: 'varchar', length: 8, nullable: true })
+  recipientGender!: 'M' | 'F' | null;
+
+  /** Marker: această generation a fost creată de AI agent pe baza unui transcript de chat. */
+  @Column({ type: 'boolean', default: false })
+  inferredFromChat!: boolean;
+
+  /** Audit ce a inferat AI și de unde (per câmp: 'user_said' | 'inferred' | 'default'). */
+  @Column({ type: 'jsonb', nullable: true })
+  inferenceMeta!: Record<string, { value: unknown; source: 'user_said' | 'inferred' | 'default' }> | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

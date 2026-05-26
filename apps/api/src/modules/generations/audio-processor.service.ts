@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { spawn } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
-import { mkdir, unlink } from 'node:fs/promises';
+import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
@@ -41,6 +41,39 @@ export class AudioProcessorService {
       await this.makeDemo(fullPath, demoPath);
     } catch (err) {
       // Dacă ffmpeg eșuează, ștergem fișierul demo parțial și lăsăm să propage.
+      await unlink(demoPath).catch(() => {});
+      throw err;
+    }
+
+    return {
+      fullUrl: `/uploads/audio/${generationId}/${fullName}`,
+      demoUrl: `/uploads/audio/${generationId}/${demoName}`,
+    };
+  }
+
+  /**
+   * Variantă pentru upload manual din admin: primește buffer-ul fișierului
+   * (mp3/wav/etc.) în loc de URL. Îl salvează ca `full.mp3` (sau `bonus.mp3`)
+   * și generează demo-ul. ffmpeg re-encode-ează la libmp3lame 128k indiferent
+   * de formatul de input, deci acceptă orice container Suno.
+   */
+  async saveAndMakeDemo(
+    generationId: string,
+    buffer: Buffer,
+    variant: 'full' | 'bonus' = 'full',
+  ): Promise<{ fullUrl: string; demoUrl: string }> {
+    const dir = join(this.uploadsDir, 'audio', generationId);
+    await mkdir(dir, { recursive: true });
+
+    const fullName = variant === 'full' ? 'full.mp3' : 'bonus.mp3';
+    const demoName = variant === 'full' ? 'demo.mp3' : 'demo-bonus.mp3';
+    const fullPath = join(dir, fullName);
+    const demoPath = join(dir, demoName);
+
+    await writeFile(fullPath, buffer);
+    try {
+      await this.makeDemo(fullPath, demoPath);
+    } catch (err) {
       await unlink(demoPath).catch(() => {});
       throw err;
     }
