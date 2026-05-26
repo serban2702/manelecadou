@@ -106,6 +106,10 @@ export interface AdminChatConversation {
   chatOpenOnClient?: boolean;
   lastClientPath?: string | null;
   enriched?: EnrichedPresence | null;
+  // Assignment (claim admin)
+  assignedAdminId?: string | null;
+  assignedAdminEmail?: string | null;
+  assignedAt?: string | null;
 }
 
 export interface AdminChatMessage {

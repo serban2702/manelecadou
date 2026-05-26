@@ -52,6 +52,13 @@ interface CheckoutInput {
   overrideCurrency?: string;
   /** Descriere custom pentru produsul Stripe (opțional). */
   overrideProductName?: string;
+  /**
+   * Generation existentă care va fi deblocată la plata acestui checkout
+   * (flux demo + plată unlock din chat). Diferit de `generationId` care
+   * marchează „creează full după plată". Aici generation există deja
+   * (type='demo'), iar webhook-ul va seta paidUnlocked=true.
+   */
+  unlockGenerationId?: string;
 }
 
 @Injectable()
@@ -330,6 +337,7 @@ export class PaymentsService {
       metadata: {
         paymentId: payment.id,
         generationId: input.generationId ?? '',
+        unlockGenerationId: input.unlockGenerationId ?? '',
         promoCodeId: promoCodeId ?? '',
         appliedDiscountCents: String(appliedDiscountCents),
         siteId: site.id,
@@ -568,6 +576,24 @@ export class PaymentsService {
           );
         } catch (err) {
           this.logger.error(`markPaidAndQueue failed: ${(err as Error).message}`);
+        }
+      }
+
+      // Flux demo + unlock (chat): generation există deja în starea demo,
+      // plata deblochează versiunea full. Setăm paidUnlocked=true + trimitem
+      // un mesaj nou cu linkul melodiei complete.
+      if (isPaid && session.metadata?.unlockGenerationId) {
+        try {
+          const chatMod = await import('../chat/chat.service');
+          const chat = this.moduleRef.get(chatMod.ChatService, { strict: false });
+          await chat.unlockGenerationAfterPayment(
+            session.metadata.unlockGenerationId,
+            paymentId,
+          );
+        } catch (err) {
+          this.logger.error(
+            `unlockGenerationAfterPayment failed for gen=${session.metadata.unlockGenerationId}: ${(err as Error).message}`,
+          );
         }
       }
 

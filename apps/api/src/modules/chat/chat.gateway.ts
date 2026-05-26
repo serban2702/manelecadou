@@ -10,7 +10,10 @@ import {
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ChatMessage } from './message.entity';
+import { Conversation } from './conversation.entity';
 
 interface SocketIdentity {
   userId: string | null;
@@ -92,7 +95,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /** Callback (injected by ChatService) când vine ACK pe mesaj. */
   private onMessageAck?: (messageIds: string[], status: 'delivered' | 'read', actor: SocketIdentity) => Promise<void>;
 
-  constructor(@Inject(forwardRef(() => JwtService)) private readonly jwt: JwtService) {}
+  constructor(
+    @Inject(forwardRef(() => JwtService)) private readonly jwt: JwtService,
+    @InjectRepository(Conversation) private readonly convRepo: Repository<Conversation>,
+  ) {}
 
   /** ChatService apelează la initializare ca să primească ACK-uri. */
   registerAckHandler(handler: (ids: string[], status: 'delivered' | 'read', actor: SocketIdentity) => Promise<void>) {
@@ -372,6 +378,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.to(conversationRoom(args.conversation.id)).emit('chat:message', payload);
   }
 
+  /** Emite un update general pe conversație (claim, rename, ai-mode etc.) către admin room. */
+  emitConversationUpdated(conv: Conversation) {
+    this.server.to(ADMIN_ROOM).emit('chat:conversation_updated', { conversation: conv });
+  }
+
   /** Emite o sugestie AI doar către admin room (NU către client). */
   emitAiSuggestion(args: { conversation: { id: string; siteId: string | null }; message: ChatMessage }) {
     this.server.to(ADMIN_ROOM).emit('chat:ai_suggestion', {
@@ -431,7 +442,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('chat:typing')
-  handleTyping(
+  async handleTyping(
     @MessageBody() data: { conversationId: string; isTyping: boolean },
     @ConnectedSocket() client: Socket,
   ) {
@@ -445,6 +456,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.to(conversationRoom(data.conversationId)).emit('chat:typing', payload);
     if (ident.isAdmin) {
       this.server.to(ADMIN_ROOM).emit('chat:typing', payload);
+      // Trimite event-ul și către userul/guest-ul conversației ca să vadă „operatorul scrie..."
+      try {
+        const conv = await this.convRepo.findOne({
+          where: { id: data.conversationId },
+          select: ['id', 'userId', 'guestId'],
+        });
+        if (conv?.userId) this.server.to(userRoom(conv.userId)).emit('chat:typing', payload);
+        if (conv?.guestId) this.server.to(guestRoom(conv.guestId)).emit('chat:typing', payload);
+      } catch {
+        /* best-effort */
+      }
     } else if (ident.userId) {
       this.server.to(ADMIN_ROOM).emit('chat:typing', { ...payload, userId: ident.userId });
     } else if (ident.guestId) {

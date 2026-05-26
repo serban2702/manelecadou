@@ -222,6 +222,34 @@ export class AdminChatController {
     return this.svc.sendAsAdmin(id, user?.id ?? '00000000-0000-0000-0000-000000000000', body.body);
   }
 
+  /**
+   * Claim/release assignment pe conversație. Body opțional: `{ adminUserId }`.
+   * Dacă lipsește sau e null → folosește admin-ul curent (auto-claim).
+   * Dacă adminUserId === 'release' → eliberează (set null).
+   */
+  @Post('conversations/:id/assign')
+  async assignAdmin(
+    @Param('id') id: string,
+    @Body() body: { adminUserId?: string | null } | undefined,
+    @CurrentUser() user: AuthedRequestUser | null,
+  ) {
+    let target: string | null;
+    if (!body || body.adminUserId === undefined) {
+      target = user?.id ?? null; // auto-claim de current admin
+    } else if (body.adminUserId === null || body.adminUserId === 'release') {
+      target = null;
+    } else {
+      target = body.adminUserId;
+    }
+    const c = await this.svc.setAssignedAdmin(id, target);
+    return {
+      ok: true,
+      assignedAdminId: c.assignedAdminId,
+      assignedAdminEmail: c.assignedAdminEmail,
+      assignedAt: c.assignedAt,
+    };
+  }
+
   /** Setează modul AI pentru o conversație (manual / suggest / auto). */
   @Post('conversations/:id/ai-mode')
   async setAiMode(@Param('id') id: string, @Body() body: SetAiModeDto) {
@@ -282,6 +310,39 @@ export class AdminChatController {
   @Post('conversations/:id/launch-generation')
   launchGeneration(@Param('id') id: string, @Body() dto: LaunchGenerationDto) {
     return this.svc.launchGenerationFromPayment(id, dto);
+  }
+
+  /**
+   * Combo: lansează generation type='demo' + creează Stripe Checkout cu metadata
+   * unlock-generation + trimite payment_link în chat. La plată confirmată,
+   * webhook-ul deblochează full automat (paidUnlocked=true) + trimite mesaj cu link.
+   */
+  @Post('conversations/:id/demo-with-payment')
+  async demoWithPayment(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      style: string;
+      occasion: string;
+      recipientName: string;
+      message: string;
+      voiceArtist: string;
+      dedication?: string;
+      customLyrics?: string;
+      premium?: boolean;
+      tipAmount?: number;
+      email?: string;
+      amount: number;
+      currency?: string;
+      productName?: string;
+    },
+    @CurrentUser() user: AuthedRequestUser | null,
+  ) {
+    return this.svc.sendDemoWithPaymentLink(
+      id,
+      user?.id ?? '00000000-0000-0000-0000-000000000000',
+      body,
+    );
   }
 
   /** Trimite link de plată Stripe Checkout către utilizator. */

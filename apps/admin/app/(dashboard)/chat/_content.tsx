@@ -33,7 +33,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { ChatApi, SitesApi } from '@/lib/api';
+import { ChatApi, SitesApi, AuthApi } from '@/lib/api';
 import { useAsync } from '@/lib/hooks/use-async';
 import {
   useAdminChatSocket,
@@ -112,6 +112,13 @@ export default function AdminChatPage() {
   const [searchQuery, setSearchQuery] = useState('');
   /** Override local pe deliveredAt/readAt din ACK-uri WS (înainte să vină refetch). */
   const [ackOverride, setAckOverride] = useState<Map<string, { deliveredAt?: string; readAt?: string }>>(new Map());
+  /** Admin-ul curent logat (pentru a ști dacă conversația e asignată „mie"). */
+  const [me, setMe] = useState<{ id: string; email: string } | null>(null);
+  useEffect(() => {
+    AuthApi.me()
+      .then((u) => setMe({ id: u.id, email: u.email }))
+      .catch(() => setMe(null));
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => setSearchQuery(searchInput.trim()), 250);
@@ -337,11 +344,20 @@ export default function AdminChatPage() {
     }
   }
 
+  /** Claim/release conversația curentă pentru admin-ul logat. */
+  async function toggleAssignment(release: boolean) {
+    if (!active) return;
+    await ChatApi.assignAdmin(active, release ? 'release' : undefined);
+    refetchThread();
+    refetchConvs();
+  }
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingPreview, setPendingPreview] = useState<string | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showDemoPaymentModal, setShowDemoPaymentModal] = useState(false);
 
   async function onFileChosen(f: File) {
     setPendingFile(f);
@@ -607,6 +623,23 @@ export default function AdminChatPage() {
                         {c.aiMode && c.aiMode !== 'manual' && (
                           <span title={`AI ${c.aiMode}`}><Bot className="h-3 w-3 text-primary" /></span>
                         )}
+                        {c.assignedAdminId && (
+                          <span
+                            title={
+                              c.assignedAdminId === me?.id
+                                ? 'Tu te ocupi'
+                                : `Asignat: ${c.assignedAdminEmail ?? 'admin'}`
+                            }
+                            className={cn(
+                              'inline-flex items-center justify-center h-3.5 w-3.5 rounded-full text-[8px] font-bold',
+                              c.assignedAdminId === me?.id
+                                ? 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/40'
+                                : 'bg-amber-500/20 text-amber-500 border border-amber-500/40',
+                            )}
+                          >
+                            {(c.assignedAdminEmail ?? '?').charAt(0).toUpperCase()}
+                          </span>
+                        )}
                         {c.unreadByAdmin > 0 && (
                           <Badge variant="destructive" className="h-5 min-w-[20px] justify-center px-1.5">
                             {c.unreadByAdmin}
@@ -693,6 +726,13 @@ export default function AdminChatPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    <AssignmentPill
+                      assignedAdminId={thread.conversation.assignedAdminId ?? null}
+                      assignedAdminEmail={thread.conversation.assignedAdminEmail ?? null}
+                      meId={me?.id ?? null}
+                      onClaim={() => toggleAssignment(false)}
+                      onRelease={() => toggleAssignment(true)}
+                    />
                     <AiModeSwitcher
                       mode={thread.conversation.aiMode ?? 'manual'}
                       onChange={setAiMode}
@@ -794,6 +834,16 @@ export default function AdminChatPage() {
                   className="h-[60px] w-[42px] p-0"
                 >
                   <Sparkles className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => setShowDemoPaymentModal(true)}
+                  title="Lansează demo (30s preview) + trimite link plată — la plată se deblochează automat versiunea completă"
+                  className="h-[60px] px-3"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Demo + Plată
                 </Button>
                 <Textarea
                   value={draft}
@@ -900,6 +950,23 @@ export default function AdminChatPage() {
           label={deleteTarget.label}
           onClose={() => setDeleteTarget(null)}
           onConfirm={() => deleteConv(deleteTarget.id)}
+        />
+      )}
+
+      {/* Modal combo demo + plată */}
+      {showDemoPaymentModal && thread && (
+        <DemoPaymentModal
+          conversationId={thread.conversation.id}
+          defaultEmail={thread.conversation.email ?? null}
+          defaultCurrency="RON"
+          defaultAmount={2999}
+          needsEmail={!thread.conversation.email}
+          onClose={() => setShowDemoPaymentModal(false)}
+          onSent={() => {
+            setShowDemoPaymentModal(false);
+            refetchThread();
+            refetchConvs();
+          }}
         />
       )}
 
@@ -1307,6 +1374,61 @@ function PresencePanel({
   );
 }
 
+/**
+ * Pill care arată cine se ocupă activ de conversație + buton claim/release.
+ *  - Niciun asignat:        „Neasignat"  → click = preiau eu
+ *  - Asignat = adminul meu: „Eu mă ocup" → click = eliberez
+ *  - Asignat alt admin:     „Robert"     → click = preiau (force-claim)
+ */
+function AssignmentPill({
+  assignedAdminId,
+  assignedAdminEmail,
+  meId,
+  onClaim,
+  onRelease,
+}: {
+  assignedAdminId: string | null;
+  assignedAdminEmail: string | null;
+  meId: string | null;
+  onClaim: () => void;
+  onRelease: () => void;
+}) {
+  const isMine = assignedAdminId && meId && assignedAdminId === meId;
+  const isOther = assignedAdminId && !isMine;
+  const isFree = !assignedAdminId;
+
+  const shortName = (email: string | null) => {
+    if (!email) return 'admin';
+    const local = email.split('@')[0];
+    return local.length > 12 ? local.slice(0, 12) + '…' : local;
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={isMine ? onRelease : onClaim}
+      title={
+        isMine
+          ? 'Tu te ocupi — click pentru a elibera'
+          : isOther
+            ? `Asignat la ${assignedAdminEmail}. Click pentru a prelua.`
+            : 'Neasignat — click pentru a prelua'
+      }
+      className={cn(
+        'inline-flex items-center gap-1.5 h-8 px-2.5 text-xs rounded-md border transition-colors',
+        isMine && 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/20',
+        isOther && 'bg-amber-500/10 border-amber-500/30 text-amber-500 hover:bg-amber-500/20',
+        isFree && 'bg-secondary/40 border-border text-muted-foreground hover:bg-secondary',
+      )}
+    >
+      <User className="h-3.5 w-3.5" />
+      {isMine ? <span>Eu mă ocup</span> : null}
+      {isOther ? <span>{shortName(assignedAdminEmail)}</span> : null}
+      {isFree ? <span>Preia</span> : null}
+    </button>
+  );
+}
+
 function AiModeSwitcher({ mode, onChange }: { mode: AiChatMode; onChange: (m: AiChatMode) => void }) {
   const [open, setOpen] = useState(false);
   const label: Record<AiChatMode, string> = { manual: 'Manual', suggest: 'AI Suggest', auto: 'AI Auto' };
@@ -1480,6 +1602,191 @@ function TypingDots() {
         <span className="td" />
       </span>
     </>
+  );
+}
+
+/**
+ * Modal combo: lansează generation demo (Suno produce 30s preview) + creează
+ * payment link cu metadata unlock-generation. La plată confirmată, backend-ul
+ * deblochează automat versiunea full și trimite mesaj nou în chat.
+ *
+ * Pre-completează datele cu wizardState (dacă există) sau cu valori default.
+ */
+function DemoPaymentModal({
+  conversationId,
+  defaultEmail,
+  defaultCurrency,
+  defaultAmount,
+  needsEmail,
+  onClose,
+  onSent,
+}: {
+  conversationId: string;
+  defaultEmail: string | null;
+  defaultCurrency: string;
+  defaultAmount: number; // cents
+  needsEmail: boolean;
+  onClose: () => void;
+  onSent: () => void;
+}) {
+  const [styleId, setStyleId] = useState(GEN_STYLES[1].id);
+  const [occasionId, setOccasionId] = useState(GEN_OCCASIONS[0].id);
+  const [recipientName, setRecipientName] = useState('');
+  const [message, setMessage] = useState('');
+  const [voiceId, setVoiceId] = useState(GEN_VOICES[0].id);
+  const [dedication, setDedication] = useState('');
+  const [tipAmount, setTipAmount] = useState(0);
+  const [premium, setPremium] = useState(false);
+  const [email, setEmail] = useState(defaultEmail ?? '');
+  const [amount, setAmount] = useState(defaultAmount); // cents
+  const [currency, setCurrency] = useState(defaultCurrency);
+  const [productName, setProductName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    if (!recipientName.trim() || !message.trim()) {
+      setError('Beneficiarul și mesajul sunt obligatorii');
+      return;
+    }
+    if (needsEmail && !email.trim()) {
+      setError('Userul e guest fără email — trebuie introdus aici');
+      return;
+    }
+    if (amount < 50) {
+      setError('Suma minimă: 0.50 (Stripe limit)');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const styleName = GEN_STYLES.find((s) => s.id === styleId)?.name ?? styleId;
+      const occasionName = GEN_OCCASIONS.find((o) => o.id === occasionId)?.name ?? occasionId;
+      await ChatApi.demoWithPayment(conversationId, {
+        style: styleName,
+        occasion: occasionName,
+        recipientName: recipientName.trim(),
+        message: message.trim(),
+        voiceArtist: voiceId,
+        dedication: dedication.trim() || undefined,
+        tipAmount: tipAmount > 0 ? tipAmount : undefined,
+        premium,
+        email: needsEmail ? email.trim() : undefined,
+        amount,
+        currency,
+        productName: productName.trim() || undefined,
+      });
+      onSent();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-card border border-border rounded-xl w-full max-w-2xl p-5 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <Sparkles className="h-5 w-5 text-primary" />
+          <h3 className="text-base font-semibold">Generează demo + trimite link plată</h3>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          Suno generează acum melodia. Userul primește 30 secunde demo în chat. La plata link-ului,
+          versiunea completă se deblochează automat și i se trimite linkul.
+        </p>
+
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Stil</label>
+              <select value={styleId} onChange={(e) => setStyleId(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none">
+                {GEN_STYLES.map((s) => <option key={s.id} value={s.id}>{s.emoji} {s.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Ocazie</label>
+              <select value={occasionId} onChange={(e) => setOccasionId(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none">
+                {GEN_OCCASIONS.map((o) => <option key={o.id} value={o.id}>{o.emoji} {o.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Beneficiar (pentru cine)</label>
+            <input type="text" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="ex. Larisa, Costel..." maxLength={120} className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Mesaj / dedicație ({message.length}/600)</label>
+            <Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} maxLength={600} placeholder="ex. La mulți ani, iubire! Tu ești totul pentru mine..." />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Voce / artist</label>
+              <select value={voiceId} onChange={(e) => setVoiceId(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none">
+                {GEN_VOICES.map((v) => <option key={v.id} value={v.id}>{v.name} — {v.tag}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">De la (opțional)</label>
+              <input type="text" value={dedication} onChange={(e) => setDedication(e.target.value)} maxLength={120} placeholder="ex. de la Andrei" className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Sumă dedicată (opțional)</label>
+              <input type="number" min={0} step={100} value={tipAmount || ''} onChange={(e) => setTipAmount(parseInt(e.target.value || '0', 10) || 0)} placeholder="ex. 500" className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
+            </div>
+            <label className="flex items-center gap-2 mt-6 text-sm cursor-pointer">
+              <input type="checkbox" checked={premium} onChange={(e) => setPremium(e.target.checked)} />
+              <span>Variantă premium</span>
+            </label>
+          </div>
+          {needsEmail && (
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Email (guest)</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
+            </div>
+          )}
+          <div className="pt-2 border-t border-border">
+            <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">Link plată (pentru deblocare full)</div>
+            <div className="grid grid-cols-[1fr_120px] gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Sumă</label>
+                <div className="flex items-center">
+                  <input type="number" min={0.5} step={0.01} value={(amount / 100).toFixed(2)} onChange={(e) => setAmount(Math.round(parseFloat(e.target.value || '0') * 100))} className="w-full h-9 px-3 text-sm rounded-l-md bg-secondary/40 border border-border focus:outline-none" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Valută</label>
+                <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none">
+                  <option value="RON">RON</option>
+                  <option value="EUR">EUR</option>
+                  <option value="USD">USD</option>
+                  <option value="GBP">GBP</option>
+                  <option value="BGN">BGN</option>
+                </select>
+              </div>
+            </div>
+            <div className="mt-3">
+              <label className="text-xs text-muted-foreground block mb-1">Descriere produs (opțional)</label>
+              <input type="text" value={productName} onChange={(e) => setProductName(e.target.value)} placeholder={`Manea personalizată pentru ${recipientName || '...'}`} className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
+            </div>
+          </div>
+          {error && <div className="text-xs text-destructive bg-destructive/10 rounded p-2">{error}</div>}
+        </div>
+
+        <div className="flex justify-end gap-2 mt-5">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Anulează</Button>
+          <Button onClick={submit} disabled={busy}>
+            {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
+            {busy ? 'Lansez...' : 'Lansează demo + trimite plată'}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 

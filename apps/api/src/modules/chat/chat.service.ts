@@ -956,12 +956,185 @@ export class ChatService implements OnModuleInit {
    * Caută conversația care a inițiat comanda prin wizard (wizardState.generationId match)
    * și trimite un mesaj în chat cu link către melodie. Actualizează și wizardState.step.
    */
-  async notifyGenerationCompleted(generationId: string, status: 'succeeded' | 'failed'): Promise<void> {
-    // Query Postgres direct prin TypeORM raw (jsonb path operator nu e tipat în TypeORM)
-    const conv = await this.conv
+  /**
+   * Admin trimite simultan: Generation demo (Suno va produce 30s preview)
+   * + Stripe Checkout cu metadata `unlockGenerationId` (pe plată → unlock full)
+   * + payment_link card vizibil instant în chat.
+   *
+   * Când Suno termină demo-ul: notifyGenerationCompleted trimite song_preview.
+   * Când userul plătește: webhook → unlockGenerationAfterPayment trimite mesaj
+   * cu linkul către versiunea completă.
+   */
+  async sendDemoWithPaymentLink(
+    conversationId: string,
+    adminUserId: string,
+    dto: {
+      style: string;
+      occasion: string;
+      recipientName: string;
+      message: string;
+      voiceArtist: string;
+      dedication?: string;
+      customLyrics?: string;
+      premium?: boolean;
+      tipAmount?: number;
+      email?: string;
+      amount: number; // cents — preț custom setat de admin
+      currency?: string;
+      productName?: string;
+    },
+  ): Promise<{ generationId: string; paymentMessageId: string }> {
+    const conv = await this.getConversation(conversationId);
+    if (!conv.siteId) throw new ForbiddenException('Conversație fără siteId');
+    const site = await this.sites.findById(conv.siteId);
+    if (!site) throw new NotFoundException('Site nu există');
+
+    // Asigură-te că guest-ul are email (Suno necesită pentru livrare).
+    if (dto.email && conv.guestId) {
+      try {
+        const { GuestSessionsService } = await import('../guest-sessions/guest-sessions.service');
+        const guests = this.moduleRef.get(GuestSessionsService, { strict: false });
+        await guests.setEmail(conv.guestId, dto.email);
+        conv.email = dto.email.toLowerCase().trim();
+        await this.conv.save(conv);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const { GenerationsService } = await import('../generations/generations.service');
+    const generations = this.moduleRef.get(GenerationsService, { strict: false });
+
+    // Creează generation type='demo' — Suno produce automat și full și demo (30s).
+    // Full rămâne ascuns până paidUnlocked=true.
+    const generation = await generations.create(
+      {
+        type: 'demo',
+        style: dto.style,
+        occasion: dto.occasion,
+        recipientName: dto.recipientName,
+        message: dto.message,
+        voiceArtist: dto.voiceArtist,
+        dedication: dto.dedication,
+        customLyrics: dto.customLyrics,
+        premium: !!dto.premium,
+        tipAmount: dto.tipAmount,
+        locale: site.locale ?? 'ro',
+      },
+      { userId: conv.userId, guestId: conv.guestId, siteId: conv.siteId },
+    );
+
+    // Creează Stripe Checkout cu metadata unlockGenerationId — webhook va dezolba.
+    const description = dto.productName?.trim() || `Manea personalizată pentru ${dto.recipientName}`;
+    const checkout = await this.payments.createCheckoutSession({
+      userId: conv.userId,
+      guestId: conv.guestId,
+      premium: !!dto.premium,
+      email: conv.email ?? undefined,
+      site,
+      overrideAmount: Math.round(dto.amount),
+      overrideCurrency: dto.currency?.toUpperCase(),
+      overrideProductName: description,
+      unlockGenerationId: generation.id,
+    });
+
+    const currency = (dto.currency ?? site.currency).toUpperCase();
+    const msg = this.msg.create({
+      conversationId: conv.id,
+      siteId: conv.siteId,
+      authorRole: 'admin',
+      authorId: adminUserId,
+      body: `🎵 Lansăm demo + link plată: ${description} — ${(dto.amount / 100).toFixed(2)} ${currency}`,
+      messageType: 'payment_link',
+      payload: {
+        amount: dto.amount,
+        currency,
+        description,
+        checkoutUrl: checkout.url,
+        paymentId: checkout.paymentId,
+        premium: !!dto.premium,
+        // Flag-ul ăsta îi spune client-ului că plata DEBLOCHEAZĂ o melodie
+        // existentă (nu o lansează de la zero).
+        unlockGenerationId: generation.id,
+      },
+      bodyRo: null,
+      detectedLang: 'ro',
+    });
+    const persisted = await this.msg.save(msg);
+    conv.lastMessageAt = persisted.createdAt;
+    conv.unreadByUser += 1;
+    conv.unreadByAdmin = 0;
+    await this.conv.save(conv);
+    this.gateway.emitMessage({ message: persisted, conversation: conv });
+
+    return { generationId: generation.id, paymentMessageId: persisted.id };
+  }
+
+  /**
+   * Apelat din webhook Stripe când metadata are `unlockGenerationId`. Setează
+   * paidUnlocked=true + trimite în chat mesaj cu linkul către versiunea
+   * completă + retrimite email cu MP3-urile.
+   */
+  async unlockGenerationAfterPayment(generationId: string, paymentId: string): Promise<void> {
+    const { GenerationsService } = await import('../generations/generations.service');
+    const generations = this.moduleRef.get(GenerationsService, { strict: false });
+
+    // markPaidAndQueue setează paidUnlocked=true + trimite email confirmare plată
+    // + (dacă status='pending', queue). Pentru flux demo→full status nu e pending.
+    const gen = await generations.markPaidAndQueue(generationId, paymentId);
+    if (!gen) throw new NotFoundException('Generation inexistent');
+
+    // Găsim conversația — fie prin wizardState.generationId, fie prin payment_link payload
+    let conv = await this.conv
       .createQueryBuilder('c')
       .where(`c."wizardState"->>'generationId' = :gid`, { gid: generationId })
       .getOne();
+    if (!conv) {
+      const m = await this.msg
+        .createQueryBuilder('m')
+        .where(`m."messageType" = 'payment_link'`)
+        .andWhere(`m.payload->>'unlockGenerationId' = :gid`, { gid: generationId })
+        .getOne();
+      if (m) conv = await this.conv.findOne({ where: { id: m.conversationId } });
+    }
+    if (!conv) return;
+
+    const fullLink = this.buildGenerationUrl(conv, generationId);
+    const sys = this.msg.create({
+      conversationId: conv.id,
+      siteId: conv.siteId ?? null,
+      authorRole: 'admin',
+      authorId: null,
+      body: `🎉 Plată confirmată! Versiunea completă a melodiei este deblocată: ${fullLink}`,
+      messageType: 'song_preview',
+      payload: { generationId, audioUrl: fullLink, unlocked: true },
+      aiGenerated: true,
+      detectedLang: 'ro',
+    });
+    const saved = await this.msg.save(sys);
+    conv.lastMessageAt = saved.createdAt;
+    conv.unreadByUser += 1;
+    await this.conv.save(conv);
+    this.gateway.emitMessage({ message: saved, conversation: conv });
+
+    // markPaidAndQueue trimite deja email de confirmare plată.
+  }
+
+  async notifyGenerationCompleted(generationId: string, status: 'succeeded' | 'failed'): Promise<void> {
+    // Caut conv prin wizardState (flux AI wizard) SAU prin payment_link
+    // (flux admin demo+plată — payload.unlockGenerationId).
+    let conv = await this.conv
+      .createQueryBuilder('c')
+      .where(`c."wizardState"->>'generationId' = :gid`, { gid: generationId })
+      .getOne();
+    if (!conv) {
+      const linkMsg = await this.msg
+        .createQueryBuilder('m')
+        .where(`m."messageType" = 'payment_link'`)
+        .andWhere(`m.payload->>'unlockGenerationId' = :gid`, { gid: generationId })
+        .getOne();
+      if (linkMsg) conv = await this.conv.findOne({ where: { id: linkMsg.conversationId } });
+    }
     if (!conv) return;
 
     // Update wizard state
@@ -1142,6 +1315,32 @@ export class ChatService implements OnModuleInit {
     const c = await this.getConversation(conversationId);
     c.archivedAt = archived ? new Date() : null;
     return this.conv.save(c);
+  }
+
+  /**
+   * Atribuie conversația unui admin (sau o eliberează cu adminUserId=null).
+   * Returnează entitatea actualizată — admin UI o pune în cache.
+   */
+  async setAssignedAdmin(
+    conversationId: string,
+    adminUserId: string | null,
+  ): Promise<Conversation> {
+    const c = await this.getConversation(conversationId);
+    if (adminUserId) {
+      const u = await this.users.findOne({ where: { id: adminUserId } });
+      if (!u) throw new NotFoundException('Admin user inexistent');
+      c.assignedAdminId = u.id;
+      c.assignedAdminEmail = u.email ?? null;
+      c.assignedAt = new Date();
+    } else {
+      c.assignedAdminId = null;
+      c.assignedAdminEmail = null;
+      c.assignedAt = null;
+    }
+    const saved = await this.conv.save(c);
+    // Anunță toți adminii prin WS să refacă cache-ul sidebar-ului.
+    this.gateway.emitConversationUpdated(saved);
+    return saved;
   }
 
   /** Redenumește subiectul afișat în sidebar. */

@@ -49,6 +49,24 @@ export class ChatApi {
   static forceOpen(id: string): Promise<{ ok: true; online: boolean }> {
     return http.post(`/admin/chat/conversations/${id}/force-open`, {});
   }
+  /**
+   * Claim/release conversație.
+   *  - undefined / lipsă body → auto-claim de adminul curent
+   *  - 'release' → eliberează
+   *  - <uuid> → atribuie unui anume admin
+   */
+  static assignAdmin(
+    id: string,
+    target?: string | 'release' | null,
+  ): Promise<{
+    ok: true;
+    assignedAdminId: string | null;
+    assignedAdminEmail: string | null;
+    assignedAt: string | null;
+  }> {
+    const body = target === undefined ? {} : { adminUserId: target };
+    return http.post(`/admin/chat/conversations/${id}/assign`, body);
+  }
   static uploadAttachment(id: string, file: File, caption?: string): Promise<AdminChatMessage> {
     const fd = new FormData();
     fd.append('file', file);
@@ -84,5 +102,29 @@ export class ChatApi {
     },
   ): Promise<{ generationId: string }> {
     return http.post(`/admin/chat/conversations/${conversationId}/launch-generation`, dto);
+  }
+  /**
+   * Flux demo + plată: lansează generation type='demo' + trimite payment_link
+   * cu metadata unlock-generation. La plată confirmată → unlock automat full.
+   */
+  static demoWithPayment(
+    conversationId: string,
+    dto: {
+      style: string;
+      occasion: string;
+      recipientName: string;
+      message: string;
+      voiceArtist: string;
+      dedication?: string;
+      customLyrics?: string;
+      premium?: boolean;
+      tipAmount?: number;
+      email?: string;
+      amount: number;
+      currency?: string;
+      productName?: string;
+    },
+  ): Promise<{ generationId: string; paymentMessageId: string }> {
+    return http.post(`/admin/chat/conversations/${conversationId}/demo-with-payment`, dto);
   }
 }

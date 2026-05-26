@@ -134,4 +134,21 @@ export class Conversation {
    */
   @Column({ type: 'jsonb', nullable: true })
   wizardState!: WizardState | null;
+
+  /**
+   * Admin user-ul care s-a auto-atribuit la această conversație (claim).
+   * Folosit ca să vadă echipa cine se ocupă activ de un client și să evite
+   * dubla intervenție. NULL = neclaimed (oricine poate prelua).
+   */
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  assignedAdminId!: string | null;
+
+  /** Email-ul admin-ului asignat (denormalizat pentru afișare rapidă în UI). */
+  @Column({ type: 'varchar', length: 320, nullable: true })
+  assignedAdminEmail!: string | null;
+
+  /** Momentul claim-ului. */
+  @Column({ type: 'timestamptz', nullable: true })
+  assignedAt!: Date | null;
 }
