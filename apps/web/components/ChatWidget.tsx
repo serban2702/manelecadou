@@ -592,8 +592,56 @@ export function ChatWidget() {
                       );
                     })()
                   )}
-                  {/* nu afișa "body" generic pentru payment_link sau image (ar fi redundant) */}
-                  {!(mm.messageType === 'payment_link' || (mm.attachmentUrl && (!m.body || m.body === '📷 Imagine'))) && m.body}
+                  {mm.messageType === 'song_preview' && mm.payload && (
+                    (() => {
+                      const p = mm.payload as {
+                        generationId?: string;
+                        audioUrl?: string;
+                        recipientName?: string;
+                        unlocked?: boolean;
+                        pending?: boolean;
+                      };
+                      const href = p.generationId ? `/m/${p.generationId}` : (p.audioUrl ?? '#');
+                      return (
+                        <a
+                          href={href}
+                          style={{
+                            display: 'block',
+                            padding: 12,
+                            marginBottom: 6,
+                            borderRadius: 10,
+                            background: 'linear-gradient(135deg, #2a1a04, #0a0606)',
+                            border: '1px solid var(--gold)',
+                            color: '#fff5cc',
+                            textDecoration: 'none',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                          }}
+                        >
+                          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)' }}>
+                            {p.pending ? '🎶 Pagina manelei (în lucru)' : p.unlocked ? '✓ Manea deblocată' : '🎵 Maneaua ta'}
+                          </div>
+                          <div style={{ fontSize: 14, fontWeight: 700, margin: '4px 0 8px' }}>
+                            {p.recipientName ? `Pentru ${p.recipientName}` : 'Maneaua personalizată'}
+                          </div>
+                          <div
+                            style={{
+                              background: 'linear-gradient(180deg,#ffe28a,#b07c1e)',
+                              color: '#2a1a04',
+                              padding: '8px 12px',
+                              borderRadius: 6,
+                              fontSize: 13,
+                              fontWeight: 800,
+                              textAlign: 'center',
+                            }}
+                          >
+                            {p.pending ? 'Deschide pagina →' : 'Ascultă maneaua →'}
+                          </div>
+                        </a>
+                      );
+                    })()
+                  )}
+                  {/* nu afișa "body" generic pentru payment_link / song_preview / image (ar fi redundant) */}
+                  {!(mm.messageType === 'payment_link' || mm.messageType === 'song_preview' || (mm.attachmentUrl && (!m.body || m.body === '📷 Imagine'))) && m.body}
                   <div
                     style={{
                       fontSize: 10,

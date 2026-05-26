@@ -1028,8 +1028,8 @@ export class ChatService implements OnModuleInit {
 
     // ============== Flux GRATIS (amount=0) ==============
     // Skip Stripe + payment_link. Marchez direct paidUnlocked=true pe gen
-    // (când Suno termină, /m/<id> va expune varianta full). Trimit doar
-    // un mesaj informativ în chat.
+    // (când Suno termină, /m/<id> va expune varianta full). Trimit două
+    // mesaje în chat: unul informativ + unul card cu linkul către pagina manelei.
     if (Math.round(dto.amount) <= 0) {
       await this.msg.manager
         .createQueryBuilder()
@@ -1038,7 +1038,7 @@ export class ChatService implements OnModuleInit {
         .where('id = :id', { id: generation.id })
         .execute();
 
-      const sysBody = `🎁 Generăm gratuit acum melodia pentru ${dto.recipientName}. Va fi gata în ~90 secunde.`;
+      const sysBody = `🎵 Generăm acum maneaua. Va fi gata în aproximativ 5 minute. Următorul mesaj conține linkul către pagina manelei unde se generează. Apasă pe el și când s-a generat îți apare acolo. Inițial se generează versurile și apoi muzica.`;
       const sysMsg = this.msg.create({
         conversationId: conv.id,
         siteId: conv.siteId,
@@ -1050,12 +1050,34 @@ export class ChatService implements OnModuleInit {
         detectedLang: 'ro',
       });
       const savedSys = await this.msg.save(sysMsg);
-      conv.lastMessageAt = savedSys.createdAt;
-      conv.unreadByUser += 1;
+
+      // Card cu link către pagina manelei — renderat frumos pe client.
+      const fullLink = this.buildGenerationUrl(conv, generation.id);
+      const linkMsg = this.msg.create({
+        conversationId: conv.id,
+        siteId: conv.siteId,
+        authorRole: 'admin',
+        authorId: adminUserId,
+        body: `🎶 Pagina manelei tale: ${fullLink}`,
+        messageType: 'song_preview',
+        payload: {
+          generationId: generation.id,
+          audioUrl: fullLink,
+          recipientName: dto.recipientName,
+          pending: true,
+        },
+        aiGenerated: true,
+        detectedLang: 'ro',
+      });
+      const savedLink = await this.msg.save(linkMsg);
+
+      conv.lastMessageAt = savedLink.createdAt;
+      conv.unreadByUser += 2;
       conv.unreadByAdmin = 0;
       await this.conv.save(conv);
       this.gateway.emitMessage({ message: savedSys, conversation: conv });
-      return { generationId: generation.id, paymentMessageId: savedSys.id };
+      this.gateway.emitMessage({ message: savedLink, conversation: conv });
+      return { generationId: generation.id, paymentMessageId: savedLink.id };
     }
 
     // Creează Stripe Checkout cu metadata unlockGenerationId — webhook va dezolba.

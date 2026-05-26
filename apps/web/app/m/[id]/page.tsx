@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import View from './view';
+import { SiteShell } from '@/components/SiteShell';
 import { getSiteConfig, siteUrl } from '@/lib/site-config';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
@@ -67,5 +68,9 @@ export async function generateMetadata({
 }
 
 export default async function ShareGenerationPage() {
-  return <View />;
+  return (
+    <SiteShell hideStickyCta>
+      <View />
+    </SiteShell>
+  );
 }
