@@ -21,6 +21,9 @@ import {
   MoreVertical,
   Paperclip,
   Pencil,
+  Plus,
+  PanelRightClose,
+  PanelRightOpen,
   Search,
   Send,
   Smartphone,
@@ -34,6 +37,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { ChatApi, SitesApi, AuthApi } from '@/lib/api';
+import type { QuickReply } from '@/lib/api/chat.api';
 import { useAsync } from '@/lib/hooks/use-async';
 import {
   useAdminChatSocket,
@@ -366,6 +370,8 @@ export default function AdminChatPage() {
   const [pendingPreview, setPendingPreview] = useState<string | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showDemoPaymentModal, setShowDemoPaymentModal] = useState(false);
+  /** Sidebar dreapta vizibil/ascuns (Răspunsuri + AI Assistant). */
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   async function onFileChosen(f: File) {
     setPendingFile(f);
@@ -770,6 +776,15 @@ export default function AdminChatPage() {
                         </Button>
                       );
                     })()}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSidebarOpen((v) => !v)}
+                      title={sidebarOpen ? 'Ascunde panou Răspunsuri + AI' : 'Arată panou Răspunsuri + AI'}
+                      className="px-2"
+                    >
+                      {sidebarOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+                    </Button>
                   </div>
                 </div>
                 {/* Enriched presence panel */}
@@ -832,82 +847,45 @@ export default function AdminChatPage() {
                     e.target.value = '';
                   }}
                 />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  title="Atașează imagine sau PDF (max 5MB)"
-                  className="h-[60px] w-[42px] p-0"
-                >
-                  <Paperclip className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowPaymentModal(true)}
-                  title="Trimite link de plată"
-                  className="h-[60px] w-[42px] p-0"
-                >
-                  <CreditCard className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowLyricsModal(true)}
-                  title="Generează versuri pentru manea (preview AI)"
-                  className="h-[60px] w-[42px] p-0"
-                >
-                  <Sparkles className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => setShowDemoPaymentModal(true)}
-                  title="Lansează demo (30s preview) + trimite link plată — la plată se deblochează automat versiunea completă"
-                  className="h-[60px] px-3"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  Demo + Plată
-                </Button>
-                <Textarea
-                  value={draft}
-                  onChange={(e) => {
-                    setDraft(e.target.value);
-                    if (e.target.value.length > 0) emitAdminTyping();
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                      e.preventDefault();
-                      if (pendingFile) sendAttachment();
-                      else send();
-                    }
-                  }}
-                  rows={2}
-                  placeholder={pendingFile ? 'Caption (opțional) · Cmd/Ctrl+Enter pentru trimite' : 'Scrie răspuns... (Cmd/Ctrl+Enter pentru a trimite)'}
-                  className="flex-1 min-h-[60px]"
+                <ActionsMenu
+                  onAttach={() => fileInputRef.current?.click()}
+                  onPayment={() => setShowPaymentModal(true)}
+                  onLyrics={() => setShowLyricsModal(true)}
+                  onDemo={() => setShowDemoPaymentModal(true)}
                 />
-                {pendingFile ? (
-                  <Button onClick={sendAttachment} disabled={uploading} className="h-auto">
-                    {uploading ? <Loader2 className="animate-spin" /> : <Send />}
-                    {uploading ? 'Upload...' : 'Trimite'}
-                  </Button>
-                ) : (
-                  <Button onClick={send} disabled={!draft.trim()} className="h-auto">
-                    <Send />
-                    Trimite
-                  </Button>
-                )}
+                <AutoGrowTextarea
+                  value={draft}
+                  onChange={(v) => {
+                    setDraft(v);
+                    if (v.length > 0) emitAdminTyping();
+                  }}
+                  onSubmit={() => {
+                    if (pendingFile) sendAttachment();
+                    else send();
+                  }}
+                  placeholder={pendingFile ? 'Caption (opțional) · Cmd/Ctrl+Enter pentru trimite' : 'Scrie răspuns... (Cmd/Ctrl+Enter pentru a trimite)'}
+                />
+                <button
+                  type="button"
+                  onClick={pendingFile ? sendAttachment : send}
+                  disabled={pendingFile ? uploading : !draft.trim()}
+                  title="Trimite (Cmd/Ctrl+Enter)"
+                  className="inline-flex items-center justify-center h-10 w-10 rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {(pendingFile ? uploading : false) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </button>
               </div>
             </>
           )}
         </section>
 
-        <AssistantPanel
-          contextKind="chat"
-          refId={active}
-          detectedLang={thread?.messages?.find((m) => m.authorRole === 'user')?.detectedLang}
-          onInsertDraft={(text) => setDraft(text)}
-        />
+        {sidebarOpen && (
+          <ChatRightSidebar
+            conversationId={active}
+            detectedLang={thread?.messages?.find((m) => m.authorRole === 'user')?.detectedLang}
+            onInsertDraft={(text) => setDraft((d) => (d ? `${d} ${text}` : text))}
+          />
+        )}
       </div>
 
       {showPaymentModal && thread && (
@@ -1807,6 +1785,365 @@ function DemoPaymentModal({
           <Button onClick={submit} disabled={busy}>
             {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
             {busy ? 'Lansez...' : 'Lansează demo + trimite plată'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Buton „+" care deschide dropdown cu 4 acțiuni (attach / payment / lyrics / demo). */
+function ActionsMenu({
+  onAttach,
+  onPayment,
+  onLyrics,
+  onDemo,
+}: {
+  onAttach: () => void;
+  onPayment: () => void;
+  onLyrics: () => void;
+  onDemo: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  const item = (
+    icon: React.ReactNode,
+    label: string,
+    sublabel: string,
+    onClick: () => void,
+    highlight = false,
+  ) => (
+    <button
+      type="button"
+      onClick={() => {
+        setOpen(false);
+        onClick();
+      }}
+      className={cn(
+        'flex items-start gap-3 w-full px-3 py-2 text-left hover:bg-secondary/60 transition-colors first:rounded-t-md last:rounded-b-md',
+        highlight && 'bg-primary/10',
+      )}
+    >
+      <div className={cn('h-8 w-8 rounded-md flex items-center justify-center shrink-0', highlight ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground')}>
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <div className="text-sm font-medium">{label}</div>
+        <div className="text-[11px] text-muted-foreground leading-snug">{sublabel}</div>
+      </div>
+    </button>
+  );
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title="Acțiuni"
+        className={cn(
+          'inline-flex items-center justify-center h-10 w-10 rounded-full border border-border bg-secondary/40 hover:bg-secondary transition-colors',
+          open && 'bg-secondary',
+        )}
+      >
+        <Plus className={cn('h-4 w-4 transition-transform', open && 'rotate-45')} />
+      </button>
+      {open && (
+        <div className="absolute bottom-12 left-0 z-40 w-72 rounded-md border border-border bg-card shadow-lg overflow-hidden">
+          {item(<Sparkles className="h-4 w-4" />, 'Demo + Plată', 'Generează demo 30s + link plată cu unlock automat', onDemo, true)}
+          <div className="h-px bg-border" />
+          {item(<Paperclip className="h-4 w-4" />, 'Atașament', 'Imagine / PDF (max 5MB)', onAttach)}
+          {item(<CreditCard className="h-4 w-4" />, 'Link plată', 'Stripe Checkout cu preț custom', onPayment)}
+          {item(<Sparkles className="h-4 w-4" />, 'Generează versuri', 'Preview AI fără să lansezi Suno', onLyrics)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Textarea care crește singur de la 1 la max 6 rânduri (40-160px). */
+function AutoGrowTextarea({
+  value,
+  onChange,
+  onSubmit,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  placeholder?: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const max = 160; // ~6 rânduri
+    el.style.height = `${Math.min(el.scrollHeight, max)}px`;
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          onSubmit();
+        }
+      }}
+      rows={1}
+      placeholder={placeholder}
+      className="flex-1 resize-none px-3 py-2.5 text-sm rounded-lg bg-secondary/40 border border-border focus:outline-none focus:ring-1 focus:ring-primary/40 placeholder:text-muted-foreground/60 leading-snug min-h-[40px] max-h-[160px] overflow-y-auto"
+    />
+  );
+}
+
+/**
+ * Sidebar dreapta cu 2 taburi:
+ *  - Răspunsuri: quick replies predefinite cu CRUD inline (text + culoare)
+ *  - AI Assistant: wrapper peste vechiul AssistantPanel
+ */
+function ChatRightSidebar({
+  conversationId,
+  detectedLang,
+  onInsertDraft,
+}: {
+  conversationId: string | null;
+  detectedLang: string | null | undefined;
+  onInsertDraft: (text: string) => void;
+}) {
+  const [tab, setTab] = useState<'replies' | 'ai'>('replies');
+
+  return (
+    <aside className="w-80 border-l border-border bg-card/40 flex flex-col">
+      <div className="grid grid-cols-2 border-b border-border">
+        <button
+          type="button"
+          onClick={() => setTab('replies')}
+          className={cn(
+            'px-3 py-2.5 text-xs uppercase tracking-wider font-semibold border-b-2 transition-colors',
+            tab === 'replies' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          Răspunsuri
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('ai')}
+          className={cn(
+            'px-3 py-2.5 text-xs uppercase tracking-wider font-semibold border-b-2 transition-colors',
+            tab === 'ai' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          AI Assistant
+        </button>
+      </div>
+
+      {tab === 'replies' ? (
+        <QuickRepliesTab onInsert={onInsertDraft} />
+      ) : (
+        <AssistantPanel
+          contextKind="chat"
+          refId={conversationId}
+          detectedLang={detectedLang}
+          onInsertDraft={onInsertDraft}
+        />
+      )}
+    </aside>
+  );
+}
+
+/** Listă quick replies + CRUD inline (add/edit/delete). */
+function QuickRepliesTab({ onInsert }: { onInsert: (text: string) => void }) {
+  const { data: replies, refetch } = useAsync(() => ChatApi.listQuickReplies(), [], { refetchInterval: undefined });
+  const [editing, setEditing] = useState<QuickReply | 'new' | null>(null);
+
+  async function deleteReply(id: string) {
+    if (!confirm('Ștergi răspunsul predefinit?')) return;
+    await ChatApi.deleteQuickReply(id);
+    refetch();
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+      <div className="text-[11px] text-muted-foreground leading-snug">
+        Click pe un răspuns ca să-l bag în input. Folosește butonul „+" pentru a defini unul nou.
+      </div>
+      {replies && replies.length === 0 && (
+        <div className="text-xs text-muted-foreground italic py-2">
+          Nici un răspuns încă. Apasă „+ Adaugă" mai jos.
+        </div>
+      )}
+      <div className="flex flex-col gap-1.5">
+        {replies?.map((r) => (
+          <div key={r.id} className="group flex items-stretch gap-1">
+            <button
+              type="button"
+              onClick={() => onInsert(r.text)}
+              title={r.text}
+              className="flex-1 text-left text-xs px-3 py-2 rounded-md border transition-colors hover:brightness-110"
+              style={{
+                background: `${r.color}22`,
+                borderColor: `${r.color}55`,
+                color: r.color,
+              }}
+            >
+              <div className="font-semibold truncate">{r.label}</div>
+              <div className="text-[10px] opacity-70 truncate font-normal">{r.text}</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditing(r)}
+              title="Editează"
+              className="opacity-0 group-hover:opacity-100 transition-opacity h-auto px-1.5 rounded-md border border-border bg-secondary/40 hover:bg-secondary"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              onClick={() => deleteReply(r.id)}
+              title="Șterge"
+              className="opacity-0 group-hover:opacity-100 transition-opacity h-auto px-1.5 rounded-md border border-border bg-secondary/40 hover:bg-destructive/20 hover:border-destructive/40"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <Button variant="outline" size="sm" onClick={() => setEditing('new')} className="mt-2">
+        <Plus className="h-3.5 w-3.5" />
+        Adaugă răspuns
+      </Button>
+      {editing && (
+        <QuickReplyEditModal
+          initial={editing === 'new' ? null : editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            refetch();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function QuickReplyEditModal({
+  initial,
+  onClose,
+  onSaved,
+}: {
+  initial: QuickReply | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [label, setLabel] = useState(initial?.label ?? '');
+  const [text, setText] = useState(initial?.text ?? '');
+  const [color, setColor] = useState(initial?.color ?? '#d4af37');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    if (!label.trim() || !text.trim()) {
+      setError('Eticheta și textul sunt obligatorii');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      if (initial) {
+        await ChatApi.updateQuickReply(initial.id, { label, text, color });
+      } else {
+        await ChatApi.createQuickReply({ label, text, color });
+      }
+      onSaved();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const PRESETS = ['#d4af37', '#10b981', '#3b82f6', '#ef4444', '#a855f7', '#f59e0b', '#ec4899', '#6b7280'];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-card border border-border rounded-xl w-full max-w-md p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-base font-semibold mb-4">
+          {initial ? 'Editează răspuns' : 'Răspuns nou predefinit'}
+        </h3>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Etichetă (buton)</label>
+            <input
+              type="text"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              maxLength={120}
+              autoFocus
+              placeholder="ex. Bun venit, Preț, Mulțumesc"
+              className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Text ({text.length}/2000)</label>
+            <Textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={4}
+              maxLength={2000}
+              placeholder="Textul care va fi inserat în input"
+            />
+          </div>
+          <div>
+            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Culoare</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                className="h-9 w-12 rounded-md border border-border bg-transparent cursor-pointer"
+              />
+              <input
+                type="text"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                maxLength={16}
+                className="flex-1 h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none font-mono"
+              />
+            </div>
+            <div className="flex gap-1.5 mt-2">
+              {PRESETS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setColor(c)}
+                  className={cn('h-6 w-6 rounded border-2', color === c ? 'border-foreground' : 'border-border')}
+                  style={{ background: c }}
+                />
+              ))}
+            </div>
+          </div>
+          {error && <div className="text-xs text-destructive bg-destructive/10 rounded p-2">{error}</div>}
+        </div>
+        <div className="flex justify-end gap-2 mt-5">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Anulează</Button>
+          <Button onClick={save} disabled={busy}>
+            {busy ? <Loader2 className="animate-spin" /> : null}
+            Salvează
           </Button>
         </div>
       </div>

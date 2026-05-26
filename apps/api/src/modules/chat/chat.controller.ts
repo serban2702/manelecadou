@@ -352,6 +352,34 @@ export class AdminChatController {
     );
   }
 
+  // ============== Quick Replies (per-site) ==============
+
+  @Get('quick-replies')
+  listQuickReplies(@CurrentSiteId() siteId: string | null) {
+    return this.svc.listQuickReplies(siteId);
+  }
+
+  @Post('quick-replies')
+  createQuickReply(
+    @CurrentSiteId() siteId: string | null,
+    @Body() body: { label: string; text: string; color?: string; sortOrder?: number },
+  ) {
+    return this.svc.createQuickReply(siteId, body);
+  }
+
+  @Patch('quick-replies/:id')
+  updateQuickReply(
+    @Param('id') id: string,
+    @Body() body: { label?: string; text?: string; color?: string; sortOrder?: number },
+  ) {
+    return this.svc.updateQuickReply(id, body);
+  }
+
+  @Delete('quick-replies/:id')
+  deleteQuickReply(@Param('id') id: string) {
+    return this.svc.deleteQuickReply(id);
+  }
+
   /** Trimite link de plată Stripe Checkout către utilizator. */
   @Post('conversations/:id/payment-link')
   async paymentLink(

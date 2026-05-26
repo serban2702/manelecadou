@@ -11,6 +11,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
 import { Conversation, AiChatMode } from './conversation.entity';
 import { ChatMessage, ChatMessageType, ChatMessagePayload } from './message.entity';
+import { QuickReply } from './quick-reply.entity';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { User } from '../users/user.entity';
 import { AnalyticsSession } from '../analytics/analytics-session.entity';
@@ -47,6 +48,7 @@ export class ChatService implements OnModuleInit {
     @InjectRepository(GuestSession) private readonly guests: Repository<GuestSession>,
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(AnalyticsSession) private readonly analyticsSessions: Repository<AnalyticsSession>,
+    @InjectRepository(QuickReply) private readonly quickReplies: Repository<QuickReply>,
     @Inject(forwardRef(() => ChatGateway))
     private readonly gateway: ChatGateway,
     private readonly translation: TranslationService,
@@ -1483,5 +1485,54 @@ export class ChatService implements OnModuleInit {
         by: 'admin',
       });
     }
+  }
+
+  // ============== Quick Replies (răspunsuri predefinite per-site) ==============
+
+  /** Listă răspunsuri pentru site-ul curent + cele globale (siteId=null). */
+  async listQuickReplies(siteId: string | null): Promise<QuickReply[]> {
+    const qb = this.quickReplies
+      .createQueryBuilder('q')
+      .orderBy('q."sortOrder"', 'ASC')
+      .addOrderBy('q."createdAt"', 'ASC');
+    if (siteId) {
+      qb.where('(q.siteId = :siteId OR q.siteId IS NULL)', { siteId });
+    }
+    return qb.getMany();
+  }
+
+  async createQuickReply(
+    siteId: string | null,
+    dto: { label: string; text: string; color?: string; sortOrder?: number },
+  ): Promise<QuickReply> {
+    const label = dto.label.trim().slice(0, 120);
+    const text = dto.text.trim().slice(0, 2000);
+    if (!label || !text) throw new ForbiddenException('Label și text sunt obligatorii');
+    const q = this.quickReplies.create({
+      siteId,
+      label,
+      text,
+      color: dto.color?.trim() || '#d4af37',
+      sortOrder: dto.sortOrder ?? 0,
+    });
+    return this.quickReplies.save(q);
+  }
+
+  async updateQuickReply(
+    id: string,
+    dto: { label?: string; text?: string; color?: string; sortOrder?: number },
+  ): Promise<QuickReply> {
+    const q = await this.quickReplies.findOne({ where: { id } });
+    if (!q) throw new NotFoundException('Quick reply inexistent');
+    if (dto.label !== undefined) q.label = dto.label.trim().slice(0, 120);
+    if (dto.text !== undefined) q.text = dto.text.trim().slice(0, 2000);
+    if (dto.color !== undefined) q.color = dto.color.trim() || '#d4af37';
+    if (dto.sortOrder !== undefined) q.sortOrder = dto.sortOrder;
+    return this.quickReplies.save(q);
+  }
+
+  async deleteQuickReply(id: string): Promise<{ ok: true }> {
+    await this.quickReplies.delete({ id });
+    return { ok: true };
   }
 }

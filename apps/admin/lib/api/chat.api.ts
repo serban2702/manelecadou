@@ -1,6 +1,17 @@
 import { http } from '../http/client';
 import type { AdminChatConversation, AdminChatMessage, AiChatMode } from '../types';
 
+export interface QuickReply {
+  id: string;
+  siteId: string | null;
+  label: string;
+  text: string;
+  color: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PaymentLinkOpts {
   amount?: number;
   currency?: string;
@@ -111,6 +122,20 @@ export class ChatApi {
    * Flux demo + plată: lansează generation type='demo' + trimite payment_link
    * cu metadata unlock-generation. La plată confirmată → unlock automat full.
    */
+  // ====== Quick replies ======
+  static listQuickReplies(): Promise<QuickReply[]> {
+    return http.get('/admin/chat/quick-replies');
+  }
+  static createQuickReply(dto: { label: string; text: string; color?: string; sortOrder?: number }): Promise<QuickReply> {
+    return http.post('/admin/chat/quick-replies', dto);
+  }
+  static updateQuickReply(id: string, dto: { label?: string; text?: string; color?: string; sortOrder?: number }): Promise<QuickReply> {
+    return http.patch(`/admin/chat/quick-replies/${id}`, dto);
+  }
+  static deleteQuickReply(id: string): Promise<{ ok: true }> {
+    return http.delete(`/admin/chat/quick-replies/${id}`);
+  }
+
   static demoWithPayment(
     conversationId: string,
     dto: {
