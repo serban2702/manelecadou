@@ -42,7 +42,29 @@ function VerifyPageInner() {
   return (
     <main style={{ maxWidth: 420, margin: '60px auto', padding: 24 }}>
       <h1 className="gold-text serif" style={{ fontSize: 24, marginBottom: 12 }}>{t('verifyTitle')}</h1>
-      {error ? <p style={{ color: 'var(--rose)' }}>{error}</p> : <p className="ld">{t('verifyHint')}</p>}
+      {error ? (
+        <>
+          <p style={{ color: 'var(--rose)', marginBottom: 16 }}>{error}</p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => router.push('/login')}
+              className="btn btn-gold"
+            >
+              Cere link nou
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push('/')}
+              className="btn btn-ghost"
+            >
+              Înapoi acasă
+            </button>
+          </div>
+        </>
+      ) : (
+        <p className="ld">{t('verifyHint')}</p>
+      )}
     </main>
   );
 }
