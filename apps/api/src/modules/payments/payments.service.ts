@@ -7,6 +7,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ModuleRef } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import Stripe from 'stripe';
@@ -72,6 +73,7 @@ export class PaymentsService {
     private readonly generations: GenerationsService,
     private readonly tiktok: TiktokEventsService,
     private readonly analytics: AnalyticsService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   /** Returnează instanța Stripe, re-instanțiată dacă cheia s-a schimbat în admin. */
@@ -567,6 +569,17 @@ export class PaymentsService {
         } catch (err) {
           this.logger.error(`markPaidAndQueue failed: ${(err as Error).message}`);
         }
+      }
+
+      // Notifică chat-ul (dacă plata a venit din chat payment_link) — update
+      // card cu status='paid' + system message. Lazy import pentru circular dep.
+      try {
+        const chatMod = await import('../chat/chat.service');
+        const chat = this.moduleRef.get(chatMod.ChatService, { strict: false });
+        await chat.markPaymentLinksAsPaid(paymentId, isPaid ? 'paid' : 'failed');
+      } catch (err) {
+        // ChatService poate lipsi în tests sau payment poate nu fi din chat — best-effort
+        this.logger.debug?.(`chat notify on payment skipped: ${(err as Error).message}`);
       }
 
       if (isPaid && session.metadata?.promoCodeId) {

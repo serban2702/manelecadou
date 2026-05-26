@@ -859,7 +859,7 @@ function ChatBubble({
         </a>
       )}
       {m.messageType === 'payment_link' && m.payload && (
-        <PaymentCard payload={m.payload as PaymentPayload} />
+        <PaymentCard payload={m.payload as PaymentPayload} conversationId={m.conversationId} />
       )}
       {display}
       {fromAdmin && (
@@ -1099,30 +1099,196 @@ interface PaymentPayload {
   description?: string;
   checkoutUrl?: string;
   paymentId?: string;
+  generationId?: string;
   premium?: boolean;
+  status?: 'paid' | 'failed';
+  paidAt?: string;
 }
 
-function PaymentCard({ payload }: { payload: PaymentPayload }) {
+function PaymentCard({ payload, conversationId }: { payload: PaymentPayload; conversationId: string }) {
   const amount = payload.amount ?? 0;
   const currency = payload.currency ?? 'RON';
+  const isPaid = payload.status === 'paid';
+  const hasGeneration = !!payload.generationId;
+  const [showLaunchModal, setShowLaunchModal] = useState(false);
+
   return (
-    <div className="rounded-lg border border-primary/40 bg-primary/5 p-3 mb-2 flex items-center gap-3">
-      <CreditCard className="h-8 w-8 text-primary shrink-0" />
-      <div className="flex-1 min-w-0">
-        <div className="text-xs uppercase tracking-wider text-primary font-semibold">Link de plată</div>
-        <div className="text-sm font-medium truncate">{payload.description ?? 'Plată'}</div>
-        <div className="text-lg font-bold">{(amount / 100).toFixed(2)} {currency}</div>
+    <>
+      <div
+        className={cn(
+          'rounded-lg border p-3 mb-2 flex items-center gap-3',
+          isPaid ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-primary/40 bg-primary/5',
+        )}
+      >
+        {isPaid ? (
+          <Check className="h-8 w-8 text-emerald-500 shrink-0" />
+        ) : (
+          <CreditCard className="h-8 w-8 text-primary shrink-0" />
+        )}
+        <div className="flex-1 min-w-0">
+          <div
+            className={cn(
+              'text-xs uppercase tracking-wider font-semibold flex items-center gap-1.5',
+              isPaid ? 'text-emerald-500' : 'text-primary',
+            )}
+          >
+            {isPaid ? '✓ Plătit' : 'Link de plată'}
+            {isPaid && payload.paidAt && (
+              <span className="text-[10px] font-normal text-muted-foreground">
+                {format(new Date(payload.paidAt), 'd MMM HH:mm', { locale: ro })}
+              </span>
+            )}
+          </div>
+          <div className="text-sm font-medium truncate">{payload.description ?? 'Plată'}</div>
+          <div className="text-lg font-bold">{(amount / 100).toFixed(2)} {currency}</div>
+        </div>
+        {!isPaid && payload.checkoutUrl && (
+          <a
+            href={payload.checkoutUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-primary hover:underline whitespace-nowrap flex items-center gap-1"
+          >
+            Preview <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
+        {isPaid && !hasGeneration && payload.paymentId && (
+          <Button size="sm" onClick={() => setShowLaunchModal(true)}>
+            <Zap className="h-3.5 w-3.5" />
+            Lansează generare
+          </Button>
+        )}
+        {isPaid && hasGeneration && (
+          <a
+            href={`/m/${payload.generationId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-emerald-500 hover:underline whitespace-nowrap flex items-center gap-1"
+          >
+            🎵 Vezi melodia <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
       </div>
-      {payload.checkoutUrl && (
-        <a
-          href={payload.checkoutUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-primary hover:underline whitespace-nowrap flex items-center gap-1"
-        >
-          Preview <ExternalLink className="h-3 w-3" />
-        </a>
+      {showLaunchModal && payload.paymentId && (
+        <LaunchGenerationModal
+          conversationId={conversationId}
+          paymentId={payload.paymentId}
+          defaultPremium={!!payload.premium}
+          onClose={() => setShowLaunchModal(false)}
+          onLaunched={() => setShowLaunchModal(false)}
+        />
       )}
+    </>
+  );
+}
+
+const GEN_STYLES = ['Clasică de pahar', 'Modernă', 'Orientală', 'Cu trompetă', 'De jale', 'Comercială', 'De opulență', 'De iubire', 'Tallava', 'Kuchek', 'Trapanele'];
+const GEN_OCCASIONS = ['Zi de naștere', 'Nuntă', 'Botez', 'Cumătrie', 'Aniversare cuplu', 'Pentru șef', 'Declarație', 'Roast prieten', 'Naș/fin', 'Înmormântare', 'Motivațională', 'Altă ocazie'];
+
+function LaunchGenerationModal({
+  conversationId,
+  paymentId,
+  defaultPremium,
+  onClose,
+  onLaunched,
+}: {
+  conversationId: string;
+  paymentId: string;
+  defaultPremium: boolean;
+  onClose: () => void;
+  onLaunched: () => void;
+}) {
+  const [style, setStyle] = useState(GEN_STYLES[1]);
+  const [occasion, setOccasion] = useState(GEN_OCCASIONS[0]);
+  const [recipientName, setRecipientName] = useState('');
+  const [message, setMessage] = useState('');
+  const [voiceArtist, setVoiceArtist] = useState('masculină');
+  const [dedication, setDedication] = useState('');
+  const [premium, setPremium] = useState(defaultPremium);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function launch() {
+    if (!recipientName.trim() || !message.trim()) {
+      setError('Numele beneficiarului și mesajul sunt obligatorii');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await ChatApi.launchGeneration(conversationId, {
+        paymentId, style, occasion,
+        recipientName: recipientName.trim(),
+        message: message.trim(),
+        voiceArtist: voiceArtist.trim() || 'masculină',
+        dedication: dedication.trim() || undefined,
+        premium,
+      });
+      onLaunched();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-4">
+          <Zap className="h-5 w-5 text-primary" />
+          <h3 className="text-base font-semibold">Lansează generare (plată confirmată)</h3>
+        </div>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Stil</label>
+              <select value={style} onChange={(e) => setStyle(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none">
+                {GEN_STYLES.map((s) => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Ocazie</label>
+              <select value={occasion} onChange={(e) => setOccasion(e.target.value)} className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none">
+                {GEN_OCCASIONS.map((o) => <option key={o}>{o}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Beneficiar (nume)</label>
+            <input type="text" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="ex. Maria" className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Mesaj / dedicație (ce vrea să-i transmită)</label>
+            <Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} placeholder="ex. La mulți ani Maria, să fii sănătoasă și să-ți meargă bine la facultate!" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Voce</label>
+              <input type="text" value={voiceArtist} onChange={(e) => setVoiceArtist(e.target.value)} placeholder="masculină, feminină, grav..." className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Dedicație audio (opțional)</label>
+              <input type="text" value={dedication} onChange={(e) => setDedication(e.target.value)} maxLength={120} className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={premium} onChange={(e) => setPremium(e.target.checked)} />
+            Variantă premium
+          </label>
+          {error && <div className="text-xs text-destructive bg-destructive/10 rounded p-2">{error}</div>}
+          <div className="text-[11px] text-muted-foreground bg-secondary/30 rounded p-2">
+            Plata e deja confirmată. Generarea pornește imediat după Launch — userul va primi mesaj + email când e gata.
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 mt-5">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Anulează</Button>
+          <Button onClick={launch} disabled={busy || !recipientName.trim() || !message.trim()}>
+            {busy ? <Loader2 className="animate-spin" /> : <Zap />}
+            Lansează
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -55,6 +55,18 @@ class PaymentLinkDto {
   premium?: boolean;
 }
 
+class LaunchGenerationDto {
+  @IsString() paymentId!: string;
+  @IsString() @MinLength(1) @MaxLength(64) style!: string;
+  @IsString() @MinLength(1) @MaxLength(64) occasion!: string;
+  @IsString() @MinLength(1) @MaxLength(120) recipientName!: string;
+  @IsString() @MinLength(1) @MaxLength(600) message!: string;
+  @IsString() @MinLength(1) @MaxLength(64) voiceArtist!: string;
+  @IsOptional() @IsString() @MaxLength(120) dedication?: string;
+  @IsOptional() @IsString() @MaxLength(4000) customLyrics?: string;
+  @IsOptional() @IsBoolean() premium?: boolean;
+}
+
 @UseGuards(OptionalJwtAuthGuard)
 @Controller('chat')
 export class ChatController {
@@ -197,6 +209,12 @@ export class AdminChatController {
   @Post('suggestions/:messageId/reject')
   rejectSuggestion(@Param('messageId') messageId: string) {
     return this.svc.rejectAiSuggestion(messageId);
+  }
+
+  /** Lansează manual o generare pentru un paymentId deja plătit (ad-hoc admin link). */
+  @Post('conversations/:id/launch-generation')
+  launchGeneration(@Param('id') id: string, @Body() dto: LaunchGenerationDto) {
+    return this.svc.launchGenerationFromPayment(id, dto);
   }
 
   /** Trimite link de plată Stripe Checkout către utilizator. */

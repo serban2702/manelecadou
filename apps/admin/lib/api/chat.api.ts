@@ -45,4 +45,20 @@ export class ChatApi {
   static rejectSuggestion(messageId: string): Promise<{ ok: true }> {
     return http.post(`/admin/chat/suggestions/${messageId}/reject`, {});
   }
+  static launchGeneration(
+    conversationId: string,
+    dto: {
+      paymentId: string;
+      style: string;
+      occasion: string;
+      recipientName: string;
+      message: string;
+      voiceArtist: string;
+      dedication?: string;
+      customLyrics?: string;
+      premium?: boolean;
+    },
+  ): Promise<{ generationId: string }> {
+    return http.post(`/admin/chat/conversations/${conversationId}/launch-generation`, dto);
+  }
 }

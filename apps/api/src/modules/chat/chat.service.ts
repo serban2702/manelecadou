@@ -706,6 +706,171 @@ export class ChatService implements OnModuleInit {
   }
 
   /**
+   * Apelat de PaymentsService.handleWebhook după ce o plată e confirmată.
+   * Găsește toate mesajele payment_link cu acel paymentId, le marchează ca paid în
+   * payload (pentru render-ul UI), emite WS update, și adaugă un system message
+   * de confirmare. Update și conv.wizardState.step dacă există.
+   */
+  async markPaymentLinksAsPaid(paymentId: string, status: 'paid' | 'failed' = 'paid'): Promise<void> {
+    // Postgres jsonb path query
+    const messages = await this.msg
+      .createQueryBuilder('m')
+      .where(`m."messageType" = 'payment_link'`)
+      .andWhere(`m.payload->>'paymentId' = :pid`, { pid: paymentId })
+      .getMany();
+    if (messages.length === 0) return;
+
+    const conversationIds = new Set<string>();
+    for (const m of messages) {
+      const oldPayload = (m.payload ?? {}) as Record<string, unknown>;
+      m.payload = {
+        ...oldPayload,
+        status,
+        paidAt: status === 'paid' ? new Date().toISOString() : undefined,
+      };
+      await this.msg.save(m);
+      conversationIds.add(m.conversationId);
+    }
+
+    // Trimite un mesaj system + update wizard pentru fiecare conversație afectată
+    for (const convId of conversationIds) {
+      const conv = await this.conv.findOne({ where: { id: convId } });
+      if (!conv) continue;
+
+      // Re-emit message-urile updated (clients vor refetch)
+      for (const m of messages.filter((x) => x.conversationId === convId)) {
+        this.gateway.emitMessage({ message: m, conversation: conv });
+      }
+
+      // System message de confirmare (vizibil pe ambele părți)
+      const body = status === 'paid'
+        ? '✅ Plată primită! Începem să generăm melodia ta — vei primi linkul aici sau pe email în câteva minute.'
+        : '⚠️ Plata nu s-a procesat. Te rugăm să reîncerci sau scrie-ne aici.';
+      const sysMsg = this.msg.create({
+        conversationId: convId,
+        siteId: conv.siteId ?? null,
+        authorRole: 'admin',
+        authorId: null,
+        body,
+        messageType: 'text',
+        aiGenerated: true,
+        detectedLang: 'ro',
+      });
+      const saved = await this.msg.save(sysMsg);
+      conv.lastMessageAt = saved.createdAt;
+      conv.unreadByUser += 1;
+      // Update wizard state dacă există
+      if (conv.wizardState) {
+        conv.wizardState.step = status === 'paid' ? 'paid' : 'collecting';
+        conv.wizardState.updatedAt = new Date().toISOString();
+      }
+      await this.conv.save(conv);
+      this.gateway.emitMessage({ message: saved, conversation: conv });
+
+      // Push notification admin (best-effort)
+      void this.webPush.sendToAll({
+        title: status === 'paid' ? `💰 Plată primită — ${conv.email ?? 'guest'}` : `⚠️ Plată eșuată — ${conv.email ?? 'guest'}`,
+        body: status === 'paid' ? 'Verifică conversația.' : 'Userul a eșuat plata, ia legătura cu el.',
+        tag: `chat-${convId}`,
+        url: `/chat?c=${convId}`,
+        icon: '/icon-512.png',
+        badge: '/icon-512.png',
+        data: { conversationId: convId, paymentId },
+      }).catch(() => {});
+    }
+  }
+
+  /**
+   * Apelat din admin button — admin alege o conversație + paymentId plătit
+   * + completează datele și lansează manual o Generation. Folosit pentru
+   * payment links ad-hoc (fără wizard, fără generationId atașat).
+   */
+  async launchGenerationFromPayment(
+    conversationId: string,
+    dto: {
+      paymentId: string;
+      style: string;
+      occasion: string;
+      recipientName: string;
+      message: string;
+      voiceArtist: string;
+      dedication?: string;
+      customLyrics?: string;
+      premium?: boolean;
+    },
+  ): Promise<{ generationId: string }> {
+    const conv = await this.getConversation(conversationId);
+    if (!conv.siteId) throw new ForbiddenException('Conversație fără siteId');
+
+    // Verifică paymentId aparține acestei conversații
+    const paymentMsg = await this.msg
+      .createQueryBuilder('m')
+      .where('m.conversationId = :cid', { cid: conversationId })
+      .andWhere(`m."messageType" = 'payment_link'`)
+      .andWhere(`m.payload->>'paymentId' = :pid`, { pid: dto.paymentId })
+      .getOne();
+    if (!paymentMsg) throw new NotFoundException('Payment link inexistent în această conversație');
+    const payload = paymentMsg.payload as Record<string, unknown> | null;
+    if (payload?.status !== 'paid') throw new ForbiddenException('Plata nu e confirmată încă');
+    if (payload?.generationId) throw new ForbiddenException('Această plată are deja o melodie atașată');
+
+    // Lazy import pentru a evita dependency circular ChatModule ↔ GenerationsModule
+    const { GenerationsService } = await import('../generations/generations.service');
+    const generations = this.moduleRef.get(GenerationsService, { strict: false });
+
+    const site = await this.sites.findById(conv.siteId);
+    const locale = site?.locale ?? 'ro';
+
+    // create() cu type='full' + paymentId → queue direct
+    const generation = await generations.create(
+      {
+        type: 'full',
+        style: dto.style,
+        occasion: dto.occasion,
+        recipientName: dto.recipientName,
+        message: dto.message,
+        voiceArtist: dto.voiceArtist,
+        dedication: dto.dedication,
+        customLyrics: dto.customLyrics,
+        premium: !!dto.premium,
+        paymentId: dto.paymentId,
+        locale,
+      },
+      { userId: conv.userId, guestId: conv.guestId, siteId: conv.siteId },
+    );
+
+    // Update payment_link payload cu generationId și update wizard
+    paymentMsg.payload = { ...(payload ?? {}), generationId: generation.id };
+    await this.msg.save(paymentMsg);
+    if (conv.wizardState) {
+      conv.wizardState.step = 'generating';
+      conv.wizardState.generationId = generation.id;
+      conv.wizardState.updatedAt = new Date().toISOString();
+      await this.conv.save(conv);
+    }
+    this.gateway.emitMessage({ message: paymentMsg, conversation: conv });
+
+    // System message
+    const sys = this.msg.create({
+      conversationId: conv.id,
+      siteId: conv.siteId,
+      authorRole: 'admin',
+      authorId: null,
+      body: `🎵 Am lansat generarea pentru ${dto.recipientName}. Melodia va fi gata în ~90 secunde.`,
+      messageType: 'text',
+      aiGenerated: true,
+      detectedLang: 'ro',
+    });
+    const saved = await this.msg.save(sys);
+    conv.lastMessageAt = saved.createdAt;
+    conv.unreadByUser += 1;
+    await this.conv.save(conv);
+    this.gateway.emitMessage({ message: saved, conversation: conv });
+
+    return { generationId: generation.id };
+  }
+
+  /**
    * Apelat de GenerationsProcessor după ce o generare se termină cu succes.
    * Caută conversația care a inițiat comanda prin wizard (wizardState.generationId match)
    * și trimite un mesaj în chat cu link către melodie. Actualizează și wizardState.step.

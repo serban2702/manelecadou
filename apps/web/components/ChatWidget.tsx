@@ -451,46 +451,102 @@ export function ChatWidget() {
                     </a>
                   )}
                   {mm.messageType === 'payment_link' && mm.payload && (
-                    <a
-                      href={mm.payload.checkoutUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
+                    (() => {
+                      const p = mm.payload as {
+                        checkoutUrl?: string;
+                        description?: string;
+                        amount?: number;
+                        currency?: string;
+                        status?: 'paid' | 'failed';
+                        generationId?: string;
+                      };
+                      const paid = p.status === 'paid';
+                      const cardBase = {
                         display: 'block',
                         padding: 12,
                         marginBottom: 6,
                         borderRadius: 10,
-                        background: 'linear-gradient(135deg, #5b0d18, #2b0710)',
                         color: '#fff5cc',
                         textDecoration: 'none',
-                        border: '1px solid var(--gold)',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                      }}
-                    >
-                      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)' }}>
-                        💳 Plată sigură
-                      </div>
-                      <div style={{ fontSize: 13, fontWeight: 600, margin: '2px 0' }}>
-                        {mm.payload.description ?? 'Manea personalizată'}
-                      </div>
-                      <div style={{ fontSize: 18, fontWeight: 900, color: '#ffe28a' }}>
-                        {((mm.payload.amount ?? 0) / 100).toFixed(2)} {mm.payload.currency ?? 'RON'}
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 8,
-                          background: 'linear-gradient(180deg,#ffe28a,#b07c1e)',
-                          color: '#2a1a04',
-                          padding: '6px 12px',
-                          borderRadius: 6,
-                          fontSize: 12,
-                          fontWeight: 800,
-                          textAlign: 'center',
-                        }}
-                      >
-                        Plătește acum →
-                      </div>
-                    </a>
+                      } as const;
+                      if (paid) {
+                        return (
+                          <div
+                            style={{
+                              ...cardBase,
+                              background: 'linear-gradient(135deg, #0f3d2e, #052016)',
+                              border: '1px solid #10b981',
+                            }}
+                          >
+                            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#10b981' }}>
+                              ✓ Plătit
+                            </div>
+                            <div style={{ fontSize: 13, fontWeight: 600, margin: '2px 0' }}>
+                              {p.description ?? 'Manea personalizată'}
+                            </div>
+                            <div style={{ fontSize: 18, fontWeight: 900, color: '#34d399' }}>
+                              {((p.amount ?? 0) / 100).toFixed(2)} {p.currency ?? 'RON'}
+                            </div>
+                            {p.generationId && (
+                              <a
+                                href={`/m/${p.generationId}`}
+                                style={{
+                                  display: 'block',
+                                  marginTop: 8,
+                                  background: '#10b981',
+                                  color: '#fff',
+                                  padding: '6px 12px',
+                                  borderRadius: 6,
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  textAlign: 'center',
+                                  textDecoration: 'none',
+                                }}
+                              >
+                                🎵 Vezi melodia →
+                              </a>
+                            )}
+                          </div>
+                        );
+                      }
+                      return (
+                        <a
+                          href={p.checkoutUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            ...cardBase,
+                            background: 'linear-gradient(135deg, #5b0d18, #2b0710)',
+                            border: '1px solid var(--gold)',
+                          }}
+                        >
+                          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)' }}>
+                            💳 Plată sigură
+                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 600, margin: '2px 0' }}>
+                            {p.description ?? 'Manea personalizată'}
+                          </div>
+                          <div style={{ fontSize: 18, fontWeight: 900, color: '#ffe28a' }}>
+                            {((p.amount ?? 0) / 100).toFixed(2)} {p.currency ?? 'RON'}
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 8,
+                              background: 'linear-gradient(180deg,#ffe28a,#b07c1e)',
+                              color: '#2a1a04',
+                              padding: '6px 12px',
+                              borderRadius: 6,
+                              fontSize: 12,
+                              fontWeight: 800,
+                              textAlign: 'center',
+                            }}
+                          >
+                            Plătește acum →
+                          </div>
+                        </a>
+                      );
+                    })()
                   )}
                   {/* nu afișa "body" generic pentru payment_link sau image (ar fi redundant) */}
                   {!(mm.messageType === 'payment_link' || (mm.attachmentUrl && (!m.body || m.body === '📷 Imagine'))) && m.body}
