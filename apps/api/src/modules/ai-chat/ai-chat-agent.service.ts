@@ -148,6 +148,28 @@ export class AIChatAgentService {
       const site = await this.sites.findById(conv.siteId);
       if (!site?.aiGreetingEnabled) return;
 
+      // CRITIC: dacă există DEJA orice mesaj admin (human sau AI vechi) pe conv,
+      // NU mai salutăm. Conversația e în desfășurare — un salut „Buna, sunt Irina"
+      // peste un flow existent („Care e ocazia?" → user răspunde → AI: Buna...) e
+      // un dezastru UX. Asta poate să se întâmple când userul se deconectează și
+      // se reconectează după ce admin uman a intervenit, sau când o conv mai veche
+      // are greetingSentAt NULL legacy (înainte de feature).
+      const existingAdminMsg = await this.msg.count({
+        where: { conversationId: conv.id, authorRole: 'admin' },
+      });
+      if (existingAdminMsg > 0) {
+        // Marchez greetingSentAt cu data actuală chiar dacă nu am trimis salut —
+        // ca să nu re-evaluăm la fiecare reconectare. Un fel de „already handled".
+        await this.conv
+          .createQueryBuilder()
+          .update(Conversation)
+          .set({ greetingSentAt: () => 'NOW()' })
+          .where('id = :id AND "greetingSentAt" IS NULL', { id: conv.id })
+          .execute();
+        this.logger.log(`skip greeting for conv=${conv.id.slice(0, 8)} — admin msgs already exist (${existingAdminMsg})`);
+        return;
+      }
+
       // Marker atomic: doar primul caller cu greetingSentAt NULL va seta data și
       // returna affected=1. Restul vor returna 0 → STOP.
       const updateResult: { affected?: number } = await this.conv
@@ -460,7 +482,23 @@ REGULI STRICTE:
    ${STYLES.join(', ')}.
 9. Ocazii interne valide: ${OCCASIONS.join(', ')}.
 10. NU spune prețuri diferite de ${price} (decât cu reducere via codes).
-11. NU promite voci de artiști reali (Salam, Guță) — sunt fictive.`;
+11. NU promite voci de artiști reali (Salam, Guță) — sunt fictive.
+12. ZERO MARKDOWN. NU folosi nicio formă de: [text](url), **bold**, __italic__, # heading,
+    \`code\`, > quote. Trimite linkuri ca text simplu sau pur și simplu spune că „link-ul
+    de plată e mai sus în chat" — payment_link e card separat, NU îl retrimite ca text.
+13. DACĂ PROMIȚI O ACȚIUNE, FĂ-O. Dacă scrii „verific", „mă uit imediat", „să văd statusul"
+    → APELEAZĂ check_order_status ÎN ACELAȘI TURN. Altfel minți userul. La fel pentru
+    „îți trimit linkul" → wizard_finalize sau quote_price_with_offer în același turn.
+14. Dacă wizard_finalize returnează ORDER_ALREADY_IN_PROGRESS SAU wizard_get_state
+    returnează step='payment_sent'/'paid'/'generating' → NU re-cere detalii, NU re-trimite
+    link, NU re-finaliza. Apelează check_order_status și raportează statusul. Spune-i
+    userului scurt: „link-ul de plată e mai sus, dă click pe el ca să plătești".
+15. NU TRIMITE 2 MESAJE CONTRADICTORII PE ACELAȘI TURN. Tools care trimit mesaje
+    (quote_price, issue_discount, send_message, play_sample, send_empathy) sunt MUTUAL
+    EXCLUSIVE — max UNUL per turn. Rate limit-ul îți va returna ALREADY_SENT — STOP.
+16. NU EMITE COD REDUCERE peste un cod existent. Dacă issue_discount_offer returnează
+    USER_HAS_ROATA_CODE sau USER_HAS_AI_CODE, apelează în schimb quote_price_with_offer
+    ca să-i amintești de codul existent.`;
 
     return this.appendMemoryAndContacts(basePrompt, memory, site);
   }
@@ -829,7 +867,21 @@ REGULI STRICTE:
       };
     }
     if (state.step === 'payment_sent' || state.step === 'paid' || state.step === 'generating') {
-      return { error: 'already_finalized', instruction: 'Comanda deja finalizată. NU re-finaliza.' };
+      // În loc să returnăm error care duce AI-ul în buclă de re-finalize +
+      // mesaje contradictorii (observat 2026-05-27 conv 4f9bc0de: 3 încercări de
+      // finalize urmate de „comanda finalizată!" + „nu ai plătit" în 60s), îi
+      // dăm AI-ului instrucțiune CLARĂ să apeleze check_order_status și să
+      // raporteze statusul real userului. NU mai re-trimitem link, NU re-cerem
+      // detalii.
+      return {
+        status: 'ORDER_ALREADY_IN_PROGRESS',
+        currentStep: state.step,
+        generationId: state.generationId,
+        instruction:
+          state.step === 'payment_sent'
+            ? 'Userul are deja link de plată trimis dar n-a plătit încă. NU re-trimite linkul, NU re-cere detalii. Apelează check_order_status acum și raportează userului că link-ul de plată e mai sus în chat. Dacă întreabă cum să plătească, spune-i scurt să dea click pe cardul de plată trimis anterior.'
+            : 'Comanda e deja plătită și se generează. NU mai trimite nimic — apelează check_order_status și raportează exact statusul curent al melodiei.',
+      };
     }
 
     if (!conv.siteId) return { error: 'no siteId' };
@@ -1380,10 +1432,34 @@ ${transcript}`;
 
   // ============== HANDLERS NOI Faza 6 ==============
 
+  /**
+   * Rate-limit comun pentru TOATE tools care trimit mesaje (quote, discount, sample,
+   * empathy, send_message). Max 1 mesaj real per turn AI — evită cazuri reale unde
+   * AI cheamă quote_price + issue_discount în PARALEL și apar 2 mesaje contradictorii
+   * suprapuse pe ecranul userului (observat 2026-05-27 conv 4f9bc0de la 22:16:50).
+   */
+  private assertCanSendMessage(ctx: AgentCtx, toolName: string):
+    | { ok: true }
+    | { ok: false; result: { sent: false; status: string; instruction: string } } {
+    if (ctx.sentRealMessages >= 1 || ctx.suggestionMsgId) {
+      return {
+        ok: false,
+        result: {
+          sent: false,
+          status: 'ALREADY_SENT_ONE_MESSAGE_THIS_TURN',
+          instruction: `${toolName}: ai trimis deja UN mesaj turul ăsta. STOP — nu trimite altul. Așteaptă răspunsul userului.`,
+        },
+      };
+    }
+    return { ok: true };
+  }
+
   /** Quote price + verifică dacă userul are deja un cod câștigat la roată. */
   private async handleQuotePrice(ctx: AgentCtx): Promise<unknown> {
     const check = await this.assertNotManual(ctx);
     if (check.aborted) return { aborted: true, status: 'ABORTED_MANUAL_MODE' };
+    const gate = this.assertCanSendMessage(ctx, 'quote_price_with_offer');
+    if (!gate.ok) return gate.result;
     if (!ctx.conv.siteId) return { error: 'no_site' };
 
     const site = await this.sites.findById(ctx.conv.siteId);
@@ -1469,12 +1545,70 @@ ${transcript}`;
     };
   }
 
-  /** Emite un cod 1-shot pentru user la cererea de reducere (max 20%). */
+  /** Emite un cod 1-shot pentru user la cererea de reducere (max 20%).
+   *  ÎNAINTE de a emite: verifică dacă userul are deja un cod activ (de la roată sau
+   *  emis anterior) — dacă da, REFUZĂ să emită altul ca să nu cumulăm reduceri. */
   private async handleIssueDiscount(ctx: AgentCtx, percentage: number): Promise<unknown> {
     const check = await this.assertNotManual(ctx);
     if (check.aborted) return { aborted: true };
+    const gate = this.assertCanSendMessage(ctx, 'issue_discount_offer');
+    if (!gate.ok) return gate.result;
     if (!ctx.conv.siteId) return { error: 'no_site' };
     const pct = Math.max(1, Math.min(20, Math.round(percentage)));
+
+    // Check 1: cod câștigat la roata norocului (active, valid, neepuizat)
+    const ownerId = ctx.conv.userId ?? ctx.conv.guestId;
+    if (ownerId) {
+      try {
+        const existingRoata: Array<{ code: string; discountValue: number }> = await this.conv.manager.query(
+          `SELECT pc.code, pc."discountValue"
+           FROM roulette_spins rs
+           JOIN promo_codes pc ON pc.id = rs."awardedPromoCodeId"
+           WHERE (rs."userId" = $1 OR rs."guestId" = $1)
+             AND rs."awardedCode" IS NOT NULL
+             AND pc.active = true
+             AND (pc."validUntil" IS NULL OR pc."validUntil" > NOW())
+             AND (pc."maxUses" = 0 OR pc."usedCount" < pc."maxUses")
+           ORDER BY rs."createdAt" DESC LIMIT 1`,
+          [ownerId],
+        );
+        if (existingRoata.length > 0) {
+          return {
+            sent: false,
+            status: 'USER_HAS_ROATA_CODE',
+            existingCode: existingRoata[0].code,
+            instruction: `Userul are deja codul ${existingRoata[0].code} câștigat la roata norocului. NU emite cod nou — în schimb apelează quote_price_with_offer ca să-i amintești de codul existent.`,
+          };
+        }
+      } catch (e) {
+        this.logger.warn(`check existing roata code failed: ${(e as Error).message}`);
+      }
+    }
+
+    // Check 2: cod AI emis anterior pentru același email (în ultimele 24h)
+    if (ctx.conv.email) {
+      try {
+        const existingAi: Array<{ code: string }> = await this.conv.manager.query(
+          `SELECT code FROM promo_codes
+           WHERE "siteId" = $1 AND "aiIssued" = true AND active = true
+             AND "restrictedToEmail" = $2
+             AND ("validUntil" IS NULL OR "validUntil" > NOW())
+             AND ("maxUses" = 0 OR "usedCount" < "maxUses")
+           ORDER BY "createdAt" DESC LIMIT 1`,
+          [ctx.conv.siteId, ctx.conv.email],
+        );
+        if (existingAi.length > 0) {
+          return {
+            sent: false,
+            status: 'USER_HAS_AI_CODE',
+            existingCode: existingAi[0].code,
+            instruction: `Ai emis deja codul ${existingAi[0].code} pentru email-ul userului. Amintește-i de el în loc să emiți altul.`,
+          };
+        }
+      } catch (e) {
+        this.logger.warn(`check existing AI code failed: ${(e as Error).message}`);
+      }
+    }
 
     // Generăm un cod aleator de 8 chars
     const code = 'AI' + Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -1534,6 +1668,8 @@ ${transcript}`;
   private async handlePlaySample(ctx: AgentCtx, kind: string, id: string): Promise<unknown> {
     const check = await this.assertNotManual(ctx);
     if (check.aborted) return { aborted: true };
+    const gate = this.assertCanSendMessage(ctx, 'play_sample');
+    if (!gate.ok) return gate.result;
     if (!ctx.conv.siteId) return { error: 'no_site' };
     const site = await this.sites.findById(ctx.conv.siteId);
     if (!site) return { error: 'site_not_found' };
@@ -1577,6 +1713,8 @@ ${transcript}`;
   private async handleSendEmpathy(ctx: AgentCtx, trigger: string, text: string): Promise<unknown> {
     const check = await this.assertNotManual(ctx);
     if (check.aborted) return { aborted: true };
+    const gate = this.assertCanSendMessage(ctx, 'send_empathy');
+    if (!gate.ok) return gate.result;
     const conv = await this.conv.findOne({ where: { id: ctx.conv.id }, select: ['id', 'siteId', 'empathyMessagesSent'] });
     if (!conv) return { error: 'conv_gone' };
     if ((conv.empathyMessagesSent ?? 0) >= 2) {
