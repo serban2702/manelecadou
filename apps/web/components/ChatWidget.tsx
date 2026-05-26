@@ -628,20 +628,10 @@ export function ChatWidget() {
                   fontStyle: 'italic',
                 }}
               >
-                <style jsx>{`
-                  @keyframes tdots {
-                    0%, 80%, 100% { opacity: 0.2; transform: scale(0.7); }
-                    40% { opacity: 1; transform: scale(1); }
-                  }
-                  .td { width: 4px; height: 4px; border-radius: 50%; background: currentColor; display: inline-block; }
-                  .td:nth-child(1) { animation: tdots 1.2s infinite ease-in-out 0s; }
-                  .td:nth-child(2) { animation: tdots 1.2s infinite ease-in-out 0.18s; }
-                  .td:nth-child(3) { animation: tdots 1.2s infinite ease-in-out 0.36s; }
-                `}</style>
                 <span style={{ display: 'inline-flex', gap: 2 }}>
-                  <span className="td" />
-                  <span className="td" />
-                  <span className="td" />
+                  <span className="chat-typing-dot" />
+                  <span className="chat-typing-dot" />
+                  <span className="chat-typing-dot" />
                 </span>
                 <span>Operatorul scrie...</span>
               </div>
