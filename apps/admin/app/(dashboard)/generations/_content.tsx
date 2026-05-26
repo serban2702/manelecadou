@@ -3,7 +3,7 @@
 import { useAsync } from "@/lib/hooks/use-async";
 import { format } from 'date-fns';
 import { ro } from 'date-fns/locale';
-import { ExternalLink, Music2, Trash2, Unlock } from 'lucide-react';
+import { ExternalLink, Music2, RefreshCw, Trash2, Unlock } from 'lucide-react';
 import { AdminApi } from '@/lib/api';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -53,6 +53,29 @@ export default function GenerationsPage() {
     await AdminApi.generationForceUnlock(id);
     toast({ variant: 'success', title: 'Unlocked' });
     refetch();
+  }
+
+  async function retry(id: string, status: string) {
+    const ok = await confirmDialog({
+      title: 'Regenerează melodia?',
+      description:
+        status === 'failed'
+          ? 'Suno a căzut. Resetează status, șterge audio-ul existent și re-enqueue job-ul.'
+          : 'Generation pare blocată. Forțează re-enqueue (resetează audio + cover, status devine queued).',
+      confirmText: 'Regenerează',
+    });
+    if (!ok) return;
+    try {
+      const res = await AdminApi.generationRetry(id);
+      toast({ variant: 'success', title: 'Job re-enqueued', description: `retry #${res.retryCount}` });
+      refetch();
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: 'Retry eșuat',
+        description: err instanceof Error ? err.message : 'Eroare necunoscută',
+      });
+    }
   }
 
   async function del(id: string) {
@@ -152,6 +175,17 @@ export default function GenerationsPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1.5">
+                      {g.status !== 'succeeded' && (
+                        <Button
+                          variant="warning"
+                          size="xs"
+                          onClick={() => retry(g.id, g.status)}
+                          title="Re-enqueue job-ul (folosit când Suno a căzut sau e blocat)"
+                        >
+                          <RefreshCw />
+                          Regenerează
+                        </Button>
+                      )}
                       {!paid && (
                         <Button variant="success" size="xs" onClick={() => forceUnlock(g.id)}>
                           <Unlock />

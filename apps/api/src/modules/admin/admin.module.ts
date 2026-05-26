@@ -18,6 +18,7 @@ import { MailerModule } from '../../mailer/mailer.module';
 import { SeederModule } from '../../database/seeder/seeder.module';
 import { SunoModule } from '../suno/suno.module';
 import { SitesModule } from '../sites/sites.module';
+import { GenerationsModule } from '../generations/generations.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { SitesModule } from '../sites/sites.module';
     SunoModule,
     PaymentsModule,
     SitesModule,
+    GenerationsModule,
   ],
   controllers: [AdminController, AdminSunoController, AdminLyricsController],
   providers: [AdminGuard],

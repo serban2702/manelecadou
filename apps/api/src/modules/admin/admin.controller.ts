@@ -13,6 +13,7 @@ import { AnalyticsSession } from '../analytics/analytics-session.entity';
 import { MailerService } from '../../mailer/mailer.module';
 import { SeederService } from '../../database/seeder/seeder.service';
 import { SitesService } from '../sites/sites.service';
+import { GenerationsService } from '../generations/generations.service';
 
 class TestMailDto {
   @IsEmail()
@@ -38,6 +39,7 @@ export class AdminController {
     private readonly paymentsService: PaymentsService,
     private readonly seeder: SeederService,
     private readonly sites: SitesService,
+    private readonly generationsService: GenerationsService,
   ) {}
 
   @Post('seeder/run')
@@ -244,6 +246,12 @@ export class AdminController {
     g.paidUnlocked = true;
     await this.generations.save(g);
     return { ok: true };
+  }
+
+  @Post('generations/:id/retry')
+  async retryGeneration(@Param('id') id: string) {
+    const g = await this.generationsService.adminRetry(id);
+    return { ok: true, status: g.status, retryCount: g.retryCount };
   }
 
   @Delete('generations/:id')

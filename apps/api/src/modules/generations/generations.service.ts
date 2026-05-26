@@ -293,6 +293,39 @@ export class GenerationsService {
     return saved;
   }
 
+  /**
+   * Admin force-retry: bypassează owner check + retry limit. Folosit din admin
+   * când Suno a căzut (status='failed') sau o generation a rămas blocată în
+   * 'pending' / 'queued' (worker mort, lock pierdut etc.). Resetează același
+   * set de câmpuri ca `retry()` și re-enqueueează job-ul.
+   */
+  async adminRetry(generationId: string): Promise<Generation> {
+    const gen = await this.repo.findOne({ where: { id: generationId } });
+    if (!gen) throw new NotFoundException('Generation not found');
+    if (gen.status === 'succeeded') {
+      throw new ConflictException('already_succeeded');
+    }
+    gen.status = 'queued';
+    gen.error = null;
+    gen.audioUrl = null;
+    gen.bonusAudioUrl = null;
+    gen.coverUrl = null;
+    gen.tracks = [];
+    gen.providerJobId = null;
+    gen.completedAt = null;
+    gen.retryCount = (gen.retryCount ?? 0) + 1;
+    const saved = await this.repo.save(gen);
+
+    await this.queue.add(
+      'generate',
+      { generationId: saved.id },
+      { removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
+    );
+
+    this.logger.warn(`[admin-retry] generation=${saved.id} retryCount=${saved.retryCount}`);
+    return saved;
+  }
+
   async unlockWithGift(
     generationId: string,
     consumeFn: () => Promise<{ ok: boolean; reason?: string }>,

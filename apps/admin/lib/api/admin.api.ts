@@ -31,6 +31,9 @@ export class AdminApi {
   static generationDelete(id: string): Promise<unknown> {
     return http.delete(`/admin/generations/${id}`);
   }
+  static generationRetry(id: string): Promise<{ ok: boolean; status: string; retryCount: number }> {
+    return http.post(`/admin/generations/${id}/retry`);
+  }
   static paymentStripeDetails(id: string): Promise<{
     name: string | null;
     email: string | null;
