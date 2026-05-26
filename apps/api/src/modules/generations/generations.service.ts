@@ -323,14 +323,18 @@ export class GenerationsService {
 
     // 1. Salvăm fișierul principal + demo
     const main = await this.audio.saveAndMakeDemo(gen.id, mainBuffer, 'full');
-    gen.audioUrl = main.fullUrl;
-    gen.demoAudioUrl = main.demoUrl;
+    // Cache-bust: path-ul fizic e mereu același (full.mp3), deci la re-upload
+    // browserul + Caddy ar servi varianta cache-uită. Adăugăm ?v=<timestamp>
+    // pentru a forța reload-ul oriunde URL-ul e folosit (player, download, share).
+    const v = Date.now();
+    gen.audioUrl = `${main.fullUrl}?v=${v}`;
+    gen.demoAudioUrl = `${main.demoUrl}?v=${v}`;
 
     // 2. Bonus opțional
     if (bonusBuffer && bonusBuffer.length > 0) {
       const bonus = await this.audio.saveAndMakeDemo(gen.id, bonusBuffer, 'bonus');
-      gen.bonusAudioUrl = bonus.fullUrl;
-      gen.demoBonusAudioUrl = bonus.demoUrl;
+      gen.bonusAudioUrl = `${bonus.fullUrl}?v=${v}`;
+      gen.demoBonusAudioUrl = `${bonus.demoUrl}?v=${v}`;
     } else {
       gen.bonusAudioUrl = null;
       gen.demoBonusAudioUrl = null;
@@ -339,7 +343,7 @@ export class GenerationsService {
     // 3. Marker — providerJobId 'manual' ca să fie ușor de filtrat în /generations
     gen.providerJobId = 'manual';
     gen.tracks = [
-      { audioUrl: main.fullUrl, durationSec: gen.durationSec, coverUrl: gen.coverUrl ?? undefined },
+      { audioUrl: gen.audioUrl!, durationSec: gen.durationSec, coverUrl: gen.coverUrl ?? undefined },
       ...(bonusBuffer
         ? [{ audioUrl: gen.bonusAudioUrl!, durationSec: gen.durationSec, coverUrl: gen.coverUrl ?? undefined }]
         : []),
