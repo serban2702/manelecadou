@@ -3,7 +3,8 @@
 import { useAsync } from "@/lib/hooks/use-async";
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { ro } from 'date-fns/locale';
-import { CreditCard, ExternalLink, Music2, RefreshCw, Trash2, Unlock, Upload } from 'lucide-react';
+import { CreditCard, Eye, ExternalLink, Music2, RefreshCw, Trash2, Unlock, Upload } from 'lucide-react';
+import { OrderDetailModal } from '@/components/order-detail-modal';
 import { useState } from 'react';
 import { AdminApi } from '@/lib/api';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
@@ -54,6 +55,7 @@ export default function GenerationsPage() {
     { refetchInterval: 5000 },
   );
   const [uploadFor, setUploadFor] = useState<{ id: string; recipient: string } | null>(null);
+  const [viewId, setViewId] = useState<string | null>(null);
   const [mainFile, setMainFile] = useState<File | null>(null);
   const [bonusFile, setBonusFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -262,6 +264,15 @@ export default function GenerationsPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1.5">
+                      <Button
+                        variant="secondary"
+                        size="xs"
+                        onClick={() => setViewId(g.id)}
+                        title="Vezi toate detaliile comenzii (formular, plată, suno, openai, email, chat, timeline)"
+                      >
+                        <Eye />
+                        View
+                      </Button>
                       {g.status !== 'succeeded' && (
                         <Button
                           variant="warning"
@@ -299,6 +310,8 @@ export default function GenerationsPage() {
           </TableBody>
         </Table>
       )}
+
+      {viewId && <OrderDetailModal id={viewId} onClose={() => setViewId(null)} />}
 
       <Dialog
         open={uploadFor !== null}

@@ -10,6 +10,218 @@ import type {
   AdminUser,
 } from '../types';
 
+export interface OrderDetailTimelineEvent {
+  at: string;
+  kind: string;
+  title: string;
+  detail?: string;
+  data?: Record<string, unknown>;
+}
+
+export interface OrderDetail {
+  payment: {
+    id: string;
+    siteId: string | null;
+    provider: string;
+    providerSessionId: string | null;
+    amount: number;
+    currency: string;
+    status: string;
+    amountRonCents: number | null;
+    exchangeRateToRon: string | null;
+    failureReason: string | null;
+    failureCode: string | null;
+    userId: string | null;
+    guestId: string | null;
+    openReplaySessionId: string | null;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+  generation: {
+    id: string;
+    siteId: string | null;
+    type: 'demo' | 'full';
+    status: string;
+    durationSec: number;
+    style: string;
+    occasion: string;
+    recipientName: string;
+    recipientGender: 'M' | 'F' | null;
+    dedicatorName: string | null;
+    message: string;
+    dedication: string | null;
+    voiceArtist: string;
+    customLyrics: string | null;
+    lyricsDraft: string | null;
+    lyrics: string | null;
+    tipAmount: number;
+    premium: boolean;
+    paymentId: string | null;
+    paidUnlocked: boolean;
+    audioUrl: string | null;
+    bonusAudioUrl: string | null;
+    demoAudioUrl: string | null;
+    demoBonusAudioUrl: string | null;
+    coverUrl: string | null;
+    tracks: Array<{ audioUrl: string; durationSec: number; coverUrl?: string }> | null;
+    providerJobId: string | null;
+    retryCount: number;
+    nextRetryAt: string | null;
+    lastRetryAt: string | null;
+    error: string | null;
+    viewCount: number;
+    locale: string;
+    inferredFromChat: boolean;
+    inferenceMeta: Record<string, unknown> | null;
+    openReplaySessionId: string | null;
+    createdAt: string;
+    completedAt: string | null;
+  } | null;
+  owner: {
+    kind: 'user' | 'guest' | 'anonymous';
+    id: string | null;
+    email: string | null;
+    name: string | null;
+    role: string | null;
+    freeDemoUsed: boolean | null;
+    createdAt: string | null;
+  };
+  site: {
+    id: string;
+    name: string;
+    domain: string;
+    slug: string;
+    locale: string;
+    currency: string;
+  } | null;
+  analytics: {
+    session: {
+      sessionKey: string;
+      country: string | null;
+      countryName: string | null;
+      city: string | null;
+      ip: string | null;
+      device: string | null;
+      browserName: string | null;
+      browserVersion: string | null;
+      osName: string | null;
+      source: string | null;
+      medium: string | null;
+      campaign: string | null;
+      referrer: string | null;
+      landingPath: string | null;
+      pageViews: number;
+      durationSec: number;
+      isBot: boolean;
+    } | null;
+    events: Array<{
+      id: string;
+      type: string;
+      createdAt: string;
+      props: Record<string, unknown> | null;
+    }>;
+  };
+  sunoLogs: Array<{
+    id: string;
+    requestType: string;
+    endpoint: string;
+    responseStatus: number | null;
+    providerStatus: string | null;
+    outcome: string;
+    taskId: string | null;
+    errorMessage: string | null;
+    costCredits: string;
+    requestBody: Record<string, unknown>;
+    responseBody: unknown;
+    createdAt: string;
+    completedAt: string | null;
+  }>;
+  lyricsLogs: Array<{
+    id: string;
+    stage: string;
+    model: string | null;
+    locale: string | null;
+    outcome: string;
+    responseStatus: number | null;
+    responseContent: string | null;
+    systemPrompt: string;
+    userPrompt: string;
+    tokensPrompt: number | null;
+    tokensCompletion: number | null;
+    tokensTotal: number | null;
+    durationMs: number | null;
+    errorMessage: string | null;
+    createdAt: string;
+    completedAt: string | null;
+  }>;
+  outboundEmails: Array<{
+    id: string;
+    kind: string | null;
+    status: string;
+    to: string;
+    fromAddress: string | null;
+    subject: string;
+    text: string | null;
+    html: string | null;
+    provider: string | null;
+    providerMessageId: string | null;
+    errorMessage: string | null;
+    relatedId: string | null;
+    createdAt: string;
+    finalizedAt: string | null;
+  }>;
+  chat: {
+    conversation: {
+      id: string;
+      subject: string;
+      status: string;
+      aiMode: string;
+      wizardState: Record<string, unknown> | null;
+      assignedAdminEmail: string | null;
+      greetingSentAt: string | null;
+      createdAt: string;
+      updatedAt: string;
+      lastMessageAt: string | null;
+    };
+    messages: Array<{
+      id: string;
+      authorRole: 'user' | 'admin' | 'system';
+      body: string;
+      detectedLang: string | null;
+      bodyRo: string | null;
+      messageType: string;
+      payload: Record<string, unknown> | null;
+      attachmentUrl: string | null;
+      attachmentName: string | null;
+      attachmentMime: string | null;
+      deliveredAt: string | null;
+      readAt: string | null;
+      aiGenerated: boolean;
+      createdAt: string;
+    }>;
+    aiToolCalls: Array<{
+      id: string;
+      toolName: string;
+      aiMode: string;
+      model: string | null;
+      totalPromptTokens: number | null;
+      totalCompletionTokens: number | null;
+      requiredApproval: boolean;
+      input: Record<string, unknown> | null;
+      output: Record<string, unknown> | null;
+      error: string | null;
+      createdAt: string;
+    }>;
+  } | null;
+  timeline: OrderDetailTimelineEvent[];
+  timings: {
+    orderToPaymentMs: number | null;
+    paymentInitToPaidMs: number | null;
+    orderToCompletedMs: number | null;
+    lyricsTotalMs: number | null;
+  };
+}
+
 export class AdminApi {
   static stats(): Promise<AdminStats> { return http.get('/admin/stats'); }
   static users(): Promise<AdminUser[]> { return http.get('/admin/users'); }
@@ -68,6 +280,9 @@ export class AdminApi {
     } | null;
   } | null> {
     return http.get(`/admin/payments/${id}/stripe-details`);
+  }
+  static orderDetail(id: string): Promise<OrderDetail> {
+    return http.get(`/admin/orders/${id}`);
   }
   static paymentRefund(
     id: string,
