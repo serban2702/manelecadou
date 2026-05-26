@@ -848,11 +848,20 @@ function StatusTab({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto) => 
             <option value="auto">AI Auto — răspunde direct cu guardrails</option>
           </select>
           <p className="text-[11px] text-muted-foreground mt-1">
-            Mod inițial pentru conversații noi pe acest site. Override-uri per
-            conversație din pagina /chat. Schimbarea NU afectează conversațiile
-            existente.
+            Mod inițial pentru conversații noi pe acest site. La schimbare se
+            propagă automat pe TOATE conversațiile existente ale acestui site
+            (după aceea poți override manual per conv din /chat).
           </p>
         </Field>
+        <Toggle
+          label="AI Greeting — Irina deschide chat singură la 5s după ce vizitatorul intră"
+          value={form.aiGreetingEnabled ?? false}
+          onChange={(v) => setForm({ ...form, aiGreetingEnabled: v })}
+        />
+        <p className="text-[11px] text-muted-foreground -mt-1 col-span-full">
+          Anti-spam: o singură dată per sesiune. Skip pe pagina /m/[id]
+          (ascultători nu-s prospects). Necesită aiChatModeDefault ≠ manual.
+        </p>
         <Field label="Sursă date /top">
           <select
             value={form.topSource ?? 'seed'}

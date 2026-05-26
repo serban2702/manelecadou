@@ -130,6 +130,66 @@ export class AIChatAgentService {
     await this.runAgent(conv, triggerMessageId);
   }
 
+  /**
+   * Public — apelat de ChatGateway după ~5s de la connect dacă userul e nou pe site
+   * (vezi triggerGreetingIfEligible). Trimite salutul Irinei + force_open chat widget.
+   * Anti-spam strict: marchează `greetingSentAt` ATOMIC cu UPDATE ... WHERE greetingSentAt IS NULL
+   * pentru a evita duble salutări dacă userul deschide 2 tab-uri simultan.
+   */
+  async maybeGreetUser(
+    conversationId: string,
+    target: { userId: string | null; guestId: string | null },
+  ): Promise<void> {
+    try {
+      const conv = await this.conv.findOne({ where: { id: conversationId } });
+      if (!conv) return;
+      if (conv.greetingSentAt) return; // re-check (timer race)
+      if (!conv.siteId) return;
+      const site = await this.sites.findById(conv.siteId);
+      if (!site?.aiGreetingEnabled) return;
+
+      // Marker atomic: doar primul caller cu greetingSentAt NULL va seta data și
+      // returna affected=1. Restul vor returna 0 → STOP.
+      const updateResult: { affected?: number } = await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ greetingSentAt: () => 'NOW()', aiMode: conv.aiMode === 'manual' ? site.aiChatModeDefault ?? 'auto' : conv.aiMode })
+        .where('id = :id AND "greetingSentAt" IS NULL', { id: conv.id })
+        .execute();
+      if (!updateResult.affected || updateResult.affected === 0) {
+        return; // alt apel a câștigat race-ul
+      }
+
+      // Trimite salutul verbatim al Irinei (din quick_replies analiza — 146 utilizări)
+      const greetingText = 'Buna, sunt Irina!👋 Vrei să te ajut să îți scrii melodia?';
+      const msg = this.msg.create({
+        conversationId: conv.id,
+        siteId: conv.siteId,
+        authorRole: 'admin',
+        authorId: null,
+        body: greetingText,
+        messageType: 'text',
+        aiGenerated: true,
+        detectedLang: 'ro',
+      });
+      const saved = await this.msg.save(msg);
+      await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+        .where('id = :id', { id: conv.id })
+        .execute();
+      this.gateway.emitMessage({ message: saved, conversation: conv });
+
+      // Force open chat widget — userul vede salutul imediat fără click
+      this.gateway.forceToggleChat({ userId: target.userId, guestId: target.guestId }, true);
+
+      this.logger.log(`greeting sent to conv=${conv.id.slice(0, 8)} (site=${site.name})`);
+    } catch (e) {
+      this.logger.warn(`maybeGreetUser failed: ${(e as Error).message}`);
+    }
+  }
+
   private async runAgent(conv: Conversation, userMessageId: string | null): Promise<void> {
     const apiKey = await this.settings.get('OPENAI_API_KEY');
     if (!apiKey) {

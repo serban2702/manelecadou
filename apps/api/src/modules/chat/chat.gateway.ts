@@ -8,6 +8,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -98,11 +99,63 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     @Inject(forwardRef(() => JwtService)) private readonly jwt: JwtService,
     @InjectRepository(Conversation) private readonly convRepo: Repository<Conversation>,
+    private readonly moduleRef: ModuleRef,
   ) {}
+
+  /** Timer-uri per-key (u:<id> | g:<id>) pentru greeting cu delay 5s.
+   *  Dacă userul se deconectează rapid sau face navigate la /m/[id], anulăm. */
+  private greetingTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   /** ChatService apelează la initializare ca să primească ACK-uri. */
   registerAckHandler(handler: (ids: string[], status: 'delivered' | 'read', actor: SocketIdentity) => Promise<void>) {
     this.onMessageAck = handler;
+  }
+
+  /**
+   * Verifică condițiile pentru greeting proactiv și-l declanșează dacă toate sunt
+   * îndeplinite. Apelat la 5s după connection (vezi greetingTimers).
+   *
+   * Eligible dacă:
+   *  - ident încă online (user/guest n-a deconectat în timpul delay-ului)
+   *  - există Conversation pentru userId/guestId
+   *  - Site.aiGreetingEnabled === true
+   *  - Conversation.greetingSentAt IS NULL (sesiune n-a primit deja greeting)
+   *  - Conversation.lastClientPath nu începe cu /m/ (skip ascultători)
+   */
+  private async triggerGreetingIfEligible(ident: SocketIdentity): Promise<void> {
+    try {
+      const key = presenceKey(ident);
+      if (!key) return;
+      // Verifică online
+      const stillOnline = ident.userId
+        ? this.presenceUsers.has(ident.userId)
+        : ident.guestId ? this.presenceGuests.has(ident.guestId) : false;
+      if (!stillOnline) return;
+
+      // Caută conv (cea mai recentă pentru user/guest)
+      const whereClause = ident.userId
+        ? { userId: ident.userId }
+        : ident.guestId ? { guestId: ident.guestId } : null;
+      if (!whereClause) return;
+      const conv = await this.convRepo.findOne({
+        where: whereClause,
+        order: { createdAt: 'DESC' },
+      });
+      if (!conv) return; // încă nu s-a creat conv → o creează AI agent intern
+
+      if (conv.greetingSentAt) return; // deja salutat
+      // Verifică ambele surse pentru path-ul curent: enriched (memory, vine prin heartbeat
+      // imediat la connect) și DB lastClientPath (mai stale, dar fallback).
+      const currentPath = this.enriched.get(key)?.currentPath ?? conv.lastClientPath ?? '';
+      if (currentPath.startsWith('/m/')) return; // ascultător de manea, nu prospect
+
+      // Apel către AI agent — lazy resolve via ModuleRef (cross-module fără circular dep static)
+      const agentMod = await import('../ai-chat/ai-chat-agent.service');
+      const agent = this.moduleRef.get(agentMod.AIChatAgentService, { strict: false });
+      await agent.maybeGreetUser(conv.id, ident);
+    } catch (e) {
+      this.logger.warn(`triggerGreetingIfEligible failed: ${(e as Error).message}`);
+    }
   }
 
   // ============== CONNECTION LIFECYCLE ==============
@@ -158,6 +211,23 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.logger.log(
         `${ident.userId ? 'user' : 'guest'} connected ${(ident.userId ?? ident.guestId)!.slice(0, 8)} (${client.id})`,
       );
+
+      // ============== Proactive greeting (Faza 6 — Irina virtuală) ==============
+      // După 5 secunde, dacă:
+      //   - userul încă-i online,
+      //   - site-ul are aiGreetingEnabled,
+      //   - conv n-are deja greetingSentAt (one-shot per sesiune permanent),
+      //   - lastClientPath nu e pe /m/[id] (ascultători nu-s prospects).
+      // → trigger greeting via AIChatAgentService.maybeGreetUser.
+      // Dacă există deja un timer pentru același key, NU re-arm — userul a doar deschis
+      // un al doilea tab (același guestId). Greeting o singură dată per sesiune.
+      if (!this.greetingTimers.has(key)) {
+        const timer = setTimeout(() => {
+          this.greetingTimers.delete(key);
+          void this.triggerGreetingIfEligible(ident);
+        }, 5000);
+        this.greetingTimers.set(key, timer);
+      }
       return;
     }
 
@@ -560,6 +630,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (ident.isAdmin || !data?.to) return;
     const key = presenceKey(ident);
     if (!key) return;
+
+    // Anti-spam greeting: dacă userul navighează pe /m/[id] (pagină ascultare manea)
+    // ÎN INTERVALUL de 5s dintre connect și greeting, anulăm timer-ul. Ascultătorii
+    // nu-s prospects.
+    if (data.to.startsWith('/m/')) {
+      const t = this.greetingTimers.get(key);
+      if (t) {
+        clearTimeout(t);
+        this.greetingTimers.delete(key);
+      }
+    }
+
     const prev = this.enriched.get(key);
     const next: EnrichedPresence = {
       online: true,

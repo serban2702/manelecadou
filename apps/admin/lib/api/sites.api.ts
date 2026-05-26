@@ -94,8 +94,12 @@ export interface SiteDto {
   sslEnabled: boolean;
   maintenanceMode: boolean;
   hiddenMode: boolean;
-  /** Mod AI chat inițial pentru conversații noi (override global). NULL = global. */
+  /** Mod AI chat inițial pentru conversații noi (override global). NULL = global.
+   *  La schimbare se propagă pe toate conversațiile existente ale site-ului. */
   aiChatModeDefault: 'manual' | 'suggest' | 'auto' | null;
+  /** Dacă true, Irina (AI) trimite proactiv salutul + force_open chat la 5s după ce vizitatorul
+   *  se conectează. Anti-spam: o singură dată per sesiune. Skip pe /m/[id]. */
+  aiGreetingEnabled: boolean;
   /** Afișează meniul de selectare limbă în topbar. Default false (un domeniu = o limbă). */
   langSwitcherEnabled: boolean;
   maintenanceMessage: Record<string, string>;
