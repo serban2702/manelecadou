@@ -53,9 +53,16 @@ export class AIChatAgentService {
    * Verifică aiMode + dispatch agent run.
    */
   async maybeRun(conversationId: string, userMessageId: string): Promise<void> {
+    // Small delay (200ms) — dă o fereastră admin-ului să schimbe pe Manual dacă vede
+    // imediat mesajul nou și nu vrea AI să răspundă. NU rezolvă races complete dar
+    // ajută pentru cazul „adminul reacționează rapid".
+    await new Promise((r) => setTimeout(r, 200));
     const conv = await this.conv.findOne({ where: { id: conversationId } });
     if (!conv) return;
-    if (conv.aiMode === 'manual') return;
+    if (conv.aiMode === 'manual') {
+      this.logger.log(`skip AI for conv=${conversationId.slice(0, 8)} — mode=manual`);
+      return;
+    }
     try {
       await this.runAgent(conv, userMessageId);
     } catch (e) {
@@ -456,6 +463,14 @@ INTERZIS:
   }
 
   private async handleWizardFinalize(ctx: AgentCtx): Promise<unknown> {
+    const check = await this.assertNotManual(ctx);
+    if (check.aborted) {
+      return {
+        error: 'aborted_manual',
+        status: 'ABORTED_MANUAL_MODE',
+        instruction: 'Conversation switched to manual. STOP — do not finalize.',
+      };
+    }
     if (!ctx.conv.siteId) return { error: 'no siteId' };
     const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
     if (!conv) return { error: 'conversation gone' };
@@ -578,9 +593,36 @@ INTERZIS:
 
   // ============== TOOL HANDLERS ==============
 
+  /** Defensive — re-check live conv.aiMode înainte de orice acțiune cu efect.
+   *  Acoperă race condition: admin schimbă pe Manual ÎN TIMP CE AI rulează în
+   *  background (între chatWithTools iterations sau între tool calls). */
+  private async assertNotManual(ctx: AgentCtx): Promise<{ aborted: boolean; reason?: string }> {
+    const fresh = await this.conv.findOne({ where: { id: ctx.conv.id }, select: ['id', 'aiMode'] });
+    if (!fresh) return { aborted: true, reason: 'conversation gone' };
+    if (fresh.aiMode === 'manual') {
+      ctx.conv.aiMode = 'manual';
+      ctx.mode = 'manual';
+      return { aborted: true, reason: 'mode_switched_to_manual' };
+    }
+    // Sincronizează mode-ul local în caz de schimbare (ex. suggest → auto)
+    ctx.mode = fresh.aiMode;
+    return { aborted: false };
+  }
+
   private async handleSendMessage(ctx: AgentCtx, text: string): Promise<{ sent: boolean; messageType: string; status: string; instruction?: string }> {
     const trimmed = text.trim().slice(0, 800);
     if (!trimmed) return { sent: false, messageType: 'noop', status: 'EMPTY_TEXT_IGNORED' };
+
+    // Hard-check live mode — anti race condition cu setAiMode('manual')
+    const check = await this.assertNotManual(ctx);
+    if (check.aborted) {
+      return {
+        sent: false,
+        messageType: 'aborted',
+        status: 'ABORTED_MANUAL_MODE',
+        instruction: 'Conversation switched to manual. STOP IMMEDIATELY — do not send any message and do not call any other tool.',
+      };
+    }
 
     const isFirst = ctx.sentRealMessages === 0 && !ctx.suggestionMsgId;
 
@@ -781,7 +823,9 @@ INTERZIS:
     }
   }
 
-  private async handleForceOpen(ctx: AgentCtx, _reason: string): Promise<{ ok: true; status: string }> {
+  private async handleForceOpen(ctx: AgentCtx, _reason: string): Promise<{ ok: boolean; status: string }> {
+    const check = await this.assertNotManual(ctx);
+    if (check.aborted) return { ok: false, status: 'ABORTED_MANUAL_MODE' };
     // În mode suggest, NU forțăm deschidere (e o acțiune perceptibilă). Doar logăm.
     if (ctx.mode === 'suggest') {
       return { ok: true, status: 'SKIPPED_IN_SUGGEST_MODE' };

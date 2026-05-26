@@ -798,6 +798,7 @@ export class ChatService implements OnModuleInit {
       customLyrics?: string;
       premium?: boolean;
       email?: string;
+      tipAmount?: number;
     },
   ): Promise<{ generationId: string }> {
     const conv = await this.getConversation(conversationId);
@@ -846,6 +847,7 @@ export class ChatService implements OnModuleInit {
         dedication: dto.dedication,
         customLyrics: dto.customLyrics,
         premium: !!dto.premium,
+        tipAmount: dto.tipAmount,
         paymentId: dto.paymentId,
         locale,
       },

@@ -67,6 +67,8 @@ class LaunchGenerationDto {
   @IsOptional() @IsBoolean() premium?: boolean;
   /** Email pentru livrare — necesar dacă guest nu l-a setat încă. */
   @IsOptional() @IsString() @MaxLength(320) email?: string;
+  /** Sumă dedicată audio (cents, opțional). Apare ca extra în melodie. */
+  @IsOptional() @IsNumber() @Min(0) tipAmount?: number;
 }
 
 @UseGuards(OptionalJwtAuthGuard)

@@ -1264,8 +1264,12 @@ function LaunchGenerationModal({
   const [customLyricsOpen, setCustomLyricsOpen] = useState(false);
   const [customLyrics, setCustomLyrics] = useState('');
   const [premium, setPremium] = useState(defaultPremium);
+  const [tipAmount, setTipAmount] = useState<number>(0); // dedicație în RON (UI)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Presets ca în wizard (RON): 0, 100, 250, 500, 1000, 2500
+  const TIP_PRESETS = [0, 100, 250, 500, 1000, 2500];
 
   function validate(): string | null {
     if (!recipientName.trim()) return 'Numele beneficiarului e obligatoriu';
@@ -1297,6 +1301,7 @@ function LaunchGenerationModal({
         customLyrics: customLyrics.trim() || undefined,
         premium,
         email: email.trim() || undefined,
+        tipAmount: tipAmount > 0 ? tipAmount : undefined,
       });
       onLaunched();
     } catch (e) {
@@ -1438,6 +1443,45 @@ function LaunchGenerationModal({
             )}
             {customLyricsOpen && (
               <div className="text-[10px] text-muted-foreground mt-1">{customLyrics.length}/4000</div>
+            )}
+          </div>
+
+          {/* Suma dedicată (tip) — ca în wizardul user */}
+          <div>
+            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">
+              💰 Sumă dedicată (opțional) — apare în versurile/dedicația melodiei
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {TIP_PRESETS.map((amt) => (
+                <button
+                  key={amt}
+                  type="button"
+                  onClick={() => setTipAmount(amt)}
+                  className={cn(
+                    'h-8 px-3 text-xs rounded-md border transition',
+                    tipAmount === amt
+                      ? 'bg-primary/20 border-primary/60 text-foreground font-semibold'
+                      : 'bg-secondary/30 border-border text-muted-foreground hover:bg-secondary/60',
+                  )}
+                >
+                  {amt === 0 ? 'Fără' : `${amt} lei`}
+                </button>
+              ))}
+              <input
+                type="number"
+                min={0}
+                max={1_000_000_000}
+                step={100}
+                value={!TIP_PRESETS.includes(tipAmount) ? tipAmount : ''}
+                onChange={(e) => setTipAmount(Math.max(0, parseInt(e.target.value || '0', 10) || 0))}
+                placeholder="custom"
+                className="h-8 w-24 px-2 text-xs rounded-md bg-secondary/30 border border-border focus:outline-none focus:ring-1 focus:ring-primary/40"
+              />
+            </div>
+            {tipAmount > 0 && (
+              <div className="text-[10px] text-muted-foreground mt-1">
+                {tipAmount} lei — apare ca dedicație audio în melodie (informativ; nu afectează plata, e deja confirmată)
+              </div>
             )}
           </div>
 
