@@ -149,11 +149,10 @@ export default function AdminChatPage() {
   }
   async function deleteConv(id: string) {
     try {
-      const r = await ChatApi.deleteConversation(id);
+      await ChatApi.deleteConversation(id);
       if (active === id) setActive(null);
       setDeleteTarget(null);
       refetchConvs();
-      alert(`Conversația ștearsă (${r.deletedMessages} mesaje).`);
     } catch (e) {
       alert(`Eroare: ${(e as Error).message}`);
     }
@@ -461,8 +460,20 @@ export default function AdminChatPage() {
       });
   }, [convs, livePresence, enriched]);
 
-  const conversationLabel = (c: { email: string | null; userId: string | null; guestId: string | null }) =>
-    c.email ?? (c.userId ? `user:${c.userId.slice(0, 8)}` : `guest:${c.guestId?.slice(0, 8)}`);
+  /** Etichetă afișată în sidebar + header thread.
+   *  Prioritate: subject redenumit > email > prefix user/guest. */
+  const conversationLabel = (c: {
+    subject?: string;
+    email: string | null;
+    userId: string | null;
+    guestId: string | null;
+  }) => {
+    const subj = (c.subject ?? '').trim();
+    // Subiectele default-uri NU sunt considerate „redenumire"
+    const isDefaultSubj = !subj || subj === 'Conversație' || subj === 'Conversație guest';
+    if (!isDefaultSubj) return subj;
+    return c.email ?? (c.userId ? `user:${c.userId.slice(0, 8)}` : `guest:${c.guestId?.slice(0, 8)}`);
+  };
 
   // Enriched presence pentru thread activ (merge cu thread.conversation.enriched).
   const activeEnriched: EnrichedPresence | null = useMemo(() => {
@@ -1699,9 +1710,28 @@ function ConfirmDeleteModal({
   onClose: () => void;
   onConfirm: () => void;
 }) {
-  const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
-  const matches = confirm.trim().toLowerCase() === 'sterge';
+  const confirmBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  // Focus pe butonul Șterge la deschidere + Enter/Escape shortcuts global
+  useEffect(() => {
+    confirmBtnRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (!busy) {
+          setBusy(true);
+          onConfirm();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [busy, onClose, onConfirm]);
+
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-card border border-destructive/40 rounded-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
@@ -1709,24 +1739,19 @@ function ConfirmDeleteModal({
           <Trash2 className="h-5 w-5 text-destructive" />
           <h3 className="text-base font-semibold">Șterge conversația definitiv</h3>
         </div>
-        <p className="text-sm text-muted-foreground mb-4">
+        <p className="text-sm text-muted-foreground mb-5">
           Vei pierde TOATE mesajele din <b className="text-foreground">{label}</b>, inclusiv plățile asociate (din chat) și audit-ul AI. Această acțiune <b className="text-destructive">nu poate fi anulată</b>.
         </p>
-        <p className="text-xs text-muted-foreground mb-1.5">Scrie <code className="bg-destructive/10 px-1 rounded text-destructive">sterge</code> pentru confirmare:</p>
-        <input
-          type="text"
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-          autoFocus
-          placeholder="sterge"
-          className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none focus:ring-1 focus:ring-destructive/50"
-        />
-        <div className="flex justify-end gap-2 mt-5">
+        <div className="text-[11px] text-muted-foreground mb-3">
+          <kbd className="px-1.5 py-0.5 rounded bg-secondary/40 border border-border">Enter</kbd> confirmă · <kbd className="px-1.5 py-0.5 rounded bg-secondary/40 border border-border">Esc</kbd> anulează
+        </div>
+        <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose} disabled={busy}>Anulează</Button>
           <Button
+            ref={confirmBtnRef}
             variant="destructive"
             onClick={() => { setBusy(true); onConfirm(); }}
-            disabled={busy || !matches}
+            disabled={busy}
           >
             {busy ? <Loader2 className="animate-spin" /> : <Trash2 />}
             Șterge definitiv
