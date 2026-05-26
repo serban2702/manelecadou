@@ -203,6 +203,39 @@ export class AIChatAgentService {
       // AI a răspuns fără tool — fallback
       await this.handleSendMessage(ctx, result.finalContent);
     }
+
+    // ============== SAFETY NET ==============
+    // Dacă în mod 'auto' AI nu a trimis NICIUN mesaj (a folosit doar tool-uri
+    // non-send_message: search_memory, wizard_get_state, etc., sau a hit max
+    // iterations fără răspuns text), forțăm un mesaj de fallback ca să nu
+    // lăsăm userul fără răspuns. Verificăm modul curent (anti race condition
+    // cu setAiMode('manual') în timpul run-ului).
+    if (conv.aiMode === 'auto' && ctx.sentRealMessages === 0 && !ctx.escalated) {
+      const fresh = await this.conv.findOne({ where: { id: conv.id }, select: ['id', 'aiMode'] });
+      if (fresh?.aiMode === 'auto') {
+        const fallback =
+          (result.finalContent && result.finalContent.trim().length > 0)
+            ? result.finalContent.trim().slice(0, 800)
+            : 'Înțeleg, lasă-mă o secundă să verific și revin imediat.';
+        this.logger.warn(`AI auto fallback for conv=${conv.id.slice(0, 8)} — agent folosise ${result.iterations} iter fără send_message`);
+        // Reset hard limit pentru fallback (bypassăm contextul actual)
+        const m = this.msg.create({
+          conversationId: conv.id,
+          siteId: conv.siteId ?? null,
+          authorRole: 'admin',
+          authorId: null,
+          body: fallback,
+          messageType: 'text',
+          aiGenerated: true,
+          detectedLang: 'ro',
+        });
+        const saved = await this.msg.save(m);
+        conv.lastMessageAt = saved.createdAt;
+        conv.unreadByUser += 1;
+        await this.conv.save(conv);
+        this.gateway.emitMessage({ message: saved, conversation: conv });
+      }
+    }
   }
 
   /** Top memory facts approved, sortat după utilitate (usageCount). */
