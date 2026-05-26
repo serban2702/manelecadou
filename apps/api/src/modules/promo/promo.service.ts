@@ -76,6 +76,61 @@ export class PromoService {
     return this.codes.save(c);
   }
 
+  async update(
+    id: string,
+    patch: {
+      code?: string;
+      discountType?: 'percent' | 'fixed';
+      discountValue?: number;
+      validFrom?: Date | null;
+      validUntil?: Date | null;
+      maxUses?: number;
+      restrictedToEmail?: string | null;
+      note?: string | null;
+      active?: boolean;
+    },
+  ): Promise<PromoCode> {
+    const c = await this.codes.findOne({ where: { id } });
+    if (!c) throw new NotFoundException('Promo not found');
+    if (patch.code !== undefined) {
+      const newCode = patch.code.toUpperCase().trim();
+      if (!newCode) throw new BadRequestException('Cod gol');
+      if (newCode !== c.code) {
+        const existing = await this.codes.findOne({ where: this.scopedCodeWhere(newCode, c.siteId) });
+        if (existing && existing.id !== c.id) {
+          throw new BadRequestException('Cod deja folosit pe acest site');
+        }
+        c.code = newCode;
+      }
+    }
+    if (patch.discountType !== undefined) c.discountType = patch.discountType;
+    if (patch.discountValue !== undefined) c.discountValue = patch.discountValue;
+    if (patch.validFrom !== undefined) c.validFrom = patch.validFrom;
+    if (patch.validUntil !== undefined) c.validUntil = patch.validUntil;
+    if (patch.maxUses !== undefined) c.maxUses = patch.maxUses;
+    if (patch.restrictedToEmail !== undefined) {
+      c.restrictedToEmail = patch.restrictedToEmail
+        ? patch.restrictedToEmail.toLowerCase().trim()
+        : null;
+    }
+    if (patch.note !== undefined) c.note = patch.note;
+    if (patch.active !== undefined) c.active = patch.active;
+    return this.codes.save(c);
+  }
+
+  async delete(id: string): Promise<{ ok: true }> {
+    const c = await this.codes.findOne({ where: { id } });
+    if (!c) throw new NotFoundException('Promo not found');
+    // Soft block — dacă a fost folosit, NU șterge (păstrăm trail-ul pentru rapoarte).
+    if (c.usedCount > 0) {
+      throw new BadRequestException(
+        `Codul ${c.code} a fost folosit ${c.usedCount} ori. Dezactivează-l în loc să-l ștergi.`,
+      );
+    }
+    await this.codes.delete({ id });
+    return { ok: true };
+  }
+
   async validate(
     rawCode: string,
     email: string | undefined,

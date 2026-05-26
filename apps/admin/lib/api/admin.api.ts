@@ -149,6 +149,25 @@ export class PromoApi {
   static setActive(id: string, active: boolean): Promise<AdminPromoCode> {
     return http.patch(`/admin/promo/${id}/active`, { active });
   }
+  static update(
+    id: string,
+    patch: {
+      code?: string;
+      discountType?: 'percent' | 'fixed';
+      discountValue?: number;
+      validFrom?: string | null;
+      validUntil?: string | null;
+      maxUses?: number;
+      restrictedToEmail?: string | null;
+      note?: string | null;
+      active?: boolean;
+    },
+  ): Promise<AdminPromoCode> {
+    return http.patch(`/admin/promo/${id}`, patch);
+  }
+  static delete(id: string): Promise<{ ok: true }> {
+    return http.delete(`/admin/promo/${id}`);
+  }
 }
 
 export class ErrorsApi {

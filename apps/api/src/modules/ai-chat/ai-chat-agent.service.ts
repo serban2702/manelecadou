@@ -230,9 +230,14 @@ export class AIChatAgentService {
           detectedLang: 'ro',
         });
         const saved = await this.msg.save(m);
+        await this.conv
+          .createQueryBuilder()
+          .update(Conversation)
+          .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+          .where('id = :id', { id: conv.id })
+          .execute();
         conv.lastMessageAt = saved.createdAt;
         conv.unreadByUser += 1;
-        await this.conv.save(conv);
         this.gateway.emitMessage({ message: saved, conversation: conv });
       }
     }
@@ -303,6 +308,7 @@ Când clientul își manifestă intenția de a comanda o manea ("vreau o manea",
 8. Doar dacă userul confirmă explicit ("da", "trimite", "ok"), apelează \`wizard_finalize\`. Acesta va crea automat melodia pending + linkul de plată Stripe. NU mai trimite tu link separat.
 9. După wizard_finalize, doar răspunde scurt: „Gata, ți-am trimis linkul de plată. După plată melodia se generează în ~90 secunde și o vei primi pe email."
 10. NU repeta wizard_finalize de mai multe ori per turn (e idempotent dar fără rost).
+11. Dacă userul întreabă „a ajuns plata?", „unde-i melodia?", „cât mai durează?", „e gata?" — apelează \`check_order_status\` întâi, apoi răspunde concret pe baza statusului real. Nu inventa statusuri. Dacă melodia e gata (humanStatus="gata"), trimite link-ul prezent în câmpul \`linkToSong\`.
 
 INTERZIS:
 - NU sugera prețuri/sume diferite de ${price}.
@@ -393,6 +399,11 @@ INTERZIS:
         },
       },
       {
+        name: 'check_order_status',
+        description: 'Verifică statusul ultimei comenzi din conversația curentă (plată + generare manea). Folosește când userul întreabă „unde-i melodia?", „a ajuns plata?", „cât mai durează?", sau înainte să raportezi progresul. Returnează: paid (true/false), generationStatus, audioReady, linkToSong.',
+        parameters: { type: 'object', properties: {} },
+      },
+      {
         name: 'escalate_to_human',
         description: 'Cere intervenția unui operator uman. Folosește dacă userul cere explicit „om real", dacă cere refund, dacă întrebarea e prea complexă sau dacă nu ai informația în KB/memorie.',
         parameters: {
@@ -414,7 +425,73 @@ INTERZIS:
       wizard_update: async (args) => this.handleWizardUpdate(ctx, args),
       wizard_finalize: async () => this.handleWizardFinalize(ctx),
       force_open_chat: async (args) => this.handleForceOpen(ctx, String(args.reason ?? '')),
+      check_order_status: async () => this.handleCheckOrderStatus(ctx),
       escalate_to_human: async (args) => this.handleEscalate(ctx, String(args.reason ?? 'unspecified')),
+    };
+  }
+
+  /** Returnează statusul comenzii curente (din wizardState.generationId) sau ultima
+   *  generation a userului/guest-ului din conversație. AI o folosește când userul
+   *  întreabă „a ajuns plata?" sau „cât mai durează?". */
+  private async handleCheckOrderStatus(ctx: AgentCtx): Promise<unknown> {
+    const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
+    if (!conv) return { error: 'conversation gone' };
+    const wizardGenId = conv.wizardState?.generationId ?? null;
+
+    let generation = wizardGenId
+      ? await this.generations.findOnePublic(wizardGenId).catch(() => null)
+      : null;
+
+    // Fallback — caută ultima generation a userului/guest-ului din conv
+    if (!generation && (conv.userId || conv.guestId)) {
+      try {
+        const recent = await this.generations['repo']
+          .createQueryBuilder('g')
+          .where(conv.userId ? 'g.userId = :u' : 'g.guestId = :g', {
+            u: conv.userId,
+            g: conv.guestId,
+          })
+          .andWhere(conv.siteId ? 'g.siteId = :s' : '1=1', { s: conv.siteId })
+          .orderBy('g.createdAt', 'DESC')
+          .limit(1)
+          .getOne();
+        generation = recent ?? null;
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (!generation) {
+      return {
+        hasOrder: false,
+        instruction: 'Nu există comandă în această conversație. Dacă userul vrea să comande, începe wizard_get_state.',
+      };
+    }
+
+    const paid = !!generation.paidUnlocked;
+    const audioReady = !!generation.audioUrl && generation.status === 'succeeded';
+    const linkToSong = audioReady ? `/m/${generation.id}` : null;
+
+    let humanStatus = 'în așteptare plată';
+    if (paid && audioReady) humanStatus = 'gata — manea finalizată';
+    else if (paid && generation.status === 'failed') humanStatus = 'plată ok, dar generarea a eșuat';
+    else if (paid) humanStatus = 'plătit, se generează acum (~90s)';
+    else if (generation.status === 'failed') humanStatus = 'eșuat înainte de plată';
+
+    return {
+      hasOrder: true,
+      generationId: generation.id,
+      paid,
+      generationStatus: generation.status,
+      audioReady,
+      linkToSong,
+      humanStatus,
+      recipientName: generation.recipientName,
+      instruction: audioReady
+        ? `Manea e gata. Trimite userului link-ul: ${linkToSong}`
+        : paid
+          ? 'Plata e ok, melodia se generează acum. Spune-i userului că ajunge în ~30-90 secunde pe email + apare aici în chat când e gata.'
+          : 'Nu s-a făcut plata încă. Roagă userul să acceseze link-ul de plată trimis anterior. Dacă nu există link → wizard_get_state.',
     };
   }
 
@@ -511,7 +588,15 @@ INTERZIS:
     state.updatedAt = new Date().toISOString();
     if (state.step === 'idle' && Object.keys(updates).length > 0) state.step = 'collecting';
     conv.wizardState = state;
-    await this.conv.save(conv);
+    // Partial UPDATE — scriem DOAR wizardState (+ email dacă s-a actualizat).
+    // Anti race condition cu sendAsUser/sendAsAdmin care fac save full entity
+    // și ar overwrite wizardState cu valoarea stale.
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ wizardState: state, ...(emailUpdated && conv.email ? { email: conv.email } : {}) })
+      .where('id = :id', { id: conv.id })
+      .execute();
     ctx.conv = conv; // sync ctx
 
     const missing = this.missingWizardFields(state.data);
@@ -601,13 +686,18 @@ INTERZIS:
         site,
       });
 
-      // 3. Update state
+      // 3. Update state — partial UPDATE pe wizardState (anti race condition).
       state.step = 'payment_sent';
       state.generationId = generation.id;
       state.paymentId = checkout.paymentId;
       state.updatedAt = new Date().toISOString();
       conv.wizardState = state;
-      await this.conv.save(conv);
+      await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ wizardState: state })
+        .where('id = :id', { id: conv.id })
+        .execute();
 
       // 4. Trimite payment_link în chat (vizibil user + admin)
       const amount = site.basePriceCents + (state.data.premium ? site.premiumExtraCents : 0);
@@ -633,9 +723,14 @@ INTERZIS:
         detectedLang: site.locale,
       });
       const saved = await this.msg.save(msg);
+      await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+        .where('id = :id', { id: conv.id })
+        .execute();
       conv.lastMessageAt = saved.createdAt;
       conv.unreadByUser += 1;
-      await this.conv.save(conv);
       this.gateway.emitMessage({ message: saved, conversation: conv });
 
       ctx.paymentLinkSent = true;
@@ -749,9 +844,14 @@ INTERZIS:
       detectedLang: 'ro',
     });
     const saved = await this.msg.save(m);
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+      .where('id = :id', { id: ctx.conv.id })
+      .execute();
     ctx.conv.lastMessageAt = saved.createdAt;
     ctx.conv.unreadByUser += 1;
-    await this.conv.save(ctx.conv);
     this.gateway.emitMessage({ message: saved, conversation: ctx.conv });
     ctx.sentRealMessages++;
     ctx.sentTexts.push(normalized);
@@ -908,7 +1008,12 @@ INTERZIS:
     if (ctx.escalated) return { ok: true, message: 'already escalated' };
     ctx.escalated = true;
     ctx.conv.aiMode = 'manual';
-    await this.conv.save(ctx.conv);
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ aiMode: 'manual' })
+      .where('id = :id', { id: ctx.conv.id })
+      .execute();
     const m = this.msg.create({
       conversationId: ctx.conv.id,
       siteId: ctx.conv.siteId ?? null,

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -70,6 +71,37 @@ class CreatePromoDto {
   note?: string;
 }
 
+class UpdatePromoDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  code?: string;
+  @IsOptional()
+  @IsEnum(['percent', 'fixed'])
+  discountType?: 'percent' | 'fixed';
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1_000_000)
+  discountValue?: number;
+  @IsOptional()
+  validFrom?: string | null;
+  @IsOptional()
+  validUntil?: string | null;
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000)
+  maxUses?: number;
+  @IsOptional()
+  restrictedToEmail?: string | null;
+  @IsOptional()
+  note?: string | null;
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+}
+
 @Controller('promo')
 export class PromoController {
   constructor(private readonly svc: PromoService) {}
@@ -109,6 +141,31 @@ export class AdminPromoController {
   @Patch(':id/active')
   setActive(@Param('id') id: string, @Body() body: { active: boolean }) {
     return this.svc.setActive(id, !!body.active);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() dto: UpdatePromoDto) {
+    const parseDate = (v: string | null | undefined): Date | null | undefined => {
+      if (v === undefined) return undefined;
+      if (v === null || v === '') return null;
+      return new Date(v);
+    };
+    return this.svc.update(id, {
+      code: dto.code,
+      discountType: dto.discountType,
+      discountValue: dto.discountValue,
+      validFrom: parseDate(dto.validFrom),
+      validUntil: parseDate(dto.validUntil),
+      maxUses: dto.maxUses,
+      restrictedToEmail: dto.restrictedToEmail === undefined ? undefined : (dto.restrictedToEmail || null),
+      note: dto.note === undefined ? undefined : (dto.note || null),
+      active: dto.active,
+    });
+  }
+
+  @Delete(':id')
+  delete(@Param('id') id: string) {
+    return this.svc.delete(id);
   }
 
   @Get(':id/stats')

@@ -362,15 +362,26 @@ export class ChatService implements OnModuleInit {
       body: body.trim(),
     });
     const saved = await this.msg.save(msg);
+    // Partial UPDATE — NU `save(conversation)` full entity. Race condition altfel:
+    // dacă AI agent persistă wizardState între `getOrCreateMine` și acest save,
+    // save-ul full entity overwrite-uiește wizardState cu valoarea stale din memoria
+    // procesului (bug observat 2026-05-26: wizard_finalize găsea wizardState gol
+    // după 5 wizard_update sequential reușite). Detalii §16 CLAUDE.md.
+    const wasArchived = !!conversation.archivedAt;
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({
+        lastMessageAt: saved.createdAt,
+        unreadByAdmin: () => '"unreadByAdmin" + 1',
+        ...(wasArchived ? { archivedAt: null } : {}),
+      })
+      .where('id = :id', { id: conversation.id })
+      .execute();
+    // Sincronizează in-memory ca să emit-ul WS să aibă valorile actualizate.
     conversation.lastMessageAt = saved.createdAt;
     conversation.unreadByAdmin += 1;
-    // Dacă adminul arhivase conversația dar userul revine cu un mesaj nou,
-    // o readucem activă în sidebar (altfel ar rămâne ascunsă și admin n-ar
-    // vedea că userul a revenit).
-    if (conversation.archivedAt) {
-      conversation.archivedAt = null;
-    }
-    await this.conv.save(conversation);
+    if (wasArchived) conversation.archivedAt = null;
     this.gateway.emitMessage({ message: saved, conversation });
     // Auto-translate DEZACTIVAT (2026-05-26) — detecția de limbă pe mesaje
     // scurte ("Ok", "Da") era nesigură și ducea la admin-outbound traducere
@@ -739,10 +750,20 @@ export class ChatService implements OnModuleInit {
       aiSuggestionFor: opts?.aiSuggestionFor ?? null,
     });
     const saved = await this.msg.save(msg);
+    // Partial UPDATE — vezi comentariu în sendAsUser pentru motivul anti-race condition.
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({
+        lastMessageAt: saved.createdAt,
+        unreadByUser: () => '"unreadByUser" + 1',
+        unreadByAdmin: 0,
+      })
+      .where('id = :id', { id: conv.id })
+      .execute();
     conv.lastMessageAt = saved.createdAt;
     conv.unreadByUser += 1;
     conv.unreadByAdmin = 0;
-    await this.conv.save(conv);
     this.gateway.emitMessage({ message: saved, conversation: conv });
     return Object.assign(saved, { translation: translationMeta });
   }

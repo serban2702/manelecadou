@@ -1,14 +1,23 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAsync } from "@/lib/hooks/use-async";
 import { format } from 'date-fns';
 import { ro } from 'date-fns/locale';
-import { Plus, Tag } from 'lucide-react';
+import { Pencil, Plus, Tag, Trash2 } from 'lucide-react';
 import { PromoApi } from '@/lib/api';
+import type { AdminPromoCode } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { Empty } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
@@ -83,6 +92,25 @@ export default function AdminPromoPage() {
   async function toggle(id: string, active: boolean) {
     await PromoApi.setActive(id, active);
     refetch();
+  }
+
+  const [editing, setEditing] = useState<AdminPromoCode | null>(null);
+  const [deleting, setDeleting] = useState<AdminPromoCode | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
+  async function confirmDelete() {
+    if (!deleting) return;
+    setDeleteBusy(true);
+    try {
+      await PromoApi.delete(deleting.id);
+      toast({ variant: 'success', title: 'Cod șters' });
+      setDeleting(null);
+      refetch();
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Eroare', description: (e as Error).message });
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   return (
@@ -191,6 +219,7 @@ export default function AdminPromoPage() {
               <TableHead>Valabil până</TableHead>
               <TableHead>Notă</TableHead>
               <TableHead>Activ</TableHead>
+              <TableHead className="text-right">Acțiuni</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -233,12 +262,172 @@ export default function AdminPromoPage() {
                     aria-label={`Activează ${c.code}`}
                   />
                 </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setEditing(c)}
+                      aria-label={`Editează ${c.code}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setDeleting(c)}
+                      aria-label={`Șterge ${c.code}`}
+                      disabled={c.usedCount > 0}
+                      title={c.usedCount > 0 ? 'A fost folosit — dezactivează-l în loc să-l ștergi' : 'Șterge'}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
+
+      <EditPromoModal
+        promo={editing}
+        onClose={() => setEditing(null)}
+        onSaved={() => {
+          setEditing(null);
+          refetch();
+        }}
+      />
+
+      <Dialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Șterge cod promoțional</DialogTitle>
+            <DialogDescription>
+              Sigur vrei să ștergi <code className="font-mono font-semibold">{deleting?.code}</code>? Acțiunea e ireversibilă.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleting(null)}>Anulează</Button>
+            <Button variant="destructive" onClick={confirmDelete} loading={deleteBusy}>Șterge</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function EditPromoModal({
+  promo,
+  onClose,
+  onSaved,
+}: {
+  promo: AdminPromoCode | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [code, setCode] = useState('');
+  const [discountType, setDiscountType] = useState<'percent' | 'fixed'>('percent');
+  const [discountValue, setDiscountValue] = useState('10');
+  const [validUntil, setValidUntil] = useState<Date | undefined>(undefined);
+  const [maxUses, setMaxUses] = useState('0');
+  const [restrictedEmail, setRestrictedEmail] = useState('');
+  const [note, setNote] = useState('');
+  const [active, setActive] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Repopulează state-ul de fiecare dată când userul deschide modal-ul pe alt promo.
+  useEffect(() => {
+    if (!promo) return;
+    setCode(promo.code);
+    setDiscountType(promo.discountType);
+    setDiscountValue(String(promo.discountValue));
+    setValidUntil(promo.validUntil ? new Date(promo.validUntil) : undefined);
+    setMaxUses(String(promo.maxUses));
+    setRestrictedEmail(promo.restrictedToEmail ?? '');
+    setNote(promo.note ?? '');
+    setActive(promo.active);
+  }, [promo?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function save() {
+    if (!promo) return;
+    setSaving(true);
+    try {
+      await PromoApi.update(promo.id, {
+        code: code.toUpperCase().trim() || undefined,
+        discountType,
+        discountValue: parseInt(discountValue) || 0,
+        validUntil: validUntil ? validUntil.toISOString() : null,
+        maxUses: parseInt(maxUses) || 0,
+        restrictedToEmail: restrictedEmail.trim() || null,
+        note: note.trim() || null,
+        active,
+      });
+      toast({ variant: 'success', title: 'Cod actualizat' });
+      onSaved();
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Eroare', description: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={!!promo} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Editează cod promoțional</DialogTitle>
+          <DialogDescription>
+            Modifică datele codului <code className="font-mono">{promo?.code}</code>.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="Cod">
+            <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} />
+          </Field>
+          <Field label="Tip discount">
+            <Select value={discountType} onValueChange={(v) => setDiscountType(v as 'percent' | 'fixed')}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="percent">Procent (%)</SelectItem>
+                <SelectItem value="fixed">Sumă fixă (cents RON)</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label={discountType === 'percent' ? 'Valoare (%)' : 'Valoare (cents RON)'}>
+            <Input type="number" value={discountValue} onChange={(e) => setDiscountValue(e.target.value)} />
+          </Field>
+          <Field label="Valabil până la">
+            <DateTimePicker
+              value={validUntil}
+              onChange={setValidUntil}
+              placeholder="Fără expirare"
+              fromYear={new Date().getFullYear()}
+              toYear={new Date().getFullYear() + 5}
+            />
+          </Field>
+          <Field label="Max utilizări (0 = ∞)">
+            <Input type="number" value={maxUses} onChange={(e) => setMaxUses(e.target.value)} />
+          </Field>
+          <Field label="Restrict la email">
+            <Input type="email" value={restrictedEmail} onChange={(e) => setRestrictedEmail(e.target.value)} placeholder="opțional" />
+          </Field>
+          <Field label="Notă internă" className="md:col-span-2">
+            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="opțional" />
+          </Field>
+          <Field label="Activ" className="md:col-span-2">
+            <Switch checked={active} onCheckedChange={setActive} />
+          </Field>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Anulează</Button>
+          <Button onClick={save} loading={saving}>Salvează</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
