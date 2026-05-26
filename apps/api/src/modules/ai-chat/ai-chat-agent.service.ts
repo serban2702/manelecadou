@@ -42,6 +42,10 @@ const REQUIRED_WIZARD_FIELDS: Array<keyof WizardData> = ['recipientName', 'messa
 /** Pragul peste care nu mai întrebăm de voce (e prea lung conv, nu prelungim). */
 const MAX_USER_MSGS_BEFORE_DEFAULT_GENDER = 8;
 
+/** Hard cap mesaje per conv — peste care AI tace + escalează la admin uman.
+ *  Anti-spam bucle sterile (observat: 7+ schimburi user/AI cu același mesaj reformulat). */
+const MAX_MESSAGES_BEFORE_HUMAN = 35;
+
 /** Voci active per gen — folosit la inferarea automată când userul spune doar M/F. */
 const VOICE_DEFAULTS = {
   M: 'florinel',  // Florin Stelaru — voce caldă clasic, default masculin
@@ -98,6 +102,42 @@ export class AIChatAgentService {
       this.logger.log(`skip AI for conv=${conversationId.slice(0, 8)} — mode=manual`);
       return;
     }
+
+    // Hard cap mesaje per conv. După 35 mesaje (user + admin + AI) AI tace
+    // și escalează la admin uman. Observat 2026-05-27 conv 4f9bc0de cu 7+
+    // schimburi sterile user/AI pe aceeași cerere de reducere — AI repetă
+    // template-uri în loc să escaladeze. Anti-spam definitiv.
+    const totalMsgs = await this.msg.count({
+      where: { conversationId },
+    });
+    if (totalMsgs >= MAX_MESSAGES_BEFORE_HUMAN) {
+      // Comută conv pe manual + emit notificare admin. La acest punct aiMode e
+      // garantat 'suggest' | 'auto' (early return mai sus pentru 'manual').
+      this.logger.warn(
+        `conv=${conversationId.slice(0, 8)} reached ${totalMsgs} msgs — switching to manual + escalate`,
+      );
+      await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ aiMode: 'manual' })
+        .where('id = :id', { id: conversationId })
+        .execute();
+      // System message vizibil DOAR adminului — flag pentru sidebar.
+      const sysMsg = this.msg.create({
+        conversationId,
+        siteId: conv.siteId,
+        authorRole: 'system',
+        authorId: null,
+        body: `🚨 Conversația a depășit ${MAX_MESSAGES_BEFORE_HUMAN} mesaje — AI dezactivat automat, preia un admin.`,
+        messageType: 'system',
+        aiGenerated: true,
+        detectedLang: 'ro',
+      });
+      const saved = await this.msg.save(sysMsg);
+      this.gateway.emitAiSuggestion({ conversation: conv, message: saved });
+      return;
+    }
+
     this.runningRuns.add(conversationId);
     try {
       await this.runAgent(conv, userMessageId);
@@ -866,21 +906,28 @@ REGULI STRICTE:
         instruction: `Lipsesc câmpuri: ${missing.join(', ')}. Întreabă userul + wizard_update.`,
       };
     }
-    if (state.step === 'payment_sent' || state.step === 'paid' || state.step === 'generating') {
-      // În loc să returnăm error care duce AI-ul în buclă de re-finalize +
-      // mesaje contradictorii (observat 2026-05-27 conv 4f9bc0de: 3 încercări de
-      // finalize urmate de „comanda finalizată!" + „nu ai plătit" în 60s), îi
-      // dăm AI-ului instrucțiune CLARĂ să apeleze check_order_status și să
-      // raporteze statusul real userului. NU mai re-trimitem link, NU re-cerem
-      // detalii.
+    // Dacă plata e DEJA făcută sau melodia se generează → NU mai trimitem link nou.
+    if (state.step === 'paid' || state.step === 'generating') {
       return {
-        status: 'ORDER_ALREADY_IN_PROGRESS',
+        status: 'ORDER_ALREADY_PAID',
         currentStep: state.step,
         generationId: state.generationId,
         instruction:
-          state.step === 'payment_sent'
-            ? 'Userul are deja link de plată trimis dar n-a plătit încă. NU re-trimite linkul, NU re-cere detalii. Apelează check_order_status acum și raportează userului că link-ul de plată e mai sus în chat. Dacă întreabă cum să plătească, spune-i scurt să dea click pe cardul de plată trimis anterior.'
-            : 'Comanda e deja plătită și se generează. NU mai trimite nimic — apelează check_order_status și raportează exact statusul curent al melodiei.',
+          'Comanda e deja plătită și se generează. NU mai trimite nimic — apelează check_order_status și raportează exact statusul curent al melodiei.',
+      };
+    }
+    // Pentru state='payment_sent' permitem MAX 2 re-issue-uri (anti-spam: dacă AI
+    // re-cheamă finalize bucle, oprim după 2). Userul real motivat are nevoie de
+    // ~2 link-uri (ex. primul fără reducere, al doilea cu cod câștigat la roată).
+    const reissueCount = (state as { linkReissueCount?: number }).linkReissueCount ?? 0;
+    const isResumeFromPaymentSent = state.step === 'payment_sent';
+    if (isResumeFromPaymentSent && reissueCount >= 2) {
+      return {
+        status: 'TOO_MANY_LINKS_SENT',
+        currentStep: state.step,
+        generationId: state.generationId,
+        instruction:
+          'Userul are deja 2+ linkuri de plată trimise în această conversație. NU mai trimite altul. Spune-i scurt: „linkurile de plată sunt mai sus în chat, click pe ele". Dacă insistă, apelează escalate_to_human.',
       };
     }
 
@@ -944,12 +991,18 @@ REGULI STRICTE:
       }
 
       // 2. Crează Stripe Checkout legat de Generation
+      //    Aplică automat codul promo activ (de la roata norocului sau emis anterior
+      //    de AI). Stripe Checkout va arăta în UI reducerea explicit + total redus,
+      //    iar suma plătită va fi cea redusă. Înainte (2026-05-27 bug observat):
+      //    AI menționa codul în mesaj dar Stripe primea suma întreagă fără promo.
+      const activePromoCode = await this.findActivePromoCode(conv);
       const checkout = await this.payments.createCheckoutSession({
         userId: conv.userId,
         guestId: conv.guestId,
         generationId: generation.id,
         premium: !!state.data.premium,
         email: conv.email ?? undefined,
+        promoCode: activePromoCode ?? undefined,
         site,
       });
 
@@ -957,6 +1010,7 @@ REGULI STRICTE:
       state.step = 'payment_sent';
       state.generationId = generation.id;
       state.paymentId = checkout.paymentId;
+      state.linkReissueCount = (state.linkReissueCount ?? 0) + 1;
       state.updatedAt = new Date().toISOString();
       conv.wizardState = state;
       await this.conv
@@ -1428,6 +1482,49 @@ ${transcript}`;
         : ({ value: originalMsg, source: 'user_said' as const });
 
     return { style: styleResult, occasion: occasionResult, voiceArtist: voiceResult, message: messageResult };
+  }
+
+  /**
+   * Găsește codul promo activ pentru un user/guest (de la roata norocului SAU emis
+   * anterior de AI restricționat la email). Returnează string-ul cod (ex. "E6JWXY64")
+   * sau null. Folosit la wizard_finalize ca să aplic automat reducerea în Stripe.
+   */
+  private async findActivePromoCode(conv: Conversation): Promise<string | null> {
+    const ownerId = conv.userId ?? conv.guestId;
+    if (!ownerId) return null;
+    try {
+      // 1. Cod câștigat la roata norocului (prioritate)
+      const roata: Array<{ code: string }> = await this.conv.manager.query(
+        `SELECT pc.code
+         FROM roulette_spins rs
+         JOIN promo_codes pc ON pc.id = rs."awardedPromoCodeId"
+         WHERE (rs."userId" = $1 OR rs."guestId" = $1)
+           AND rs."awardedCode" IS NOT NULL
+           AND pc.active = true
+           AND (pc."validUntil" IS NULL OR pc."validUntil" > NOW())
+           AND (pc."maxUses" = 0 OR pc."usedCount" < pc."maxUses")
+         ORDER BY rs."createdAt" DESC LIMIT 1`,
+        [ownerId],
+      );
+      if (roata.length > 0) return roata[0].code;
+
+      // 2. Cod AI emis pentru email-ul lui (fallback)
+      if (conv.email && conv.siteId) {
+        const ai: Array<{ code: string }> = await this.conv.manager.query(
+          `SELECT code FROM promo_codes
+           WHERE "siteId" = $1 AND "aiIssued" = true AND active = true
+             AND "restrictedToEmail" = $2
+             AND ("validUntil" IS NULL OR "validUntil" > NOW())
+             AND ("maxUses" = 0 OR "usedCount" < "maxUses")
+           ORDER BY "createdAt" DESC LIMIT 1`,
+          [conv.siteId, conv.email],
+        );
+        if (ai.length > 0) return ai[0].code;
+      }
+    } catch (e) {
+      this.logger.warn(`findActivePromoCode failed: ${(e as Error).message}`);
+    }
+    return null;
   }
 
   // ============== HANDLERS NOI Faza 6 ==============

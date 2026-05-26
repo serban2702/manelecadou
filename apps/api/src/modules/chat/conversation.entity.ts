@@ -44,6 +44,8 @@ export interface WizardState {
   data: WizardData;
   generationId?: string | null;
   paymentId?: string | null;
+  /** Câte link-uri de plată au fost trimise pe această conv (cap 2 — anti-spam). */
+  linkReissueCount?: number;
   updatedAt: string; // ISO
 }
 

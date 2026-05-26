@@ -235,6 +235,12 @@ export class GenerationsProcessor extends WorkerHost {
   }
 
   async notifyOwner(gen: Generation): Promise<void> {
+    // Refetch din DB — gen-ul în memorie poate avea paidUnlocked stale dacă
+    // userul a plătit între pickup-ul job-ului și terminarea Suno (Stripe webhook
+    // rulează concurrent cu worker-ul). Vrem să trimitem emailul corect (demo vs full).
+    const fresh = await this.repo.findOne({ where: { id: gen.id } });
+    if (fresh) gen = fresh;
+
     let email: string | null = null;
     if (gen.ownerUserId) {
       const u = await this.users.findOne({ where: { id: gen.ownerUserId } });
@@ -250,11 +256,17 @@ export class GenerationsProcessor extends WorkerHost {
     const branding = brandingFromSite(site);
     const baseUrl = branding?.siteUrl ?? this.config.get<string>('APP_URL') ?? 'http://localhost:1500';
     const link = `${baseUrl}/m/${gen.id}`;
+    // Pentru email: tratăm `paidUnlocked` ca full (demo deblocat prin plată
+    // sau cod cadou = melodie completă). Altfel template-ul ar afișa
+    // „Maneaua ta demo (30s)" + cardul „Oferta 1+1 GRATIS" pentru un user
+    // care a plătit deja — confuz și greșit. Pentru audio: dacă e paidUnlocked,
+    // expunem audioUrl-ul complet în email; altfel doar link-ul demo.
+    const effectiveType: 'demo' | 'full' = gen.type === 'full' || gen.paidUnlocked ? 'full' : 'demo';
     const tpl = generationReadyTemplate({
       recipientName: gen.recipientName,
-      type: gen.type,
+      type: effectiveType,
       link,
-      audioUrl: gen.audioUrl,
+      audioUrl: effectiveType === 'full' ? gen.audioUrl : gen.demoAudioUrl,
       locale: site?.locale ?? gen.locale ?? 'ro',
       branding,
     });
