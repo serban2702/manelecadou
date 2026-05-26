@@ -338,6 +338,11 @@ function FormTab({ data }: { data: OrderDetail }) {
 
 function PaymentTab({ data }: { data: OrderDetail }) {
   const p = data.payment;
+  // Lazy: cerem datele de facturare Stripe doar când userul intră pe tab.
+  const { data: stripeDetails, loading: stripeLoading } = useAsync(
+    () => (p ? AdminApi.paymentStripeDetails(p.id) : Promise.resolve(null)),
+    [p?.id],
+  );
   if (!p) return <Empty title="Demo gratuit — fără plată" />;
   return (
     <div className="space-y-4">
@@ -371,6 +376,46 @@ function PaymentTab({ data }: { data: OrderDetail }) {
               </a>
             }
           />
+        )}
+      </Card>
+
+      <Card title="Date facturare (Stripe)" icon={<CreditCard className="h-4 w-4" />}>
+        {stripeLoading ? (
+          <Skeleton className="h-24 w-full" />
+        ) : !stripeDetails ? (
+          <p className="text-xs text-muted-foreground">
+            Detaliile nu sunt disponibile (plată fără Stripe Session sau eroare API).
+          </p>
+        ) : (
+          <>
+            <Kv k="Nume" v={stripeDetails.name ?? '—'} />
+            <Kv k="Email" v={stripeDetails.email ?? '—'} />
+            <Kv k="Telefon" v={stripeDetails.phone ?? '—'} />
+            {stripeDetails.address ? (
+              <>
+                <Kv k="Adresă" v={stripeDetails.address.line1 ?? '—'} />
+                {stripeDetails.address.line2 && (
+                  <Kv k="Adresă (2)" v={stripeDetails.address.line2} />
+                )}
+                <Kv
+                  k="Oraș"
+                  v={`${stripeDetails.address.city ?? '—'}${
+                    stripeDetails.address.state ? `, ${stripeDetails.address.state}` : ''
+                  }`}
+                />
+                <Kv k="Cod poștal" v={stripeDetails.address.postalCode ?? '—'} />
+                <Kv k="Țară" v={stripeDetails.address.country ?? '—'} />
+              </>
+            ) : (
+              <Kv k="Adresă" v="—" />
+            )}
+            {stripeDetails.paymentMethod && stripeDetails.paymentMethod.brand && (
+              <Kv
+                k="Card"
+                v={`${stripeDetails.paymentMethod.brand.toUpperCase()} ••••${stripeDetails.paymentMethod.last4 ?? '????'} (${stripeDetails.paymentMethod.expMonth}/${stripeDetails.paymentMethod.expYear})`}
+              />
+            )}
+          </>
         )}
       </Card>
     </div>
