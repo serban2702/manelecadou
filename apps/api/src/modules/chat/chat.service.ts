@@ -1026,6 +1026,38 @@ export class ChatService implements OnModuleInit {
       { userId: conv.userId, guestId: conv.guestId, siteId: conv.siteId },
     );
 
+    // ============== Flux GRATIS (amount=0) ==============
+    // Skip Stripe + payment_link. Marchez direct paidUnlocked=true pe gen
+    // (când Suno termină, /m/<id> va expune varianta full). Trimit doar
+    // un mesaj informativ în chat.
+    if (Math.round(dto.amount) <= 0) {
+      await this.msg.manager
+        .createQueryBuilder()
+        .update('generations')
+        .set({ paidUnlocked: true })
+        .where('id = :id', { id: generation.id })
+        .execute();
+
+      const sysBody = `🎁 Generăm gratuit acum melodia pentru ${dto.recipientName}. Va fi gata în ~90 secunde.`;
+      const sysMsg = this.msg.create({
+        conversationId: conv.id,
+        siteId: conv.siteId,
+        authorRole: 'admin',
+        authorId: adminUserId,
+        body: sysBody,
+        messageType: 'text',
+        aiGenerated: true,
+        detectedLang: 'ro',
+      });
+      const savedSys = await this.msg.save(sysMsg);
+      conv.lastMessageAt = savedSys.createdAt;
+      conv.unreadByUser += 1;
+      conv.unreadByAdmin = 0;
+      await this.conv.save(conv);
+      this.gateway.emitMessage({ message: savedSys, conversation: conv });
+      return { generationId: generation.id, paymentMessageId: savedSys.id };
+    }
+
     // Creează Stripe Checkout cu metadata unlockGenerationId — webhook va dezolba.
     const description = dto.productName?.trim() || `Manea personalizată pentru ${dto.recipientName}`;
     const checkout = await this.payments.createCheckoutSession({

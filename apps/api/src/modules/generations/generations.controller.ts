@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  NotFoundException,
   Param,
   Post,
   Query,
@@ -171,11 +172,14 @@ export class GenerationsController {
       // fără paidUnlocked sau fără type='full'.
       return sanitizeAudio(g);
     } catch {
-      // Fallback: dacă generation-ul e succeeded, expunem o vedere publică restrânsă
+      // Fallback: orice generation succeeded e accesibil public cu URL-ul direct.
+      // Pentru demo neplătit → expunem demoAudioUrl. Pentru paidUnlocked sau type='full'
+      // → expunem audioUrl complet. Eliminăm vechiul block care arunca „Not your
+      // generation" pe demo neplătit — admin trimite linkul către cine vrea.
       const pub = await this.svc.findOnePublic(id);
-      if (!pub || pub.status !== 'succeeded') throw new Error('Not your generation');
-      // Demo neplătit → privat pentru owner. Nu îl expunem public.
-      if (pub.type === 'demo' && !pub.paidUnlocked) throw new Error('Not your generation');
+      if (!pub || pub.status !== 'succeeded') {
+        throw new NotFoundException('Generation indisponibilă');
+      }
       // best-effort view tracking; ignorăm eșecul (nu blochează request-ul)
       this.svc.incrementViewCount(pub.id).catch(() => {});
       // Vizitatorii anonimi pe link partajat — doar demo, niciodată full.

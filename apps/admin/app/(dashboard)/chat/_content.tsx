@@ -1655,8 +1655,9 @@ function DemoPaymentModal({
       setError('Userul e guest fără email — trebuie introdus aici');
       return;
     }
-    if (amount < 50) {
-      setError('Suma minimă: 0.50 (Stripe limit)');
+    // amount=0 → gratis (skip plată). Altfel min 50 cents = limita Stripe.
+    if (amount > 0 && amount < 50) {
+      setError('Suma trebuie să fie 0 (gratis) sau minim 0.50 (limita Stripe)');
       return;
     }
     setBusy(true);
@@ -1753,7 +1754,14 @@ function DemoPaymentModal({
             </div>
           )}
           <div className="pt-2 border-t border-border">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">Link plată (pentru deblocare full)</div>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+              {amount === 0 ? 'Plată — GRATIS (skip Stripe)' : 'Link plată (pentru deblocare full)'}
+            </div>
+            {amount === 0 && (
+              <div className="text-[11px] text-emerald-500 bg-emerald-500/10 border border-emerald-500/30 rounded p-2 mb-2">
+                💡 Sumă = 0 → melodia se generează gratis. Nu se trimite link de plată. Varianta completă se deblochează automat.
+              </div>
+            )}
             <div className="grid grid-cols-[1fr_120px] gap-3">
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Sumă</label>
@@ -1784,7 +1792,11 @@ function DemoPaymentModal({
           <Button variant="ghost" onClick={onClose} disabled={busy}>Anulează</Button>
           <Button onClick={submit} disabled={busy}>
             {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
-            {busy ? 'Lansez...' : 'Lansează demo + trimite plată'}
+            {busy
+              ? 'Lansez...'
+              : amount === 0
+                ? 'Generează GRATIS'
+                : 'Lansează demo + trimite plată'}
           </Button>
         </div>
       </div>
