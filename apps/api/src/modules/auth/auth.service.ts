@@ -163,6 +163,64 @@ export class AuthService {
             .where('"ownerGuestId" = :gid', { gid: guest.id })
             .execute();
 
+          // Merge conversațiile chat guest → user. Dacă userul are deja o conv pe
+          // același site, mutăm mesajele guest acolo + ștergem conv guest goală.
+          // Altfel, doar promovăm conv guest la userId.
+          try {
+            const guestConvs = await mgr
+              .getRepository('conversations')
+              .createQueryBuilder('c')
+              .where('c."guestId" = :gid', { gid: guest.id })
+              .getRawMany<{ c_id: string; c_siteId: string | null; c_unreadByAdmin: number; c_unreadByUser: number; c_lastMessageAt: Date | null }>();
+
+            for (const row of guestConvs) {
+              const existingUserConv = await mgr
+                .getRepository('conversations')
+                .createQueryBuilder('c')
+                .where('c."userId" = :uid', { uid: user.id })
+                .andWhere(row.c_siteId ? 'c."siteId" = :sid' : 'c."siteId" IS NULL', { sid: row.c_siteId })
+                .getRawOne<{ c_id: string }>();
+
+              if (existingUserConv) {
+                // Mută toate mesajele din conv guest în conv user existentă
+                await mgr
+                  .createQueryBuilder()
+                  .update('chat_messages')
+                  .set({ conversationId: existingUserConv.c_id })
+                  .where('"conversationId" = :gcid', { gcid: row.c_id })
+                  .execute();
+                // Update tool calls audit
+                await mgr
+                  .createQueryBuilder()
+                  .update('ai_tool_calls')
+                  .set({ conversationId: existingUserConv.c_id })
+                  .where('"conversationId" = :gcid', { gcid: row.c_id })
+                  .execute()
+                  .catch(() => {});
+                // Bump unread counter + lastMessageAt pe conv țintă
+                await mgr.getRepository('conversations').update(
+                  { id: existingUserConv.c_id },
+                  {
+                    unreadByAdmin: () => `COALESCE("unreadByAdmin", 0) + ${row.c_unreadByAdmin ?? 0}` as unknown as number,
+                    unreadByUser: () => `COALESCE("unreadByUser", 0) + ${row.c_unreadByUser ?? 0}` as unknown as number,
+                    lastMessageAt: row.c_lastMessageAt ?? undefined,
+                  },
+                );
+                // Șterge conv guest goală
+                await mgr.getRepository('conversations').delete({ id: row.c_id });
+              } else {
+                // Promovează conv guest la userId
+                await mgr.getRepository('conversations').update(
+                  { id: row.c_id },
+                  { userId: user.id, guestId: null, email: user.email },
+                );
+              }
+            }
+          } catch (err) {
+            this.logger.warn(`chat merge guest→user failed: ${(err as Error).message}`);
+            // Non-fatal — userul oricum se autentifică cu succes
+          }
+
           if (guest.freeDemoUsed && !user.freeDemoUsed) {
             user.freeDemoUsed = true;
             await userRepo.save(user);

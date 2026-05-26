@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import {
+  Archive,
+  ArchiveRestore,
   Bot,
   Check,
   CheckCheck,
@@ -16,6 +18,7 @@ import {
   Loader2,
   MessageCircle,
   Monitor,
+  MoreVertical,
   Paperclip,
   Pencil,
   Search,
@@ -78,11 +81,23 @@ function playAdminPing() {
   } catch {/* autoplay blocked */}
 }
 
+interface ContextMenuState {
+  conv: { id: string; subject: string };
+  x: number;
+  y: number;
+}
+
 export default function AdminChatPage() {
   const { isAllSelected } = useSitesMap();
   const [active, setActive] = useState<string | null>(null);
   const [pendingSuggestions, setPendingSuggestions] = useState(0);
   const originalTitleRef = useRef<string>('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{ id: string; current: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null);
+  // Long-press support pentru mobil
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [draft, setDraft] = useState('');
   const [livePresence, setLivePresence] = useState<Map<string, boolean>>(new Map());
   const [enriched, setEnriched] = useState<Map<string, EnrichedPresence>>(new Map());
@@ -97,10 +112,69 @@ export default function AdminChatPage() {
   }, [searchInput]);
 
   const { data: convs, refetch: refetchConvs } = useAsync(
-    () => ChatApi.list(searchQuery ? { q: searchQuery } : {}),
-    [searchQuery],
+    () => ChatApi.list({
+      q: searchQuery || undefined,
+      archived: showArchived || undefined,
+    }),
+    [searchQuery, showArchived],
     { refetchInterval: searchQuery ? undefined : 30_000 },
   );
+
+  // Acțiuni context menu
+  async function archiveConv(id: string, archived: boolean) {
+    try {
+      await ChatApi.archive(id, archived);
+      if (active === id) setActive(null);
+      refetchConvs();
+    } catch (e) {
+      alert(`Eroare: ${(e as Error).message}`);
+    }
+  }
+  async function renameConv(id: string, subject: string) {
+    try {
+      await ChatApi.rename(id, subject);
+      setRenameTarget(null);
+      refetchConvs();
+      if (active === id) refetchThread();
+    } catch (e) {
+      alert(`Eroare: ${(e as Error).message}`);
+    }
+  }
+  async function deleteConv(id: string) {
+    try {
+      const r = await ChatApi.deleteConversation(id);
+      if (active === id) setActive(null);
+      setDeleteTarget(null);
+      refetchConvs();
+      alert(`Conversația ștearsă (${r.deletedMessages} mesaje).`);
+    } catch (e) {
+      alert(`Eroare: ${(e as Error).message}`);
+    }
+  }
+
+  function openContextMenuFor(conv: { id: string; subject: string }, e: { clientX: number; clientY: number }) {
+    // Clamp poziția să nu iasă din ecran
+    const menuWidth = 200;
+    const menuHeight = 160;
+    const x = Math.min(e.clientX, (typeof window !== 'undefined' ? window.innerWidth : 1200) - menuWidth - 8);
+    const y = Math.min(e.clientY, (typeof window !== 'undefined' ? window.innerHeight : 800) - menuHeight - 8);
+    setContextMenu({ conv, x, y });
+  }
+  function handleConvLongPressStart(conv: { id: string; subject: string }, e: React.TouchEvent) {
+    const touch = e.touches[0];
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    longPressTimer.current = setTimeout(() => {
+      openContextMenuFor(conv, { clientX: touch.clientX, clientY: touch.clientY });
+      // Haptic feedback pe device-uri suportate
+      try { (navigator as { vibrate?: (n: number) => void }).vibrate?.(40); } catch {/*ignore*/}
+    }, 550);
+  }
+  function handleConvLongPressEnd() {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }
 
   const { data: thread, refetch: refetchThread } = useAsync(
     () => active ? ChatApi.thread(active) : Promise.resolve(null as never),
@@ -364,9 +438,27 @@ export default function AdminChatPage() {
         <aside className="w-72 shrink-0 bg-card border border-border rounded-xl overflow-hidden flex flex-col">
           <div className="p-3 border-b border-border flex items-center justify-between">
             <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-              Conversații
+              {showArchived ? 'Arhivate' : 'Conversații'}
             </span>
-            <Badge variant="muted">{list.length}</Badge>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowArchived((v) => !v);
+                  setActive(null);
+                }}
+                title={showArchived ? 'Vezi conversațiile active' : 'Vezi arhivate'}
+                className={cn(
+                  'h-6 w-6 rounded flex items-center justify-center transition',
+                  showArchived
+                    ? 'bg-amber-500/20 text-amber-400'
+                    : 'text-muted-foreground hover:bg-secondary',
+                )}
+              >
+                {showArchived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
+              </button>
+              <Badge variant="muted">{list.length}</Badge>
+            </div>
           </div>
           <div className="p-2 border-b border-border">
             <div className="relative">
@@ -408,11 +500,32 @@ export default function AdminChatPage() {
                   <button
                     key={c.id}
                     onClick={() => setActive(c.id)}
+                    onContextMenu={(ev) => {
+                      ev.preventDefault();
+                      openContextMenuFor({ id: c.id, subject: c.subject }, { clientX: ev.clientX, clientY: ev.clientY });
+                    }}
+                    onTouchStart={(ev) => handleConvLongPressStart({ id: c.id, subject: c.subject }, ev)}
+                    onTouchEnd={handleConvLongPressEnd}
+                    onTouchMove={handleConvLongPressEnd}
+                    onTouchCancel={handleConvLongPressEnd}
                     className={cn(
-                      'w-full text-left p-3 border-b border-border/50 hover:bg-secondary/50 transition',
+                      'w-full text-left p-3 border-b border-border/50 hover:bg-secondary/50 transition relative group',
                       sel && 'bg-primary/10 hover:bg-primary/15',
                     )}
                   >
+                    {/* Buton ⋮ (vertical dots) — vizibil pe hover desktop, mereu pe mobil */}
+                    <button
+                      type="button"
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+                        openContextMenuFor({ id: c.id, subject: c.subject }, { clientX: rect.right, clientY: rect.top });
+                      }}
+                      className="absolute top-2 right-2 h-6 w-6 rounded flex items-center justify-center bg-secondary/60 hover:bg-secondary border border-border opacity-0 group-hover:opacity-100 transition z-10 md:flex"
+                      title="Opțiuni (right-click sau long-press)"
+                    >
+                      <MoreVertical className="h-3.5 w-3.5" />
+                    </button>
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-sm font-semibold text-foreground truncate flex items-center gap-2 min-w-0">
                         <PresenceDot online={c.online} />
@@ -641,6 +754,65 @@ export default function AdminChatPage() {
           siteId={thread.conversation.siteId}
           onClose={() => setShowPaymentModal(false)}
           onSend={sendPaymentLink}
+        />
+      )}
+
+      {/* Context menu (right-click / long-press) pentru conversație */}
+      {contextMenu && (
+        <>
+          {/* Backdrop click-to-close */}
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setContextMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+          />
+          <div
+            className="fixed z-50 w-[200px] rounded-lg border border-border bg-popover shadow-xl overflow-hidden"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+          >
+            <button
+              type="button"
+              onClick={() => { setRenameTarget({ id: contextMenu.conv.id, current: contextMenu.conv.subject }); setContextMenu(null); }}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-secondary/60 flex items-center gap-2"
+            >
+              <Pencil className="h-3.5 w-3.5" /> Redenumește
+            </button>
+            <button
+              type="button"
+              onClick={() => { archiveConv(contextMenu.conv.id, !showArchived); setContextMenu(null); }}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-secondary/60 flex items-center gap-2"
+            >
+              {showArchived
+                ? <><ArchiveRestore className="h-3.5 w-3.5" /> Dezarhivează</>
+                : <><Archive className="h-3.5 w-3.5" /> Arhivează</>}
+            </button>
+            <div className="border-t border-border" />
+            <button
+              type="button"
+              onClick={() => { setDeleteTarget({ id: contextMenu.conv.id, label: contextMenu.conv.subject }); setContextMenu(null); }}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-destructive/15 text-destructive flex items-center gap-2"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Șterge definitiv
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Modal redenumire */}
+      {renameTarget && (
+        <RenameModal
+          current={renameTarget.current}
+          onClose={() => setRenameTarget(null)}
+          onSave={(subject) => renameConv(renameTarget.id, subject)}
+        />
+      )}
+
+      {/* Confirm ștergere */}
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          label={deleteTarget.label}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={() => deleteConv(deleteTarget.id)}
         />
       )}
     </div>
@@ -1195,6 +1367,101 @@ function PaymentCard({
         />
       )}
     </>
+  );
+}
+
+function RenameModal({
+  current,
+  onClose,
+  onSave,
+}: {
+  current: string;
+  onClose: () => void;
+  onSave: (subject: string) => void;
+}) {
+  const [subject, setSubject] = useState(current);
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-3">
+          <Pencil className="h-5 w-5 text-primary" />
+          <h3 className="text-base font-semibold">Redenumește conversația</h3>
+        </div>
+        <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">
+          Subiect (max 200 caractere)
+        </label>
+        <input
+          type="text"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          maxLength={200}
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && subject.trim()) { setBusy(true); onSave(subject.trim()); }
+            if (e.key === 'Escape') onClose();
+          }}
+          className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none focus:ring-1 focus:ring-primary/50"
+        />
+        <div className="flex justify-end gap-2 mt-5">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Anulează</Button>
+          <Button
+            onClick={() => { setBusy(true); onSave(subject.trim()); }}
+            disabled={busy || !subject.trim() || subject.trim() === current}
+          >
+            {busy ? <Loader2 className="animate-spin" /> : <Check />}
+            Salvează
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmDeleteModal({
+  label,
+  onClose,
+  onConfirm,
+}: {
+  label: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const matches = confirm.trim().toLowerCase() === 'sterge';
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card border border-destructive/40 rounded-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-3">
+          <Trash2 className="h-5 w-5 text-destructive" />
+          <h3 className="text-base font-semibold">Șterge conversația definitiv</h3>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Vei pierde TOATE mesajele din <b className="text-foreground">{label}</b>, inclusiv plățile asociate (din chat) și audit-ul AI. Această acțiune <b className="text-destructive">nu poate fi anulată</b>.
+        </p>
+        <p className="text-xs text-muted-foreground mb-1.5">Scrie <code className="bg-destructive/10 px-1 rounded text-destructive">sterge</code> pentru confirmare:</p>
+        <input
+          type="text"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          autoFocus
+          placeholder="sterge"
+          className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none focus:ring-1 focus:ring-destructive/50"
+        />
+        <div className="flex justify-end gap-2 mt-5">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Anulează</Button>
+          <Button
+            variant="destructive"
+            onClick={() => { setBusy(true); onConfirm(); }}
+            disabled={busy || !matches}
+          >
+            {busy ? <Loader2 className="animate-spin" /> : <Trash2 />}
+            Șterge definitiv
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 

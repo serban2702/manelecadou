@@ -9,11 +9,21 @@ export interface PaymentLinkOpts {
 }
 
 export class ChatApi {
-  static list(opts: { q?: string } = {}): Promise<AdminChatConversation[]> {
+  static list(opts: { q?: string; archived?: boolean } = {}): Promise<AdminChatConversation[]> {
     const params = new URLSearchParams();
     if (opts.q) params.set('q', opts.q);
+    if (opts.archived) params.set('archived', 'true');
     const qs = params.toString();
     return http.get(`/admin/chat/conversations${qs ? `?${qs}` : ''}`);
+  }
+  static archive(id: string, archived: boolean): Promise<{ ok: true; archivedAt: string | null }> {
+    return http.patch(`/admin/chat/conversations/${id}/archive`, { archived });
+  }
+  static rename(id: string, subject: string): Promise<{ ok: true; subject: string }> {
+    return http.patch(`/admin/chat/conversations/${id}/rename`, { subject });
+  }
+  static deleteConversation(id: string): Promise<{ ok: true; deletedMessages: number }> {
+    return http.delete(`/admin/chat/conversations/${id}`);
   }
   static thread(id: string): Promise<{ conversation: AdminChatConversation; messages: AdminChatMessage[] }> {
     return http.get(`/admin/chat/conversations/${id}`);

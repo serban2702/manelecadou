@@ -2,8 +2,10 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   Sse,
@@ -53,6 +55,16 @@ class PaymentLinkDto {
   description?: string;
   @IsOptional() @IsBoolean()
   premium?: boolean;
+}
+
+class RenameDto {
+  @IsString() @MinLength(1) @MaxLength(200)
+  subject!: string;
+}
+
+class ArchiveDto {
+  @IsOptional()
+  archived?: boolean;
 }
 
 class LaunchGenerationDto {
@@ -145,8 +157,39 @@ export class AdminChatController {
   constructor(private readonly svc: ChatService) {}
 
   @Get('conversations')
-  list(@CurrentSiteId() siteId: string | null, @Query('q') q?: string) {
-    return this.svc.listAllConversations(siteId, { q });
+  list(
+    @CurrentSiteId() siteId: string | null,
+    @Query('q') q?: string,
+    @Query('archived') archivedStr?: string,
+  ) {
+    return this.svc.listAllConversations(siteId, {
+      q,
+      archived: archivedStr === 'true',
+    });
+  }
+
+  /** Arhivează (sau dezarhivează cu ?unarchive=true) o conversație. */
+  @Patch('conversations/:id/archive')
+  async toggleArchive(
+    @Param('id') id: string,
+    @Body() body: ArchiveDto,
+  ) {
+    const archived = body.archived !== false;
+    const c = await this.svc.setArchived(id, archived);
+    return { ok: true, archivedAt: c.archivedAt };
+  }
+
+  /** Redenumește subiectul afișat al conversației. */
+  @Patch('conversations/:id/rename')
+  async rename(@Param('id') id: string, @Body() body: RenameDto) {
+    const c = await this.svc.renameConversation(id, body.subject);
+    return { ok: true, subject: c.subject };
+  }
+
+  /** Șterge complet conversația + toate mesajele. Ireversibil. */
+  @Delete('conversations/:id')
+  deleteConversation(@Param('id') id: string) {
+    return this.svc.deleteConversation(id);
   }
 
   @Get('conversations/:id')

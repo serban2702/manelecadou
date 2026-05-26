@@ -356,9 +356,10 @@ export class ChatService implements OnModuleInit {
    */
   async listAllConversations(
     siteId: string | null,
-    opts: { q?: string } = {},
+    opts: { q?: string; archived?: boolean } = {},
   ): Promise<ConversationWithPresence[]> {
     const q = opts.q?.trim();
+    const includeArchived = opts.archived === true;
     // Listing-ul e cross-tenant când nu ai un site activ — UI-ul afișează badge-ul
     // siteId per conversație ca să distingi vizual. Acțiunile write rămân scoped la conversație
     // (ex: reply ia siteId din entitate, nu din header).
@@ -370,6 +371,12 @@ export class ChatService implements OnModuleInit {
     // bucket 1 (online fără mesaje) când avem 200+ goi.
     const qb = this.conv.createQueryBuilder('c');
     if (siteId) qb.where('c.siteId = :siteId', { siteId });
+    // Default: exclude arhivate. Cu ?archived=true returnăm DOAR arhivate.
+    if (includeArchived) {
+      qb.andWhere('c."archivedAt" IS NOT NULL');
+    } else {
+      qb.andWhere('c."archivedAt" IS NULL');
+    }
 
     if (q) {
       // SEARCH MODE: scanăm TOATE conversațiile (inclusiv offline+fără mesaje filtrate
@@ -1069,6 +1076,44 @@ export class ChatService implements OnModuleInit {
     const c = await this.getConversation(conversationId);
     c.aiMode = mode;
     return this.conv.save(c);
+  }
+
+  /** Arhivează sau dezarhivează o conversație. */
+  async setArchived(conversationId: string, archived: boolean): Promise<Conversation> {
+    const c = await this.getConversation(conversationId);
+    c.archivedAt = archived ? new Date() : null;
+    return this.conv.save(c);
+  }
+
+  /** Redenumește subiectul afișat în sidebar. */
+  async renameConversation(conversationId: string, subject: string): Promise<Conversation> {
+    const trimmed = subject.trim().slice(0, 200);
+    if (!trimmed) throw new ForbiddenException('Subiect gol');
+    const c = await this.getConversation(conversationId);
+    c.subject = trimmed;
+    return this.conv.save(c);
+  }
+
+  /** Șterge complet conversația + toate mesajele + audit tool calls. Ireversibil. */
+  async deleteConversation(conversationId: string): Promise<{ ok: true; deletedMessages: number }> {
+    const c = await this.getConversation(conversationId);
+    const msgCount = await this.msg.count({ where: { conversationId: c.id } });
+    // Ștergem mesajele întâi
+    await this.msg.delete({ conversationId: c.id });
+    // Ștergem audit tool calls (best-effort, dacă tabela există)
+    try {
+      await this.msg.manager
+        .createQueryBuilder()
+        .delete()
+        .from('ai_tool_calls')
+        .where('"conversationId" = :id', { id: c.id })
+        .execute();
+    } catch {
+      /* ai_tool_calls poate să nu existe sau să nu refere — ignored */
+    }
+    // În final conversation
+    await this.conv.delete({ id: c.id });
+    return { ok: true, deletedMessages: msgCount };
   }
 
   /** Forțează deschiderea chat-ului pe partea de client (admin sau AI). */

@@ -122,6 +122,10 @@ export class Conversation {
   @Column({ type: 'timestamptz', nullable: true })
   disconnectedAt!: Date | null;
 
+  /** Conversație arhivată — nu apare în lista default (doar la filtru explicit). */
+  @Column({ type: 'timestamptz', nullable: true })
+  archivedAt!: Date | null;
+
   /**
    * State machine pentru AI sales wizard. Persistă datele colectate de AI prin
    * întrebări succesive (stil, ocazie, beneficiar, mesaj, voce). La finalize:
