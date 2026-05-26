@@ -509,22 +509,14 @@ export class ChatService implements OnModuleInit {
         .addOrderBy('c."updatedAt"', 'DESC')
         .take(100);
     } else {
-      // DEFAULT: filtrăm la conversațiile relevante — cu mesaje SAU online acum.
-      const onlineIds = this.gateway.snapshot();
-      const relevanceClauses: string[] = ['c."lastMessageAt" IS NOT NULL'];
-      const relevanceParams: Record<string, unknown> = {};
-      if (onlineIds.users.length > 0) {
-        relevanceClauses.push('c."userId" IN (:...onlineUsers)');
-        relevanceParams.onlineUsers = onlineIds.users;
-      }
-      if (onlineIds.guests.length > 0) {
-        relevanceClauses.push('c."guestId" IN (:...onlineGuests)');
-        relevanceParams.onlineGuests = onlineIds.guests;
-      }
-      qb.andWhere(`(${relevanceClauses.join(' OR ')})`, relevanceParams);
+      // DEFAULT: TOATE conversațiile cu cel puțin un mesaj (cerere user 2026-05-27).
+      // FĂRĂ limită — sortarea finală pe online/offline se face în JS după augmenter,
+      // dar DB-ul nu mai trunchiază la 200 ca să excludă conv online cu mesaje vechi.
+      // Safety cap la 5000 ca să nu explodeze RAM dacă apare un volum patologic.
+      qb.andWhere('c."lastMessageAt" IS NOT NULL');
       qb.orderBy('c."lastMessageAt"', 'DESC', 'NULLS LAST')
         .addOrderBy('c."updatedAt"', 'DESC')
-        .take(200);
+        .take(5000);
     }
     const all = await qb.getMany();
 
