@@ -340,6 +340,12 @@ export class ChatService implements OnModuleInit {
     const saved = await this.msg.save(msg);
     conversation.lastMessageAt = saved.createdAt;
     conversation.unreadByAdmin += 1;
+    // Dacă adminul arhivase conversația dar userul revine cu un mesaj nou,
+    // o readucem activă în sidebar (altfel ar rămâne ascunsă și admin n-ar
+    // vedea că userul a revenit).
+    if (conversation.archivedAt) {
+      conversation.archivedAt = null;
+    }
     await this.conv.save(conversation);
     this.gateway.emitMessage({ message: saved, conversation });
     // Auto-translate inbound non-RO → RO (background, nu blocăm răspunsul către user).
