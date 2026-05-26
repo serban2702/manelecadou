@@ -1221,8 +1221,14 @@ export class ChatService implements OnModuleInit {
   }
 
   async notifyGenerationCompleted(generationId: string, status: 'succeeded' | 'failed'): Promise<void> {
-    // Caut conv prin wizardState (flux AI wizard) SAU prin payment_link
-    // (flux admin demo+plată — payload.unlockGenerationId).
+    // Caut conv prin 3 căi (în ordine de specificitate):
+    //  1. wizardState.generationId — flux AI Irina wizard_finalize
+    //  2. payment_link.payload.unlockGenerationId — flux admin demo+plată (legacy)
+    //  3. payment_link.payload.generationId — flux Irina + flux admin direct (cel mai
+    //     comun la 2026-05-27 după refactor Irina, înainte lipsea fallback-ul ăsta)
+    //  4. Generation.ownerUserId / ownerGuestId — fallback ultim: caut conv activă
+    //     a userului/guest-ului (cazul în care link-ul s-a creat în alt flow, ex.
+    //     pagina /studio direct, fără chat).
     let conv = await this.conv
       .createQueryBuilder('c')
       .where(`c."wizardState"->>'generationId' = :gid`, { gid: generationId })
@@ -1231,9 +1237,34 @@ export class ChatService implements OnModuleInit {
       const linkMsg = await this.msg
         .createQueryBuilder('m')
         .where(`m."messageType" = 'payment_link'`)
-        .andWhere(`m.payload->>'unlockGenerationId' = :gid`, { gid: generationId })
+        .andWhere(
+          `(m.payload->>'unlockGenerationId' = :gid OR m.payload->>'generationId' = :gid)`,
+          { gid: generationId },
+        )
         .getOne();
       if (linkMsg) conv = await this.conv.findOne({ where: { id: linkMsg.conversationId } });
+    }
+    if (!conv) {
+      // Fallback final: găsește orice conv activă a owner-ului generation-ului.
+      // Acoperă cazul când userul a generat prin /studio direct dar are conv chat
+      // deschisă — vrem să-l notificăm acolo. Folosesc query SQL ca să nu adaug
+      // dependency pe GenerationsService (circular risk).
+      const rows: Array<{ ownerUserId: string | null; ownerGuestId: string | null }> = await this.conv.manager.query(
+        `SELECT "ownerUserId", "ownerGuestId" FROM generations WHERE id = $1 LIMIT 1`,
+        [generationId],
+      );
+      const gen = rows[0];
+      if (gen?.ownerUserId) {
+        conv = await this.conv.findOne({
+          where: { userId: gen.ownerUserId },
+          order: { lastMessageAt: 'DESC' },
+        });
+      } else if (gen?.ownerGuestId) {
+        conv = await this.conv.findOne({
+          where: { guestId: gen.ownerGuestId },
+          order: { lastMessageAt: 'DESC' },
+        });
+      }
     }
     if (!conv) return;
 
