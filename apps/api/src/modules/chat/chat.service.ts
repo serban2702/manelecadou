@@ -549,9 +549,13 @@ export class ChatService implements OnModuleInit {
         const wsOnline = this.gateway.isOnline({ userId: c.userId, guestId: c.guestId });
         const analyticsOnline = lastSeenMs > 0 && (now - lastSeenMs) / 1000 < ONLINE_WINDOW_SEC;
         const online = wsOnline || analyticsOnline;
-        // IP: analytics_sessions (precis, persistent) → fallback WS handshake (capturat
-        // chiar dacă guest nu a tras încă /track) → null.
+        // IP în ordinea de prioritate:
+        //  1. Conversation.lastIp (persistat la fiecare WS connect, supraviețuiește restart API)
+        //  2. analytics_sessions (set la pageview, dar lipsă pentru guest care n-a încărcat încă /track)
+        //  3. gateway memory (WS handshake) — doar dacă online acum
+        //  4. null → UI arată „IP necunoscut" doar pentru conv-uri foarte vechi pre-feature
         const ip =
+          c.lastIp ||
           (c.userId && ips.users.get(c.userId)) ||
           (c.guestId && ips.guests.get(c.guestId)) ||
           this.gateway.getKnownIp({ userId: c.userId, guestId: c.guestId }) ||
@@ -566,33 +570,14 @@ export class ChatService implements OnModuleInit {
       });
 
     /**
-     * Bucket priority (cerere user — 2026-05-25):
-     * 0 = online + ultimul mesaj de la EI (user)
-     * 1 = online + ultimul mesaj de la NOI (admin)
-     * 2 = online + fără mesaje
-     * 3 = offline + ultimul mesaj de la EI (user)
-     * 4 = offline + ultimul mesaj de la NOI (admin)
-     * (offline fără mesaje sunt deja excluse din query prin filtrul de relevanță)
+     * Sortare simplă (cerere user 2026-05-27):
+     *  1. Online — DESC by lastMessageAt
+     *  2. Offline — DESC by lastMessageAt
+     * Fără sub-bucket-uri pe rolul ultimului mesaj — adminul vede direct cine-i activ
+     * cu ultimul schimb proaspăt sus.
      */
-    const bucket = (c: (typeof augmented)[number]) => {
-      const role = c.lastMessageRole;
-      if (c.online) {
-        if (role === 'user') return 0;
-        if (role === 'admin') return 1;
-        return 2;
-      }
-      if (role === 'user') return 3;
-      if (role === 'admin') return 4;
-      // Offline fără mesaje — în mod normal filtrate, dar fallback la coadă dacă apar.
-      return 5;
-    };
-
     augmented.sort((a, b) => {
-      const ba = bucket(a);
-      const bb = bucket(b);
-      if (ba !== bb) return ba - bb;
-      // În interiorul bucket-ului: unread DESC, apoi lastMessageAt DESC, apoi updatedAt DESC.
-      if (a.unreadByAdmin !== b.unreadByAdmin) return b.unreadByAdmin - a.unreadByAdmin;
+      if (a.online !== b.online) return a.online ? -1 : 1;
       const at = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
       const bt = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
       if (at !== bt) return bt - at;
@@ -664,8 +649,10 @@ export class ChatService implements OnModuleInit {
       this.fetchLastIp(userIds, guestIds),
     ]);
     const ip =
+      c.lastIp ||
       (c.userId && ips.users.get(c.userId)) ||
       (c.guestId && ips.guests.get(c.guestId)) ||
+      this.gateway.getKnownIp({ userId: c.userId, guestId: c.guestId }) ||
       null;
     if (wsOnline) {
       return { online: true, lastSeenAt: new Date().toISOString(), ip };

@@ -168,6 +168,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (ip) {
       if (ident.userId) this.lastIpByUser.set(ident.userId, ip);
       else if (ident.guestId) this.lastIpByGuest.set(ident.guestId, ip);
+      // Persistă pe toate conv-urile user/guest-ului. UPDATE direct (NU save full entity)
+      // ca să nu rupem wizardState concurrency.
+      if (ident.userId || ident.guestId) {
+        void this.convRepo
+          .createQueryBuilder()
+          .update(Conversation)
+          .set({ lastIp: ip })
+          .where(ident.userId ? '"userId" = :id' : '"guestId" = :id', {
+            id: ident.userId ?? ident.guestId,
+          })
+          .execute()
+          .catch(() => undefined);
+      }
     }
 
     if (ident.isAdmin) {

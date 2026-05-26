@@ -183,4 +183,12 @@ export class Conversation {
    */
   @Column({ type: 'integer', default: 0 })
   empathyMessagesSent!: number;
+
+  /**
+   * Ultimul IP cunoscut al user-ului/guest-ului. Persistat la fiecare WS connect.
+   * Sursă fallback robustă când analytics_sessions n-are date (user nou care n-a
+   * trimis încă pageview) sau când gateway memory s-a curățat (API restart).
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  lastIp!: string | null;
 }
