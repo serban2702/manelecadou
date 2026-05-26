@@ -54,6 +54,14 @@ export class ChatApi {
   static reply(id: string, body: string): Promise<AdminChatMessage> {
     return http.post(`/admin/chat/conversations/${id}/messages`, { body });
   }
+  /** Editează un mesaj admin existent. */
+  static editMessage(messageId: string, body: string): Promise<AdminChatMessage> {
+    return http.patch(`/admin/chat/messages/${messageId}`, { body });
+  }
+  /** Soft-delete mesaj. */
+  static deleteMessage(messageId: string): Promise<{ ok: true }> {
+    return http.delete(`/admin/chat/messages/${messageId}`);
+  }
   static setAiMode(id: string, mode: AiChatMode): Promise<{ ok: true; aiMode: AiChatMode }> {
     return http.post(`/admin/chat/conversations/${id}/ai-mode`, { mode });
   }

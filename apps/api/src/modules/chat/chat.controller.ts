@@ -352,6 +352,18 @@ export class AdminChatController {
     );
   }
 
+  /** Editează body-ul unui mesaj admin existent. WS update live. */
+  @Patch('messages/:id')
+  editMessage(@Param('id') id: string, @Body() body: { body: string }) {
+    return this.svc.editMessage(id, body.body);
+  }
+
+  /** Soft-delete mesaj. Dispare instant la admin și user prin WS. */
+  @Delete('messages/:id')
+  deleteMessage(@Param('id') id: string) {
+    return this.svc.deleteMessage(id);
+  }
+
   // ============== Quick Replies (per-site) ==============
 
   @Get('quick-replies')

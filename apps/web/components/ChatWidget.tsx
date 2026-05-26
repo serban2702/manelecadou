@@ -157,6 +157,33 @@ export function ChatWidget() {
     setOpen(false);
   }, []);
 
+  /** Admin a editat un mesaj — actualizez local cache imediat. */
+  const handleMessageUpdated = useCallback((ev: { message: { id: string; body: string; editedAt?: string | null } }) => {
+    qc.setQueryData<{ messages: Array<{ id: string; body: string; editedAt?: string | null }>; conversation: unknown } | undefined>(
+      ['chat-me'],
+      (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          messages: prev.messages.map((m) =>
+            m.id === ev.message.id ? { ...m, body: ev.message.body, editedAt: ev.message.editedAt ?? new Date().toISOString() } : m,
+          ),
+        };
+      },
+    );
+  }, [qc]);
+
+  /** Admin a șters un mesaj — îl scot din listă instant. */
+  const handleMessageDeleted = useCallback((ev: { messageId: string }) => {
+    qc.setQueryData<{ messages: Array<{ id: string }>; conversation: unknown } | undefined>(
+      ['chat-me'],
+      (prev) => {
+        if (!prev) return prev;
+        return { ...prev, messages: prev.messages.filter((m) => m.id !== ev.messageId) };
+      },
+    );
+  }, [qc]);
+
   const handleAck = useCallback((ev: MessageAckEvent) => {
     // Update local cache pentru a reflecta delivered/read pe mesajele user → admin
     qc.setQueryData<{ messages: Array<{ id: string; deliveredAt?: string | null; readAt?: string | null }>; conversation: unknown } | undefined>(
@@ -187,6 +214,8 @@ export function ChatWidget() {
   const { setChatOpen, ack, sendTyping } = useChatSocket({
     enabled: ready,
     onMessage: handleMessage,
+    onMessageUpdated: handleMessageUpdated,
+    onMessageDeleted: handleMessageDeleted,
     onForceOpen: handleForceOpen,
     onForceClose: handleForceClose,
     onAck: handleAck,
@@ -657,6 +686,9 @@ export function ChatWidget() {
                   >
                     <span>
                       {new Date(m.createdAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
+                      {(mm as { editedAt?: string | null }).editedAt && (
+                        <span style={{ marginLeft: 4, opacity: 0.7, fontStyle: 'italic' }}>(editat)</span>
+                      )}
                     </span>
                     {isMine && (
                       <ReceiptIcon delivered={!!mm.deliveredAt} read={!!mm.readAt} dark />

@@ -69,6 +69,8 @@ export interface TypingEvent {
 
 interface UseChatSocketArgs {
   onMessage?: (e: ChatMessageEvent) => void;
+  onMessageUpdated?: (e: ChatMessageEvent) => void;
+  onMessageDeleted?: (e: { messageId: string; conversationId: string }) => void;
   onPresence?: (e: PresenceEvent) => void;
   onSnapshot?: (s: PresenceSnapshot) => void;
   onAck?: (e: MessageAckEvent) => void;
@@ -76,7 +78,7 @@ interface UseChatSocketArgs {
   onTyping?: (e: TypingEvent) => void;
 }
 
-export function useAdminChatSocket({ onMessage, onPresence, onSnapshot, onAck, onAiSuggestion, onTyping }: UseChatSocketArgs = {}) {
+export function useAdminChatSocket({ onMessage, onMessageUpdated, onMessageDeleted, onPresence, onSnapshot, onAck, onAiSuggestion, onTyping }: UseChatSocketArgs = {}) {
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
 
@@ -94,6 +96,8 @@ export function useAdminChatSocket({ onMessage, onPresence, onSnapshot, onAck, o
     socket.on('connect', () => setConnected(true));
     socket.on('disconnect', () => setConnected(false));
     if (onMessage) socket.on('chat:message', onMessage);
+    if (onMessageUpdated) socket.on('chat:message_updated', onMessageUpdated);
+    if (onMessageDeleted) socket.on('chat:message_deleted', onMessageDeleted);
     if (onPresence) socket.on('chat:presence', onPresence);
     if (onSnapshot) socket.on('chat:presence:snapshot', onSnapshot);
     if (onAck) socket.on('chat:message:ack', onAck);

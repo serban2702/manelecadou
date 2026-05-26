@@ -119,4 +119,12 @@ export class ChatMessage {
   /** ID-ul mesajului user la care AI sugerează răspuns (pentru tracking). */
   @Column({ type: 'uuid', nullable: true })
   aiSuggestionFor!: string | null;
+
+  /** Momentul ultimei editări (admin a modificat body-ul). NULL = nu a fost editat. */
+  @Column({ type: 'timestamptz', nullable: true })
+  editedAt!: Date | null;
+
+  /** Soft-delete: dacă e setat, mesajul nu mai apare la user. Păstrăm rândul pentru audit. */
+  @Column({ type: 'timestamptz', nullable: true })
+  deletedAt!: Date | null;
 }

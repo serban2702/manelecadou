@@ -132,6 +132,8 @@ export interface AdminChatMessage {
   attachmentSize?: number | null;
   attachmentName?: string | null;
   aiGenerated?: boolean;
+  editedAt?: string | null;
+  deletedAt?: string | null;
 }
 
 export interface AdminPromoCode {

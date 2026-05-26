@@ -389,6 +389,24 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.to(ADMIN_ROOM).emit('chat:conversation_updated', { conversation: conv });
   }
 
+  /** Emite update pe un mesaj existent (admin a editat body-ul). */
+  emitMessageUpdated(message: ChatMessage, conversation: { id: string; userId: string | null; guestId: string | null }) {
+    const payload = { message, conversation };
+    this.server.to(ADMIN_ROOM).emit('chat:message_updated', payload);
+    if (conversation.userId) this.server.to(userRoom(conversation.userId)).emit('chat:message_updated', payload);
+    if (conversation.guestId) this.server.to(guestRoom(conversation.guestId)).emit('chat:message_updated', payload);
+    this.server.to(conversationRoom(conversation.id)).emit('chat:message_updated', payload);
+  }
+
+  /** Emite ștergere mesaj — clientul/adminul scot din listă instant. */
+  emitMessageDeleted(messageId: string, conversation: { id: string; userId: string | null; guestId: string | null }) {
+    const payload = { messageId, conversationId: conversation.id };
+    this.server.to(ADMIN_ROOM).emit('chat:message_deleted', payload);
+    if (conversation.userId) this.server.to(userRoom(conversation.userId)).emit('chat:message_deleted', payload);
+    if (conversation.guestId) this.server.to(guestRoom(conversation.guestId)).emit('chat:message_deleted', payload);
+    this.server.to(conversationRoom(conversation.id)).emit('chat:message_deleted', payload);
+  }
+
   /** Emite o sugestie AI doar către admin room (NU către client). */
   emitAiSuggestion(args: { conversation: { id: string; siteId: string | null }; message: ChatMessage }) {
     this.server.to(ADMIN_ROOM).emit('chat:ai_suggestion', {

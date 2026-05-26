@@ -335,9 +335,13 @@ export class ChatService implements OnModuleInit {
       where: { conversationId: conversation.id },
       order: { createdAt: 'ASC' },
     });
-    // Clientul NU vede mesaje internal: AI suggestions, system messages.
+    // Clientul NU vede mesaje internal: AI suggestions, system messages, mesaje șterse.
     const messages = all.filter(
-      (m) => m.messageType !== 'ai_suggestion' && m.messageType !== 'system' && m.authorRole !== 'system',
+      (m) =>
+        m.messageType !== 'ai_suggestion' &&
+        m.messageType !== 'system' &&
+        m.authorRole !== 'system' &&
+        !m.deletedAt,
     );
     // BUG-FIX 2026-05-26: NU mai resetăm unreadByUser aici. Polling-ul (la 30-60s)
     // și refetch-ul după WS chat:message apelau listMyMessages care reseta
@@ -678,9 +682,10 @@ export class ChatService implements OnModuleInit {
       where: { conversationId },
       order: { createdAt: 'ASC' },
     });
-    // Filtrăm sugestiile AI aprobate/respinse — nu mai au valoare în thread (după approve
-    // există deja un admin message real cu aiSuggestionFor link). Audit-ul rămâne în DB.
-    return all.filter((m) => !(m.messageType === 'ai_suggestion' && m.aiApprovedBy));
+    // Filtrăm sugestiile AI aprobate/respinse + mesajele soft-deleted.
+    return all.filter(
+      (m) => !m.deletedAt && !(m.messageType === 'ai_suggestion' && m.aiApprovedBy),
+    );
   }
 
   async markReadByAdmin(conversationId: string): Promise<void> {
@@ -1555,6 +1560,48 @@ export class ChatService implements OnModuleInit {
         by: 'admin',
       });
     }
+  }
+
+  // ============== Edit / Delete mesaje (admin) ==============
+
+  /**
+   * Editează body-ul unui mesaj admin existent. Doar mesaje text — nu se atinge
+   * payload-ul (payment_link, song_preview etc.). Emite WS update live.
+   */
+  async editMessage(
+    messageId: string,
+    newBody: string,
+  ): Promise<ChatMessage> {
+    const m = await this.msg.findOne({ where: { id: messageId } });
+    if (!m) throw new NotFoundException('Mesajul nu există');
+    if (m.deletedAt) throw new ForbiddenException('Mesajul a fost șters');
+    const trimmed = newBody.trim();
+    if (!trimmed) throw new ForbiddenException('Text gol');
+    m.body = trimmed;
+    m.editedAt = new Date();
+    const saved = await this.msg.save(m);
+    const conv = await this.conv.findOne({ where: { id: m.conversationId } });
+    if (conv) {
+      this.gateway.emitMessageUpdated(saved, conv);
+    }
+    return saved;
+  }
+
+  /**
+   * Soft-delete mesaj. Setează deletedAt + golește body-ul vizibil userului.
+   * Emite WS — clientul/adminul îl scot din listă instant.
+   */
+  async deleteMessage(messageId: string): Promise<{ ok: true }> {
+    const m = await this.msg.findOne({ where: { id: messageId } });
+    if (!m) throw new NotFoundException('Mesajul nu există');
+    if (m.deletedAt) return { ok: true };
+    m.deletedAt = new Date();
+    const saved = await this.msg.save(m);
+    const conv = await this.conv.findOne({ where: { id: m.conversationId } });
+    if (conv) {
+      this.gateway.emitMessageDeleted(saved.id, conv);
+    }
+    return { ok: true };
   }
 
   // ============== Quick Replies (răspunsuri predefinite per-site) ==============

@@ -233,6 +233,13 @@ export default function AdminChatPage() {
       refetchConvs();
       refetchThread();
     },
+    onMessageUpdated: () => {
+      refetchThread();
+    },
+    onMessageDeleted: () => {
+      refetchThread();
+      refetchConvs();
+    },
     onAiSuggestion: (e) => {
       refetchThread();
       refetchConvs();
@@ -372,6 +379,10 @@ export default function AdminChatPage() {
   const [showDemoPaymentModal, setShowDemoPaymentModal] = useState(false);
   /** Sidebar dreapta vizibil/ascuns (Răspunsuri + AI Assistant). */
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  /** Mesaj în curs de editare (null = niciunul). */
+  const [editingMessage, setEditingMessage] = useState<AdminChatMessage | null>(null);
+  /** Mesaj în curs de ștergere (null = niciunul). */
+  const [deletingMessage, setDeletingMessage] = useState<AdminChatMessage | null>(null);
 
   async function onFileChosen(f: File) {
     setPendingFile(f);
@@ -810,6 +821,8 @@ export default function AdminChatPage() {
                       refetchThread();
                       refetchConvs();
                     }}
+                    onEdit={(msg) => setEditingMessage(msg)}
+                    onDelete={(msg) => setDeletingMessage(msg)}
                   />
                 ))}
               </div>
@@ -968,6 +981,35 @@ export default function AdminChatPage() {
             setShowDemoPaymentModal(false);
             refetchThread();
             refetchConvs();
+          }}
+        />
+      )}
+
+      {/* Modal editare mesaj admin */}
+      {editingMessage && (
+        <EditMessageModal
+          initial={editingMessage}
+          onClose={() => setEditingMessage(null)}
+          onSaved={() => {
+            setEditingMessage(null);
+            refetchThread();
+          }}
+        />
+      )}
+
+      {/* Confirm ștergere mesaj */}
+      {deletingMessage && (
+        <ConfirmDeleteMessageModal
+          message={deletingMessage}
+          onClose={() => setDeletingMessage(null)}
+          onConfirm={async () => {
+            try {
+              await ChatApi.deleteMessage(deletingMessage.id);
+            } finally {
+              setDeletingMessage(null);
+              refetchThread();
+              refetchConvs();
+            }
           }}
         />
       )}
@@ -1138,11 +1180,15 @@ function ChatBubble({
   ackOverride,
   conversationEmail,
   onSuggestionAction,
+  onEdit,
+  onDelete,
 }: {
   m: AdminChatMessage;
   ackOverride?: { deliveredAt?: string; readAt?: string };
   conversationEmail?: string | null;
   onSuggestionAction?: () => void;
+  onEdit?: (m: AdminChatMessage) => void;
+  onDelete?: (m: AdminChatMessage) => void;
 }) {
   // Render special pentru AI suggestion
   if (m.messageType === 'ai_suggestion') {
@@ -1162,18 +1208,50 @@ function ChatBubble({
   const hasTranslation = false;
   const deliveredAt = m.deliveredAt ?? ackOverride?.deliveredAt;
   const readAt = m.readAt ?? ackOverride?.readAt;
+  // Edit/Delete: doar pe mesaje admin de tip text/payment_link/song_preview (nu ai_suggestion/system).
+  const canEditDelete =
+    fromAdmin &&
+    (!m.messageType || m.messageType === 'text' || m.messageType === 'payment_link' || m.messageType === 'song_preview');
   return (
     <div
       className={cn(
-        'max-w-[75%] px-3 py-2 rounded-lg text-sm whitespace-pre-wrap',
+        'group relative max-w-[75%] px-3 py-2 rounded-lg text-sm whitespace-pre-wrap',
         fromAdmin
           ? 'self-end bg-primary/15 text-foreground border border-primary/30'
           : 'self-start bg-secondary border border-border',
       )}
     >
+      {canEditDelete && (
+        <div className="absolute -top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 z-10">
+          {/* Edit doar pe text simplu (payment_link/song_preview au payload structurat) */}
+          {(!m.messageType || m.messageType === 'text') && onEdit && (
+            <button
+              type="button"
+              onClick={() => onEdit(m)}
+              title="Editează"
+              className="h-6 w-6 rounded-full bg-card border border-border hover:bg-secondary flex items-center justify-center shadow-sm"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={() => onDelete(m)}
+              title="Șterge mesajul"
+              className="h-6 w-6 rounded-full bg-card border border-border hover:bg-destructive/20 hover:border-destructive/40 flex items-center justify-center shadow-sm"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      )}
       <div className="text-[10px] uppercase tracking-wider opacity-60 mb-1 flex items-center gap-1 flex-wrap">
         {fromAdmin ? <Crown className="h-3 w-3" /> : <User className="h-3 w-3" />}
         {fromAdmin ? 'Admin' : 'User'} · {format(new Date(m.createdAt), 'HH:mm', { locale: ro })}
+        {m.editedAt && (
+          <span className="italic opacity-70 normal-case tracking-normal">(editat)</span>
+        )}
         {m.aiGenerated && <Badge variant="muted" className="h-4 px-1 text-[9px]"><Bot className="h-2.5 w-2.5" /> AI</Badge>}
       </div>
       {m.attachmentUrl && m.attachmentMime?.startsWith('image/') && (
@@ -2331,6 +2409,123 @@ function LyricsPreviewModal({
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Editează body-ul unui mesaj admin existent (text simplu). */
+function EditMessageModal({
+  initial,
+  onClose,
+  onSaved,
+}: {
+  initial: AdminChatMessage;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [body, setBody] = useState(initial.body);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    const trimmed = body.trim();
+    if (!trimmed) {
+      setError('Textul nu poate fi gol');
+      return;
+    }
+    if (trimmed === initial.body) {
+      onClose();
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await ChatApi.editMessage(initial.id, trimmed);
+      onSaved();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-card border border-border rounded-xl w-full max-w-md p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-base font-semibold mb-3">Editează mesaj</h3>
+        <Textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={5}
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') onClose();
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              save();
+            }
+          }}
+          placeholder="Textul mesajului"
+        />
+        <p className="text-[11px] text-muted-foreground mt-2">
+          Userul va vedea instant noua versiune cu badge „(editat)". Cmd/Ctrl+Enter pentru a salva, Esc pentru a anula.
+        </p>
+        {error && <div className="text-xs text-destructive bg-destructive/10 rounded p-2 mt-2">{error}</div>}
+        <div className="flex justify-end gap-2 mt-4">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Anulează</Button>
+          <Button onClick={save} disabled={busy || !body.trim()}>
+            {busy ? <Loader2 className="animate-spin" /> : null}
+            Salvează
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Confirm ștergere mesaj — Enter confirmă, Esc anulează. */
+function ConfirmDeleteMessageModal({
+  message,
+  onClose,
+  onConfirm,
+}: {
+  message: AdminChatMessage;
+  onClose: () => void;
+  onConfirm: () => void | Promise<void>;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'Enter') onConfirm();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose, onConfirm]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-card border border-border rounded-xl w-full max-w-sm p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-base font-semibold mb-2">Șterge mesajul?</h3>
+        <p className="text-sm text-muted-foreground mb-3">
+          Userul îl va vedea dispărând imediat. Acțiunea e ireversibilă în UI (rândul rămâne în DB pentru audit).
+        </p>
+        <div className="text-xs italic bg-secondary/40 border border-border rounded p-2 mb-4 max-h-20 overflow-y-auto">
+          {message.body.slice(0, 200)}{message.body.length > 200 ? '…' : ''}
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>Anulează (Esc)</Button>
+          <Button variant="destructive" onClick={onConfirm}>
+            <Trash2 className="h-3.5 w-3.5" />
+            Șterge (Enter)
+          </Button>
+        </div>
       </div>
     </div>
   );

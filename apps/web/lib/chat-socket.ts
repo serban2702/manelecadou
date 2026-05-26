@@ -55,6 +55,8 @@ export interface TypingEvent {
 interface UseChatSocketArgs {
   enabled?: boolean;
   onMessage?: (e: IncomingChatMessage) => void;
+  onMessageUpdated?: (e: IncomingChatMessage) => void;
+  onMessageDeleted?: (e: { messageId: string; conversationId: string }) => void;
   onForceOpen?: () => void;
   onForceClose?: () => void;
   onAck?: (e: MessageAckEvent) => void;
@@ -91,7 +93,7 @@ function detectDevice(): DeviceInfo {
  * Conexiune WebSocket pentru chat user (sau guest).
  * Trimite presence heartbeat (10s) + reacționează la page changes.
  */
-export function useChatSocket({ enabled = true, onMessage, onForceOpen, onForceClose, onAck, onTyping }: UseChatSocketArgs = {}) {
+export function useChatSocket({ enabled = true, onMessage, onMessageUpdated, onMessageDeleted, onForceOpen, onForceClose, onAck, onTyping }: UseChatSocketArgs = {}) {
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const lastPathRef = useRef<string | null>(null);
@@ -127,6 +129,8 @@ export function useChatSocket({ enabled = true, onMessage, onForceOpen, onForceC
     });
     socket.on('disconnect', () => setConnected(false));
     if (onMessage) socket.on('chat:message', onMessage);
+    if (onMessageUpdated) socket.on('chat:message_updated', onMessageUpdated);
+    if (onMessageDeleted) socket.on('chat:message_deleted', onMessageDeleted);
     if (onForceOpen) socket.on('chat:force_open', onForceOpen);
     if (onForceClose) socket.on('chat:force_close', onForceClose);
     if (onAck) socket.on('chat:message:ack', onAck);
