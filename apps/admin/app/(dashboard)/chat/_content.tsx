@@ -1088,9 +1088,9 @@ function ChatBubble({
     );
   }
   const fromAdmin = m.authorRole === 'admin';
-  const [mode, setMode] = useState<'original' | 'ro'>('original');
-  const display = mode === 'ro' && m.bodyRo ? m.bodyRo : m.body;
-  const hasTranslation = !!m.bodyRo && m.detectedLang && m.detectedLang !== 'ro';
+  // Auto-translate dezactivat (2026-05-26) — afișăm mereu textul original.
+  const display = m.body;
+  const hasTranslation = false;
   const deliveredAt = m.deliveredAt ?? ackOverride?.deliveredAt;
   const readAt = m.readAt ?? ackOverride?.readAt;
   return (

@@ -348,8 +348,9 @@ export class ChatService implements OnModuleInit {
     }
     await this.conv.save(conversation);
     this.gateway.emitMessage({ message: saved, conversation });
-    // Auto-translate inbound non-RO → RO (background, nu blocăm răspunsul către user).
-    void this.translateMessageAsync(saved.id);
+    // Auto-translate DEZACTIVAT (2026-05-26) — detecția de limbă pe mesaje
+    // scurte ("Ok", "Da") era nesigură și ducea la admin-outbound traducere
+    // RO → EN nedorită. Mesajele se afișează în original.
     // AI agent dacă conversația e în mod suggest/auto (non-blocking).
     void this.maybeTriggerAi(conversation.id, saved.id);
     // Web Push notification către toți adminii subscribed (best-effort, non-blocking).
@@ -688,16 +689,9 @@ export class ChatService implements OnModuleInit {
     const conv = await this.getConversation(conversationId);
     const trimmed = body.trim();
 
-    // Auto-translate RO → limba clientului (dacă există un mesaj inbound non-RO).
-    let finalBody = trimmed;
-    let translationMeta: { original: string; targetLang: string; consensus: number } | null = null;
-    if (!opts?.skipTranslation) {
-      const r = await this.translateAdminOutbound(conversationId, trimmed, opts?.forceTargetLang);
-      if (r) {
-        translationMeta = { original: trimmed, targetLang: r.targetLang, consensus: r.consensus };
-        finalBody = r.final;
-      }
-    }
+    // Auto-translate DEZACTIVAT (2026-05-26) — admin trimite verbatim.
+    const finalBody = trimmed;
+    const translationMeta: { original: string; targetLang: string; consensus: number } | null = null;
 
     const msg = this.msg.create({
       conversationId: conv.id,
