@@ -835,7 +835,7 @@ export class ChatService implements OnModuleInit {
 
       // System message de confirmare (vizibil pe ambele părți)
       const body = status === 'paid'
-        ? '✅ Plată primită! Începem să generăm melodia ta — vei primi linkul aici sau pe email în câteva minute.'
+        ? '✅ Plată primită! Începem să generăm melodia ta — durează 5-10 minute. Vei primi linkul aici și pe email când e gata.'
         : '⚠️ Plata nu s-a procesat. Te rugăm să reîncerci sau scrie-ne aici.';
       const sysMsg = this.msg.create({
         conversationId: convId,
@@ -962,7 +962,7 @@ export class ChatService implements OnModuleInit {
       siteId: conv.siteId,
       authorRole: 'admin',
       authorId: null,
-      body: `🎵 Am lansat generarea pentru ${dto.recipientName}. Melodia va fi gata în ~90 secunde.`,
+      body: `🎵 Am lansat generarea pentru ${dto.recipientName}. Melodia va fi gata în 5-10 minute.`,
       messageType: 'text',
       aiGenerated: true,
       detectedLang: 'ro',

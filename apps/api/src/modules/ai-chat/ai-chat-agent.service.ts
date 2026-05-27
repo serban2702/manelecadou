@@ -433,7 +433,13 @@ Emoji moderat și CONTEXTUAL: 👋 (salut), 🎵 🎶 🎤 (muzică), 💳 (plat
 Limba conversației: ${locale}. NICIODATĂ alta. Răspunsuri SCURTE (1-2 fraze, max 220 caractere).
 NICIODATĂ markdown (** sau __ sau [text](url)). Linkuri ca text simplu.
 
-Context business: Vindem manele AI personalizate generate în ~90 secunde, livrare email.
+Context business: Vindem manele AI personalizate generate în ~5-10 minute (depinde
+de încărcarea Suno), livrare email + chat.
+
+ETA STANDARD (memorat și nealterat):
+- Generarea durează 5-10 minute în mod normal (NU 90 secunde, NU 1-2 minute!).
+- Suno API poate avea uneori probleme/lentoare — atunci durează mai mult sau eșuează.
+- NU folosi NICIODATĂ formulări tip „90 secunde", „1-2 minute", „2 minute" — totul e 5-10 min.
 Preț: ${price}. 50.000+ manele generate, garanție 30 zile.
 
 ═══════════════════════════════════════════════════════════════════════
@@ -480,7 +486,7 @@ ETAPA 6 — FINALIZE:
     - Țese contextul user-ului în mesajul melodiei (locuri/ani/momente din chat).
     - Creează Generation pending + Stripe Checkout + payment_link în chat.
   → După finalize, spune scurt:
-    „Gata, ți-am trimis linkul de plată. După plată melodia se generează în ~90s și o primești pe email + apare aici."
+    „Gata, ți-am trimis linkul de plată. După plată melodia se generează în 5-10 minute și o primești pe email + apare aici."
 
 ETAPA 7 — POST PLATĂ (automat — webhook trimite mesaje, NU întreba):
   → Dacă userul întreabă „a ajuns plata?", „cât mai durează?", „e gata?" →
@@ -565,9 +571,12 @@ REGULI STRICTE:
     link mai sus. Spune-i să facă scroll up sau să verifice cardurile de plată.
 20. POST-PLATĂ FLOW (după ce a plătit + melodia se generează):
     - Dacă userul întreabă „cât mai durează?", „unde-i melodia?", „e gata?" → check_order_status.
-    - Dacă humanStatus='plătit, se generează acum' → spune scurt: „Mai e 1-2 minute, sigur.
-      O primești și pe email și apare aici sus. Poți să o urmărești și pe pagina ${" "}
-      (link din linkToSong) — vezi când e gata."
+    - Dacă humanStatus='plătit, se generează acum' și au trecut < 5 min de la plată →
+      „Suno generează acum, durează 5-10 minute în total. O primești pe email și
+      apare aici sus. Poți să o urmărești pe pagina (linkToSong) — vezi când e gata."
+    - Dacă au trecut 5-10 min și încă rulează (in_progress) → „Suno e încărcat azi,
+      se mai întârzie un pic dar e pe drum. Țin de termen."
+    - Dacă au trecut peste 10 min sau healthCategory='tech_error' → vezi regula tech_error.
     - Dacă humanStatus='gata' → trimite link-ul + spune că-i și pe email.
     - NU repeta 5 mesaje despre același status — la al doilea întrebări identice, varieză
       răspunsul („Imediat 🎵", „Aproape gata, jur", „Mai durează 30 secunde maximum").
@@ -787,15 +796,18 @@ REGULI STRICTE:
     const linkToSong = paid || audioReady ? `/m/${generation.id}` : null;
 
     // Timing — cât timp a trecut de la pickup la Suno
+    // Suno API normal: 3-5 min. Cap ETA 10 min — peste, considerăm tech_error.
     const createdAtMs = new Date(generation.createdAt).getTime();
     const ageSeconds = Math.floor((Date.now() - createdAtMs) / 1000);
-    const isStuck = paid && !audioReady && ageSeconds > 300; // >5 min în generare = blocaj real
+    const ageMinutes = Math.floor(ageSeconds / 60);
+    const isStuck = paid && !audioReady && ageSeconds > 600; // >10 min = clar tech_error
+    const isSlowButNormal = paid && !audioReady && ageSeconds > 300 && ageSeconds <= 600; // 5-10 min = încărcare Suno
     const retryCount = (generation as { retryCount?: number }).retryCount ?? 0;
     const nextRetryAt = (generation as { nextRetryAt?: Date | null }).nextRetryAt ?? null;
 
     // humanStatus + healthCategory pentru audit/UX
     let humanStatus = 'în așteptare plată';
-    let healthCategory: 'ok' | 'in_progress' | 'tech_error' | 'failed' | 'waiting_payment' = 'waiting_payment';
+    let healthCategory: 'ok' | 'in_progress' | 'in_progress_slow' | 'tech_error' | 'failed' | 'waiting_payment' = 'waiting_payment';
     if (paid && audioReady) {
       humanStatus = 'gata — manea finalizată';
       healthCategory = 'ok';
@@ -805,12 +817,15 @@ REGULI STRICTE:
         : 'eroare tehnică — generare eșuată';
       healthCategory = 'tech_error';
     } else if (paid && isStuck) {
-      humanStatus = `întârziere tehnică (rulează de ${Math.floor(ageSeconds / 60)} min, normal e ~2 min)`;
+      humanStatus = `întârziere tehnică (rulează de ${ageMinutes} min, peste 10 min e anormal)`;
       healthCategory = 'tech_error';
+    } else if (paid && isSlowButNormal) {
+      humanStatus = `Suno încărcat (${ageMinutes} min), încă în limita normală`;
+      healthCategory = 'in_progress_slow';
     } else if (paid) {
       humanStatus = retryCount > 0
         ? `plătit, se generează (reîncercare după eroare anterioară)`
-        : 'plătit, se generează acum (~30-90s)';
+        : `plătit, Suno generează acum (${ageMinutes} min trecute, ETA 5-10 min total)`;
       healthCategory = 'in_progress';
     } else if (generation.status === 'failed') {
       humanStatus = 'eșuat înainte de plată';
@@ -820,11 +835,20 @@ REGULI STRICTE:
     // Instrucțiune pentru AI bazată pe healthCategory — diferențiat clar
     let instruction: string;
     if (healthCategory === 'ok') {
-      instruction = `Manea e gata. Trimite userului link-ul ${linkToSong} cu un mesaj cald gen „Gata, e aici 🎵 - ${linkToSong}". Menționează scurt că a primit-o și pe email.`;
+      instruction = `Manea e gata. Trimite userului link-ul ${linkToSong} cu un mesaj cald („Gata, e aici 🎵 - ${linkToSong}"). Menționează scurt că a primit-o și pe email.`;
     } else if (healthCategory === 'in_progress') {
-      instruction = `Plata e ok, Suno generează acum. ETA ~30-90s. Răspunde scurt și natural — variează expresia: „Imediat 🎵", „Aproape gata", „Mai e 1-2 minute". Trimite linkul live ${linkToSong} unde vede progresul + spune că ajunge și pe email. NU repeta același mesaj la fiecare întrebare — alternează.`;
+      instruction = `Plata e ok, Suno generează acum (rulează de ${ageMinutes} min, normal 5-10 min total). Răspunde NATURAL și variat — alterneză:
+- „Suno generează acum, durează 5-10 minute în total. O primești pe email și aici."
+- „E pe drum, mai am nevoie de câteva minute."
+- „Aproape, Suno termină în 2-3 minute."
+Trimite linkul live ${linkToSong} unde vede progresul. NICIODATĂ „90 secunde" sau „1-2 minute" — totul e 5-10 min. NU repeta același mesaj — alterneză.`;
+    } else if (healthCategory === 'in_progress_slow') {
+      instruction = `Plata e ok, rulează de ${ageMinutes} min — peste media de 5 min dar încă sub limita de 10. Suno e probabil încărcat azi. Răspunde ÎNCURAJATOR și ONEST: „Suno e încărcat azi, se mai întârzie un pic dar țin de termen — maximum 10 minute total. Pe ea e."
+NU promite mai puțin. Trimite linkul ${linkToSong} ca să verifice live.`;
     } else if (healthCategory === 'tech_error') {
-      instruction = `EROARE TEHNICĂ. Suno e jos sau generarea a eșuat (retry=${retryCount}${nextRetryAt ? ', reîncercare automată planificată' : ''}). Răspunde EMPATIC și ONEST: „Am o mică problemă tehnică la generare, dar se rezolvă - mai am nevoie de câteva minute. Stăm pe ea, jur ❤️". NU promite ETA scurt. Dacă userul insistă, escalate_to_human ca admin uman să-l reasigure direct.`;
+      instruction = `EROARE TEHNICĂ. Suno e jos / generarea a eșuat / blocat peste 10 min (retry=${retryCount}${nextRetryAt ? ', reîncercare automată planificată' : ''}, age=${ageMinutes} min). Răspunde EMPATIC și ONEST:
+„Am o problemă tehnică la generare cu serviciul Suno - se întâmplă uneori. Verific acum exact și revin în câteva minute, jur ❤️. Dacă durează mai mult, primești toți banii înapoi."
+NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să intervină.`;
     } else if (healthCategory === 'failed') {
       instruction = `Generation eșuat înainte de plată. Spune-i scurt că s-a întâmplat o eroare și că poate încerca o comandă nouă — apoi wizard_get_state.`;
     } else {
@@ -1148,7 +1172,7 @@ REGULI STRICTE:
         generationId: generation.id,
         checkoutUrl: checkout.url,
         instruction:
-          'Comanda finalizată cu succes. Spune userului scurt că linkul de plată e mai sus + că după plată melodia se generează în ~90s și o va primi pe email. TERMINĂ TURUL.',
+          'Comanda finalizată cu succes. Spune userului scurt că linkul de plată e mai sus + că după plată melodia se generează în 5-10 minute și o va primi pe email + apare aici în chat. TERMINĂ TURUL. NU folosi „90 secunde" sau „1-2 minute".',
       };
     } catch (e) {
       this.logger.warn(`wizard_finalize failed: ${(e as Error).message}`);
