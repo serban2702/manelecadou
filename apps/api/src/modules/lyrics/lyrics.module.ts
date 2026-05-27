@@ -254,15 +254,17 @@ export class LyricsService {
       });
       return result.content;
     } catch (err) {
+      // openaiChat are deja 30 retry-uri cu exponential backoff pe 5xx/network.
+      // Dacă tot a eșuat, NU livrăm mock (junk) la un client plătitor —
+      // aruncăm eroare ca să intre generation în status=failed și BullMQ
+      // să marcheze job-ul pentru retry/admin manual + refund.
       const message = (err as Error).message;
-      this.logger.warn(`OpenAI writer failed, fallback mock: ${message}`);
-      const mock = this.mockDraft(input);
+      this.logger.error(`OpenAI writer failed after retries: ${message}`);
       await this.logs.finalize(logId, {
-        outcome: 'mock_fallback',
-        responseContent: mock,
+        outcome: 'failed',
         errorMessage: message,
       });
-      return mock;
+      throw err; // propagă la generations.processor → status=failed → notify admin
     }
   }
 
@@ -306,8 +308,12 @@ export class LyricsService {
       });
       return result.content;
     } catch (err) {
+      // Pentru critic: dacă tot retry-ul eșuează, fallback la mockRefine (draft as-is,
+      // doar normalizare whitespace) — draft-ul writer-ului e deja valid OpenAI-generat
+      // dacă am ajuns aici. mockRefine NU adaugă text junk, doar curățează.
+      // (Spre deosebire de writer unde mockDraft introduce „MOCK FALLBACK" în versuri.)
       const message = (err as Error).message;
-      this.logger.warn(`OpenAI critic failed, fallback mock: ${message}`);
+      this.logger.warn(`OpenAI critic failed after retries, fallback la draft as-is: ${message}`);
       const mock = this.mockRefine(draft);
       await this.logs.finalize(logId, {
         outcome: 'mock_fallback',
@@ -330,35 +336,87 @@ export class LyricsService {
     usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
     durationMs: number;
   }> {
+    // Retry strategy (decizie 2026-05-27, după 520 OpenAI observat în prod):
+    // - Retry pe 5xx, 408 timeout, 429 rate-limit, network errors.
+    // - NU retry pe 4xx altele (400 bad request, 401 auth) — sunt bug-uri payload.
+    // - Exponential backoff: 2s, 4s, 8s, 16s, 32s, apoi cap 60s.
+    // - Max 30 attempts (~ 25 min total cap) — sigur ținem userul informat
+    //   via check_order_status care zice „eroare tehnică, mai durează puțin".
+    const MAX_ATTEMPTS = 30;
     const startedAt = Date.now();
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(
-        buildChatParams({
-          model,
-          temperature: 0.85,
-          messages: [
-            { role: 'system', content: system },
-            { role: 'user', content: user },
-          ],
-        }),
-      ),
-    });
-    const durationMs = Date.now() - startedAt;
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`OpenAI ${res.status}: ${text}`);
+    let lastErr: Error | null = null;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const attemptStartedAt = Date.now();
+      try {
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify(
+            buildChatParams({
+              model,
+              temperature: 0.85,
+              messages: [
+                { role: 'system', content: system },
+                { role: 'user', content: user },
+              ],
+            }),
+          ),
+        });
+        const durationMs = Date.now() - startedAt;
+        if (!res.ok) {
+          const text = await res.text();
+          const isRetryable = res.status >= 500 || res.status === 408 || res.status === 429;
+          if (isRetryable && attempt < MAX_ATTEMPTS) {
+            const delayMs = Math.min(60_000, 1000 * Math.pow(2, attempt));
+            this.logger.warn(
+              `OpenAI ${res.status} (attempt ${attempt}/${MAX_ATTEMPTS}) — retry în ${delayMs}ms`,
+            );
+            await new Promise((r) => setTimeout(r, delayMs));
+            lastErr = new Error(`OpenAI ${res.status}: ${text.slice(0, 200)}`);
+            continue;
+          }
+          // Non-retryable (4xx other than 408/429) sau am epuizat tentativele
+          throw new Error(`OpenAI ${res.status} (după ${attempt} tentative): ${text.slice(0, 500)}`);
+        }
+        const json = (await res.json()) as {
+          choices: Array<{ message: { content: string } }>;
+          usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+        };
+        const content = json.choices[0]?.message?.content?.trim() ?? '';
+        if (attempt > 1) {
+          this.logger.log(`OpenAI recovered after ${attempt} tentative (took ${durationMs}ms total)`);
+        }
+        return { content, raw: json, status: res.status, usage: json.usage, durationMs };
+      } catch (err) {
+        // Network errors (fetch failed, timeout, DNS) — retry
+        const message = (err as Error).message;
+        if (message.startsWith('OpenAI ') && !/OpenAI [5]\d\d/.test(message)) {
+          // Non-retryable HTTP error throw-uit mai sus — propagăm
+          throw err;
+        }
+        const isNetworkErr =
+          message.includes('fetch failed') ||
+          message.includes('ECONNRESET') ||
+          message.includes('ETIMEDOUT') ||
+          message.includes('ENOTFOUND') ||
+          message.includes('socket hang up');
+        if (isNetworkErr && attempt < MAX_ATTEMPTS) {
+          const delayMs = Math.min(60_000, 1000 * Math.pow(2, attempt));
+          this.logger.warn(
+            `OpenAI network err „${message.slice(0, 80)}" (attempt ${attempt}/${MAX_ATTEMPTS}) — retry în ${delayMs}ms`,
+          );
+          await new Promise((r) => setTimeout(r, delayMs));
+          lastErr = err as Error;
+          continue;
+        }
+        throw err;
+      }
     }
-    const json = (await res.json()) as {
-      choices: Array<{ message: { content: string } }>;
-      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
-    };
-    const content = json.choices[0]?.message?.content?.trim() ?? '';
-    return { content, raw: json, status: res.status, usage: json.usage, durationMs };
+    throw lastErr ?? new Error(`OpenAI epuizat după ${MAX_ATTEMPTS} tentative`);
   }
 
   /**
