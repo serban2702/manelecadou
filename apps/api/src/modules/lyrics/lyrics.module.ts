@@ -60,8 +60,37 @@ const LOCALE_NAME: Record<string, string> = {
   bs: 'Bosnian',
 };
 
-/** Marker pentru câmpurile pe care userul nu le-a completat (cerință explicită). */
-const NOT_FILLED = 'Utilizatorul nu a completat';
+/**
+ * Șterge orice linie din versuri care conține sentinel-ul NOT_FILLED sau text
+ * suspect de leak istoric („Utilizatorul nu a completat" — sentinel-ul vechi).
+ * Apelat după critic ca safety net când AI ignoră instrucțiunea de scrub.
+ */
+function scrubSentinel(text: string): string {
+  // Pattern-uri istorice + cel nou. Detectăm și varianta în engleză.
+  const dangerous = [
+    '__NOT_PROVIDED__',
+    'Utilizatorul nu a completat',
+    'utilizatorul nu a completat',
+    'NOT_PROVIDED',
+    'not provided by the user',
+    'the user did not provide',
+  ];
+  return text
+    .split('\n')
+    .filter((line) => {
+      const low = line.toLowerCase();
+      return !dangerous.some((s) => low.includes(s.toLowerCase()));
+    })
+    .join('\n');
+}
+
+/** Marker INTERN pentru câmpurile pe care userul nu le-a completat.
+ *  ⚠️ CRITIC: NU folosi text natural aici (înainte era „Utilizatorul nu a completat",
+ *  iar OpenAI cânta literal frazele „De la Utilizatorul nu a completat pentru Mirela"
+ *  în versurile finale — observat în prod 2026-05-28). Folosim un sentinel
+ *  unmistakably tehnic care nu poate fi cântat coerent + post-procesare safety
+ *  în critic care șterge linii care conțin sentinel-ul. */
+const NOT_FILLED = '__NOT_PROVIDED__';
 
 /**
  * Mapare ISO currency code → numele uzual folosit în versuri.
@@ -160,7 +189,18 @@ const WRITER_USER_TEMPLATE = [
   '6. Adapt the tone to the requested voice artist (jale → more "of"/"aoleu"; swagger → more flex/money/enemies).',
   '7. MUST sound like a real manea, NOT pop — use manele vocabulary natively in the target language.',
   '',
-  `IMPORTANT: if any field above is literally "${NOT_FILLED}", that value was not provided by the user — skip the related instruction (e.g. do not invent a sender name, do not invent a tip amount).`,
+  `CRITICAL — sentinel handling:`,
+  `Any field literally equal to "${NOT_FILLED}" is a TECHNICAL PLACEHOLDER meaning "user did not provide this value". You MUST:`,
+  `  - NEVER include the literal string "${NOT_FILLED}" in the output lyrics.`,
+  `  - SKIP the related instruction entirely (e.g. if sender = "${NOT_FILLED}", do NOT write any sender opening line at all — start directly with the recipient).`,
+  `  - NEVER invent a fake value (do NOT write "from a friend", "from someone", "from the user" — just omit the sender line completely).`,
+  `Examples of FORBIDDEN output:`,
+  `  ❌ "De la ${NOT_FILLED} pentru Mirela"`,
+  `  ❌ "From ${NOT_FILLED} to Mirela"`,
+  `  ❌ "${NOT_FILLED} dedicates this song to Mirela"`,
+  `Examples of CORRECT output when sender is missing:`,
+  `  ✓ Skip the "from X" line entirely; start with "Mirela, this song is for you..."`,
+  `  ✓ Direct address: "Mirela, te iubim cu toții..."`,
 ].join('\n');
 
 /**
@@ -174,6 +214,7 @@ const DEFAULT_CRITIC_SYSTEM = [
   '4. Manele-style vocabulary in the target language ("of", "aoleu", "brother", "God-God", "haide" or their equivalents).',
   '5. ALL Suno tags ([Intro], [Verse], [Chorus], [Bridge], [Outro], [Adlib]) exactly as they are — DO NOT translate or rename them.',
   '6. Strengthen the chorus hook if it is weak. DO NOT turn the song into pop.',
+  `7. SCRUB SENTINEL: if the draft contains the literal string "${NOT_FILLED}" ANYWHERE (in any field, line, or tag), DELETE the entire line containing it. If a "from X" opening references "${NOT_FILLED}", REMOVE that opening and start directly with the recipient instead. NEVER pass through the sentinel to the final output.`,
   '',
   'Return ONLY the final lyrics with the tags intact. No explanations.',
 ].join('\n');
@@ -242,17 +283,23 @@ export class LyricsService {
     }
     try {
       const result = await this.openaiChat(apiKey, model, sys, user);
+      // SAFETY: scrub sentinel ÎN WRITER. Critic-ul va mai face un scrub la final,
+      // dar dacă writer-ul produce sentinel, critic-ul ar putea să-l propage.
+      const scrubbed = scrubSentinel(result.content);
+      if (scrubbed !== result.content) {
+        this.logger.warn(`SENTINEL leak detected in writer draft gen=${input.generationId ?? '?'} — scrubbed.`);
+      }
       await this.logs.finalize(logId, {
         outcome: 'success',
         responseStatus: result.status,
         responseBody: result.raw,
-        responseContent: result.content,
+        responseContent: scrubbed,
         tokensPrompt: result.usage?.prompt_tokens ?? null,
         tokensCompletion: result.usage?.completion_tokens ?? null,
         tokensTotal: result.usage?.total_tokens ?? null,
         durationMs: result.durationMs,
       });
-      return result.content;
+      return scrubbed;
     } catch (err) {
       // openaiChat are deja 30 retry-uri cu exponential backoff pe 5xx/network.
       // Dacă tot a eșuat, NU livrăm mock (junk) la un client plătitor —
@@ -296,17 +343,26 @@ export class LyricsService {
     }
     try {
       const result = await this.openaiChat(apiKey, model, sys, user);
+      // SAFETY: scrub sentinel dacă scapă în output (observat în prod 2026-05-28:
+      // 2 melodii livrate cu „De la Utilizatorul nu a completat pentru Mirela").
+      // Dacă apare ORICE mențiune a sentinel-ului, ștergem rândul întreg și logăm.
+      const scrubbed = scrubSentinel(result.content);
+      if (scrubbed !== result.content) {
+        this.logger.warn(
+          `SENTINEL leak detected in lyrics gen=${input.generationId ?? '?'} — scrubbed.`,
+        );
+      }
       await this.logs.finalize(logId, {
         outcome: 'success',
         responseStatus: result.status,
         responseBody: result.raw,
-        responseContent: result.content,
+        responseContent: scrubbed,
         tokensPrompt: result.usage?.prompt_tokens ?? null,
         tokensCompletion: result.usage?.completion_tokens ?? null,
         tokensTotal: result.usage?.total_tokens ?? null,
         durationMs: result.durationMs,
       });
-      return result.content;
+      return scrubbed;
     } catch (err) {
       // Pentru critic: dacă tot retry-ul eșuează, fallback la mockRefine (draft as-is,
       // doar normalizare whitespace) — draft-ul writer-ului e deja valid OpenAI-generat
@@ -314,7 +370,7 @@ export class LyricsService {
       // (Spre deosebire de writer unde mockDraft introduce „MOCK FALLBACK" în versuri.)
       const message = (err as Error).message;
       this.logger.warn(`OpenAI critic failed after retries, fallback la draft as-is: ${message}`);
-      const mock = this.mockRefine(draft);
+      const mock = scrubSentinel(this.mockRefine(draft));
       await this.logs.finalize(logId, {
         outcome: 'mock_fallback',
         responseContent: mock,
