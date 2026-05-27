@@ -13,6 +13,7 @@ import { GenerationsService } from '../generations/generations.service';
 import { GuestSessionsService } from '../guest-sessions/guest-sessions.service';
 import { AiMemory } from './ai-memory.entity';
 import { AiToolCall } from './ai-tool-call.entity';
+import { MetaCapiService } from '../meta-capi/meta-capi.service';
 
 /** Lista oficială de stiluri (sincronă cu UI generator). Folosită pentru fuzzy match în wizard_update. */
 const STYLES = [
@@ -52,6 +53,20 @@ const VOICE_DEFAULTS = {
   F: 'mariana',   // Mariana Dumitru — voce feminină caldă, default feminin
 } as const;
 
+/** Jaccard similarity pe cuvinte. Returnează 0..1 — 1 = identice, 0 = disjuncte.
+ *  Folosit pentru detectarea buclelor sterile AI (răspuns identic la userul care
+ *  cere același lucru repetat). */
+function textOverlap(a: string, b: string): number {
+  if (!a || !b) return 0;
+  const wa = new Set(a.split(/\s+/).filter((w) => w.length >= 3));
+  const wb = new Set(b.split(/\s+/).filter((w) => w.length >= 3));
+  if (wa.size === 0 || wb.size === 0) return 0;
+  let intersect = 0;
+  for (const w of wa) if (wb.has(w)) intersect++;
+  const union = wa.size + wb.size - intersect;
+  return union === 0 ? 0 : intersect / union;
+}
+
 @Injectable()
 export class AIChatAgentService {
   private readonly logger = new Logger('AIChatAgent');
@@ -60,6 +75,8 @@ export class AIChatAgentService {
   private runningRuns = new Set<string>();
   /** Flag „mesaj nou venit în timpul rulării" — la finalul run-ului re-trigger. */
   private pendingFollowup = new Map<string, string>(); // convId → latestUserMsgId
+  /** Ultimul user msg ID pe care am pornit run. Anti-dublu trigger pe același mesaj. */
+  private lastTriggerMsgId = new Map<string, string>();
 
   constructor(
     @InjectRepository(Conversation) private readonly conv: Repository<Conversation>,
@@ -75,6 +92,7 @@ export class AIChatAgentService {
     private readonly guests: GuestSessionsService,
     @Inject(forwardRef(() => ChatGateway))
     private readonly gateway: ChatGateway,
+    private readonly metaCapi: MetaCapiService,
   ) {}
 
   /**
@@ -89,6 +107,16 @@ export class AIChatAgentService {
       this.logger.log(`AI run in progress for conv=${conversationId.slice(0, 8)} — pending followup`);
       return;
     }
+    // 1b. Dedupe pe ACELAȘI message id — observat bug (conv 4ee89544): același user
+    //     msg a trigger-uit 2 run-uri AI care au ajuns la send_message în paralel
+    //     producând 2 mesaje AI identice. Dacă ultimele 60s am rulat pe ACEST msg id,
+    //     skip.
+    const lastRunMsgId = this.lastTriggerMsgId.get(conversationId);
+    if (lastRunMsgId === userMessageId) {
+      this.logger.log(`skip duplicate trigger for msg=${userMessageId.slice(0, 8)}`);
+      return;
+    }
+    this.lastTriggerMsgId.set(conversationId, userMessageId);
     // 2. Delay 800ms — fereastră ca admin să poată schimba pe Manual înainte ca
     //    AI să pornească, ȘI ca să se „adune" mesajele consecutive user.
     await new Promise((r) => setTimeout(r, 800));
@@ -451,21 +479,51 @@ ETAPA 1 — QUALIFY (după ce userul răspunde la salut):
   → Lasă userul să-ți spună singur contextul (pentru cine, ce ocazie, ce situație).
   → NU întreba TU stilul/ocazia — userul îți spune natural când povestește contextul.
 
-ETAPA 2 — PREȚ + OFERTĂ (CRITIC — NICIODATĂ SKIPPED):
+ETAPA 2 — PREȚ + OFERTĂ (CRITIC — NICIODATĂ SKIPPED, MEREU prin TOOL):
   → ⚠️ OBLIGATORIU: înainte de a cere DETALII (nume, mesaj, email), TREBUIE să
-    anunți prețul și să primești confirmare „da/ok/de acord". Asta indiferent de
-    cât context ți-a dat userul în mesajele anterioare. Chiar dacă userul îți zice
-    „vreau o manea pentru soția mea Esmeralda" în primul mesaj, NU SĂRI direct la
-    cerere detalii — anunță întâi prețul.
-  → Apelează \`quote_price_with_offer\` care îți spune dacă userul are deja un cod
-    (de la roata norocului) și include automat oferta în mesaj.
-  → Pattern Irina: „Maneaua costa ${price} la care puteti sa beneficiati de o oferta. Sunteti de acord?"
+    anunți prețul și să primești confirmare „da/ok/de acord".
+  → ⚠️ MEREU prin tool \`quote_price_with_offer\` — NU scrie tu prețul în text liber.
+    Tool-ul verifică automat dacă userul are cod câștigat la roata norocului și
+    aplică reducerea în mesaj. Dacă scrii tu „Manea costă 29.99 RON", PIERZI
+    aplicarea automată a reducerii — userul cu cod nu vede oferta și pleacă.
+  → BUG observat: AI scria manual prețul în loc să apeleze tool-ul. Useri cu cod
+    roată nu vedeau reducerea aplicată. FIX: tool MEREU.
+  → Pattern care iese din tool: „Maneaua costa ${price} la care puteti sa beneficiati
+    de o oferta. Sunteti de acord?" (sau cu cod automat dacă există)
   → BUG observat 2026-05-27 (conv 9926b53b, 88ac3d75): AI a sărit ETAPA 2 când
     userul a dat context în primul mesaj — a întrebat direct mesajul și email-ul.
     Asta strica conversia pentru că userul nu confirmă prețul → mai târziu se
     sperie când vede 29.99 RON la finalize. FIX: ANUNȚĂ MEREU PREȚUL ÎNTÂI.
 
-ETAPA 3 — COLECTARE DETALII (UN SINGUR mesaj numerotat, EXACT 3-4 puncte):
+ETAPA 2.5 — AUTO-EXTRACT din primul mesaj user (CRITIC pentru UX):
+  → ⚠️ ÎNAINTE de a cere DETALII numerotat (ETAPA 3), VERIFICĂ ce a zis userul deja
+    în mesajele anterioare și apelează \`wizard_update\` cu TOT ce poți extrage.
+  → Exemple de extracție din primul mesaj:
+    - „Vreau o melodie de la maria pentru mama mea Claudia" →
+      wizard_update({recipientName: "Claudia", dedicatorName: "Maria"})
+    - „Pentru fata mea Andreea de ziua ei" →
+      wizard_update({recipientName: "Andreea", occasion: "Zi de naștere"})
+    - „Pentru nepota mea Celine să-i spună la mulți ani" →
+      wizard_update({recipientName: "Celine", message: "La mulți ani"})
+  → DUPĂ extract, ETAPA 3 cere DOAR câmpurile care chiar lipsesc (NU re-cere ce
+    ai deja extras). Exemplu: dacă ai recipient+dedicator+ocazie, cere DOAR
+    mesaj + email.
+  → BUG observat 2026-05-27 conv 40157f34: user a zis tot în primul mesaj
+    („Maria pentru mama mea Claudia"), AI a cerut TOATE 4 câmpuri ca un robot,
+    user a trebuit să repete „Numele mamei Claudia" + „Numele meu Maria".
+    Asta-i o experiență mizerabilă — FIX: auto-extract.
+
+ETAPA 2.6 — PREFERINȚE STIL/ARTIST din context:
+  → Dacă userul menționează un artist real (Dani Mocanu, Florin Salam, Guță,
+    Tzancă Uraganu, Babi Minune, etc.) → salvează ca styleHint în wizard_update.
+    Exemplu: user „Dani Mocanu" sau „vreau ceva ca Salam" → wizard_update({styleHint: "stil Dani Mocanu"}).
+  → NU promite că folosim vocea artistului — sunt voci AI fictive. Doar atmosfera
+    și stilul muzical seamănă.
+  → Dacă userul menționează explicit un stil din lista validă („clasic",
+    „de pahar", „modern", „opulență", „de jale", „trapanele", „tallava") →
+    wizard_update({style: "..."}).
+
+ETAPA 3 — COLECTARE DETALII (UN SINGUR mesaj numerotat, DOAR câmpurile LIPSĂ):
   → „Perfect! Am nevoie de cateva detalii:
      1. Numele persoanei care primește melodia
      2. Numele tău (cine dedică) — optional
@@ -1188,6 +1246,25 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
       this.gateway.emitMessage({ message: saved, conversation: conv });
 
       ctx.paymentLinkSent = true;
+
+      // Meta CAPI — AddPaymentInfo server-side (link trimis în chat).
+      // event_id = `addpay-${paymentId}` pentru dedup cu eventul client (când userul
+      // face refresh chat sau alt browser).
+      void this.metaCapi.sendEvent(
+        'AddPaymentInfo',
+        {
+          eventId: `addpay-${checkout.paymentId}`,
+          email: conv.email,
+          externalId: conv.userId ?? conv.guestId,
+          ip: conv.lastIp,
+          value: amount / 100,
+          currency,
+          contentName: description,
+          contentIds: [generation.id],
+        },
+        'chat',
+      );
+
       return {
         ok: true,
         status: 'PAYMENT_LINK_SENT',
@@ -1261,6 +1338,54 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
         status: 'DUPLICATE_TEXT_BLOCKED',
         instruction: 'You already sent this exact text. STOP — do not repeat.',
       };
+    }
+
+    // Anti-buclă cross-run: dacă ultimele 2 mesaje AI sunt FOARTE SIMILARE cu ce
+    // urmează să trimită (>70% overlap), opresc + cer escalate. Bug observat:
+    // user repetă „vreau gratis" / „nu am bani" → AI răspunde „costă 29.99..."
+    // de 4-5 ori la rând, sterilă, fără să escaleze. Regula 17 din prompt n-a
+    // prins. Acum DETECTEZ în cod.
+    try {
+      const recent = await this.msg.find({
+        where: { conversationId: ctx.conv.id, authorRole: 'admin', aiGenerated: true },
+        order: { createdAt: 'DESC' },
+        take: 3,
+      });
+      const recentNorm = recent.map((m) => m.body.toLowerCase().replace(/\s+/g, ' '));
+      const similar = recentNorm.filter((prev) => textOverlap(prev, normalized) > 0.7);
+      if (similar.length >= 2) {
+        this.logger.warn(
+          `STERILE_LOOP detected on conv=${ctx.conv.id.slice(0, 8)} — 2+ recent AI msgs similar to current. Escalating.`,
+        );
+        // Auto-escalate la admin uman + mesaj sistem
+        await this.conv
+          .createQueryBuilder()
+          .update(Conversation)
+          .set({ aiMode: 'manual' })
+          .where('id = :id', { id: ctx.conv.id })
+          .execute();
+        const sysMsg = this.msg.create({
+          conversationId: ctx.conv.id,
+          siteId: ctx.conv.siteId ?? null,
+          authorRole: 'system',
+          authorId: null,
+          body: `🔄 Buclă sterilă detectată (AI repeta același mesaj). Comutat pe manual — preia tu.`,
+          messageType: 'system',
+          aiGenerated: true,
+          detectedLang: 'ro',
+        });
+        const saved = await this.msg.save(sysMsg);
+        this.gateway.emitAiSuggestion({ conversation: ctx.conv, message: saved });
+        return {
+          sent: false,
+          messageType: 'sterile_loop_blocked',
+          status: 'STERILE_LOOP_ESCALATED',
+          instruction: 'Bucla sterilă detectată. Conv comutată pe manual. STOP — adminul preia.',
+        };
+      }
+    } catch (e) {
+      // Best-effort — dacă DB pică, nu blocheze send-ul
+      this.logger.warn(`sterile-loop check failed: ${(e as Error).message}`);
     }
 
     if (ctx.mode === 'suggest') {

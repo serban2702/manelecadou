@@ -24,6 +24,7 @@ import { GenerationsService } from '../generations/generations.service';
 import { CreateGenerationDto } from '../generations/dto/create-generation.dto';
 import { TiktokEventsService } from '../tiktok/tiktok-events.service';
 import { AnalyticsService } from '../analytics/analytics.service';
+import { MetaCapiService } from '../meta-capi/meta-capi.service';
 import {
   productName as i18nProductName,
   dedicationDescription as i18nDedicDesc,
@@ -81,6 +82,7 @@ export class PaymentsService {
     private readonly tiktok: TiktokEventsService,
     private readonly analytics: AnalyticsService,
     private readonly moduleRef: ModuleRef,
+    private readonly metaCapi: MetaCapiService,
   ) {}
 
   /** Returnează instanța Stripe, re-instanțiată dacă cheia s-a schimbat în admin. */
@@ -570,6 +572,47 @@ export class PaymentsService {
       if (metaSiteId) update.siteId = metaSiteId;
 
       await this.repo.update({ id: paymentId }, update);
+
+      // ============== Meta CAPI — Purchase server-side ==============
+      // Cel mai important eveniment. Trimitem server-side ca să bypass-ăm iOS ATT
+      // și ad-blockers (40%+ din Purchases s-ar pierde pe client-side pixel).
+      // event_id = paymentId pentru deduplicare cu eventul client (success page).
+      if (isPaid) {
+        try {
+          const customerEmail =
+            (session.customer_details?.email as string | undefined) ?? null;
+          const customerPhone =
+            (session.customer_details?.phone as string | undefined) ?? null;
+          const customerName = (session.customer_details?.name as string | undefined) ?? '';
+          const [fn, ...lnParts] = customerName.split(' ');
+          const externalId = (session.metadata?.userId || session.metadata?.guestId) ?? null;
+          const amountRon = (session.amount_total ?? 0) / 100;
+          void this.metaCapi.sendEvent(
+            'Purchase',
+            {
+              eventId: `pay-${paymentId}`,
+              email: customerEmail,
+              phone: customerPhone,
+              firstName: fn || null,
+              lastName: lnParts.join(' ') || null,
+              externalId,
+              value: amountRon,
+              currency: (session.currency ?? 'RON').toUpperCase(),
+              contentName: 'Manea personalizată',
+              contentIds: session.metadata?.generationId
+                ? [session.metadata.generationId]
+                : undefined,
+              customData: {
+                payment_method: 'stripe',
+                promo_applied: session.metadata?.promoCodeId || '',
+              },
+            },
+            'website',
+          );
+        } catch (err) {
+          this.logger.warn(`Meta CAPI Purchase emit failed: ${(err as Error).message}`);
+        }
+      }
 
       // Flow pay-first (site.demoEnabled=false): generation a fost creată în
       // status='pending', acum o queueăm efectiv.

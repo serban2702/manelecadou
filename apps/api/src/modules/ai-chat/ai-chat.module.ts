@@ -18,6 +18,7 @@ import { ChatModule } from '../chat/chat.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { GenerationsModule } from '../generations/generations.module';
 import { GuestSessionsModule } from '../guest-sessions/guest-sessions.module';
+import { MetaCapiModule } from '../meta-capi/meta-capi.module';
 import { AdminGuard } from '../../common/admin.guard';
 
 @Module({
@@ -31,6 +32,7 @@ import { AdminGuard } from '../../common/admin.guard';
     PaymentsModule,
     GenerationsModule,
     GuestSessionsModule,
+    MetaCapiModule,
     forwardRef(() => ChatModule),
     JwtModule.registerAsync({
       inject: [ConfigService],

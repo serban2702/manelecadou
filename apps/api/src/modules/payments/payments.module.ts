@@ -13,6 +13,7 @@ import { GenerationsModule } from '../generations/generations.module';
 import { TiktokModule } from '../tiktok/tiktok.module';
 import { GuestSessionsModule } from '../guest-sessions/guest-sessions.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
+import { MetaCapiModule } from '../meta-capi/meta-capi.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { AnalyticsModule } from '../analytics/analytics.module';
     TiktokModule,
     GuestSessionsModule,
     AnalyticsModule,
+    MetaCapiModule,
   ],
   providers: [PaymentsService],
   controllers: [PaymentsController],

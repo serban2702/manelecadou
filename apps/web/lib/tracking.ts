@@ -12,7 +12,11 @@
 export type TrackEventName =
   | 'PageView'
   | 'ViewContent'
+  | 'Lead'
+  | 'CompleteRegistration'
+  | 'AddPaymentInfo'
   | 'InitiateCheckout'
+  | 'Subscribe'
   /** TikTok a redenumit `CompletePayment` → `Purchase` (noul standard, aliniat cu Meta).
    *  Events Manager listează doar `Purchase` în funnel-ul de e-commerce. */
   | 'Purchase';
@@ -27,8 +31,14 @@ interface TrackParams {
   content_type?: 'product' | 'product_group';
   /** Email plain — va fi hash-uit înainte de identify (advanced matching). */
   email?: string;
+  /** External ID — userId sau guestId pentru advanced matching cross-session. */
+  external_id?: string;
+  /** Custom data pentru audiences (emotional_intent, discount_seeker etc.). */
+  custom_data?: Record<string, unknown>;
   /** Override pentru event_id (pentru dedup cu Events API server-side). */
   event_id?: string;
+  /** Dacă true (default), apelează și /api/meta-capi/track pentru server-side dedup. */
+  serverSide?: boolean;
 }
 
 /**
@@ -133,6 +143,36 @@ export function track(event: TrackEventName, params: TrackParams = {}): string {
       });
     } catch (e) {
       console.warn('[tracking] gtag failed', e);
+    }
+  }
+
+  // Server-side mirror — Meta CAPI prin endpoint intern, pentru deduplicare cu
+  // event_id identic. Bypass-ează iOS ATT și ad-blockers (40%+ din evenimente
+  // se pierd pe pixel client-side pe iOS). Activat by default; dezactivat
+  // explicit cu serverSide=false (ex. pentru PageView care e auto-tracked de
+  // FB cookie + ar genera prea mult zgomot).
+  const wantsServerSide = params.serverSide !== false && event !== 'PageView';
+  if (wantsServerSide && typeof fetch !== 'undefined') {
+    try {
+      void fetch('/api/meta-capi/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          eventName: event,
+          eventId,
+          eventSourceUrl: window.location.href,
+          email: params.email,
+          externalId: params.external_id,
+          value: params.value,
+          currency: params.currency,
+          contentName: params.content_name,
+          contentIds: params.content_id ? [params.content_id] : undefined,
+          customData: params.custom_data,
+        }),
+      }).catch(() => undefined);
+    } catch {
+      /* silent */
     }
   }
 

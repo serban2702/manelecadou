@@ -39,6 +39,7 @@ import { SeoPagesModule } from './modules/seo-pages/seo-pages.module';
 import { WebPushModule } from './modules/web-push/web-push.module';
 import { AiChatModule } from './modules/ai-chat/ai-chat.module';
 import { OutboundEmailModule } from './modules/outbound-email/outbound-email.module';
+import { MetaCapiModule } from './modules/meta-capi/meta-capi.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { OutboundEmailModule } from './modules/outbound-email/outbound-email.mod
     DatabaseModule,
     SitesModule,
     OutboundEmailModule,
+    MetaCapiModule,
     MailerModule,
     HealthModule,
     GuestSessionsModule,

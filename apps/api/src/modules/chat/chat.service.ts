@@ -24,6 +24,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { SitesService } from '../sites/sites.service';
 import { SettingsService } from '../settings/settings.service';
 import { LyricsService } from '../lyrics/lyrics.module';
+import { MetaCapiService } from '../meta-capi/meta-capi.service';
 
 /** Pragul în secunde sub care o sesiune e considerată "online". */
 const ONLINE_WINDOW_SEC = 120;
@@ -61,6 +62,7 @@ export class ChatService implements OnModuleInit {
     private readonly chatSettings: SettingsService,
     private readonly lyrics: LyricsService,
     private readonly moduleRef: ModuleRef,
+    private readonly metaCapi: MetaCapiService,
   ) {}
 
   /**
@@ -388,6 +390,11 @@ export class ChatService implements OnModuleInit {
     // RO → EN nedorită. Mesajele se afișează în original.
     // AI agent dacă conversația e în mod suggest/auto (non-blocking).
     void this.maybeTriggerAi(conversation.id, saved.id);
+
+    // ============== Meta CAPI ==============
+    // Lead event la PRIMUL mesaj user în conv (semnal early-funnel pentru Meta).
+    // EngagedChatter custom event la al 3-lea mesaj user (audiență warm).
+    void this.fireMetaChatEvents(conversation, ctx).catch(() => undefined);
     // Web Push notification către toți adminii subscribed (best-effort, non-blocking).
     const senderLabel = conversation.email
       ?? (ctx.userId ? `user:${ctx.userId.slice(0, 8)}` : `guest:${ctx.guestId?.slice(0, 8) ?? '?'}`);
@@ -730,6 +737,14 @@ export class ChatService implements OnModuleInit {
     });
     const saved = await this.msg.save(msg);
     // Partial UPDATE — vezi comentariu în sendAsUser pentru motivul anti-race condition.
+    // PLUS: dacă admin uman trimite mesaj într-o conv `auto`, comut automat pe `manual`
+    // (admin a preluat explicit). Anti-bug observat 2026-05-27 conv 32c31016: admin
+    // răspundea în paralel cu AI → 3 mesaje aproape identice „Manea costă 29.99..."
+    // confuzând userul. Marker `aiGenerated=false` = admin uman real (NU AI care
+    // scrie ca admin). Excludem AI-generated ca să nu se auto-comute pe propriile
+    // mesaje.
+    const isHumanAdmin = !opts?.aiGenerated;
+    const shouldDeactivateAi = isHumanAdmin && conv.aiMode === 'auto';
     await this.conv
       .createQueryBuilder()
       .update(Conversation)
@@ -737,12 +752,16 @@ export class ChatService implements OnModuleInit {
         lastMessageAt: saved.createdAt,
         unreadByUser: () => '"unreadByUser" + 1',
         unreadByAdmin: 0,
+        ...(shouldDeactivateAi ? { aiMode: 'manual' as const } : {}),
       })
       .where('id = :id', { id: conv.id })
       .execute();
     conv.lastMessageAt = saved.createdAt;
     conv.unreadByUser += 1;
     conv.unreadByAdmin = 0;
+    if (shouldDeactivateAi) {
+      conv.aiMode = 'manual';
+    }
     this.gateway.emitMessage({ message: saved, conversation: conv });
     return Object.assign(saved, { translation: translationMeta });
   }
@@ -1306,6 +1325,43 @@ export class ChatService implements OnModuleInit {
     // pe domeniul site-ului care a originat conversația (din siteId → site.domain)
     // Pentru moment, link relativ funcționează când userul e pe site.
     return `/m/${generationId}`;
+  }
+
+  /**
+   * Meta CAPI events din chat — fire-and-forget. Decide pe baza counter-ului de
+   * mesaje user dacă-i Lead (primul), EngagedChatter (al treilea) etc.
+   */
+  private async fireMetaChatEvents(conv: Conversation, ctx: OwnerCtx): Promise<void> {
+    try {
+      const userMsgCount = await this.msg.count({
+        where: { conversationId: conv.id, authorRole: 'user' },
+      });
+      const externalId = ctx.userId ?? ctx.guestId ?? null;
+      const baseData = {
+        externalId,
+        email: conv.email,
+        ip: conv.lastIp,
+        contentName: 'Manea personalizată',
+        currency: 'RON',
+      };
+      if (userMsgCount === 1) {
+        // Primul mesaj user — Lead semnal early-funnel
+        await this.metaCapi.sendEvent(
+          'Lead',
+          { ...baseData, value: 5, customData: { source: 'chat_first_msg' } },
+          'chat',
+        );
+      } else if (userMsgCount === 3) {
+        // Audiență warm — useri activi care vor probabil să cumpere
+        await this.metaCapi.sendEvent(
+          'EngagedChatter',
+          { ...baseData, value: 10, customData: { msg_count: 3 } },
+          'chat',
+        );
+      }
+    } catch {
+      /* silent */
+    }
   }
 
   /**

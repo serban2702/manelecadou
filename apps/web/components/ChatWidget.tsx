@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { useSession } from '@/lib/providers';
 import { useChatSocket, type MessageAckEvent, type TypingEvent } from '@/lib/chat-socket';
 import { useSite } from '@/lib/site-context';
+import { track } from '@/lib/tracking';
 
 /** Sunet scurt sintetic via WebAudio — fără dependențe externe sau fișiere. */
 function playPing() {
@@ -532,6 +533,7 @@ export function ChatWidget() {
                         currency?: string;
                         status?: 'paid' | 'failed';
                         generationId?: string;
+                        paymentId?: string;
                       };
                       const paid = p.status === 'paid';
                       const cardBase = {
@@ -588,6 +590,24 @@ export function ChatWidget() {
                           href={p.checkoutUrl}
                           target="_blank"
                           rel="noopener noreferrer"
+                          onClick={() => {
+                            // InitiateCheckout — fire DOAR la CLICK efectiv pe link
+                            // (cerere user 2026-05-28). NU pe „AI a trimis linkul" —
+                            // semnal de intent real de plată, nu doar pasare prin chat.
+                            // event_id = paymentId pentru dedup cu Purchase server-side.
+                            try {
+                              track('InitiateCheckout', {
+                                value: (p.amount ?? 0) / 100,
+                                currency: p.currency ?? 'RON',
+                                content_id: p.paymentId ?? p.generationId ?? undefined,
+                                content_name: p.description ?? 'Manea personalizată',
+                                content_type: 'product',
+                                event_id: p.paymentId ? `init-${p.paymentId}` : undefined,
+                              });
+                            } catch {
+                              /* tracking nu blochează navigation */
+                            }
+                          }}
                           style={{
                             ...cardBase,
                             background: 'linear-gradient(135deg, #5b0d18, #2b0710)',

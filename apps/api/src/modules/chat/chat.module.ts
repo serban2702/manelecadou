@@ -19,6 +19,7 @@ import { PaymentsModule } from '../payments/payments.module';
 import { SitesModule } from '../sites/sites.module';
 import { SettingsModule } from '../settings/settings.module';
 import { LyricsModule } from '../lyrics/lyrics.module';
+import { MetaCapiModule } from '../meta-capi/meta-capi.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { LyricsModule } from '../lyrics/lyrics.module';
     SitesModule,
     SettingsModule,
     LyricsModule,
+    MetaCapiModule,
   ],
   providers: [ChatService, ChatGateway, ChatAttachmentsService, AdminGuard],
   exports: [ChatService, ChatGateway],
