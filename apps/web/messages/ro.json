@@ -1037,6 +1037,7 @@
     "viewAll": "Vezi toate demo-urile →",
     "dedicationFromTo": "de la {from} pentru {to}",
     "dedicationTo": "pentru {to}",
-    "dedicationFrom": "de la {from}"
+    "dedicationFrom": "de la {from}",
+    "play": "Redă"
   }
 }

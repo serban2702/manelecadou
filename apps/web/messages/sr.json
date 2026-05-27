@@ -1039,6 +1039,7 @@
     "viewAll": "Vidi sve demo pesme →",
     "dedicationFromTo": "od {from} za {to}",
     "dedicationTo": "za {to}",
-    "dedicationFrom": "od {from}"
+    "dedicationFrom": "od {from}",
+    "play": "Pusti"
   }
 }

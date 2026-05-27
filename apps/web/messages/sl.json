@@ -1039,6 +1039,7 @@
     "viewAll": "Glej vse demo posnetke →",
     "dedicationFromTo": "od {from} za {to}",
     "dedicationTo": "za {to}",
-    "dedicationFrom": "od {from}"
+    "dedicationFrom": "od {from}",
+    "play": "Predvajaj"
   }
 }

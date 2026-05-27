@@ -1039,6 +1039,7 @@
     "viewAll": "Tüm demoları gör →",
     "dedicationFromTo": "{from} tarafından {to} için",
     "dedicationTo": "{to} için",
-    "dedicationFrom": "{from} tarafından"
+    "dedicationFrom": "{from} tarafından",
+    "play": "Çal"
   }
 }

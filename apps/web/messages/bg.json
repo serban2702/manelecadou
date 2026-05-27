@@ -1037,6 +1037,7 @@
     "viewAll": "Виж всички демо песни →",
     "dedicationFromTo": "от {from} за {to}",
     "dedicationTo": "за {to}",
-    "dedicationFrom": "от {from}"
+    "dedicationFrom": "от {from}",
+    "play": "Пусни"
   }
 }

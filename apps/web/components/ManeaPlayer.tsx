@@ -18,9 +18,13 @@ interface Props {
   /** Secunda de la care să pornească playback-ul (preview-ul scurt al unui
    *  demo curat — sare peste intro). Aplicat când track-ul devine ready. */
   startSec?: number;
+  /** Auto-play la `ready`. Folosit în popup-ul de demo-uri, unde montăm
+   *  player-ul EXACT când userul a apăsat Play (deci e o continuare a unui
+   *  gest user, nu un autoplay agresiv — browsers nu blochează). */
+  autoPlay?: boolean;
 }
 
-export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = false, maxDurationSec, startSec }: Props) {
+export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = false, maxDurationSec, startSec, autoPlay }: Props) {
   const audioUrl = resolveMediaUrl(rawAudioUrl) ?? rawAudioUrl;
   const previewLimited = typeof maxDurationSec === 'number' && maxDurationSec > 0;
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -62,6 +66,11 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
                 ws.seekTo(startSec / d);
               } catch {}
             }
+          }
+          if (autoPlay) {
+            try {
+              ws.play();
+            } catch {}
           }
         });
         ws.on('audioprocess', () => {

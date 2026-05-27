@@ -1037,6 +1037,7 @@
     "viewAll": "Δες όλα τα δείγματα →",
     "dedicationFromTo": "από {from} για {to}",
     "dedicationTo": "για {to}",
-    "dedicationFrom": "από {from}"
+    "dedicationFrom": "από {from}",
+    "play": "Παίξε"
   }
 }

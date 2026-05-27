@@ -186,6 +186,13 @@ function PopupDemoCard({
   demo: SiteDemoDto;
   t: ReturnType<typeof useTranslations>;
 }) {
+  // Lazy mount: WaveSurfer descarcă MP3-ul complet + face decode pentru waveform
+  // la mount. Cu 5 card-uri simultane = 5 descărcări paralele = timp mort lung
+  // la deschiderea popup-ului. Așa că randăm doar un buton Play „static" și
+  // montăm player-ul real DOAR la primul click. ManeaPlayer pornește atunci
+  // automat (autoPlay) ca să nu fie nevoie de a doua apăsare.
+  const [activated, setActivated] = useState(false);
+
   const dedication = useMemo(() => {
     if (demo.fromName && demo.toName)
       return t('dedicationFromTo', { from: demo.fromName, to: demo.toName });
@@ -259,11 +266,90 @@ function PopupDemoCard({
           )}
         </div>
       </div>
-      <ManeaPlayer
-        audioUrl={demo.audioUrl}
-        compact
-        startSec={demo.previewStartSec}
-      />
+      {activated ? (
+        <ManeaPlayer
+          audioUrl={demo.audioUrl}
+          compact
+          startSec={demo.previewStartSec}
+          autoPlay
+        />
+      ) : (
+        <PlayPlaceholder onClick={() => setActivated(true)} label={t('play')} />
+      )}
     </div>
+  );
+}
+
+/**
+ * Placeholder static pentru un demo neîncărcat. Click → activează player-ul
+ * real care preia de aici. Mimează vizual layout-ul wavesurfer (înălțime
+ * identică, gradient subtil pe locul waveform-ului) ca să nu sară layout-ul
+ * la activare.
+ */
+function PlayPlaceholder({
+  onClick,
+  label,
+}: {
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        width: '100%',
+        padding: '8px 12px',
+        background: 'rgba(241,200,77,0.04)',
+        border: '1px solid rgba(241,200,77,0.2)',
+        borderRadius: 10,
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+        textAlign: 'left',
+      }}
+    >
+      <span
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: '50%',
+          background:
+            'radial-gradient(circle at 35% 35%, #ffe28a, #f1c84d 60%, #b07c1e)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#2a1a04',
+          fontSize: 14,
+          flexShrink: 0,
+          boxShadow: '0 2px 8px rgba(241,200,77,0.25)',
+        }}
+      >
+        ▶
+      </span>
+      <span
+        style={{
+          flex: 1,
+          height: 32,
+          background:
+            'repeating-linear-gradient(90deg, rgba(241,200,77,0.18) 0 2px, transparent 2px 5px)',
+          borderRadius: 4,
+          opacity: 0.5,
+        }}
+      />
+      <span
+        style={{
+          fontSize: 11,
+          color: 'rgba(255,245,220,0.55)',
+          fontWeight: 600,
+          letterSpacing: '0.05em',
+          textTransform: 'uppercase',
+        }}
+      >
+        {label}
+      </span>
+    </button>
   );
 }
