@@ -523,23 +523,12 @@ export default function AdminChatPage() {
             };
       })
       .sort((a, b) => {
-        // Favoritele rămân pinned în top indiferent de prezență
-        if (!!a.isFavorite !== !!b.isFavorite) return a.isFavorite ? -1 : 1;
-        const bucket = (x: typeof a) => {
-          const role = x.lastMessageRole;
-          if (x.online) {
-            if (role === 'user') return 0;
-            if (role === 'admin') return 1;
-            return 2;
-          }
-          if (role === 'user') return 3;
-          if (role === 'admin') return 4;
-          return 5;
-        };
-        const ba = bucket(a);
-        const bb = bucket(b);
-        if (ba !== bb) return ba - bb;
-        if (a.unreadByAdmin !== b.unreadByAdmin) return b.unreadByAdmin - a.unreadByAdmin;
+        // Sortare simplă (cerere user 2026-05-27):
+        //  1. Online — DESC by lastMessageAt
+        //  2. Offline — DESC by lastMessageAt
+        // Favorit/rolul ultim mesaj NU mai influențează ordinea (există filtru
+        // dedicat „doar favoritele" și badge-uri vizuale).
+        if (a.online !== b.online) return a.online ? -1 : 1;
         const at = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
         const bt = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
         return bt - at;
