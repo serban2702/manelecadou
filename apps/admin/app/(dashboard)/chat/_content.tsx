@@ -95,7 +95,7 @@ interface ContextMenuState {
 }
 
 export default function AdminChatPage() {
-  const { isAllSelected } = useSitesMap();
+  const { isAllSelected, byId: sitesById } = useSitesMap();
   const [active, setActive] = useState<string | null>(null);
   const [pendingSuggestions, setPendingSuggestions] = useState(0);
   const originalTitleRef = useRef<string>('');
@@ -916,6 +916,11 @@ export default function AdminChatPage() {
                     m={m}
                     ackOverride={ackOverride.get(m.id)}
                     conversationEmail={thread.conversation.email ?? null}
+                    siteDomain={
+                      thread.conversation.siteId
+                        ? sitesById.get(thread.conversation.siteId)?.domain ?? null
+                        : null
+                    }
                     onSuggestionAction={() => {
                       refetchThread();
                       refetchConvs();
@@ -1346,10 +1351,60 @@ function PaymentLinkModal({
   );
 }
 
+/**
+ * Linkify text content: detectează URL-uri absolute (http/https) și paths relative
+ * `/m/<uuid>` din mesaje, le randerează ca <a> deschise în tab nou. Pentru `/m/...`
+ * resolve la domeniul site-ului conversației (sites map).
+ */
+function LinkifiedText({ text, siteDomain }: { text: string; siteDomain: string | null }) {
+  // Regex care prinde:
+  //  1. URL absolut: https?://[^\s]+
+  //  2. Path relativ /m/<uuid> (UUID v4 format)
+  const re = /(https?:\/\/[^\s)\]]+)|(\/m\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
+  const parts: Array<string | { href: string; label: string }> = [];
+  let lastIdx = 0;
+  for (const match of text.matchAll(re)) {
+    const idx = match.index ?? 0;
+    if (idx > lastIdx) parts.push(text.slice(lastIdx, idx));
+    const raw = match[0];
+    let href = raw;
+    if (raw.startsWith('/m/')) {
+      // Domeniul site-ului — fallback la window.location.origin dacă map gol
+      const base = siteDomain ? `https://${siteDomain}` : '';
+      href = `${base}${raw}`;
+    }
+    parts.push({ href, label: raw });
+    lastIdx = idx + raw.length;
+  }
+  if (lastIdx < text.length) parts.push(text.slice(lastIdx));
+
+  return (
+    <>
+      {parts.map((p, i) =>
+        typeof p === 'string' ? (
+          <span key={i}>{p}</span>
+        ) : (
+          <a
+            key={i}
+            href={p.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline underline-offset-2 hover:text-primary/80 break-all"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {p.label}
+          </a>
+        ),
+      )}
+    </>
+  );
+}
+
 function ChatBubble({
   m,
   ackOverride,
   conversationEmail,
+  siteDomain,
   onSuggestionAction,
   onEdit,
   onDelete,
@@ -1357,6 +1412,7 @@ function ChatBubble({
   m: AdminChatMessage;
   ackOverride?: { deliveredAt?: string; readAt?: string };
   conversationEmail?: string | null;
+  siteDomain?: string | null;
   onSuggestionAction?: () => void;
   onEdit?: (m: AdminChatMessage) => void;
   onDelete?: (m: AdminChatMessage) => void;
@@ -1448,7 +1504,7 @@ function ChatBubble({
           conversationEmail={conversationEmail ?? null}
         />
       )}
-      {display}
+      <LinkifiedText text={display} siteDomain={siteDomain ?? null} />
       {fromAdmin && (
         <div className="text-[10px] mt-1 flex items-center gap-1 justify-end opacity-70">
           <ReceiptIcon delivered={!!deliveredAt} read={!!readAt} />

@@ -784,16 +784,52 @@ REGULI STRICTE:
 
     const paid = !!generation.paidUnlocked;
     const audioReady = !!generation.audioUrl && generation.status === 'succeeded';
-    // Link-ul către pagina manelei — accesibil ȘI în timpul generării (afișează
-    // progress bar pe `/m/<id>` cât rulează Suno, apoi audio play când e gata).
-    // Așa că-l returnăm și pe statusul „generating" — userul poate urmări LIVE.
     const linkToSong = paid || audioReady ? `/m/${generation.id}` : null;
 
+    // Timing — cât timp a trecut de la pickup la Suno
+    const createdAtMs = new Date(generation.createdAt).getTime();
+    const ageSeconds = Math.floor((Date.now() - createdAtMs) / 1000);
+    const isStuck = paid && !audioReady && ageSeconds > 300; // >5 min în generare = blocaj real
+    const retryCount = (generation as { retryCount?: number }).retryCount ?? 0;
+    const nextRetryAt = (generation as { nextRetryAt?: Date | null }).nextRetryAt ?? null;
+
+    // humanStatus + healthCategory pentru audit/UX
     let humanStatus = 'în așteptare plată';
-    if (paid && audioReady) humanStatus = 'gata — manea finalizată';
-    else if (paid && generation.status === 'failed') humanStatus = 'plată ok, dar generarea a eșuat';
-    else if (paid) humanStatus = 'plătit, se generează acum (~30-90s)';
-    else if (generation.status === 'failed') humanStatus = 'eșuat înainte de plată';
+    let healthCategory: 'ok' | 'in_progress' | 'tech_error' | 'failed' | 'waiting_payment' = 'waiting_payment';
+    if (paid && audioReady) {
+      humanStatus = 'gata — manea finalizată';
+      healthCategory = 'ok';
+    } else if (paid && generation.status === 'failed') {
+      humanStatus = nextRetryAt
+        ? `eroare tehnică — reîncercare automată (retry #${retryCount + 1})`
+        : 'eroare tehnică — generare eșuată';
+      healthCategory = 'tech_error';
+    } else if (paid && isStuck) {
+      humanStatus = `întârziere tehnică (rulează de ${Math.floor(ageSeconds / 60)} min, normal e ~2 min)`;
+      healthCategory = 'tech_error';
+    } else if (paid) {
+      humanStatus = retryCount > 0
+        ? `plătit, se generează (reîncercare după eroare anterioară)`
+        : 'plătit, se generează acum (~30-90s)';
+      healthCategory = 'in_progress';
+    } else if (generation.status === 'failed') {
+      humanStatus = 'eșuat înainte de plată';
+      healthCategory = 'failed';
+    }
+
+    // Instrucțiune pentru AI bazată pe healthCategory — diferențiat clar
+    let instruction: string;
+    if (healthCategory === 'ok') {
+      instruction = `Manea e gata. Trimite userului link-ul ${linkToSong} cu un mesaj cald gen „Gata, e aici 🎵 - ${linkToSong}". Menționează scurt că a primit-o și pe email.`;
+    } else if (healthCategory === 'in_progress') {
+      instruction = `Plata e ok, Suno generează acum. ETA ~30-90s. Răspunde scurt și natural — variează expresia: „Imediat 🎵", „Aproape gata", „Mai e 1-2 minute". Trimite linkul live ${linkToSong} unde vede progresul + spune că ajunge și pe email. NU repeta același mesaj la fiecare întrebare — alternează.`;
+    } else if (healthCategory === 'tech_error') {
+      instruction = `EROARE TEHNICĂ. Suno e jos sau generarea a eșuat (retry=${retryCount}${nextRetryAt ? ', reîncercare automată planificată' : ''}). Răspunde EMPATIC și ONEST: „Am o mică problemă tehnică la generare, dar se rezolvă - mai am nevoie de câteva minute. Stăm pe ea, jur ❤️". NU promite ETA scurt. Dacă userul insistă, escalate_to_human ca admin uman să-l reasigure direct.`;
+    } else if (healthCategory === 'failed') {
+      instruction = `Generation eșuat înainte de plată. Spune-i scurt că s-a întâmplat o eroare și că poate încerca o comandă nouă — apoi wizard_get_state.`;
+    } else {
+      instruction = 'Nu s-a făcut plata încă. Roagă userul să acceseze link-ul de plată trimis anterior. Dacă nu există link → wizard_get_state.';
+    }
 
     return {
       hasOrder: true,
@@ -803,13 +839,13 @@ REGULI STRICTE:
       audioReady,
       linkToSong,
       humanStatus,
+      healthCategory,
+      ageSeconds,
+      isStuck,
+      retryCount,
       recipientName: generation.recipientName,
       currentEmail: ctx.conv.email ?? null,
-      instruction: audioReady
-        ? `Manea e gata. Trimite userului link-ul ${linkToSong} și menționează scurt că o vede acolo + a primit-o și pe email.`
-        : paid
-          ? `Plata e ok, melodia se generează acum. Spune-i scurt că ajunge în ~30-90s și că poate urmări progresul live aici: ${linkToSong} (apare audio când e gata). Va primi și pe email.`
-          : 'Nu s-a făcut plata încă. Roagă userul să acceseze link-ul de plată trimis anterior. Dacă nu există link → wizard_get_state.',
+      instruction,
     };
   }
 
