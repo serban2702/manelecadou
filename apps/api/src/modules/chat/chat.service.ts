@@ -1280,6 +1280,15 @@ export class ChatService implements OnModuleInit {
     await this.conv.save(conv);
     this.gateway.emitMessage({ message: saved, conversation: conv });
 
+    // Mesaj follow-up de mulțumire/CTA — DOAR pe success, după 2 secunde delay
+    // ca să nu cadă același tick cu song_preview (UX: omul citește mai întâi
+    // cardul cu manea, apoi vede mesajul cald de mulțumire).
+    if (isOk) {
+      setTimeout(() => {
+        void this.sendThankYouAfterGeneration(conv.id, conv.siteId).catch(() => undefined);
+      }, 2000);
+    }
+
     // Push notification către admins (best-effort)
     void this.webPush.sendToAll({
       title: isOk ? `🎵 Comandă finalizată — ${conv.email ?? 'guest'}` : `⚠️ Generare eșuată — ${conv.email ?? 'guest'}`,
@@ -1297,6 +1306,43 @@ export class ChatService implements OnModuleInit {
     // pe domeniul site-ului care a originat conversația (din siteId → site.domain)
     // Pentru moment, link relativ funcționează când userul e pe site.
     return `/m/${generationId}`;
+  }
+
+  /**
+   * Trimite un mesaj cald de mulțumire în chat la 2s după song_preview. Personal,
+   * scurt, cu emoji. Variere random ca să nu pară spam pe a treia comandă a aceluiași
+   * user. Mesajul e marcat ca AI-generated dar authorRole='admin' ca să apară ca
+   * dialog natural în UI.
+   */
+  private async sendThankYouAfterGeneration(conversationId: string, siteId: string | null): Promise<void> {
+    const variants = [
+      'Mă bucur tare că ți-a ieșit! 🎵 Sper să le placă și celor pentru care e dedicată. Mulțumesc că ne-ai ales! ❤️',
+      'Gata, mulțumim mult! ✨ Sper să-i placă tare. Dacă vrei să mai faci una pentru cineva drag, mă găsești aici. 🎶',
+      'Mulțumim pentru încredere! 🙏 Aștept să-mi spui cum a reacționat când a auzit-o. ❤️',
+      'Felicitări, ai un cadou super! 🎤 Mulțumim că ne-ai dat o șansă să fim parte din momentul ăsta. ❤️',
+      'Mă bucur că totul a ieșit cum trebuie! 🎶 Mulțumim mult, ne vedem la următoarea manea! ✨',
+    ];
+    const text = variants[Math.floor(Math.random() * variants.length)];
+    const conv = await this.conv.findOne({ where: { id: conversationId } });
+    if (!conv) return;
+    const msg = this.msg.create({
+      conversationId,
+      siteId,
+      authorRole: 'admin',
+      authorId: null,
+      body: text,
+      messageType: 'text',
+      aiGenerated: true,
+      detectedLang: 'ro',
+    });
+    const saved = await this.msg.save(msg);
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+      .where('id = :id', { id: conversationId })
+      .execute();
+    this.gateway.emitMessage({ message: saved, conversation: conv });
   }
 
   // ============== Faza 3: Attachments + Rich messages ==============

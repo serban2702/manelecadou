@@ -562,7 +562,18 @@ REGULI STRICTE:
 18. Maximum 35 mesaje per conv (cap automat). După 35 AI tace + admin preia.
 19. NU IGNORA contextul vizual: dacă wizard_get_state arată payment_sent + lângă tine au
     apărut mesaje payment_link admin, nu spune userului „nu am link disponibil" — există
-    link mai sus. Spune-i să facă scroll up sau să verifice cardurile de plată.`;
+    link mai sus. Spune-i să facă scroll up sau să verifice cardurile de plată.
+20. POST-PLATĂ FLOW (după ce a plătit + melodia se generează):
+    - Dacă userul întreabă „cât mai durează?", „unde-i melodia?", „e gata?" → check_order_status.
+    - Dacă humanStatus='plătit, se generează acum' → spune scurt: „Mai e 1-2 minute, sigur.
+      O primești și pe email și apare aici sus. Poți să o urmărești și pe pagina ${" "}
+      (link din linkToSong) — vezi când e gata."
+    - Dacă humanStatus='gata' → trimite link-ul + spune că-i și pe email.
+    - NU repeta 5 mesaje despre același status — la al doilea întrebări identice, varieză
+      răspunsul („Imediat 🎵", „Aproape gata, jur", „Mai durează 30 secunde maximum").
+21. SCHIMBARE EMAIL: dacă userul zice „am pus email greșit", „retrimite pe X@gmail.com",
+    „nu am primit pe email-ul ăla" → apelează change_email_and_resend(newEmail). Tool-ul
+    actualizează email-ul ȘI retrimite melodia (dacă-i gata) la noua adresă. Confirmă scurt.`;
 
     return this.appendMemoryAndContacts(basePrompt, memory, site);
   }
@@ -686,6 +697,17 @@ REGULI STRICTE:
         },
       },
       {
+        name: 'change_email_and_resend',
+        description: 'Schimbă email-ul de livrare al userului ȘI retrimite melodia la noua adresă (dacă există generation finalizată/în curs). Folosește când userul zice „am pus email greșit", „retrimite pe X@gmail.com", „n-am primit, e alt email". Tool-ul trimite singur mesaj de confirmare în chat.',
+        parameters: {
+          type: 'object',
+          properties: {
+            newEmail: { type: 'string', description: 'Noua adresă de email (validată ca format).' },
+          },
+          required: ['newEmail'],
+        },
+      },
+      {
         name: 'check_order_status',
         description: 'Verifică statusul ultimei comenzi din conversația curentă (plată + generare manea). Folosește când userul întreabă „unde-i melodia?", „a ajuns plata?", „cât mai durează?", sau înainte să raportezi progresul. Returnează: paid (true/false), generationStatus, audioReady, linkToSong.',
         parameters: { type: 'object', properties: {} },
@@ -713,6 +735,7 @@ REGULI STRICTE:
       wizard_finalize: async () => this.handleWizardFinalize(ctx),
       force_open_chat: async (args) => this.handleForceOpen(ctx, String(args.reason ?? '')),
       check_order_status: async () => this.handleCheckOrderStatus(ctx),
+      change_email_and_resend: async (args) => this.handleChangeEmailAndResend(ctx, String(args.newEmail ?? '')),
       quote_price_with_offer: async () => this.handleQuotePrice(ctx),
       issue_discount_offer: async (args) => this.handleIssueDiscount(ctx, Number(args.percentage ?? 0)),
       play_sample: async (args) => this.handlePlaySample(ctx, String(args.kind ?? 'voice'), String(args.id ?? '')),
@@ -761,12 +784,15 @@ REGULI STRICTE:
 
     const paid = !!generation.paidUnlocked;
     const audioReady = !!generation.audioUrl && generation.status === 'succeeded';
-    const linkToSong = audioReady ? `/m/${generation.id}` : null;
+    // Link-ul către pagina manelei — accesibil ȘI în timpul generării (afișează
+    // progress bar pe `/m/<id>` cât rulează Suno, apoi audio play când e gata).
+    // Așa că-l returnăm și pe statusul „generating" — userul poate urmări LIVE.
+    const linkToSong = paid || audioReady ? `/m/${generation.id}` : null;
 
     let humanStatus = 'în așteptare plată';
     if (paid && audioReady) humanStatus = 'gata — manea finalizată';
     else if (paid && generation.status === 'failed') humanStatus = 'plată ok, dar generarea a eșuat';
-    else if (paid) humanStatus = 'plătit, se generează acum (~90s)';
+    else if (paid) humanStatus = 'plătit, se generează acum (~30-90s)';
     else if (generation.status === 'failed') humanStatus = 'eșuat înainte de plată';
 
     return {
@@ -778,10 +804,11 @@ REGULI STRICTE:
       linkToSong,
       humanStatus,
       recipientName: generation.recipientName,
+      currentEmail: ctx.conv.email ?? null,
       instruction: audioReady
-        ? `Manea e gata. Trimite userului link-ul: ${linkToSong}`
+        ? `Manea e gata. Trimite userului link-ul ${linkToSong} și menționează scurt că o vede acolo + a primit-o și pe email.`
         : paid
-          ? 'Plata e ok, melodia se generează acum. Spune-i userului că ajunge în ~30-90 secunde pe email + apare aici în chat când e gata.'
+          ? `Plata e ok, melodia se generează acum. Spune-i scurt că ajunge în ~30-90s și că poate urmări progresul live aici: ${linkToSong} (apare audio când e gata). Va primi și pe email.`
           : 'Nu s-a făcut plata încă. Roagă userul să acceseze link-ul de plată trimis anterior. Dacă nu există link → wizard_get_state.',
     };
   }
@@ -1828,6 +1855,120 @@ ${transcript}`;
     this.gateway.emitMessage({ message: saved, conversation: ctx.conv });
     ctx.sentRealMessages++;
     return { sent: true, audioUrl: entry.audioUrl, status: 'SAMPLE_SENT' };
+  }
+
+  /**
+   * Schimbă email-ul de livrare + retrimite melodia la noua adresă.
+   * Folosit când userul zice „am pus email greșit", „retrimite pe X@gmail.com" etc.
+   * Update-uri: guest_session.email (sau user.email), Conversation.email, apoi
+   * apelează GenerationsProcessor.notifyOwner ca să trimită mailul.
+   */
+  private async handleChangeEmailAndResend(ctx: AgentCtx, newEmail: string): Promise<unknown> {
+    const check = await this.assertNotManual(ctx);
+    if (check.aborted) return { aborted: true };
+    const gate = this.assertCanSendMessage(ctx, 'change_email_and_resend');
+    if (!gate.ok) return gate.result;
+
+    // Validare format email simplă (RFC 5322 ar fi over-kill aici)
+    const clean = newEmail.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
+      return {
+        sent: false,
+        status: 'INVALID_EMAIL',
+        instruction: `„${newEmail}" nu pare email valid. Cere-i userului să-l verifice și să trimită corect.`,
+      };
+    }
+
+    // Găsește ultima generation a userului/guest-ului
+    const ownerId = ctx.conv.userId ?? ctx.conv.guestId;
+    if (!ownerId) {
+      return { sent: false, status: 'NO_OWNER', instruction: 'Conv-ul n-are user/guest atașat.' };
+    }
+    let gen: { id: string; status: string; paidUnlocked: boolean; recipientName: string } | null = null;
+    try {
+      const rows = await this.conv.manager.query(
+        `SELECT id, status, "paidUnlocked", "recipientName" FROM generations
+         WHERE ("ownerUserId" = $1 OR "ownerGuestId" = $1)
+         ORDER BY "createdAt" DESC LIMIT 1`,
+        [ownerId],
+      );
+      gen = rows[0] ?? null;
+    } catch (e) {
+      this.logger.warn(`change_email find gen failed: ${(e as Error).message}`);
+    }
+
+    // Update email-ul în sursa de adevăr (guest_session sau users)
+    try {
+      if (ctx.conv.userId) {
+        await this.conv.manager.query(`UPDATE users SET email = $1 WHERE id = $2`, [clean, ctx.conv.userId]);
+      } else if (ctx.conv.guestId) {
+        await this.conv.manager.query(`UPDATE guest_sessions SET email = $1 WHERE id = $2`, [clean, ctx.conv.guestId]);
+      }
+      // Update conv.email partial UPDATE
+      await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ email: clean })
+        .where('id = :id', { id: ctx.conv.id })
+        .execute();
+      ctx.conv.email = clean;
+    } catch (e) {
+      return {
+        sent: false,
+        status: 'UPDATE_FAILED',
+        instruction: `Eroare la salvarea email-ului: ${(e as Error).message}. Cere-i să încerce iar.`,
+      };
+    }
+
+    // Retrimite mail DACĂ generation există + are status livrabil (paidUnlocked sau succeeded)
+    let resent = false;
+    if (gen && (gen.paidUnlocked || gen.status === 'succeeded') && gen.status === 'succeeded') {
+      try {
+        // Lazy resolve GenerationsProcessor ca să evităm circular dep
+        const procMod = await import('../generations/generations.processor');
+        const proc = (this.gateway as unknown as { moduleRef: { get: (cls: unknown, opts: { strict: boolean }) => unknown } })
+          .moduleRef.get(procMod.GenerationsProcessor, { strict: false }) as { notifyOwner: (g: unknown) => Promise<void> };
+        const fullGen = await this.conv.manager.query(`SELECT * FROM generations WHERE id = $1`, [gen.id]);
+        if (fullGen[0]) {
+          await proc.notifyOwner(fullGen[0]);
+          resent = true;
+        }
+      } catch (e) {
+        this.logger.warn(`change_email notifyOwner failed: ${(e as Error).message}`);
+      }
+    }
+
+    // Mesaj de confirmare în chat
+    const confirmText = gen
+      ? gen.status === 'succeeded'
+        ? `Gata, am schimbat email-ul pe ${clean} și ți-am retrimis maneaua acolo. ✨`
+        : `Am schimbat email-ul pe ${clean}. Imediat ce e gata maneaua, o primești pe noua adresă. 🎵`
+      : `Am notat email-ul ${clean}. ✓`;
+
+    const m = this.msg.create({
+      conversationId: ctx.conv.id,
+      siteId: ctx.conv.siteId,
+      authorRole: ctx.mode === 'suggest' ? 'system' : 'admin',
+      authorId: null,
+      body: confirmText,
+      messageType: ctx.mode === 'suggest' ? 'ai_suggestion' : 'text',
+      aiGenerated: true,
+      detectedLang: 'ro',
+    });
+    const saved = await this.msg.save(m);
+    if (ctx.mode === 'suggest') {
+      this.gateway.emitAiSuggestion({ conversation: ctx.conv, message: saved });
+      return { sent: false, status: 'SUGGESTION_PERSISTED', newEmail: clean, resent };
+    }
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+      .where('id = :id', { id: ctx.conv.id })
+      .execute();
+    this.gateway.emitMessage({ message: saved, conversation: ctx.conv });
+    ctx.sentRealMessages++;
+    return { sent: true, status: 'EMAIL_CHANGED_AND_RESENT', newEmail: clean, resent };
   }
 
   /** Trimite mesaj de empatie (condoleanțe, „să-ți trăiască") cu cap 2/conv. */
