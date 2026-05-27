@@ -1,4 +1,4 @@
-import { Controller, Get, NotFoundException, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Logger, NotFoundException, Param, UseGuards } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { AdminGuard } from '../../common/admin.guard';
@@ -28,6 +28,8 @@ import { AnalyticsEvent } from '../analytics/analytics-event.entity';
 @UseGuards(AdminGuard)
 @Controller('admin/orders')
 export class AdminOrdersController {
+  private readonly logger = new Logger('AdminOrdersController');
+
   constructor(
     @InjectRepository(Generation) private readonly generations: Repository<Generation>,
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
@@ -124,6 +126,12 @@ export class AdminOrdersController {
           order: { createdAt: 'ASC' },
         })
       : [];
+
+    this.logger.log(
+      `[orders/${id}] payment=${payment?.id ?? 'NONE'} gen=${generation?.id ?? 'NONE'} ` +
+        `suno=${sunoLogs.length} lyrics=${lyricsLogs.length} emails=${outboundEmails.length} ` +
+        `ownerEmail=${ownerEmail ?? 'NONE'}`,
+    );
 
     // Chat conversation — încercăm 3 strategii în ordine de încredere:
     // 1. wizardState.generationId == gen.id (chat AI sales a creat exact comanda asta)
