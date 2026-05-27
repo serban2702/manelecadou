@@ -9,7 +9,6 @@ import {
   QuickListen,
   Leaderboard,
   Testimonials,
-  Smecher,
   Ticker,
   NowPlaying,
 } from '@/components/sections';
@@ -152,15 +151,6 @@ export default function HomePage() {
         </section>
 
         {/* ȘMECHER — full width */}
-        <section className="band" id="smecher">
-          <div className="band-head">
-            <div className="ek">{tHome('smecherSection.badge')}</div>
-            <h2 className="gold-text">{tHome('smecherSection.title')}</h2>
-            <p>{tHome('smecherSection.sub')}</p>
-          </div>
-          <Smecher />
-        </section>
-
         {/* TESTIMONIALS */}
         <section className="band">
           <div className="band-head">

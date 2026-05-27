@@ -83,92 +83,108 @@ export function PriceStrip() {
   );
 }
 
-export function QuickListen({ playing, onPlay }: { playing: string | null; onPlay: (id: string) => void }) {
+/**
+ * QuickListen — galerie de demo-uri curate de pe homepage. Folosește
+ * `site_demos` (aceleași date ca pop-up-ul de demo, ca pagina /asculta).
+ * Limităm la 6 card-uri ca să încapă în grid-ul orizontal.
+ *
+ * `playing` / `onPlay` rămân în signature pentru retrocompatibilitate cu
+ * `page.tsx`, dar nu mai sunt folosite — player-ele se controlează singure
+ * prin audio-registry (un singur sunet la moment).
+ */
+export function QuickListen(_props: { playing: string | null; onPlay: (id: string) => void }) {
   const t = useTranslations('quickListen');
-  const site = useSite();
-  const useLive = site.topSource === 'live';
 
-  // Generări reale când admin a comutat sursa pe „live". Limităm la 6 ca să nu
-  // depășim grid-ul orizontal. Sort popular ca să arătăm cele mai ascultate.
-  const { data: live } = useQuery({
-    queryKey: ['quick-listen-live'],
-    queryFn: () => api.publicGenerations({ limit: 6, sort: 'popular', period: 'all' }),
+  const { data } = useQuery({
+    queryKey: ['quick-listen-demos'],
+    queryFn: () => api.siteDemos(),
     staleTime: 60_000,
-    enabled: useLive,
   });
 
-  const liveItems = useLive ? (live?.items ?? []) : [];
+  // Taie la 6 ca să se potrivească în grid-ul orizontal — chiar dacă pe pagina
+  // /asculta arătăm până la 15-20 de demo-uri.
+  const items = (data?.items ?? []).slice(0, 6);
 
-  // Fallback la DEMOS hardcoded dacă admin e pe „seed" SAU site-ul live n-a
-  // generat încă nimic.
-  if (!useLive || liveItems.length === 0) {
-    return (
-      <section className="qlisten">
-        <div className="head">
-          <h3>{t('title')}</h3>
-          <span className="more">{t('more', { count: DEMOS.length })}</span>
-        </div>
-        <div className="ql-scroll">
-          {DEMOS.map((d) => {
-            const isP = playing === d.id;
-            return (
-              <div key={d.id} className={`ql-card ${isP ? 'playing' : ''}`} onClick={() => onPlay(d.id)}>
-                <div className="cover">
-                  <div className="vinyl"></div>
-                  <button className="play-mini" aria-label="Play">
-                    {isP ? <Ic.Pause s={14} /> : <Ic.Play s={14} />}
-                  </button>
-                </div>
-                <div className="ttl">{d.ttl}</div>
-                <div className="by">{d.by}</div>
-                <div className="heat">{d.heat}</div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-    );
-  }
+  if (items.length === 0) return null;
 
-  // Render live: card-uri cu ManeaPlayer pe care userul îl ascultă direct.
   return (
     <section className="qlisten">
       <div className="head">
         <h3>{t('title')}</h3>
-        <span className="more">{t('more', { count: liveItems.length })}</span>
+        <span className="more">{t('more', { count: items.length })}</span>
       </div>
       <div className="ql-scroll">
-        {liveItems.map((r) => {
-          const voiceNm = VOICES.find((v) => v.id === r.voiceArtist)?.nm ?? r.voiceArtist;
-          return (
-            <Link
-              key={r.id}
-              href={`/m/${r.id}`}
-              className="ql-card"
-              style={{ textDecoration: 'none' }}
-            >
-              <div className="cover">
-                <div className="vinyl"></div>
-                <button className="play-mini" aria-label="Play" onClick={(e) => e.preventDefault()}>
-                  <Ic.Play s={14} />
-                </button>
-              </div>
-              <div className="ttl" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {t('forSomeone', { name: r.recipientName })}
-              </div>
-              <div className="by" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {voiceNm}
-              </div>
-              {r.audioUrl && (
-                <div onClick={(e) => e.preventDefault()} style={{ marginTop: 6 }}>
-                  <ManeaPlayer audioUrl={r.audioUrl} compact />
-                </div>
-              )}
-            </Link>
-          );
-        })}
+        {items.map((d) => (
+          <QuickListenCard key={d.id} demo={d} />
+        ))}
       </div>
     </section>
+  );
+}
+
+function QuickListenCard({ demo }: { demo: import('@/lib/api').SiteDemoDto }) {
+  // Lazy mount: ManeaPlayer descarcă MP3-ul integral + face waveform-decode
+  // la mount. 6 card-uri simultane = timp mort vizibil pe homepage. Card-ul
+  // randează un vinyl + buton Play „static" și inițializează player-ul real
+  // doar la primul click — care apoi auto-play-ează (gest user, browser nu
+  // blochează).
+  const [activated, setActivated] = useState(false);
+  // „Pentru X" e principalul label — exact ca în screenshot-ul user-ului.
+  // Cădem pe titlul demo-ului dacă n-avem recipient (nu strică).
+  const headline = demo.toName ? `Pentru ${demo.toName}` : demo.title;
+  const subline = demo.fromName ?? demo.title;
+
+  return (
+    <div className={`ql-card ${activated ? 'playing' : ''}`}>
+      <div
+        className="cover"
+        onClick={() => !activated && setActivated(true)}
+        style={{ cursor: activated ? 'default' : 'pointer' }}
+      >
+        <div className="vinyl"></div>
+        <button
+          type="button"
+          className="play-mini"
+          aria-label="Play"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!activated) setActivated(true);
+          }}
+        >
+          <Ic.Play s={14} />
+        </button>
+      </div>
+      <div
+        className="ttl"
+        style={{
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {headline}
+      </div>
+      <div
+        className="by"
+        style={{
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {subline}
+      </div>
+      {activated && (
+        <div style={{ marginTop: 6 }}>
+          <ManeaPlayer
+            audioUrl={demo.audioUrl}
+            compact
+            startSec={demo.previewStartSec}
+            autoPlay
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
