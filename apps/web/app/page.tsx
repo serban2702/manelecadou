@@ -14,6 +14,7 @@ import {
   NowPlaying,
 } from '@/components/sections';
 import { Generator } from '@/components/Generator';
+import { DemosPopup } from '@/components/DemosPopup';
 import { Ic } from '@/components/icons';
 import { useSite } from '@/lib/site-context';
 import { formatPrice } from '@/lib/site-shared';
@@ -22,6 +23,7 @@ import { getPagePath } from '@/lib/page-slugs';
 export default function HomePage() {
   const [playing, setPlaying] = useState<string | null>(null);
   const onPlay = (id: string) => setPlaying((p) => (p === id ? null : id));
+  const [demosOpen, setDemosOpen] = useState(false);
   const tHero = useTranslations('hero');
   const tHome = useTranslations('home');
   const tCommon = useTranslations('common');
@@ -68,9 +70,15 @@ export default function HomePage() {
             >
               {tCommon('ctaMakeManea', { price: formatPrice(site, site.basePriceCents) })}
             </Link>
-            <Link href={asculta} className="btn btn-ghost" style={{ textDecoration: 'none' }}>
+            <button
+              onClick={() => setDemosOpen(true)}
+              className="btn btn-ghost"
+              style={{ textDecoration: 'none', fontFamily: 'inherit', cursor: 'pointer' }}
+              data-hint="true"
+              data-hint-label="Ascultă demo"
+            >
               <Ic.Play s={14} /> {tCommon('ctaListen')}
-            </Link>
+            </button>
           </div>
           <div className="trust-row">
             <span>⭐ <span dangerouslySetInnerHTML={{ __html: tHome.raw('trust.reviews') as string }} /></span>
@@ -180,6 +188,7 @@ export default function HomePage() {
           </div>
         </section>
       </div>
+      <DemosPopup open={demosOpen} onClose={() => setDemosOpen(false)} />
     </SiteShell>
   );
 }

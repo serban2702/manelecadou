@@ -40,6 +40,7 @@ import { WebPushModule } from './modules/web-push/web-push.module';
 import { AiChatModule } from './modules/ai-chat/ai-chat.module';
 import { OutboundEmailModule } from './modules/outbound-email/outbound-email.module';
 import { MetaCapiModule } from './modules/meta-capi/meta-capi.module';
+import { SiteDemosModule } from './modules/site-demos/site-demos.module';
 
 @Module({
   imports: [
@@ -89,6 +90,7 @@ import { MetaCapiModule } from './modules/meta-capi/meta-capi.module';
     AiAssistantModule,
     WebPushModule,
     AiChatModule,
+    SiteDemosModule,
     SeederModule,
   ],
   providers: [

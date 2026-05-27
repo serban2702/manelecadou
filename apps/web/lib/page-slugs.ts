@@ -19,6 +19,7 @@ export type PageKey =
   | 'privacy'
   | 'cookies'
   | 'asculta'
+  | 'istoric'
   | 'top'
   | 'articole'
   | 'cadou'
@@ -35,6 +36,7 @@ export const PAGE_CANONICAL: Record<PageKey, string> = {
   privacy: 'confidentialitate',
   cookies: 'cookies',
   asculta: 'asculta',
+  istoric: 'istoric',
   top: 'top',
   articole: 'articole',
   cadou: 'cadou',
@@ -60,6 +62,7 @@ export const PAGE_SLUGS: Record<Locale, Record<PageKey, string>> = {
     privacy: 'confidentialitate',
     cookies: 'cookies',
     asculta: 'asculta',
+    istoric: 'istoric',
     top: 'top',
     articole: 'articole',
     cadou: 'cadou',
@@ -75,6 +78,7 @@ export const PAGE_SLUGS: Record<Locale, Record<PageKey, string>> = {
     privacy: 'poveritelnost',
     cookies: 'biskvitki',
     asculta: 'slushai',
+    istoric: 'istoria',
     top: 'top',
     articole: 'statii',
     cadou: 'podaruk',
@@ -90,6 +94,7 @@ export const PAGE_SLUGS: Record<Locale, Record<PageKey, string>> = {
     privacy: 'privatnost',
     cookies: 'kolacici',
     asculta: 'slusaj',
+    istoric: 'istorija',
     top: 'top',
     articole: 'clanci',
     cadou: 'poklon',
@@ -105,6 +110,7 @@ export const PAGE_SLUGS: Record<Locale, Record<PageKey, string>> = {
     privacy: 'gizlilik',
     cookies: 'cerezler',
     asculta: 'dinle',
+    istoric: 'gecmis',
     top: 'top',
     articole: 'makaleler',
     cadou: 'hediye',
@@ -120,6 +126,7 @@ export const PAGE_SLUGS: Record<Locale, Record<PageKey, string>> = {
     privacy: 'aporrito',
     cookies: 'cookies',
     asculta: 'akou',
+    istoric: 'istoriko',
     top: 'top',
     articole: 'arthra',
     cadou: 'doro',
@@ -135,6 +142,7 @@ export const PAGE_SLUGS: Record<Locale, Record<PageKey, string>> = {
     privacy: 'privatnost',
     cookies: 'kolacici',
     asculta: 'slusaj',
+    istoric: 'povijest',
     top: 'top',
     articole: 'clanci',
     cadou: 'poklon',
@@ -150,6 +158,7 @@ export const PAGE_SLUGS: Record<Locale, Record<PageKey, string>> = {
     privacy: 'zasebnost',
     cookies: 'piskotki',
     asculta: 'poslusaj',
+    istoric: 'zgodovina',
     top: 'top',
     articole: 'clanki',
     cadou: 'darilo',
@@ -165,6 +174,7 @@ export const PAGE_SLUGS: Record<Locale, Record<PageKey, string>> = {
     privacy: 'privatnost',
     cookies: 'kolacici',
     asculta: 'slusaj',
+    istoric: 'historija',
     top: 'top',
     articole: 'clanci',
     cadou: 'poklon',

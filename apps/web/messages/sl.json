@@ -24,7 +24,8 @@
     "top": "Top",
     "cadou": "Darilo",
     "intra": "Prijava",
-    "cont": "Moj račun"
+    "cont": "Moj račun",
+    "istoric": "Zgodovina"
   },
   "header": {
     "brand": "Manele Cadou",
@@ -626,25 +627,30 @@
     "empty": "V topu še ni manele. Bodi prvi!"
   },
   "ascultaPage": {
-    "flag": "🎧 Galerija pesmi",
-    "title": "Poslušaj pesmi",
-    "sub": "Zadnje pesmi, ustvarjene na platformi. Filtriraj po stilu ali dogodku.",
-    "filterStyle": "Stil",
-    "filterOccasion": "Dogodek",
+    "flag": "🎼 Poslušaj demo",
+    "title": "Pesmi, izbrane zate",
+    "sub": "Izbor profesionalnih pesmi — natanko ton, s katerim bomo naredili tudi tvojo.",
     "all": "Vse",
-    "reset": "✕ Ponastavi filtre",
     "loading": "Nalaganje…",
-    "countOne": "{count} najdena pesem",
-    "countMany": "{count} najdenih pesmi",
-    "for": "Za",
-    "from": "Od",
-    "plays": "{count} predvajanj",
-    "empty": "Nismo našli pesmi s temi filtri.",
-    "emptyCta": "🎤 Naredi prvo pesem",
-    "prev": "← Prejšnje",
-    "next": "Naslednje →",
-    "pageOf": "Stran {current} / {total}",
-    "ctaMake": "🎤 Naredi svojo pesem zdaj"
+    "empty": "Še ni objavljenih demo pesmi.",
+    "emptyCta": "Naredi svojo pesem",
+    "ctaMake": "Naredi pesem v dar",
+    "viewHistoryLink": "Glej vse pesmi, ustvarjene na strani →",
+    "showLyrics": "Prikaži besedilo",
+    "hideLyrics": "Skrij besedilo",
+    "dedicationFromTo": "od {from} za {to}",
+    "dedicationTo": "za {to}",
+    "dedicationFrom": "od {from}",
+    "cat": {
+      "aniversare": "Rojstni dan",
+      "nunta": "Poroka",
+      "botez": "Krst",
+      "cumetrie": "Botrstvo",
+      "dragoste": "Ljubezen",
+      "prietenie": "Prijateljstvo",
+      "comemorare": "V spomin",
+      "altele": "Drugo"
+    }
   },
   "roulette": {
     "title": "Kolo sreče",
@@ -1002,5 +1008,37 @@
     "detail": "Če ste kupili pesem, jo boste našli v „Moje pesmi\", takoj ko bo pripravljena.",
     "mineCta": "Moje pesmi",
     "homeCta": "Domov"
+  },
+  "istoricPage": {
+    "flag": "🎧 Zgodovina",
+    "title": "Pesmi, ustvarjene na tej strani",
+    "sub": "Vse doslej generirane pesmi — poslušaj brezplačno.",
+    "filterStyle": "Stil",
+    "filterOccasion": "Dogodek",
+    "all": "Vse",
+    "reset": "✕ Ponastavi filtre",
+    "loading": "Nalaganje…",
+    "countOne": "{count} najdena pesem",
+    "countMany": "{count} najdenih pesmi",
+    "for": "Za",
+    "from": "Od",
+    "plays": "{count} predvajanj",
+    "empty": "Nismo našli pesmi s temi filtri.",
+    "emptyCta": "🎤 Naredi prvo pesem",
+    "prev": "← Prejšnje",
+    "next": "Naslednje →",
+    "pageOf": "Stran {current} / {total}",
+    "ctaMake": "🎤 Naredi svojo pesem zdaj"
+  },
+  "demosPopup": {
+    "title": "Poslušaj nekaj demo posnetkov",
+    "sub": "Kako zveni pesem, ki jo naredimo zate.",
+    "close": "Zapri",
+    "loading": "Nalaganje…",
+    "empty": "Še ni objavljenih demo pesmi.",
+    "viewAll": "Glej vse demo posnetke →",
+    "dedicationFromTo": "od {from} za {to}",
+    "dedicationTo": "za {to}",
+    "dedicationFrom": "od {from}"
   }
 }

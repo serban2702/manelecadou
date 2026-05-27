@@ -15,9 +15,12 @@ interface Props {
   /** @deprecated demo-ul e acum un fișier separat de 30s pe backend.
    *  Lăsat ca prop pentru compatibilitate dar nu mai trunchiază nimic. */
   maxDurationSec?: number;
+  /** Secunda de la care să pornească playback-ul (preview-ul scurt al unui
+   *  demo curat — sare peste intro). Aplicat când track-ul devine ready. */
+  startSec?: number;
 }
 
-export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = false, maxDurationSec }: Props) {
+export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = false, maxDurationSec, startSec }: Props) {
   const audioUrl = resolveMediaUrl(rawAudioUrl) ?? rawAudioUrl;
   const previewLimited = typeof maxDurationSec === 'number' && maxDurationSec > 0;
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -51,6 +54,15 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
         ws.on('ready', () => {
           setDuration(ws.getDuration());
           setLoaded(true);
+          // Sari peste intro pentru demo-urile curate (popup-ul homepage).
+          if (typeof startSec === 'number' && startSec > 0) {
+            const d = ws.getDuration();
+            if (d > 0 && startSec < d) {
+              try {
+                ws.seekTo(startSec / d);
+              } catch {}
+            }
+          }
         });
         ws.on('audioprocess', () => {
           const t = ws.getCurrentTime();

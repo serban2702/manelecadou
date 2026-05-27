@@ -60,6 +60,7 @@ const NAV: NavItem[] = [
   { href: '/inbox', label: 'Inbox', icon: Inbox, scope: 'both' },
   { href: '/inbox/knowledge', label: 'Knowledge', icon: BookOpen, scope: 'per-site' },
   { href: '/seo-pages', label: 'SEO articles', icon: FileText, scope: 'per-site' },
+  { href: '/site-demos', label: 'Demo-uri ascultă', icon: Music2, scope: 'per-site' },
   { href: '/generations', label: 'Generations', icon: Music2, scope: 'both' },
   { href: '/suno', label: 'Suno credits', icon: Coins, scope: 'global' },
   { href: '/lyrics', label: 'Lyrics (AI)', icon: Mic2, scope: 'global' },

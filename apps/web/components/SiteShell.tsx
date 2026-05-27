@@ -34,6 +34,7 @@ export function SiteShell({ children, hideStickyCta: _ignored }: { children: Rea
   const NAV = [
     { href: getPagePath(site.locale, 'asculta'), label: tNav('asculta') },
     { href: getPagePath(site.locale, 'studio'), label: tNav('studio') },
+    { href: getPagePath(site.locale, 'istoric'), label: tNav('istoric') },
     { href: getPagePath(site.locale, 'top'), label: tNav('top') },
   ];
 

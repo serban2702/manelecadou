@@ -24,7 +24,8 @@
     "top": "En iyiler",
     "cadou": "Hediye",
     "intra": "Giriş",
-    "cont": "Hesabım"
+    "cont": "Hesabım",
+    "istoric": "Geçmiş"
   },
   "header": {
     "brand": "Manele Cadou",
@@ -626,25 +627,30 @@
     "empty": "Henüz top'ta manele yok. İlk sen ol!"
   },
   "ascultaPage": {
-    "flag": "🎧 Şarkı galerisi",
-    "title": "Şarkı dinle",
-    "sub": "Platformda üretilen son şarkılar. Stile veya etkinliğe göre filtrele.",
-    "filterStyle": "Stil",
-    "filterOccasion": "Etkinlik",
+    "flag": "🎼 Demo dinle",
+    "title": "Senin için seçilmiş şarkılar",
+    "sub": "Profesyonel şarkılardan bir seçki — seninkini de tam bu tonda yapıyoruz.",
     "all": "Tümü",
-    "reset": "✕ Filtreleri sıfırla",
     "loading": "Yükleniyor…",
-    "countOne": "{count} şarkı bulundu",
-    "countMany": "{count} şarkı bulundu",
-    "for": "İçin",
-    "from": "Gönderen",
-    "plays": "{count} dinleme",
-    "empty": "Bu filtrelerle şarkı bulamadık.",
-    "emptyCta": "🎤 İlk şarkıyı yap",
-    "prev": "← Önceki",
-    "next": "Sonraki →",
-    "pageOf": "Sayfa {current} / {total}",
-    "ctaMake": "🎤 Şarkını şimdi yap"
+    "empty": "Henüz yayınlanmış demo yok.",
+    "emptyCta": "Kendi şarkını yap",
+    "ctaMake": "Hediye şarkı yap",
+    "viewHistoryLink": "Sitede yapılan tüm şarkıları gör →",
+    "showLyrics": "Sözleri göster",
+    "hideLyrics": "Sözleri gizle",
+    "dedicationFromTo": "{from} tarafından {to} için",
+    "dedicationTo": "{to} için",
+    "dedicationFrom": "{from} tarafından",
+    "cat": {
+      "aniversare": "Doğum günü",
+      "nunta": "Düğün",
+      "botez": "Vaftiz",
+      "cumetrie": "Sağdıçlık",
+      "dragoste": "Aşk",
+      "prietenie": "Dostluk",
+      "comemorare": "Anma",
+      "altele": "Diğer"
+    }
   },
   "roulette": {
     "title": "Şans Çarkı",
@@ -1002,5 +1008,37 @@
     "detail": "Bir şarkı satın aldıysanız, hazır olur olmaz „Şarkılarım\" bölümünde bulacaksınız.",
     "mineCta": "Şarkılarım",
     "homeCta": "Ana sayfa"
+  },
+  "istoricPage": {
+    "flag": "🎧 Geçmiş",
+    "title": "Bu sitede oluşturulan şarkılar",
+    "sub": "Şimdiye kadar üretilen tüm şarkılar — ücretsiz dinle.",
+    "filterStyle": "Stil",
+    "filterOccasion": "Etkinlik",
+    "all": "Tümü",
+    "reset": "✕ Filtreleri sıfırla",
+    "loading": "Yükleniyor…",
+    "countOne": "{count} şarkı bulundu",
+    "countMany": "{count} şarkı bulundu",
+    "for": "İçin",
+    "from": "Gönderen",
+    "plays": "{count} dinleme",
+    "empty": "Bu filtrelerle şarkı bulamadık.",
+    "emptyCta": "🎤 İlk şarkıyı yap",
+    "prev": "← Önceki",
+    "next": "Sonraki →",
+    "pageOf": "Sayfa {current} / {total}",
+    "ctaMake": "🎤 Şarkını şimdi yap"
+  },
+  "demosPopup": {
+    "title": "Birkaç demo dinle",
+    "sub": "Bizim yaptığımız bir şarkı nasıl ses verir.",
+    "close": "Kapat",
+    "loading": "Yükleniyor…",
+    "empty": "Henüz yayınlanmış demo yok.",
+    "viewAll": "Tüm demoları gör →",
+    "dedicationFromTo": "{from} tarafından {to} için",
+    "dedicationTo": "{to} için",
+    "dedicationFrom": "{from} tarafından"
   }
 }

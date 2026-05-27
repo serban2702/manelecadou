@@ -24,7 +24,8 @@
     "top": "Top",
     "cadou": "Poklon",
     "intra": "Prijava",
-    "cont": "Moj nalog"
+    "cont": "Moj nalog",
+    "istoric": "Istorija"
   },
   "header": {
     "brand": "Manele Cadou",
@@ -626,25 +627,30 @@
     "empty": "Još nema manela u topu. Budi prvi!"
   },
   "ascultaPage": {
-    "flag": "🎧 Galerija pesama",
-    "title": "Slušaj pesme",
-    "sub": "Poslednje pesme generisane na platformi. Filtriraj po stilu ili događaju.",
-    "filterStyle": "Stil",
-    "filterOccasion": "Događaj",
+    "flag": "🎼 Slušaj demo",
+    "title": "Pesme odabrane za tebe",
+    "sub": "Selekcija profesionalnih pesama — upravo ton kojim ćemo napraviti i tvoju.",
     "all": "Sve",
-    "reset": "✕ Resetuj filtere",
     "loading": "Učitavanje…",
-    "countOne": "{count} pronađena pesma",
-    "countMany": "{count} pronađenih pesama",
-    "for": "Za",
-    "from": "Od",
-    "plays": "{count} slušanja",
-    "empty": "Nismo pronašli pesme sa tim filterima.",
-    "emptyCta": "🎤 Napravi prvu pesmu",
-    "prev": "← Prethodne",
-    "next": "Sledeće →",
-    "pageOf": "Strana {current} / {total}",
-    "ctaMake": "🎤 Napravi svoju pesmu sada"
+    "empty": "Još nema objavljenih demo pesama.",
+    "emptyCta": "Napravi svoju pesmu",
+    "ctaMake": "Napravi pesmu na poklon",
+    "viewHistoryLink": "Vidi sve pesme napravljene na sajtu →",
+    "showLyrics": "Pogledaj tekst",
+    "hideLyrics": "Sakrij tekst",
+    "dedicationFromTo": "od {from} za {to}",
+    "dedicationTo": "za {to}",
+    "dedicationFrom": "od {from}",
+    "cat": {
+      "aniversare": "Rođendan",
+      "nunta": "Venčanje",
+      "botez": "Krštenje",
+      "cumetrie": "Kumstvo",
+      "dragoste": "Ljubav",
+      "prietenie": "Prijateljstvo",
+      "comemorare": "U sećanje",
+      "altele": "Ostalo"
+    }
   },
   "roulette": {
     "title": "Точак среће",
@@ -1002,5 +1008,37 @@
     "detail": "Ako ste kupili pesmu, naći ćete je u „Moje pesme\" čim bude gotova.",
     "mineCta": "Moje pesme",
     "homeCta": "Početna"
+  },
+  "istoricPage": {
+    "flag": "🎧 Istorija",
+    "title": "Pesme napravljene na ovom sajtu",
+    "sub": "Sve do sada generisane pesme — slušaj besplatno.",
+    "filterStyle": "Stil",
+    "filterOccasion": "Događaj",
+    "all": "Sve",
+    "reset": "✕ Resetuj filtere",
+    "loading": "Učitavanje…",
+    "countOne": "{count} pronađena pesma",
+    "countMany": "{count} pronađenih pesama",
+    "for": "Za",
+    "from": "Od",
+    "plays": "{count} slušanja",
+    "empty": "Nismo pronašli pesme sa tim filterima.",
+    "emptyCta": "🎤 Napravi prvu pesmu",
+    "prev": "← Prethodne",
+    "next": "Sledeće →",
+    "pageOf": "Strana {current} / {total}",
+    "ctaMake": "🎤 Napravi svoju pesmu sada"
+  },
+  "demosPopup": {
+    "title": "Poslušaj nekoliko demo pesama",
+    "sub": "Kako zvuči pesma napravljena kod nas.",
+    "close": "Zatvori",
+    "loading": "Učitavanje…",
+    "empty": "Još nema objavljenih demo pesama.",
+    "viewAll": "Vidi sve demo pesme →",
+    "dedicationFromTo": "od {from} za {to}",
+    "dedicationTo": "za {to}",
+    "dedicationFrom": "od {from}"
   }
 }

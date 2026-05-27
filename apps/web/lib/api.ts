@@ -220,6 +220,19 @@ export interface ChatMessageDto {
   createdAt: string;
 }
 
+export interface SiteDemoDto {
+  id: string;
+  title: string;
+  fromName: string | null;
+  toName: string | null;
+  category: string;
+  lyrics: string | null;
+  audioUrl: string;
+  audioDurationSec: number | null;
+  previewStartSec: number;
+  thumbnailUrl: string | null;
+}
+
 export const api = {
   guestMe: () => request<MeGuest>('/guest-sessions/me'),
   setGuestEmail: (email: string) =>
@@ -284,6 +297,10 @@ export const api = {
       `/generations/public${qs.toString() ? '?' + qs.toString() : ''}`,
     );
   },
+  siteDemos: () =>
+    request<{ items: SiteDemoDto[] }>('/public/site-demos'),
+  siteDemosFeatured: () =>
+    request<{ items: SiteDemoDto[] }>('/public/site-demos/featured'),
   topList: (period: 'week' | 'month' | 'all' = 'week', limit = 5) =>
     request<{
       source: 'seed' | 'live';

@@ -23,7 +23,8 @@
     "studio": "Fă o manea",
     "top": "Top",
     "intra": "Intră",
-    "cont": "Contul meu"
+    "cont": "Contul meu",
+    "istoric": "Istoric"
   },
   "header": {
     "brand": "Manele Cadou",
@@ -624,25 +625,30 @@
     "empty": "Încă nu sunt manele în top. Fii primul!"
   },
   "ascultaPage": {
-    "flag": "🎧 Galerie manele",
-    "title": "Ascultă manele",
-    "sub": "Ultimele manele generate pe platformă. Filtrează după stil sau eveniment.",
-    "filterStyle": "Stil",
-    "filterOccasion": "Eveniment",
+    "flag": "🎼 Ascultă demo-uri",
+    "title": "Manele alese pentru tine",
+    "sub": "O selecție de manele profesionale — exact tonul în care îți facem și ție melodia.",
     "all": "Toate",
-    "reset": "✕ Resetează filtrele",
     "loading": "Se încarcă…",
-    "countOne": "{count} manea găsită",
-    "countMany": "{count} manele găsite",
-    "for": "Pentru",
-    "from": "De la",
-    "plays": "{count} ascultări",
-    "empty": "Nu am găsit manele cu filtrele astea.",
-    "emptyCta": "🎤 Fă prima manea",
-    "prev": "← Anterioare",
-    "next": "Următoare →",
-    "pageOf": "Pagina {current} / {total}",
-    "ctaMake": "🎤 Fă maneaua ta acum"
+    "empty": "Nu sunt demo-uri publicate încă.",
+    "emptyCta": "Fă-ți propria manea",
+    "ctaMake": "Fă-ți o manea cadou",
+    "viewHistoryLink": "Vezi toate manelele create pe site →",
+    "showLyrics": "Vezi versurile",
+    "hideLyrics": "Ascunde versurile",
+    "dedicationFromTo": "de la {from} pentru {to}",
+    "dedicationTo": "pentru {to}",
+    "dedicationFrom": "de la {from}",
+    "cat": {
+      "aniversare": "Aniversare",
+      "nunta": "Nuntă",
+      "botez": "Botez",
+      "cumetrie": "Cumetrie",
+      "dragoste": "Dragoste",
+      "prietenie": "Prietenie",
+      "comemorare": "Comemorare",
+      "altele": "Altele"
+    }
   },
   "roulette": {
     "title": "Roata Norocului",
@@ -1000,5 +1006,37 @@
     "detail": "Dacă ai cumpărat o manea, o vei găsi în „Manelele mele” imediat ce e gata.",
     "mineCta": "Vezi manelele mele",
     "homeCta": "Acasă"
+  },
+  "istoricPage": {
+    "flag": "🎧 Istoric",
+    "title": "Manele create pe acest site",
+    "sub": "Toate manelele generate până acum, ascultabile gratuit.",
+    "filterStyle": "Stil",
+    "filterOccasion": "Eveniment",
+    "all": "Toate",
+    "reset": "✕ Resetează filtrele",
+    "loading": "Se încarcă…",
+    "countOne": "{count} manea găsită",
+    "countMany": "{count} manele găsite",
+    "for": "Pentru",
+    "from": "De la",
+    "plays": "{count} ascultări",
+    "empty": "Nu am găsit manele cu filtrele astea.",
+    "emptyCta": "🎤 Fă prima manea",
+    "prev": "← Anterioare",
+    "next": "Următoare →",
+    "pageOf": "Pagina {current} / {total}",
+    "ctaMake": "🎤 Fă maneaua ta acum"
+  },
+  "demosPopup": {
+    "title": "Ascultă câteva demo-uri",
+    "sub": "Cum sună o manea făcută de noi.",
+    "close": "Închide",
+    "loading": "Se încarcă…",
+    "empty": "Nu sunt demo-uri publicate încă.",
+    "viewAll": "Vezi toate demo-urile →",
+    "dedicationFromTo": "de la {from} pentru {to}",
+    "dedicationTo": "pentru {to}",
+    "dedicationFrom": "de la {from}"
   }
 }
