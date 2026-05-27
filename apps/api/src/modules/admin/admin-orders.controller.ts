@@ -127,11 +127,6 @@ export class AdminOrdersController {
         })
       : [];
 
-    this.logger.log(
-      `[orders/${id}] payment=${payment?.id ?? 'NONE'} gen=${generation?.id ?? 'NONE'} ` +
-        `suno=${sunoLogs.length} lyrics=${lyricsLogs.length} emails=${outboundEmails.length} ` +
-        `ownerEmail=${ownerEmail ?? 'NONE'}`,
-    );
 
     // Chat conversation — încercăm 3 strategii în ordine de încredere:
     // 1. wizardState.generationId == gen.id (chat AI sales a creat exact comanda asta)
