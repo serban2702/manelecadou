@@ -338,17 +338,61 @@ function FormTab({ data }: { data: OrderDetail }) {
 
 function PaymentTab({ data }: { data: OrderDetail }) {
   const p = data.payment;
+  const g = data.generation;
   // Lazy: cerem datele de facturare Stripe doar când userul intră pe tab.
   const { data: stripeDetails, loading: stripeLoading } = useAsync(
     () => (p ? AdminApi.paymentStripeDetails(p.id) : Promise.resolve(null)),
     [p?.id],
   );
   if (!p) return <Empty title="Demo gratuit — fără plată" />;
+
+  // URL public spre manea. Preferăm domeniul site-ului (https://<domain>/m/<id>)
+  // pentru ca link-ul să meargă direct la brand-ul corect, nu la admin.
+  const melodyUrl = g
+    ? data.site?.domain
+      ? `https://${data.site.domain}/m/${g.id}`
+      : `/m/${g.id}`
+    : null;
+
   return (
     <div className="space-y-4">
       <Card title="Plată">
         <Kv k="ID" v={p.id} mono />
         <Kv k="Sumă" v={`${(p.amount / 100).toFixed(2)} ${p.currency}`} />
+        {melodyUrl && (
+          <Kv
+            k="Manea generată"
+            v={
+              <a
+                href={melodyUrl}
+                target="_blank"
+                rel="noopener"
+                className="inline-flex items-center gap-1 text-primary hover:underline"
+                title={melodyUrl}
+              >
+                <Music2 className="h-3 w-3" />
+                {g!.recipientName} — /m/{g!.id.slice(0, 8)}
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            }
+          />
+        )}
+        {data.analytics.session?.ip && (
+          <Kv
+            k="IP client"
+            v={
+              <span className="font-mono text-[11px]">
+                {data.analytics.session.ip}
+                {data.analytics.session.countryName && (
+                  <span className="ml-1 text-muted-foreground">
+                    ({data.analytics.session.countryName}
+                    {data.analytics.session.city ? ` · ${data.analytics.session.city}` : ''})
+                  </span>
+                )}
+              </span>
+            }
+          />
+        )}
         {p.amountRonCents != null && p.currency !== 'RON' && (
           <Kv k="În RON" v={`${(p.amountRonCents / 100).toFixed(2)} RON`} />
         )}
