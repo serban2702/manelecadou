@@ -451,10 +451,19 @@ ETAPA 1 — QUALIFY (după ce userul răspunde la salut):
   → Lasă userul să-ți spună singur contextul (pentru cine, ce ocazie, ce situație).
   → NU întreba TU stilul/ocazia — userul îți spune natural când povestește contextul.
 
-ETAPA 2 — PREȚ + OFERTĂ (după ce ai context minim):
+ETAPA 2 — PREȚ + OFERTĂ (CRITIC — NICIODATĂ SKIPPED):
+  → ⚠️ OBLIGATORIU: înainte de a cere DETALII (nume, mesaj, email), TREBUIE să
+    anunți prețul și să primești confirmare „da/ok/de acord". Asta indiferent de
+    cât context ți-a dat userul în mesajele anterioare. Chiar dacă userul îți zice
+    „vreau o manea pentru soția mea Esmeralda" în primul mesaj, NU SĂRI direct la
+    cerere detalii — anunță întâi prețul.
   → Apelează \`quote_price_with_offer\` care îți spune dacă userul are deja un cod
     (de la roata norocului) și include automat oferta în mesaj.
   → Pattern Irina: „Maneaua costa ${price} la care puteti sa beneficiati de o oferta. Sunteti de acord?"
+  → BUG observat 2026-05-27 (conv 9926b53b, 88ac3d75): AI a sărit ETAPA 2 când
+    userul a dat context în primul mesaj — a întrebat direct mesajul și email-ul.
+    Asta strica conversia pentru că userul nu confirmă prețul → mai târziu se
+    sperie când vede 29.99 RON la finalize. FIX: ANUNȚĂ MEREU PREȚUL ÎNTÂI.
 
 ETAPA 3 — COLECTARE DETALII (UN SINGUR mesaj numerotat, EXACT 3-4 puncte):
   → „Perfect! Am nevoie de cateva detalii:
@@ -582,7 +591,18 @@ REGULI STRICTE:
       răspunsul („Imediat 🎵", „Aproape gata, jur", „Mai durează 30 secunde maximum").
 21. SCHIMBARE EMAIL: dacă userul zice „am pus email greșit", „retrimite pe X@gmail.com",
     „nu am primit pe email-ul ăla" → apelează change_email_and_resend(newEmail). Tool-ul
-    actualizează email-ul ȘI retrimite melodia (dacă-i gata) la noua adresă. Confirmă scurt.`;
+    actualizează email-ul ȘI retrimite melodia (dacă-i gata) la noua adresă. Confirmă scurt.
+22. METODE PLATĂ ALTERNATIVE: dacă userul întreabă despre plată cash, transfer bancar,
+    BCR, virament, depunere bancomat, IBAN, cont curent, ramburs → NU spune „nu pot
+    oferi informații". Răspunde: „Plata online cu cardul e ce avem standard, dar dau
+    mesaj unui coleg din echipă să te ajute cu metoda asta — revin imediat" și apelează
+    escalate_to_human cu motivul „cere plată alternativă". NU pierde clienții pe asta —
+    sunt useri care vor să plătească dar nu au card online.
+23. ABUZ / LIMBAJ VULGAR: dacă userul îți răspunde abuziv („sugi pula", „sunteți proști",
+    insulte) → la primul mesaj abuziv, răspunde calm și redirecționează la subiect. La
+    al doilea mesaj abuziv pe rând → apelează escalate_to_human cu motivul „client abuziv"
+    și NU mai răspunde direct. Nu te cobori la nivelul lui și nu te lăsa târât în
+    dispută.`;
 
     return this.appendMemoryAndContacts(basePrompt, memory, site);
   }
@@ -1027,18 +1047,20 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
           'Comanda e deja plătită și se generează. NU mai trimite nimic — apelează check_order_status și raportează exact statusul curent al melodiei.',
       };
     }
-    // Pentru state='payment_sent' permitem MAX 2 re-issue-uri (anti-spam: dacă AI
-    // re-cheamă finalize bucle, oprim după 2). Userul real motivat are nevoie de
-    // ~2 link-uri (ex. primul fără reducere, al doilea cu cod câștigat la roată).
+    // Pentru state='payment_sent' permitem MAX 1 re-issue (anti-spam: dacă AI
+    // re-cheamă finalize la fiecare mesaj user post-finalize, generăm 5 linkuri
+    // care confuză userul). Observat 2026-05-27 conv stefmonica41: 2 linkuri în
+    // 30 secunde pentru aceeași comandă, deoarece userul a adăugat info
+    // suplimentară („mesajul nostru este...") după primul link.
     const reissueCount = (state as { linkReissueCount?: number }).linkReissueCount ?? 0;
     const isResumeFromPaymentSent = state.step === 'payment_sent';
-    if (isResumeFromPaymentSent && reissueCount >= 2) {
+    if (isResumeFromPaymentSent && reissueCount >= 1) {
       return {
-        status: 'TOO_MANY_LINKS_SENT',
+        status: 'LINK_ALREADY_SENT',
         currentStep: state.step,
         generationId: state.generationId,
         instruction:
-          'Userul are deja 2+ linkuri de plată trimise în această conversație. NU mai trimite altul. Spune-i scurt: „linkurile de plată sunt mai sus în chat, click pe ele". Dacă insistă, apelează escalate_to_human.',
+          'Userul are deja link de plată trimis în această conversație. NU mai trimite altul, NU re-finaliza, NU re-cere detalii. Dacă userul îți trimite info suplimentară post-link (ex. „mesajul nostru este..."), NU recreați comanda — răspunde scurt: „Am notat! Te aștept să dai click pe linkul de plată mai sus și apoi melodia se generează". Dacă insistă cu cerere link nou, apelează escalate_to_human.',
       };
     }
 
