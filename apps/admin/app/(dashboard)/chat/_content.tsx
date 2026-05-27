@@ -64,6 +64,40 @@ const presenceKey = (c: { userId: string | null; guestId: string | null }) =>
   c.userId ? `u:${c.userId}` : c.guestId ? `g:${c.guestId}` : '';
 
 /** Sunet sintetic discret (chime) pentru sugestii AI noi pe admin. */
+/**
+ * Format compact pentru data ultimului mesaj în sidebar conv:
+ *  - Azi (ultimele 24h, dar tot azi calendaristic) → „azi 14:32"
+ *  - Ieri → „ieri 09:15"
+ *  - Săptămâna asta → „lun 14:32" (zi RO scurt)
+ *  - Anul curent → „24 mai 14:32"
+ *  - Altfel → „24 mai 2025"
+ * Hover-ul (title) afișează data completă pentru cei care vor secunde exact.
+ */
+function formatLastMessageDate(d: Date): string {
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (sameDay) return `azi ${format(d, 'HH:mm')}`;
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday =
+    d.getFullYear() === yesterday.getFullYear() &&
+    d.getMonth() === yesterday.getMonth() &&
+    d.getDate() === yesterday.getDate();
+  if (isYesterday) return `ieri ${format(d, 'HH:mm')}`;
+
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays < 7) return format(d, 'EEE HH:mm', { locale: ro });
+
+  if (d.getFullYear() === now.getFullYear()) {
+    return format(d, 'd MMM HH:mm', { locale: ro });
+  }
+  return format(d, 'd MMM yyyy', { locale: ro });
+}
+
 function playAdminPing() {
   if (typeof window === 'undefined') return;
   try {
@@ -741,12 +775,9 @@ export default function AdminChatPage() {
                             ? `acum ${formatDistanceToNowStrict(new Date(c.lastSeenAt), { locale: ro })}`
                             : c.status}
                       </span>
-                      <span>
+                      <span title={c.lastMessageAt ? format(new Date(c.lastMessageAt), 'd MMM yyyy, HH:mm:ss', { locale: ro }) : ''}>
                         {c.lastMessageAt
-                          ? formatDistanceToNowStrict(new Date(c.lastMessageAt), {
-                              locale: ro,
-                              addSuffix: true,
-                            })
+                          ? formatLastMessageDate(new Date(c.lastMessageAt))
                           : 'fără mesaje'}
                       </span>
                     </div>
