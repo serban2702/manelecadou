@@ -334,6 +334,9 @@ export class PaymentsService {
       cancel_url: `${siteUrl}${cancelPath}`,
       expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
       phone_number_collection: { enabled: true },
+      // Cerem adresa completă de facturare — necesar pentru emitere facturi.
+      // Stripe afișează un formular cu Adresă / Oraș / Cod poștal / Țară.
+      billing_address_collection: 'required',
       metadata: {
         paymentId: payment.id,
         generationId: input.generationId ?? '',
@@ -480,6 +483,8 @@ export class PaymentsService {
       success_url: `${siteUrl}/cadou/success?paymentId=${payment.id}`,
       cancel_url: `${siteUrl}/cadou?paymentId=${payment.id}&cancel=1`,
       expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
+      phone_number_collection: { enabled: true },
+      billing_address_collection: 'required',
       metadata: {
         paymentId: payment.id,
         giftPurchase: 'true',
