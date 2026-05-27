@@ -50,11 +50,18 @@ export default function AsculaPage() {
   const hasFilters = !!styleId || !!occasion;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  // Folosim i18n DOAR dacă cheia există efectiv. next-intl nu aruncă pe
+  // MISSING_MESSAGE — face console.error și returnează fallback, deci try/catch
+  // nu prinde nimic. Generations vechi pot avea style/occasion stocat ca nume
+  // tradus (ex. "Modernă", "Zi de naștere") în loc de id stable — pe acelea
+  // sărim peste i18n și folosim direct valoarea / seed-data.
   const styleLabel = (id: string) => {
-    try { return tStyles(`${id}.nm`); } catch { return STYLES.find((s) => s.id === id)?.nm ?? id; }
+    if ((tStyles as any).has?.(`${id}.nm`)) return tStyles(`${id}.nm` as any);
+    return STYLES.find((s) => s.id === id)?.nm ?? id;
   };
   const occLabel = (id: string) => {
-    try { return tOcc(id); } catch { return OCC.find((o) => o.id === id)?.nm ?? id; }
+    if ((tOcc as any).has?.(id)) return tOcc(id as any);
+    return OCC.find((o) => o.id === id)?.nm ?? id;
   };
 
   return (
