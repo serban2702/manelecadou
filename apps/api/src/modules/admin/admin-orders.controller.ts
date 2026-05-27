@@ -95,8 +95,11 @@ export class AdminOrdersController {
       const extra = await this.emails
         .createQueryBuilder('e')
         .where('e.to = :to', { to: ownerEmail })
-        .andWhere('e.createdAt BETWEEN :from AND :to', { from, to })
-        .orderBy('e.createdAt', 'ASC')
+        .andWhere(
+          'e."createdAt" BETWEEN :from::timestamptz AND :to::timestamptz',
+          { from: from.toISOString(), to: to.toISOString() },
+        )
+        .orderBy('e."createdAt"', 'ASC')
         .getMany();
       // Merge fără duplicat
       const seen = new Set(outboundEmails.map((x) => x.id));
@@ -246,7 +249,10 @@ export class AdminOrdersController {
       if (anchor) {
         const from = new Date(anchor.getTime() - 30 * 60_000);
         const to = new Date(anchor.getTime() + 30 * 60_000);
-        qb.andWhere('s."lastActivityAt" BETWEEN :from AND :to', { from, to });
+        qb.andWhere(
+          's."lastActivityAt" BETWEEN :from::timestamptz AND :to::timestamptz',
+          { from: from.toISOString(), to: to.toISOString() },
+        );
       }
       analyticsSession = await qb.getOne();
 
