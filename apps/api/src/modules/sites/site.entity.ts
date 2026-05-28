@@ -411,12 +411,29 @@ export class Site {
   aiChatModeDefault!: 'manual' | 'suggest' | 'auto' | null;
 
   /**
-   * Dacă true, AI-ul Irina trimite proactiv salutul + force_open chat la ~5s după ce
-   * un vizitator nou se conectează WS pe acest site. Anti-spam: doar dacă conv n-are
-   * `greetingSentAt`. Skip pe pagina `/m/[id]` (ascultători nu-s prospects).
+   * Dacă true, AI-ul Irina trimite proactiv salutul către vizitatori după
+   * `aiGreetingDelaySec`. Anti-spam: doar dacă conv n-are `greetingSentAt`.
+   * Skip pe pagina `/m/[id]` (ascultători nu-s prospects).
    */
   @Column({ type: 'boolean', default: false })
   aiGreetingEnabled!: boolean;
+
+  /**
+   * Câte secunde așteaptă AI-ul după conectarea WS înainte să trimită salutul.
+   * Default 5s. Range util: 3-30s. Folosit doar dacă aiGreetingEnabled=true.
+   */
+  @Column({ type: 'integer', default: 5 })
+  aiGreetingDelaySec!: number;
+
+  /**
+   * Dacă true, când AI-ul trimite salutul, chat-ul se deschide automat pe ecranul
+   * vizitatorului (force_open via WS). Dacă false, salutul ajunge dar widget-ul
+   * rămâne închis — userul vede doar badge-ul cu mesaj necitit + jiggle animation.
+   * Util dacă vrei un comportament mai puțin intruziv. Folosit doar dacă
+   * aiGreetingEnabled=true.
+   */
+  @Column({ type: 'boolean', default: true })
+  aiGreetingAutoOpenChat!: boolean;
 
   /**
    * Dacă true, meniul de selectare limbă (LangSwitcher din topbar) e afișat.

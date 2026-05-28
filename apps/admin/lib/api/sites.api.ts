@@ -98,9 +98,13 @@ export interface SiteDto {
   /** Mod AI chat inițial pentru conversații noi (override global). NULL = global.
    *  La schimbare se propagă pe toate conversațiile existente ale site-ului. */
   aiChatModeDefault: 'manual' | 'suggest' | 'auto' | null;
-  /** Dacă true, Irina (AI) trimite proactiv salutul + force_open chat la 5s după ce vizitatorul
-   *  se conectează. Anti-spam: o singură dată per sesiune. Skip pe /m/[id]. */
+  /** Dacă true, Irina (AI) trimite proactiv salutul. Anti-spam: o singură dată
+   *  per sesiune. Skip pe /m/[id]. */
   aiGreetingEnabled: boolean;
+  /** Secunde de așteptare după conectare WS înainte de salut. Range 1-60. Default 5. */
+  aiGreetingDelaySec: number;
+  /** Dacă true, chat-ul se deschide automat la salut. Default true. */
+  aiGreetingAutoOpenChat: boolean;
   /** Afișează meniul de selectare limbă în topbar. Default false (un domeniu = o limbă). */
   langSwitcherEnabled: boolean;
   maintenanceMessage: Record<string, string>;

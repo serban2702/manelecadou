@@ -451,12 +451,37 @@ export function ChatWidget() {
             <button
               onClick={() => setOpen(false)}
               aria-label={t('closeAria')}
+              title={t('closeAria')}
               style={{
-                background: 'transparent', border: 'none',
-                color: 'rgba(255,245,220,0.5)', cursor: 'pointer', fontSize: 22,
+                background: 'rgba(255,245,220,0.08)',
+                border: '1px solid rgba(255,245,220,0.25)',
+                color: '#fff5dc',
+                cursor: 'pointer',
+                fontSize: 18,
+                fontWeight: 700,
+                lineHeight: 1,
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 160ms ease',
+                flexShrink: 0,
+                marginLeft: 8,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255,108,176,0.18)';
+                e.currentTarget.style.borderColor = 'rgba(255,108,176,0.55)';
+                e.currentTarget.style.color = '#ff6cb0';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255,245,220,0.08)';
+                e.currentTarget.style.borderColor = 'rgba(255,245,220,0.25)';
+                e.currentTarget.style.color = '#fff5dc';
               }}
             >
-              ×
+              ✕
             </button>
           </div>
 

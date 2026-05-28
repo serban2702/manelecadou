@@ -271,10 +271,17 @@ export class AIChatAgentService {
         .execute();
       this.gateway.emitMessage({ message: saved, conversation: conv });
 
-      // Force open chat widget — userul vede salutul imediat fără click
-      this.gateway.forceToggleChat({ userId: target.userId, guestId: target.guestId }, true);
+      // Force open chat widget — DOAR dacă site-ul are aiGreetingAutoOpenChat=true.
+      // Dacă false, salutul ajunge dar widget-ul rămâne închis (user vede badge unread
+      // + jiggle animation + sound). Mai puțin intruziv.
+      const autoOpen = site.aiGreetingAutoOpenChat !== false;
+      if (autoOpen) {
+        this.gateway.forceToggleChat({ userId: target.userId, guestId: target.guestId }, true);
+      }
 
-      this.logger.log(`greeting sent to conv=${conv.id.slice(0, 8)} (site=${site.name})`);
+      this.logger.log(
+        `greeting sent to conv=${conv.id.slice(0, 8)} (site=${site.name}, auto_open=${autoOpen})`,
+      );
     } catch (e) {
       this.logger.warn(`maybeGreetUser failed: ${(e as Error).message}`);
     }

@@ -861,13 +861,37 @@ function StatusTab({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto) => 
           </p>
         </Field>
         <Toggle
-          label="AI Greeting — Irina deschide chat singură la 5s după ce vizitatorul intră"
+          label="AI Greeting — Irina inițiază conversația cu vizitatorul"
           value={form.aiGreetingEnabled ?? false}
           onChange={(v) => setForm({ ...form, aiGreetingEnabled: v })}
         />
         <p className="text-[11px] text-muted-foreground -mt-1 col-span-full">
           Anti-spam: o singură dată per sesiune. Skip pe pagina /m/[id]
           (ascultători nu-s prospects). Necesită aiChatModeDefault ≠ manual.
+        </p>
+        <Field label="Delay salut (secunde după intrare pe site)" description="Cât așteaptă AI-ul după ce vizitatorul se conectează. Range 1-60s. Default 5s. Folosit doar dacă AI Greeting e ON.">
+          <Input
+            type="number"
+            min={1}
+            max={60}
+            value={form.aiGreetingDelaySec ?? 5}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              setForm({ ...form, aiGreetingDelaySec: Number.isFinite(n) && n > 0 ? Math.min(60, Math.max(1, Math.round(n))) : 5 });
+            }}
+            placeholder="5"
+          />
+        </Field>
+        <Toggle
+          label="Deschide chat automat când Irina salută"
+          value={form.aiGreetingAutoOpenChat ?? true}
+          onChange={(v) => setForm({ ...form, aiGreetingAutoOpenChat: v })}
+        />
+        <p className="text-[11px] text-muted-foreground -mt-1 col-span-full">
+          Dacă ON, chat-ul se deschide singur pe ecranul vizitatorului la
+          salut. Dacă OFF, salutul ajunge dar widget-ul rămâne închis — userul
+          vede doar badge cu mesaj necitit + jiggle animation pe iconiță (mai
+          puțin intruziv). Folosit doar dacă AI Greeting e ON.
         </p>
         <Field label="Sursă date /top">
           <select

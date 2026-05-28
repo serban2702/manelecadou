@@ -226,7 +226,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       );
 
       // ============== Proactive greeting (Faza 6 — Irina virtuală) ==============
-      // După 5 secunde, dacă:
+      // După `site.aiGreetingDelaySec` secunde (default 5), dacă:
       //   - userul încă-i online,
       //   - site-ul are aiGreetingEnabled,
       //   - conv n-are deja greetingSentAt (one-shot per sesiune permanent),
@@ -235,11 +235,43 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // Dacă există deja un timer pentru același key, NU re-arm — userul a doar deschis
       // un al doilea tab (același guestId). Greeting o singură dată per sesiune.
       if (!this.greetingTimers.has(key)) {
-        const timer = setTimeout(() => {
-          this.greetingTimers.delete(key);
-          void this.triggerGreetingIfEligible(ident);
-        }, 5000);
-        this.greetingTimers.set(key, timer);
+        // Marcăm un placeholder ca să prevenim race cu alte tab-uri/connect-uri.
+        // Apoi lookup async conv → site pentru a citi `aiGreetingDelaySec`.
+        const placeholderTimer = setTimeout(() => {}, 60_000);
+        this.greetingTimers.set(key, placeholderTimer);
+        void (async () => {
+          let delayMs = 5000; // fallback
+          try {
+            const whereClause = ident.userId
+              ? { userId: ident.userId }
+              : ident.guestId ? { guestId: ident.guestId } : null;
+            if (whereClause) {
+              const conv = await this.convRepo.findOne({
+                where: whereClause,
+                order: { createdAt: 'DESC' },
+                select: ['id', 'siteId'],
+              });
+              if (conv?.siteId) {
+                const sitesMod = await import('../sites/sites.service');
+                const sites = this.moduleRef.get(sitesMod.SitesService, { strict: false });
+                const site = await sites?.findById(conv.siteId).catch(() => null);
+                const sec = site?.aiGreetingDelaySec;
+                if (typeof sec === 'number' && sec > 0) {
+                  delayMs = Math.max(1000, Math.min(60_000, sec * 1000));
+                }
+              }
+            }
+          } catch {
+            /* fallback la 5s */
+          }
+          clearTimeout(placeholderTimer);
+          // Reset placeholder cu timer-ul real
+          const timer = setTimeout(() => {
+            this.greetingTimers.delete(key);
+            void this.triggerGreetingIfEligible(ident);
+          }, delayMs);
+          this.greetingTimers.set(key, timer);
+        })();
       }
       return;
     }
