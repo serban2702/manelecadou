@@ -50,41 +50,58 @@ function MetaAdvancedMatching({ pixelId }: { pixelId: string }) {
 
     const fetchAndIdentify = async () => {
       try {
-        // 1. Citește guest_id din cookie pentru external_id (visitor anonim).
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
+
+        // 1. Citește guest_id din cookie (folosit pentru external_id chiar și
+        //    pe vizitatori anonimi — Meta poate face audiențe similare).
         const guestId = (document.cookie.match(/(?:^|; *)mc_guest_id=([^;]+)/) ?? [])[1] || null;
 
-        // 2. Încearcă să citești userul logat (din JWT cookie / Authorization).
         let email: string | null = null;
         let userId: string | null = null;
-        let phone: string | null = null;
+
+        // 2. /api/auth/me — user logat (JWT cookie via credentials: include).
         try {
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
-          const res = await fetch(`${apiUrl}/api/users/me`, {
-            credentials: 'include',
-          });
+          const res = await fetch(`${apiUrl}/api/auth/me`, { credentials: 'include' });
           if (res.ok) {
             const me = await res.json();
             email = (me?.email as string | null) ?? null;
             userId = (me?.id as string | null) ?? null;
-            phone = (me?.phone as string | null) ?? null;
           }
         } catch {
-          /* user anonim — folosim doar guestId */
+          /* user anonim — încercăm guest mai jos */
+        }
+
+        // 3. Dacă nu-i logat, încearcă /api/guests/me cu X-Guest-Id header.
+        if (!email && guestId) {
+          try {
+            const res = await fetch(`${apiUrl}/api/guests/me`, {
+              credentials: 'include',
+              headers: { 'X-Guest-Id': guestId },
+            });
+            if (res.ok) {
+              const me = await res.json();
+              if (me?.email) email = me.email as string;
+            }
+          } catch {
+            /* silent */
+          }
         }
 
         if (cancelled || !window.fbq) return;
 
         const externalId = userId ?? guestId;
-        if (!email && !externalId && !phone) return;
+        if (!email && !externalId) return;
 
-        const sig = `${email ?? ''}|${externalId ?? ''}|${phone ?? ''}`;
+        const sig = `${email ?? ''}|${externalId ?? ''}`;
         if (sig === lastSig) return;
         lastSig = sig;
 
         const am: Record<string, string> = {};
         if (email) am.em = await sha256Hex(email);
-        if (phone) am.ph = await sha256Hex(phone.replace(/[^\d+]/g, ''));
         if (externalId) am.external_id = await sha256Hex(externalId);
+        // NOTĂ: pentru phone vom extinde când entitatea User va avea câmpul phone
+        // și endpoint /api/auth/me îl va returna. Stripe webhook deja trimite phone
+        // hash-uit la Purchase prin customer_details.phone — coverage acoperită acolo.
 
         // Re-init pixel cu Advanced Matching. Meta merge cu multiple init calls.
         try {
