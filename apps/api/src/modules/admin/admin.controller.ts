@@ -309,6 +309,11 @@ export class AdminController {
           )
             AND "startedAt" <= p."createdAt"
             AND source IS NOT NULL
+            -- Exclude redirect-urile post-checkout — Stripe revine pe site cu
+            -- referrer=checkout.stripe.com, ceea ce ar atribui plata altui retry
+            -- ulterior. Cazuri reale de „venit prin Stripe" nu există.
+            AND source NOT ILIKE 'stripe%'
+            AND source NOT ILIKE 'checkout.stripe%'
           ORDER BY "startedAt" DESC
           LIMIT 1
         ) s ON true

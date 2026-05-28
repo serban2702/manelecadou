@@ -65,7 +65,25 @@ function SourceBadge({
     return <span className="text-xs text-muted-foreground">—</span>;
   }
   const key = attribution.source.toLowerCase();
-  const meta = SOURCE_LABEL[key] ?? { emoji: '🌐', label: attribution.source };
+  // Fallback bazat pe substring pentru variante referrer-style (m.facebook.com,
+  // www.google.com, l.instagram.com etc.) care nu apar literal în SOURCE_LABEL.
+  const meta =
+    SOURCE_LABEL[key] ??
+    (key.includes('facebook')
+      ? SOURCE_LABEL.facebook
+      : key.includes('instagram')
+        ? SOURCE_LABEL.instagram
+        : key.includes('tiktok')
+          ? SOURCE_LABEL.tiktok
+          : key.includes('google')
+            ? SOURCE_LABEL.google
+            : key.includes('youtube')
+              ? SOURCE_LABEL.youtube
+              : key.includes('whatsapp')
+                ? SOURCE_LABEL.whatsapp
+                : key.includes('telegram')
+                  ? SOURCE_LABEL.telegram
+                  : { emoji: '🌐', label: attribution.source });
   // Title detaliat la hover: medium + campaign + referrer + landing path.
   const tooltipParts = [
     `Source: ${attribution.source}`,
