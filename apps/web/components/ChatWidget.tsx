@@ -300,6 +300,38 @@ export function ChatWidget() {
     }
   }, [messages.length, open]);
 
+  // ============== Meta Pixel — mirror AddPaymentInfo client-side ==============
+  // Când AI trimite un link de plată în chat, server-ul emite AddPaymentInfo CAPI
+  // cu event_id = `addpay-${paymentId}`. Aici facem mirror client-side cu același
+  // event_id ca să prindem fbp/fbc din browser și să dedup-uim corect. Critic pentru
+  // EMQ pe lead funnel — fără asta AddPaymentInfo are doar IP, fără fbp/fbc.
+  const addPaymentInfoFiredRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const m of messages) {
+      const mm = m as typeof m & {
+        messageType?: string;
+        payload?: { paymentId?: string; amount?: number; currency?: string; description?: string; generationId?: string; status?: string } | null;
+      };
+      if (mm.messageType !== 'payment_link' || !mm.payload?.paymentId) continue;
+      if (mm.payload.status === 'paid' || mm.payload.status === 'failed') continue;
+      const pid = mm.payload.paymentId;
+      if (addPaymentInfoFiredRef.current.has(pid)) continue;
+      addPaymentInfoFiredRef.current.add(pid);
+      try {
+        track('AddPaymentInfo', {
+          value: (mm.payload.amount ?? 0) / 100,
+          currency: mm.payload.currency ?? 'RON',
+          content_id: mm.payload.generationId ?? pid,
+          content_name: mm.payload.description ?? 'Manea personalizată',
+          content_type: 'product',
+          event_id: `addpay-${pid}`, // match server-side eventId
+        });
+      } catch {
+        /* tracking nu blochează UI */
+      }
+    }
+  }, [messages]);
+
   async function send() {
     const text = draft.trim();
     if (!text || sending) return;

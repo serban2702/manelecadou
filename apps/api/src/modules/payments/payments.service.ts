@@ -60,6 +60,16 @@ interface CheckoutInput {
    * (type='demo'), iar webhook-ul va seta paidUnlocked=true.
    */
   unlockGenerationId?: string;
+
+  // ============== Meta Pixel attribution ==============
+  // Capturate la creare-checkout din controller (cookies + headers).
+  // Persistate pe Payment.* și folosite la webhook Purchase ca să trimitem
+  // un eveniment CAPI complet (EMQ ~8+). Fără ele Meta nu poate atribui plata
+  // la click-ul Facebook → ROAS raportat scade artificial.
+  fbp?: string | null;
+  fbc?: string | null;
+  userAgent?: string | null;
+  ipAddress?: string | null;
 }
 
 @Injectable()
@@ -265,6 +275,12 @@ export class PaymentsService {
         userId: input.userId,
         guestId: input.guestId,
         siteId: site.id,
+        // Meta Pixel attribution — persistăm la create ca să fie disponibile în
+        // webhook-ul Purchase (server→server, fără cookies de browser).
+        fbp: input.fbp ?? null,
+        fbc: input.fbc ?? null,
+        userAgent: input.userAgent ?? null,
+        ipAddress: input.ipAddress ?? null,
       }),
     );
 
@@ -382,6 +398,11 @@ export class PaymentsService {
     promoCode?: string;
     email?: string;
     site: Site;
+    // Meta Pixel attribution (propagate to createCheckoutSession → Payment row)
+    fbp?: string | null;
+    fbc?: string | null;
+    userAgent?: string | null;
+    ipAddress?: string | null;
   }): Promise<{ url: string; paymentId: string; generationId: string }> {
     const stripe = await this.getStripe();
     if (!stripe) throw new ServiceUnavailableException('Stripe not configured');
@@ -409,6 +430,10 @@ export class PaymentsService {
       promoCode: input.promoCode,
       email: input.email,
       site,
+      fbp: input.fbp,
+      fbc: input.fbc,
+      userAgent: input.userAgent,
+      ipAddress: input.ipAddress,
     });
 
     return { ...checkout, generationId: gen.id };
@@ -444,6 +469,11 @@ export class PaymentsService {
     tier: GiftTier;
     email: string;
     site: Site;
+    // Meta Pixel attribution (opțional)
+    fbp?: string | null;
+    fbc?: string | null;
+    userAgent?: string | null;
+    ipAddress?: string | null;
   }): Promise<{ url: string; paymentId: string }> {
     const stripe = await this.getStripe();
     if (!stripe) throw new ServiceUnavailableException('Stripe not configured');
@@ -459,6 +489,12 @@ export class PaymentsService {
         userId: input.userId,
         guestId: input.guestId,
         siteId: site.id,
+        // Meta Pixel attribution — persistăm la create ca să fie disponibile în
+        // webhook-ul Purchase (server→server, fără cookies de browser).
+        fbp: input.fbp ?? null,
+        fbc: input.fbc ?? null,
+        userAgent: input.userAgent ?? null,
+        ipAddress: input.ipAddress ?? null,
       }),
     );
 
@@ -576,7 +612,8 @@ export class PaymentsService {
       // ============== Meta CAPI — Purchase server-side ==============
       // Cel mai important eveniment. Trimitem server-side ca să bypass-ăm iOS ATT
       // și ad-blockers (40%+ din Purchases s-ar pierde pe client-side pixel).
-      // event_id = paymentId pentru deduplicare cu eventul client (success page).
+      // event_id = pay-<paymentId> pentru deduplicare cu eventul client (success page,
+      // care folosește același format — vezi /m/[id]/view.tsx).
       if (isPaid) {
         try {
           const customerEmail =
@@ -587,6 +624,19 @@ export class PaymentsService {
           const [fn, ...lnParts] = customerName.split(' ');
           const externalId = (session.metadata?.userId || session.metadata?.guestId) ?? null;
           const amountRon = (session.amount_total ?? 0) / 100;
+
+          // Adresă de facturare din Stripe (city/state/zip/country) — EMQ booster.
+          const billingAddr = (session.customer_details?.address ?? null) as
+            | { city?: string | null; state?: string | null; postal_code?: string | null; country?: string | null }
+            | null;
+
+          // Atribuire Meta Pixel — fbp/fbc/UA/IP capturate la creare-checkout
+          // (vezi PaymentsController + createCheckoutSession). Fără ele EMQ < 4
+          // și click-urile Facebook nu se pot atribui plății.
+          // Refacem payment row ca să avem cele mai noi câmpuri (au fost
+          // update-uite mai sus cu providerSessionId + exchangeRate etc.).
+          const paymentRow = await this.repo.findOne({ where: { id: paymentId } });
+
           void this.metaCapi.sendEvent(
             'Purchase',
             {
@@ -596,6 +646,14 @@ export class PaymentsService {
               firstName: fn || null,
               lastName: lnParts.join(' ') || null,
               externalId,
+              ip: paymentRow?.ipAddress ?? null,
+              userAgent: paymentRow?.userAgent ?? null,
+              fbp: paymentRow?.fbp ?? null,
+              fbc: paymentRow?.fbc ?? null,
+              city: billingAddr?.city ?? null,
+              state: billingAddr?.state ?? null,
+              zip: billingAddr?.postal_code ?? null,
+              country: billingAddr?.country ?? null,
               value: amountRon,
               currency: (session.currency ?? 'RON').toUpperCase(),
               contentName: 'Manea personalizată',

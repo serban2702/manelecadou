@@ -1257,6 +1257,7 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
           email: conv.email,
           externalId: conv.userId ?? conv.guestId,
           ip: conv.lastIp,
+          userAgent: conv.lastDevice?.userAgent ?? null,
           value: amount / 100,
           currency,
           contentName: description,

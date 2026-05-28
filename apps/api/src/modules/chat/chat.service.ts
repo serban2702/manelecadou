@@ -1337,10 +1337,13 @@ export class ChatService implements OnModuleInit {
         where: { conversationId: conv.id, authorRole: 'user' },
       });
       const externalId = ctx.userId ?? ctx.guestId ?? null;
+      // userAgent din ultima conexiune WS — crește EMQ pe Lead/EngagedChatter.
+      const userAgent = conv.lastDevice?.userAgent ?? null;
       const baseData = {
         externalId,
         email: conv.email,
         ip: conv.lastIp,
+        userAgent,
         contentName: 'Manea personalizată',
         currency: 'RON',
       };

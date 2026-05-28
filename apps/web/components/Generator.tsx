@@ -486,6 +486,15 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
         try {
           await api.setGuestEmail(candidate);
           await session.refresh();
+          // Meta CompleteRegistration — user a oferit email (lead înalt-calitativ).
+          // Trimitem și pentru AM enrichment server-side: server-ul va hash-ui emailul.
+          try {
+            track('CompleteRegistration', {
+              email: candidate,
+              content_name: 'guest_email_provided',
+              custom_data: { source: 'generator' },
+            });
+          } catch { /* silent */ }
         } catch {
           setError(tGen('humanError.emailSaveFailed'));
           return;
@@ -528,6 +537,8 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
         content_type: 'product',
         value: total,
         currency: site.currency,
+        // event_id stabil → Meta dedupes click-uri multiple pe același generation.
+        event_id: `init-${generationId}`,
       });
       const { url } = await api.createCheckoutSession({
         generationId,
@@ -564,6 +575,13 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
       try {
         await api.setGuestEmail(candidate);
         await session.refresh();
+        try {
+          track('CompleteRegistration', {
+            email: candidate,
+            content_name: 'guest_email_provided',
+            custom_data: { source: 'generator_payfirst' },
+          });
+        } catch { /* silent */ }
       } catch {
         setError(tGen('humanError.emailSaveFailed'));
         return;
@@ -574,11 +592,13 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     try {
       const total = site.basePriceCents / 100;
       track('InitiateCheckout', {
-        content_id: 'pay-first',
+        content_id: generationId ?? 'pay-first',
         content_name: 'Manea Cadou',
         content_type: 'product',
         value: total,
         currency: site.currency,
+        // event_id stabil dacă există deja generationId (restore după cancel).
+        event_id: generationId ? `init-${generationId}` : undefined,
       });
       // Dacă deja avem un generationId (restore după cancel din Stripe),
       // refolosim acelaș generation pending. Altfel creăm unul nou.

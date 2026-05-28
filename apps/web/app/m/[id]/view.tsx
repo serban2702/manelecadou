@@ -104,7 +104,9 @@ function ShareGenerationViewInner() {
             content_type: 'product',
             value: paid.amount / 100,
             currency: paid.currency,
-            event_id: paymentId,
+            // event_id MATCH cu server-side webhook (`pay-${paymentId}`).
+            // Dedup OK în Events Manager → un singur Purchase per achiziție.
+            event_id: `pay-${paymentId}`,
           });
         }
       } catch (e) {
@@ -404,6 +406,9 @@ function PaywallSection({ generationId }: { generationId: string }) {
         content_type: 'product',
         value: site.basePriceCents / 100,
         currency: site.currency,
+        // event_id stabil pe generație — dacă userul apasă de 2x, Meta dedup-uiește
+        // și contează un singur intent (nu 2 InitiateCheckout fake).
+        event_id: generationId ? `init-${generationId}` : undefined,
       });
       const { url } = await api.createCheckoutSession({
         generationId,

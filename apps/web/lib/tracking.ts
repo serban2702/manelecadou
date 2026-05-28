@@ -33,6 +33,14 @@ interface TrackParams {
   email?: string;
   /** External ID — userId sau guestId pentru advanced matching cross-session. */
   external_id?: string;
+  // Câmpuri opționale Advanced Matching — ridică EMQ la 8+. Vor fi hash-uite server-side.
+  phone?: string;
+  first_name?: string;
+  last_name?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
   /** Custom data pentru audiences (emotional_intent, discount_seeker etc.). */
   custom_data?: Record<string, unknown>;
   /** Override pentru event_id (pentru dedup cu Events API server-side). */
@@ -163,6 +171,13 @@ export function track(event: TrackEventName, params: TrackParams = {}): string {
           eventId,
           eventSourceUrl: window.location.href,
           email: params.email,
+          phone: params.phone,
+          firstName: params.first_name,
+          lastName: params.last_name,
+          city: params.city,
+          state: params.state,
+          zip: params.zip,
+          country: params.country,
           externalId: params.external_id,
           value: params.value,
           currency: params.currency,

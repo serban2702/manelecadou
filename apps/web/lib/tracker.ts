@@ -350,15 +350,13 @@ export function track(input: TrackInput): string {
     window.gtag('event', gaName, gaParams);
   }
 
-  const metaName = META_EVENT_NAME[input.type] ?? input.type;
-  if (typeof window.fbq === 'function') {
-    const customData: Record<string, unknown> = { ...input.props };
-    if (input.valueCents != null) {
-      customData.value = input.valueCents / 100;
-      customData.currency = input.currency ?? 'RON';
-    }
-    window.fbq('track', metaName, customData, { eventID: eventId });
-  }
+  // NOTE: NU mai apelăm fbq aici. Toate evenimentele Meta merg prin
+  // `lib/tracking.ts` (track()) care e sursa unică de adevăr și asigură
+  // event_id-uri deterministe (ex. `pay-${paymentId}`) pentru dedup cu
+  // server-side CAPI. Dacă apelăm și aici, generăm phantom events cu
+  // event_id-uri random care nu se dedup → numere umflate în Events Manager.
+  // (Vezi audit Meta CAPI 2026-05-28.)
+  void META_EVENT_NAME; // referință păstrată pentru viitor (ex. server-side mirror)
 
   return eventId;
 }

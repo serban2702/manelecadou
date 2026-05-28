@@ -24,6 +24,93 @@ function PageViewOnNavigate() {
 }
 
 /**
+ * Advanced Matching pentru Meta Pixel — fetchează userul curent (sau guest) și
+ * re-inițializează fbq cu email-ul hash-uit + external_id. Aceasta crește EMQ
+ * de la ~3.0 la ~8+ și ajută Meta să găsească audiențe similare mai precis.
+ *
+ * Notă: pixel-ul Facebook acceptă MULTIPLE apeluri `fbq('init', PIXEL_ID, {...})`
+ * — fiecare suprascrie/adăugă în Advanced Matching dictionary. Documentat oficial.
+ *
+ * Refacem fetch-ul la mount (Token poate să apară după login). Re-init pixel
+ * doar dacă obținem date noi (evită calls inutile).
+ */
+async function sha256Hex(text: string): Promise<string> {
+  const buf = new TextEncoder().encode(text.trim().toLowerCase());
+  const hash = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function MetaAdvancedMatching({ pixelId }: { pixelId: string }) {
+  useEffect(() => {
+    if (typeof window === 'undefined' || !pixelId) return;
+    let cancelled = false;
+    let lastSig: string | null = null;
+
+    const fetchAndIdentify = async () => {
+      try {
+        // 1. Citește guest_id din cookie pentru external_id (visitor anonim).
+        const guestId = (document.cookie.match(/(?:^|; *)mc_guest_id=([^;]+)/) ?? [])[1] || null;
+
+        // 2. Încearcă să citești userul logat (din JWT cookie / Authorization).
+        let email: string | null = null;
+        let userId: string | null = null;
+        let phone: string | null = null;
+        try {
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
+          const res = await fetch(`${apiUrl}/api/users/me`, {
+            credentials: 'include',
+          });
+          if (res.ok) {
+            const me = await res.json();
+            email = (me?.email as string | null) ?? null;
+            userId = (me?.id as string | null) ?? null;
+            phone = (me?.phone as string | null) ?? null;
+          }
+        } catch {
+          /* user anonim — folosim doar guestId */
+        }
+
+        if (cancelled || !window.fbq) return;
+
+        const externalId = userId ?? guestId;
+        if (!email && !externalId && !phone) return;
+
+        const sig = `${email ?? ''}|${externalId ?? ''}|${phone ?? ''}`;
+        if (sig === lastSig) return;
+        lastSig = sig;
+
+        const am: Record<string, string> = {};
+        if (email) am.em = await sha256Hex(email);
+        if (phone) am.ph = await sha256Hex(phone.replace(/[^\d+]/g, ''));
+        if (externalId) am.external_id = await sha256Hex(externalId);
+
+        // Re-init pixel cu Advanced Matching. Meta merge cu multiple init calls.
+        try {
+          window.fbq('init', pixelId, am);
+        } catch {
+          /* ignore */
+        }
+      } catch {
+        /* silent */
+      }
+    };
+
+    // Inițial + repeat la 30s ca să prind login-uri ulterioare.
+    void fetchAndIdentify();
+    const id = setInterval(() => void fetchAndIdentify(), 30_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [pixelId]);
+
+  return null;
+}
+
+/**
  * Analytics per-site: pixel IDs sunt citite din site config (Site.analytics),
  * nu din env vars. Asta permite ca fiecare domeniu să aibă propriile pixel-uri
  * pentru raportare separată în GA4 / Meta / TikTok Ads.
@@ -57,6 +144,23 @@ export function Analytics() {
       {META_PIXEL_ID && (
         <Script id="meta-pixel" key={`meta-${META_PIXEL_ID}`} strategy="afterInteractive">
           {`
+            // ============== fbclid → _fbc cookie capture ==============
+            // Meta nu setează _fbc automat în toate browser-ele (Safari/iOS ITP
+            // îl strip-uiește). Capturăm noi manual cu cookie first-party 90 zile.
+            // Critic pentru fbc coverage pe Purchase (Meta diagnostics).
+            try {
+              var params = new URLSearchParams(window.location.search);
+              var fbclid = params.get('fbclid');
+              if (fbclid) {
+                var hasFbc = document.cookie.indexOf('_fbc=') !== -1;
+                if (!hasFbc) {
+                  var fbc = 'fb.1.' + Date.now() + '.' + fbclid;
+                  var host = window.location.hostname.replace(/^www\\./, '');
+                  document.cookie = '_fbc=' + fbc + '; max-age=7776000; path=/; domain=.' + host + '; SameSite=Lax' + (window.location.protocol === 'https:' ? '; Secure' : '');
+                }
+              }
+            } catch (e) { /* ignore */ }
+
             !function(f,b,e,v,n,t,s)
             {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
             n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -71,6 +175,7 @@ export function Analytics() {
         </Script>
       )}
 
+      {META_PIXEL_ID && <MetaAdvancedMatching pixelId={META_PIXEL_ID} />}
       {(TIKTOK_PIXEL_ID || META_PIXEL_ID) && <PageViewOnNavigate />}
 
       {TIKTOK_PIXEL_ID && (

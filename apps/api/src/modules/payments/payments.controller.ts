@@ -4,6 +4,7 @@ import {
   Get,
   Headers,
   HttpCode,
+  Ip,
   Param,
   Post,
   Query,
@@ -11,6 +12,24 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
+
+/** Extrage o valoare de cookie din header brut. */
+function readCookieValue(cookieHeader: string | undefined, name: string): string | null {
+  if (!cookieHeader) return null;
+  const m = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+/** Extrage atribuire Meta (fbp/fbc/UA/IP) dintr-un request, pentru Pixel attribution. */
+function extractMetaContext(req: Request, ua: string | undefined, xff: string | undefined, ip: string) {
+  const cookieHeader = req.headers.cookie;
+  return {
+    fbp: readCookieValue(cookieHeader, '_fbp'),
+    fbc: readCookieValue(cookieHeader, '_fbc'),
+    userAgent: ua ?? null,
+    ipAddress: ((xff && xff.split(',')[0].trim()) || ip || null) as string | null,
+  };
+}
 import { IsBoolean, IsEmail, IsInt, IsObject, IsOptional, IsUUID, Max, Min } from 'class-validator';
 import { PaymentsService } from './payments.service';
 import { GuestSessionsService } from '../guest-sessions/guest-sessions.service';
@@ -136,6 +155,10 @@ export class PaymentsController {
     @CurrentUser() user: AuthedRequestUser | null,
     @CurrentGuestId() guestId: string | null,
     @CurrentSite() site: Site,
+    @Headers('user-agent') ua: string | undefined,
+    @Headers('x-forwarded-for') xff: string | undefined,
+    @Ip() ip: string,
+    @Req() req: Request,
   ) {
     return this.svc.createCheckoutSession({
       userId: user?.id ?? null,
@@ -146,6 +169,7 @@ export class PaymentsController {
       promoCode: body.promoCode,
       email: body.email ?? (await this.resolveEmail(user, guestId)),
       site,
+      ...extractMetaContext(req, ua, xff, ip),
     });
   }
 
@@ -161,6 +185,10 @@ export class PaymentsController {
     @CurrentUser() user: AuthedRequestUser | null,
     @CurrentGuestId() guestId: string | null,
     @CurrentSite() site: Site,
+    @Headers('user-agent') ua: string | undefined,
+    @Headers('x-forwarded-for') xff: string | undefined,
+    @Ip() ip: string,
+    @Req() req: Request,
   ) {
     return this.svc.createDirectCheckoutSession({
       userId: user?.id ?? null,
@@ -171,6 +199,7 @@ export class PaymentsController {
       promoCode: body.promoCode,
       email: body.email ?? (await this.resolveEmail(user, guestId)),
       site,
+      ...extractMetaContext(req, ua, xff, ip),
     });
   }
 

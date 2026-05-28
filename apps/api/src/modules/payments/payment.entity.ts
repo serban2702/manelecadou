@@ -64,6 +64,26 @@ export class Payment {
   @Column({ type: 'varchar', length: 64, nullable: true })
   openReplaySessionId!: string | null;
 
+  // ============== Meta Pixel attribution (capturate la checkout creation) ==============
+  // Aceste câmpuri merg DIRECT în CAPI Purchase event la webhook. Fără ele EMQ scade
+  // sub 4/10 și atribuirea iOS se rupe complet (40%+ Purchase events s-ar pierde).
+
+  /** _fbp cookie de la utilizatorul care a inițiat checkout-ul. Format „fb.1.<ts>.<rand>". */
+  @Column({ type: 'varchar', length: 256, nullable: true })
+  fbp!: string | null;
+
+  /** _fbc cookie (click-id Facebook). Format „fb.1.<ts>.<fbclid>". Critic pentru atribuire ads. */
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  fbc!: string | null;
+
+  /** User-Agent al browserului la creare. Pentru EMQ + bot detection în Purchase event. */
+  @Column({ type: 'text', nullable: true })
+  userAgent!: string | null;
+
+  /** IP-ul real al utilizatorului la creare (din X-Forwarded-For). Diferit de webhook IP (Stripe). */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  ipAddress!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

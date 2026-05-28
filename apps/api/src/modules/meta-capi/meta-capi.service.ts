@@ -58,6 +58,11 @@ export class MetaCapiService {
       userAgent?: string | null;
       fbp?: string | null;        // _fbp cookie
       fbc?: string | null;        // _fbc cookie (click ID)
+      /** Adresă utilizator — Stripe billing address sau form input. Hash-uite pentru AM. */
+      city?: string | null;
+      state?: string | null;
+      zip?: string | null;
+      country?: string | null;
       eventSourceUrl?: string | null;
       value?: number | null;       // în RON (nu cents)
       currency?: string | null;
@@ -88,6 +93,11 @@ export class MetaCapiService {
       if (data.userAgent) userData.client_user_agent = data.userAgent;
       if (data.fbp) userData.fbp = data.fbp;
       if (data.fbc) userData.fbc = data.fbc;
+      // Adresă — hashed pentru advanced matching, conform spec Meta CAPI.
+      if (data.city) userData.ct = [sha256(data.city.trim().toLowerCase().replace(/\s+/g, ''))];
+      if (data.state) userData.st = [sha256(data.state.trim().toLowerCase().replace(/\s+/g, ''))];
+      if (data.zip) userData.zp = [sha256(data.zip.trim().toLowerCase().replace(/\s+/g, ''))];
+      if (data.country) userData.country = [sha256(data.country.trim().toLowerCase())];
 
       const customData: Record<string, unknown> = { ...(data.customData ?? {}) };
       if (data.value !== null && data.value !== undefined) customData.value = data.value;

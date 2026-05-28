@@ -21,6 +21,28 @@ class TrackEventDto {
   @IsOptional()
   @IsString()
   externalId?: string;
+  // Câmpuri Advanced Matching opționale — cresc EMQ semnificativ (3 → 8+).
+  @IsOptional()
+  @IsString()
+  phone?: string;
+  @IsOptional()
+  @IsString()
+  firstName?: string;
+  @IsOptional()
+  @IsString()
+  lastName?: string;
+  @IsOptional()
+  @IsString()
+  city?: string;
+  @IsOptional()
+  @IsString()
+  state?: string;
+  @IsOptional()
+  @IsString()
+  zip?: string;
+  @IsOptional()
+  @IsString()
+  country?: string;
   @IsOptional()
   value?: number;
   @IsOptional()
@@ -71,11 +93,18 @@ export class MetaCapiController {
       {
         eventId: dto.eventId,
         email: dto.email,
+        phone: dto.phone,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
         externalId: dto.externalId,
         ip: realIp,
         userAgent: ua ?? null,
         fbp: fbp ?? null,
         fbc: fbc ?? null,
+        city: dto.city,
+        state: dto.state,
+        zip: dto.zip,
+        country: dto.country,
         eventSourceUrl: dto.eventSourceUrl ?? referer ?? null,
         value: dto.value,
         currency: dto.currency,
