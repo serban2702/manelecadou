@@ -187,7 +187,8 @@ export function Analytics() {
             s.parentNode.insertBefore(t,s)}(window, document,'script',
             'https://connect.facebook.net/en_US/fbevents.js');
             fbq('init', '${META_PIXEL_ID}');
-            fbq('track', 'PageView');
+            // NU mai apelăm fbq('track', 'PageView') aici — îl emite PageViewOnNavigate
+            // cu event_id deterministic pentru dedup cu CAPI server-side (coverage 100%).
           `}
         </Script>
       )}

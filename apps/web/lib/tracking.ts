@@ -156,10 +156,10 @@ export function track(event: TrackEventName, params: TrackParams = {}): string {
 
   // Server-side mirror — Meta CAPI prin endpoint intern, pentru deduplicare cu
   // event_id identic. Bypass-ează iOS ATT și ad-blockers (40%+ din evenimente
-  // se pierd pe pixel client-side pe iOS). Activat by default; dezactivat
-  // explicit cu serverSide=false (ex. pentru PageView care e auto-tracked de
-  // FB cookie + ar genera prea mult zgomot).
-  const wantsServerSide = params.serverSide !== false && event !== 'PageView';
+  // se pierd pe pixel client-side pe iOS). PageView e INCLUS (Meta diagnostics
+  // a indicat că coverage rate sub 75% crește cost-per-result; mirror-ul aici
+  // pe PageView fixează diagnosticul „Improve rate of Pixel events covered by CAPI").
+  const wantsServerSide = params.serverSide !== false;
   if (wantsServerSide && typeof fetch !== 'undefined') {
     try {
       void fetch('/api/meta-capi/track', {
@@ -194,12 +194,42 @@ export function track(event: TrackEventName, params: TrackParams = {}): string {
   return eventId;
 }
 
-/** PageView simplu (fără content). */
+/**
+ * PageView simplu cu deduplicare CAPI. Generăm un event_id per (visitor, path,
+ * minut) — burst de refresh-uri în același minut → un singur PageView reportat.
+ *
+ * Calea principală e prin track('PageView', ...) care:
+ *  - apelează fbq cu eventID specificat
+ *  - apelează ttq.page() (TikTok)
+ *  - face mirror la /api/meta-capi/track cu același event_id → coverage 100%
+ */
 export function trackPageView() {
   if (typeof window === 'undefined') return;
   try {
+    // event_id bucket pe minut — refresh-uri rapide nu inflează numerele.
+    const visitor = (() => {
+      try {
+        let v = localStorage.getItem('mc_visitor_id');
+        if (!v) {
+          v = (crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)) as string;
+          localStorage.setItem('mc_visitor_id', v);
+        }
+        return v.slice(0, 8);
+      } catch {
+        return 'anon';
+      }
+    })();
+    const path = window.location.pathname;
+    const bucket = Math.floor(Date.now() / 60_000);
+    const eventId = `pv-${visitor}-${path}-${bucket}`;
+
+    // TikTok page() (nu suportă event_id pe page) — separate
     if (window.ttq) window.ttq.page();
-    if (window.fbq) window.fbq('track', 'PageView');
+
+    // fbq + CAPI mirror prin track() (dedup pe eventID)
+    track('PageView', {
+      event_id: eventId,
+    });
   } catch {
     // ignore
   }

@@ -181,16 +181,12 @@ export const SETTINGS_SCHEMA: SettingCategory[] = [
       { key: 'STRIPE_WEBHOOK_SECRET', label: 'Webhook secret', kind: 'secret', encrypted: true, hotReload: true, placeholder: 'whsec_...' },
     ],
   },
-  {
-    id: 'meta-capi',
-    title: 'Meta Conversions API (tracking server-side)',
-    description: 'Trimite evenimente direct la Meta (bypass iOS ATT + ad-blockers). Folosit pentru Lead/AddPaymentInfo/InitiateCheckout/Purchase server-side cu deduplicare prin event_id. Pixel ID-ul e configurat per site în /sites → Brand & SEO → metaPixelId.',
-    settings: [
-      { key: 'META_PIXEL_ID', label: 'Pixel ID global (fallback)', kind: 'string', hotReload: true, placeholder: '1234567890123456' },
-      { key: 'META_CAPI_ACCESS_TOKEN', label: 'Conversions API access token', kind: 'secret', encrypted: true, hotReload: true, placeholder: 'EAAxxxxx...' },
-      { key: 'META_TEST_EVENT_CODE', label: 'Test event code (Events Manager)', kind: 'string', hotReload: true, placeholder: 'TEST12345 (opțional, doar pentru debug)' },
-    ],
-  },
+  // NOTĂ: secțiunea „Meta Conversions API" a fost mutată per-site (2026-05-28).
+  // Setările META_PIXEL_ID / META_CAPI_ACCESS_TOKEN / META_TEST_EVENT_CODE au fost
+  // eliminate din global ca să permitem fiecărui site (manelecadou.ro RO,
+  // manelecadou.bg BG, manelecadou.gr GR etc.) să folosească propriul pixel Meta
+  // și token de Conversions API. Configurare în /sites → editor site → secțiunea
+  // „Analytics" → Meta Pixel + CAPI fields.
 ];
 
 export const ALL_KEYS: string[] = SETTINGS_SCHEMA.flatMap((c) => c.settings.map((s) => s.key));

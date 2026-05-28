@@ -1339,6 +1339,8 @@ export class ChatService implements OnModuleInit {
       const externalId = ctx.userId ?? ctx.guestId ?? null;
       // userAgent din ultima conexiune WS — crește EMQ pe Lead/EngagedChatter.
       const userAgent = conv.lastDevice?.userAgent ?? null;
+      // Per-site CAPI — fiecare site folosește propriul pixel + token.
+      const site = conv.siteId ? await this.sites.findById(conv.siteId).catch(() => null) : null;
       const baseData = {
         externalId,
         email: conv.email,
@@ -1353,6 +1355,7 @@ export class ChatService implements OnModuleInit {
           'Lead',
           { ...baseData, value: 5, customData: { source: 'chat_first_msg' } },
           'chat',
+          site,
         );
       } else if (userMsgCount === 3) {
         // Audiență warm — useri activi care vor probabil să cumpere
@@ -1360,6 +1363,7 @@ export class ChatService implements OnModuleInit {
           'EngagedChatter',
           { ...baseData, value: 10, customData: { msg_count: 3 } },
           'chat',
+          site,
         );
       }
     } catch {

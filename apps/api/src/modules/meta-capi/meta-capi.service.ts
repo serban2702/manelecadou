@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'crypto';
-import { SettingsService } from '../settings/settings.service';
+import type { Site } from '../sites/site.entity';
 
 /**
  * Meta Conversions API (server-side) — trimite evenimente din backend pentru
@@ -32,10 +32,8 @@ import { SettingsService } from '../settings/settings.service';
 @Injectable()
 export class MetaCapiService {
   private readonly logger = new Logger('MetaCAPI');
-  // Cache settings pentru ~30s ca să nu hit DB la fiecare event.
-  private settingsCache: { pixelId: string; token: string; testCode: string; at: number } | null = null;
 
-  constructor(private readonly settings: SettingsService) {}
+  constructor() {}
 
   /**
    * Trimite un eveniment către Meta Conversions API.
@@ -72,11 +70,14 @@ export class MetaCapiService {
       customData?: Record<string, unknown>;  // pt custom events
     },
     actionSource: 'chat' | 'website' | 'system_generated' = 'chat',
+    site?: Site | null,
   ): Promise<void> {
     try {
-      const cfg = await this.getConfig();
+      const cfg = this.getConfigForSite(site);
       if (!cfg) {
-        this.logger.debug(`skip ${eventName} — Meta CAPI nu e configurat`);
+        this.logger.debug(
+          `skip ${eventName} — site ${site?.domain ?? '(missing)'} nu are Meta CAPI configurat`,
+        );
         return;
       }
 
@@ -138,18 +139,20 @@ export class MetaCapiService {
     }
   }
 
-  private async getConfig(): Promise<{ pixelId: string; token: string; testCode: string } | null> {
-    const now = Date.now();
-    if (this.settingsCache && now - this.settingsCache.at < 30_000) {
-      return this.settingsCache.pixelId && this.settingsCache.token ? this.settingsCache : null;
-    }
-    const [pixelId, token, testCode] = await Promise.all([
-      this.settings.get('META_PIXEL_ID'),
-      this.settings.get('META_CAPI_ACCESS_TOKEN'),
-      this.settings.get('META_TEST_EVENT_CODE'),
-    ]);
-    this.settingsCache = { pixelId: pixelId.trim(), token: token.trim(), testCode: testCode.trim(), at: now };
-    return pixelId.trim() && token.trim() ? this.settingsCache : null;
+  /**
+   * Citește configul Meta CAPI direct de pe Site-ul curent. Nu mai există fallback
+   * global pe variabile env / settings — fiecare site are propriul pixel + token
+   * (ex. manelecadou.ro ≠ manelecadou.bg). Site fără config → skip silent.
+   */
+  private getConfigForSite(
+    site?: Site | null,
+  ): { pixelId: string; token: string; testCode: string } | null {
+    if (!site) return null;
+    const pixelId = (site.analytics?.metaPixelId ?? '').trim();
+    const token = (site.analyticsSecrets?.metaCapiToken ?? '').trim();
+    const testCode = (site.analyticsSecrets?.metaTestEventCode ?? '').trim();
+    if (!pixelId || !token) return null;
+    return { pixelId, token, testCode };
   }
 }
 

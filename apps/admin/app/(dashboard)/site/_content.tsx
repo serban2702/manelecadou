@@ -620,11 +620,18 @@ function BrandSeoTab({ siteId, form, setForm }: { siteId: string; form: SiteDto;
             onChange={(e) => setForm({ ...form, analytics: { ...form.analytics, metaPixelId: e.target.value } })}
           />
         </Field>
-        <Field label="Meta CAPI access token" description="Pentru Meta Conversions API server-side.">
+        <Field label="Meta CAPI access token" description={'Pentru Meta Conversions API server-side. Generează din Events Manager → Settings → Conversions API → „Generate access token".'}>
           <Input
             type="password"
             value={form.analyticsSecrets?.metaCapiToken ?? ''}
             onChange={(e) => setForm({ ...form, analyticsSecrets: { ...form.analyticsSecrets, metaCapiToken: e.target.value } })}
+          />
+        </Field>
+        <Field label="Meta Test Event Code (opțional, doar debug)" description={'Setează doar pentru a vedea evenimentele în „Test events" tab din Events Manager. Șterge după testare ca să nu trimiți datele de prod în Test (nu apar în reporting).'}>
+          <Input
+            value={form.analyticsSecrets?.metaTestEventCode ?? ''}
+            onChange={(e) => setForm({ ...form, analyticsSecrets: { ...form.analyticsSecrets, metaTestEventCode: e.target.value } })}
+            placeholder="TEST12345"
           />
         </Field>
         <Field label="TikTok Pixel ID">

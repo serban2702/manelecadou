@@ -44,6 +44,10 @@ export interface SiteAnalyticsSecrets {
   ga4ApiSecret?: string;
   /** Meta Conversions API access token (din Events Manager → Settings). */
   metaCapiToken?: string;
+  /** Meta test event code (din Events Manager → Test events). Opțional, doar pentru
+   *  debug — când e setat, evenimentele ajung în „Test events" tab în loc de
+   *  reporting normal. Șterge după ce confirmi că vin. */
+  metaTestEventCode?: string;
 }
 
 export interface SiteStripe {

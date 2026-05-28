@@ -33,6 +33,7 @@ export interface SiteDto {
   analyticsSecrets?: {
     ga4ApiSecret?: string;
     metaCapiToken?: string;
+    metaTestEventCode?: string;
     tiktokAccessToken?: string;
   };
   stripe: { priceId?: string | null; productName?: string; statementDescriptor?: string };

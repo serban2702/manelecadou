@@ -637,6 +637,12 @@ export class PaymentsService {
           // update-uite mai sus cu providerSessionId + exchangeRate etc.).
           const paymentRow = await this.repo.findOne({ where: { id: paymentId } });
 
+          // Per-site Meta CAPI: găsim site-ul de care aparține plata.
+          const siteIdForCapi = paymentRow?.siteId ?? (session.metadata?.siteId as string | undefined);
+          const siteForCapi = siteIdForCapi
+            ? await this.sites.findById(siteIdForCapi).catch(() => null)
+            : null;
+
           void this.metaCapi.sendEvent(
             'Purchase',
             {
@@ -666,6 +672,7 @@ export class PaymentsService {
               },
             },
             'website',
+            siteForCapi,
           );
         } catch (err) {
           this.logger.warn(`Meta CAPI Purchase emit failed: ${(err as Error).message}`);

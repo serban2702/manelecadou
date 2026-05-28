@@ -1264,6 +1264,8 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
           contentIds: [generation.id],
         },
         'chat',
+        // site e deja încărcat mai sus în handleWizardFinalize — referință directă.
+        site,
       );
 
       return {

@@ -2,6 +2,8 @@ import { Body, Controller, Headers, HttpCode, Ip, Post, Req } from '@nestjs/comm
 import { Throttle } from '@nestjs/throttler';
 import { IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 import { MetaCapiService } from './meta-capi.service';
+import { CurrentSite } from '../../common/decorators';
+import { Site } from '../sites/site.entity';
 import type { Request } from 'express';
 
 class TrackEventDto {
@@ -68,7 +70,10 @@ class TrackEventDto {
 export class MetaCapiController {
   constructor(private readonly meta: MetaCapiService) {}
 
-  @Throttle({ short: { limit: 30, ttl: 60_000 }, medium: { limit: 200, ttl: 3_600_000 } })
+  // Rate limit ridicat — PageView CAPI mirror generează evenimente per SPA navigation
+  // (poate fi ~10-30 events/min per user activ). 120/min lasă suficientă marjă fără
+  // să satureze accidentat (chat-spammer).
+  @Throttle({ short: { limit: 120, ttl: 60_000 }, medium: { limit: 2000, ttl: 3_600_000 } })
   @Post('track')
   @HttpCode(204)
   async track(
@@ -78,6 +83,7 @@ export class MetaCapiController {
     @Headers('referer') referer: string | undefined,
     @Ip() ip: string,
     @Req() req: Request,
+    @CurrentSite() site: Site | null,
   ): Promise<void> {
     // Extract fbp / fbc din cookie header
     const cookieHeader = req.headers.cookie ?? '';
@@ -113,6 +119,7 @@ export class MetaCapiController {
         customData: dto.customData,
       },
       action,
+      site,
     );
   }
 }
