@@ -29,6 +29,59 @@ const STATUS_VARIANT: Record<string, BadgeProps['variant']> = {
   refunded: 'muted',
 };
 
+/**
+ * Mapare source → emoji + label scurt. Source-ul vine din UTM-uri sau e
+ * derivat din referrer (analyticsService parsează `instagram.com` → 'instagram',
+ * `t.co` → 'twitter', etc.). Necunoscute → afișate verbatim.
+ */
+const SOURCE_LABEL: Record<string, { emoji: string; label: string }> = {
+  instagram: { emoji: '📷', label: 'Instagram' },
+  ig: { emoji: '📷', label: 'Instagram' },
+  tiktok: { emoji: '🎵', label: 'TikTok' },
+  facebook: { emoji: '📘', label: 'Facebook' },
+  fb: { emoji: '📘', label: 'Facebook' },
+  meta: { emoji: '📘', label: 'Meta' },
+  google: { emoji: '🔎', label: 'Google' },
+  youtube: { emoji: '📺', label: 'YouTube' },
+  yt: { emoji: '📺', label: 'YouTube' },
+  whatsapp: { emoji: '💬', label: 'WhatsApp' },
+  wa: { emoji: '💬', label: 'WhatsApp' },
+  telegram: { emoji: '✈️', label: 'Telegram' },
+  twitter: { emoji: '🐦', label: 'Twitter/X' },
+  x: { emoji: '🐦', label: 'Twitter/X' },
+  reddit: { emoji: '👽', label: 'Reddit' },
+  email: { emoji: '✉️', label: 'Email' },
+  newsletter: { emoji: '✉️', label: 'Newsletter' },
+  direct: { emoji: '🔗', label: 'Direct' },
+  '(direct)': { emoji: '🔗', label: 'Direct' },
+};
+
+function SourceBadge({
+  attribution,
+}: {
+  attribution: import('@/lib/types').AdminPayment['attribution'];
+}) {
+  if (!attribution || !attribution.source) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+  const key = attribution.source.toLowerCase();
+  const meta = SOURCE_LABEL[key] ?? { emoji: '🌐', label: attribution.source };
+  // Title detaliat la hover: medium + campaign + referrer + landing path.
+  const tooltipParts = [
+    `Source: ${attribution.source}`,
+    attribution.medium ? `Medium: ${attribution.medium}` : null,
+    attribution.campaign ? `Campaign: ${attribution.campaign}` : null,
+    attribution.referrer ? `Referrer: ${attribution.referrer}` : null,
+    attribution.landingPath ? `Landing: ${attribution.landingPath}` : null,
+  ].filter(Boolean) as string[];
+  return (
+    <Badge variant="muted" title={tooltipParts.join('\n')} className="whitespace-nowrap">
+      <span className="mr-1">{meta.emoji}</span>
+      {meta.label}
+    </Badge>
+  );
+}
+
 export default function PaymentsPage() {
   const { data, loading: isLoading } = useAsync(() => AdminApi.payments(), []);
   const { isAllSelected } = useSitesMap();
@@ -52,6 +105,7 @@ export default function PaymentsPage() {
               <TableHead className="text-right">Sumă</TableHead>
               <TableHead className="w-[110px]">Status</TableHead>
               <TableHead>Email</TableHead>
+              <TableHead>Sursă</TableHead>
               <TableHead>Owner</TableHead>
               <TableHead>Comandă</TableHead>
               <TableHead>ID</TableHead>
@@ -90,6 +144,9 @@ export default function PaymentsPage() {
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground max-w-[220px] truncate">
                   {p.email ?? '—'}
+                </TableCell>
+                <TableCell>
+                  <SourceBadge attribution={p.attribution ?? null} />
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {p.userId

@@ -280,8 +280,56 @@ export class AdminController {
       linkedGens.map((g) => [g.paymentId as string, g]),
     );
 
+    // Attribution: pentru fiecare plată găsim cea mai recentă sesiune analytics
+    // a aceluiași user/guest ÎNAINTE sau în clipa creării plății. E sursa care
+    // a adus userul pe site înainte să plătească (last-touch attribution).
+    // Folosim un singur query cu LATERAL JOIN ca să nu facem N+1.
+    const attrByPaymentId = new Map<
+      string,
+      { source: string | null; medium: string | null; campaign: string | null; referrer: string | null; landingPath: string | null }
+    >();
+    if (paymentIdList.length > 0) {
+      const rows: Array<{
+        payment_id: string;
+        source: string | null;
+        medium: string | null;
+        campaign: string | null;
+        referrer: string | null;
+        landing_path: string | null;
+      }> = await this.payments.query(
+        `
+        SELECT p.id AS payment_id, s.source, s.medium, s.campaign, s.referrer, s."landingPath" AS landing_path
+        FROM payments p
+        LEFT JOIN LATERAL (
+          SELECT source, medium, campaign, referrer, "landingPath"
+          FROM analytics_sessions
+          WHERE (
+            ("userId" IS NOT NULL AND "userId" = p."userId")
+            OR ("guestId" IS NOT NULL AND "guestId" = p."guestId")
+          )
+            AND "startedAt" <= p."createdAt"
+            AND source IS NOT NULL
+          ORDER BY "startedAt" DESC
+          LIMIT 1
+        ) s ON true
+        WHERE p.id = ANY($1::uuid[])
+        `,
+        [paymentIdList],
+      );
+      for (const r of rows) {
+        attrByPaymentId.set(r.payment_id, {
+          source: r.source,
+          medium: r.medium,
+          campaign: r.campaign,
+          referrer: r.referrer,
+          landingPath: r.landing_path,
+        });
+      }
+    }
+
     return payments.map((p) => {
       const g = genByPaymentId.get(p.id) ?? null;
+      const attr = attrByPaymentId.get(p.id) ?? null;
       return {
         ...p,
         email: p.userId
@@ -289,6 +337,7 @@ export class AdminController {
           : p.guestId
             ? guestEmail.get(p.guestId) ?? null
             : null,
+        attribution: attr,
         generation: g
           ? {
               id: g.id,

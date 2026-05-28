@@ -190,6 +190,16 @@ export interface AdminPayment {
   failureCode?: string | null;
   /** Email-ul plătitorului (user.email sau guest.email). */
   email?: string | null;
+  /** Attribution last-touch: cea mai recentă sesiune a userului/guest-ului
+   *  înainte de plată (cu source non-null). `null` pentru plăți fără sesiune
+   *  matchabilă — de obicei plăți foarte vechi de dinaintea analytics-ului. */
+  attribution?: {
+    source: string | null;
+    medium: string | null;
+    campaign: string | null;
+    referrer: string | null;
+    landingPath: string | null;
+  } | null;
   /** Generarea legată (când `generations.paymentId == payment.id`). */
   generation?: {
     id: string;
