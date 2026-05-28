@@ -614,8 +614,26 @@ export class PaymentsService {
       // și ad-blockers (40%+ din Purchases s-ar pierde pe client-side pixel).
       // event_id = pay-<paymentId> pentru deduplicare cu eventul client (success page,
       // care folosește același format — vezi /m/[id]/view.tsx).
+      //
+      // IDEMPOTENCY: Stripe poate retrimite webhook-ul (timeout response sau
+      // retry policy). UPDATE atomic capiPurchaseSentAt IS NULL → o singură fire
+      // per plată chiar la 100 webhook-uri. Fără asta, Meta primește 2+ servers
+      // per Purchase și inflează „Total server events received" (chiar dacă
+      // dedup-ul prin event_id elimină dublarea în reporting, statisticile sunt
+      // afectate și EMQ scade).
       if (isPaid) {
-        try {
+        const lock = await this.repo
+          .createQueryBuilder()
+          .update(Payment)
+          .set({ capiPurchaseSentAt: () => 'NOW()' })
+          .where('id = :id AND "capiPurchaseSentAt" IS NULL', { id: paymentId })
+          .execute();
+        if (!lock.affected || lock.affected === 0) {
+          this.logger.log(
+            `Meta CAPI Purchase skip (event_id=pay-${paymentId.slice(0, 8)}) — webhook duplicate`,
+          );
+          // Sărim peste fire — webhook duplicat, deja trimis CAPI la primul.
+        } else try {
           const customerEmail =
             (session.customer_details?.email as string | undefined) ?? null;
           const customerPhone =

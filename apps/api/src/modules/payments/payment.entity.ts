@@ -84,6 +84,17 @@ export class Payment {
   @Column({ type: 'varchar', length: 64, nullable: true })
   ipAddress!: string | null;
 
+  /**
+   * Idempotency lock: când Meta CAPI Purchase event a fost trimis pentru această
+   * plată. Stripe retrimite uneori webhook-uri (la timeout sau dacă există multiple
+   * subscriptions configurate) — fără asta, Meta primește 2+ Purchase server-side
+   * pentru aceeași plată și inflează statisticile (chiar dacă dedup-uiește prin
+   * event_id, „Total server events received" crește artificial).
+   * Setat atomic prin UPDATE ... WHERE capiPurchaseSentAt IS NULL.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  capiPurchaseSentAt!: Date | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 
