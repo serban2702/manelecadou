@@ -1,15 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAsync } from "@/lib/hooks/use-async";
 import { format } from 'date-fns';
 import { ro } from 'date-fns/locale';
-import { CreditCard, Music2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CreditCard, Music2, Search, X } from 'lucide-react';
 import { AdminApi } from '@/lib/api';
 import { OrderDetailModal } from '@/components/order-detail-modal';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/ui/empty';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/ui/page-header';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -21,6 +31,26 @@ import {
 } from '@/components/ui/table';
 import { SiteBadge } from '@/components/site-badge';
 import { useSitesMap } from '@/lib/hooks/use-sites-map';
+
+const PAGE_SIZE_OPTIONS = [20, 50, 100, 200];
+const STATUS_OPTIONS = [
+  { value: 'all', label: 'Toate statusurile' },
+  { value: 'paid', label: 'Plătite' },
+  { value: 'pending', label: 'În așteptare' },
+  { value: 'failed', label: 'Eșuate' },
+  { value: 'refunded', label: 'Refundate' },
+];
+const SOURCE_OPTIONS = [
+  { value: 'all', label: 'Toate sursele' },
+  { value: 'facebook', label: '📘 Facebook' },
+  { value: 'instagram', label: '📷 Instagram' },
+  { value: 'tiktok', label: '🎵 TikTok' },
+  { value: 'google', label: '🔎 Google' },
+  { value: 'youtube', label: '📺 YouTube' },
+  { value: 'whatsapp', label: '💬 WhatsApp' },
+  { value: 'direct', label: '🔗 Direct' },
+  { value: 'none', label: '— Fără sursă' },
+];
 
 const STATUS_VARIANT: Record<string, BadgeProps['variant']> = {
   paid: 'success',
@@ -101,18 +131,157 @@ function SourceBadge({
 }
 
 export default function PaymentsPage() {
-  const { data, loading: isLoading } = useAsync(() => AdminApi.payments(), []);
   const { isAllSelected } = useSitesMap();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Filtre — sincronizate cu URL prin search params? Nu acum (overkill).
+  // Toate sunt resetate când userul schimbă site-ul din selectorul global.
+  const [status, setStatus] = useState('all');
+  const [source, setSource] = useState('all');
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [pageSize, setPageSize] = useState(20);
+  const [page, setPage] = useState(0);
+
+  // Debounce pe input search ca să nu spam-uim API-ul la fiecare tastă.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Reset pagină când se schimbă orice filtru — altfel poți fi pe pagina 5
+  // pentru un filtru care are doar 2 rezultate.
+  useEffect(() => {
+    setPage(0);
+  }, [status, source, debouncedSearch, pageSize]);
+
+  const params = useMemo(
+    () => ({
+      limit: pageSize,
+      offset: page * pageSize,
+      status,
+      source,
+      search: debouncedSearch || undefined,
+    }),
+    [pageSize, page, status, source, debouncedSearch],
+  );
+
+  const { data, loading: isLoading } = useAsync(
+    () => AdminApi.payments(params),
+    [params],
+  );
+
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const hasFilters =
+    status !== 'all' || source !== 'all' || debouncedSearch.length > 0;
+
+  function resetFilters() {
+    setStatus('all');
+    setSource('all');
+    setSearch('');
+  }
 
   return (
     <div>
       <PageHeader title="Plăți" description="Toate tranzacțiile (Stripe + alți provideri)" />
 
+      {/* Toolbar filtre */}
+      <div className="flex flex-wrap items-end gap-3 mb-4 p-3 rounded-md border border-white/10 bg-white/[0.02]">
+        <div className="flex-1 min-w-[220px]">
+          <Label className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 block">
+            Caută email
+          </Label>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="ex. ion@gmail.com"
+              className="pl-8"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label="Șterge"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="min-w-[180px]">
+          <Label className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 block">
+            Status
+          </Label>
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="min-w-[180px]">
+          <Label className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 block">
+            Sursă
+          </Label>
+          <Select value={source} onValueChange={setSource}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SOURCE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="min-w-[110px]">
+          <Label className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 block">
+            Per pagină
+          </Label>
+          <Select
+            value={String(pageSize)}
+            onValueChange={(v) => setPageSize(parseInt(v, 10))}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PAGE_SIZE_OPTIONS.map((n) => (
+                <SelectItem key={n} value={String(n)}>
+                  {n}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {hasFilters && (
+          <Button variant="ghost" size="sm" onClick={resetFilters}>
+            <X className="h-3.5 w-3.5 mr-1" />
+            Resetează
+          </Button>
+        )}
+      </div>
+
       {isLoading ? (
         <Skeleton className="h-72 w-full" />
-      ) : (data ?? []).length === 0 ? (
-        <Empty icon={<CreditCard className="h-5 w-5" />} title="Nicio plată încă" />
+      ) : items.length === 0 ? (
+        <Empty
+          icon={<CreditCard className="h-5 w-5" />}
+          title={hasFilters ? 'Niciun rezultat pentru filtrele alese' : 'Nicio plată încă'}
+          description={hasFilters ? 'Încearcă să resetezi filtrele.' : undefined}
+        />
       ) : (
         <Table>
           <TableHeader>
@@ -130,7 +299,7 @@ export default function PaymentsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data!.map((p) => (
+            {items.map((p) => (
               <TableRow
                 key={p.id}
                 className="cursor-pointer hover:bg-white/5"
@@ -220,6 +389,44 @@ export default function PaymentsPage() {
           </TableBody>
         </Table>
       )}
+
+      {/* Paginare jos — vizibilă chiar și când e o singură pagină ca să fie clar
+          câte rezultate avem. */}
+      {!isLoading && total > 0 && (
+        <div className="flex items-center justify-between gap-3 mt-3 text-xs text-muted-foreground">
+          <div>
+            {total === 1
+              ? '1 rezultat'
+              : `${page * pageSize + 1}–${Math.min((page + 1) * pageSize, total)} din ${total} rezultate`}
+          </div>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={page === 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Înapoi
+              </Button>
+              <span className="text-xs whitespace-nowrap">
+                Pagina <b className="text-foreground">{page + 1}</b> din {totalPages}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={page + 1 >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Înainte
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
       {selectedId && <OrderDetailModal id={selectedId} onClose={() => setSelectedId(null)} />}
     </div>
   );

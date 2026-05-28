@@ -233,7 +233,22 @@ export class AdminApi {
   static users(): Promise<AdminUser[]> { return http.get('/admin/users'); }
   static guests(): Promise<AdminGuest[]> { return http.get('/admin/guests'); }
   static generations(): Promise<AdminGeneration[]> { return http.get('/admin/generations'); }
-  static payments(): Promise<AdminPayment[]> { return http.get('/admin/payments'); }
+  static payments(params: {
+    limit?: number;
+    offset?: number;
+    status?: string;
+    source?: string;
+    search?: string;
+    from?: string;
+    to?: string;
+  } = {}): Promise<{ items: AdminPayment[]; total: number }> {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
+    });
+    const q = qs.toString();
+    return http.get(`/admin/payments${q ? `?${q}` : ''}`);
+  }
   static runSeeder(): Promise<{ users: number; generations: number; conversations: number }> {
     return http.post('/admin/seeder/run');
   }

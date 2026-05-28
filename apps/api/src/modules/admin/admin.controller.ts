@@ -241,13 +241,91 @@ export class AdminController {
   }
 
   @Get('payments')
-  async listPayments(@Query('limit') limit = '50', @CurrentSiteId() siteId: string | null) {
-    const payments = await this.payments.find({
-      where: siteId ? { siteId } : {},
-      order: { createdAt: 'DESC' },
-      take: Math.min(Number(limit) || 50, 200),
-    });
-    if (payments.length === 0) return [];
+  async listPayments(
+    @Query('limit') limitRaw = '20',
+    @Query('offset') offsetRaw = '0',
+    @Query('status') status?: string,
+    @Query('source') source?: string,
+    @Query('search') search?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @CurrentSiteId() siteId: string | null = null,
+  ) {
+    const limit = Math.min(Math.max(Number(limitRaw) || 20, 1), 200);
+    const offset = Math.max(Number(offsetRaw) || 0, 0);
+
+    // Construim query-ul cu builder ca să putem aplica join-ul pe email
+    // (user.email / guest.email) + filtru pe sursă într-o singură fetchare
+    // paginabilă. Asta înlocuiește vechiul .find() + filtrare in-memory.
+    const qb = this.payments
+      .createQueryBuilder('p')
+      .leftJoin('users', 'u', 'u.id = p."userId"')
+      .leftJoin('guest_sessions', 'g', 'g.id = p."guestId"')
+      .orderBy('p."createdAt"', 'DESC');
+
+    if (siteId) qb.andWhere('p."siteId" = :siteId', { siteId });
+    if (status && status !== 'all') qb.andWhere('p.status = :status', { status });
+
+    if (search && search.trim()) {
+      const term = `%${search.trim().toLowerCase()}%`;
+      qb.andWhere('(LOWER(u.email) LIKE :term OR LOWER(g.email) LIKE :term)', { term });
+    }
+    if (from) {
+      const d = new Date(from);
+      if (!isNaN(d.getTime())) qb.andWhere('p."createdAt" >= :from', { from: d.toISOString() });
+    }
+    if (to) {
+      const d = new Date(to);
+      if (!isNaN(d.getTime())) qb.andWhere('p."createdAt" <= :to', { to: d.toISOString() });
+    }
+
+    // Filtru pe sursă: cea mai recentă sesiune a userului/guest-ului înainte
+    // de plată trebuie să match-uiască. Folosim EXISTS cu LATERAL similar ca
+    // pentru attribution map de mai jos. `source=none` = plăți fără attribution.
+    if (source && source !== 'all') {
+      if (source === 'none') {
+        qb.andWhere(
+          `NOT EXISTS (
+            SELECT 1 FROM analytics_sessions s
+            WHERE (
+              (s."userId" IS NOT NULL AND s."userId" = p."userId")
+              OR (s."guestId" IS NOT NULL AND s."guestId" = p."guestId")
+            )
+              AND s."startedAt" <= p."createdAt"
+              AND s.source IS NOT NULL
+              AND s.source NOT ILIKE 'stripe%'
+              AND s.source NOT ILIKE 'checkout.stripe%'
+          )`,
+        );
+      } else {
+        // Pattern match pe substring ca să acoperim atât 'facebook' cât și
+        // 'm.facebook.com'. Cazurile speciale: 'meta' include 'fb' și 'facebook',
+        // 'instagram' include 'ig'.
+        const patterns: string[] = [`%${source}%`];
+        if (source === 'facebook' || source === 'meta') patterns.push('fb', 'fb%');
+        if (source === 'instagram') patterns.push('ig');
+        if (source === 'whatsapp') patterns.push('wa');
+        qb.andWhere(
+          `EXISTS (
+            SELECT 1 FROM analytics_sessions s
+            WHERE (
+              (s."userId" IS NOT NULL AND s."userId" = p."userId")
+              OR (s."guestId" IS NOT NULL AND s."guestId" = p."guestId")
+            )
+              AND s."startedAt" <= p."createdAt"
+              AND s.source IS NOT NULL
+              AND s.source NOT ILIKE 'stripe%'
+              AND (${patterns.map((_, i) => `LOWER(s.source) LIKE :sp${i}`).join(' OR ')})
+          )`,
+          patterns.reduce((acc, val, i) => ({ ...acc, [`sp${i}`]: val.toLowerCase() }), {}),
+        );
+      }
+    }
+
+    const total = await qb.getCount();
+    const payments = await qb.skip(offset).take(limit).getMany();
+
+    if (payments.length === 0) return { items: [], total };
 
     const userIds = Array.from(
       new Set(payments.map((p) => p.userId).filter((x): x is string => !!x)),
@@ -332,7 +410,7 @@ export class AdminController {
       }
     }
 
-    return payments.map((p) => {
+    const items = payments.map((p) => {
       const g = genByPaymentId.get(p.id) ?? null;
       const attr = attrByPaymentId.get(p.id) ?? null;
       return {
@@ -357,6 +435,7 @@ export class AdminController {
           : null,
       };
     });
+    return { items, total };
   }
 
   @Get('payments/:id/stripe-details')
