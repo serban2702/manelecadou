@@ -263,6 +263,13 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   const [submitting, setSubmitting] = useState(false);
   const [generationId, setGenerationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Semnal incremental pentru highlight-ul câmpului de email când validarea
+  // pică în step-ul de plată. Step-urile copil ascultă valoarea: orice schimbare
+  // declanșează scroll-into-view + focus + shake animation pe input. Folosim
+  // un counter (nu boolean) ca să prindem și apăsările repetate de „Plătește"
+  // cu același email greșit.
+  const [emailErrorTick, setEmailErrorTick] = useState(0);
+  const flagEmailError = useCallback(() => setEmailErrorTick((t) => t + 1), []);
 
   // Restore după cancel din Stripe (pay-first flow). Backend redirectează la
   // `/?paymentCanceled=1&genId=<id>` când userul anulează plata în Stripe
@@ -468,6 +475,7 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     const candidate = emailDraft.trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
       setError(tGen('humanError.emailInvalid'));
+      flagEmailError();
       return;
     }
     // Pentru guests: persistăm email-ul curent (poate fi modificat față de cel
@@ -546,6 +554,7 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     const candidate = emailDraft.trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
       setError(tGen('humanError.emailInvalid'));
+      flagEmailError();
       return;
     }
     // Pentru guests fără email salvat: persistăm acum. Pentru users / guests
@@ -661,6 +670,7 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
             email={session.email}
             emailDraft={emailDraft}
             onEmailChange={onEmailDraftChange}
+            emailErrorTick={emailErrorTick}
             freeDemoUsed={session.freeDemoUsed}
             generation={poll ?? null}
             onSubmit={submitDemo}
@@ -674,6 +684,7 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
             email={session.email}
             emailDraft={emailDraft}
             onEmailChange={onEmailDraftChange}
+            emailErrorTick={emailErrorTick}
             updTip={(v) => upd('tipAmount', v)}
             updPremium={(v) => upd('premium', v)}
             onPay={startDirectCheckout}
@@ -1416,12 +1427,40 @@ function DedicStep({ data, upd }: any) {
   );
 }
 
+/**
+ * Reacționează la `tick` (orice valoare > 0): aprinde clasa `field-error` +
+ * `shake-x` pe wrapper, scroll-into-view + focus input. Animația durează ~600ms.
+ * Refolosit în DemoStep + PayFirstStep pentru highlight-ul de email invalid.
+ */
+function useFieldErrorSignal(tick: number) {
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [active, setActive] = useState(false);
+  useEffect(() => {
+    if (tick === 0) return;
+    setActive(true);
+    // Scroll + focus pe următorul frame (DOM-ul e deja randat cu clasa).
+    requestAnimationFrame(() => {
+      try {
+        wrapperRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        inputRef.current?.focus({ preventScroll: true });
+      } catch {}
+    });
+    // Scoatem `shake-x` după ce animația se termină — clasa `field-error`
+    // (border roșu) rămâne până când userul tastează ceva valid.
+    const tShake = setTimeout(() => setActive(false), 600);
+    return () => clearTimeout(tShake);
+  }, [tick]);
+  return { wrapperRef, inputRef, shaking: active };
+}
+
 // ============ STEP 5 — DEMO ============
 function DemoStep({
   data,
   email,
   emailDraft,
   onEmailChange,
+  emailErrorTick,
   freeDemoUsed,
   generation,
   onSubmit,
@@ -1432,6 +1471,7 @@ function DemoStep({
   email: string | null;
   emailDraft: string;
   onEmailChange: (v: string) => void;
+  emailErrorTick: number;
   freeDemoUsed: boolean;
   generation: GenerationDto | null;
   onSubmit: () => void;
@@ -1445,19 +1485,30 @@ function DemoStep({
   });
 
   const tg = useTranslations('generator');
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailDraft.trim());
+  // Border roșu rămâne aprins după primul tick până când user introduce un
+  // email valid. Animația shake doar la fiecare tick nou.
+  const emailSignal = useFieldErrorSignal(emailErrorTick);
+  const showEmailError = emailErrorTick > 0 && !emailValid;
   if (!generation) {
     return (
       <>
         <h3>{tg('step5Demo.title')}</h3>
         <p className="ld">{tg('step5Demo.sub')}</p>
 
-        <div className="field" style={{ marginTop: 14 }}>
+        <div
+          ref={emailSignal.wrapperRef}
+          className={`field${showEmailError ? ' field-error' : ''}${emailSignal.shaking ? ' shake-x' : ''}`}
+          style={{ marginTop: 14 }}
+        >
           <label>{tg('step5Demo.emailLabel')}</label>
           <input
+            ref={emailSignal.inputRef}
             type="email"
             placeholder={tg('step5Demo.emailPlaceholder')}
             value={emailDraft}
             onChange={(e) => onEmailChange(e.target.value)}
+            aria-invalid={showEmailError || undefined}
             required
           />
           <div style={{ fontSize: 11, color: emailDraft ? 'var(--gold-2)' : 'rgba(255,245,220,0.5)', marginTop: 4 }}>
@@ -1490,6 +1541,7 @@ function PayFirstStep({
   email,
   emailDraft,
   onEmailChange,
+  emailErrorTick,
   updTip,
   updPremium,
   onPay,
@@ -1506,6 +1558,7 @@ function PayFirstStep({
   email: string | null;
   emailDraft: string;
   onEmailChange: (v: string) => void;
+  emailErrorTick: number;
   updTip: (v: number) => void;
   updPremium: (v: boolean) => void;
   onPay: () => void;
@@ -1520,6 +1573,9 @@ function PayFirstStep({
 }) {
   const site = useSite();
   const tg = useTranslations('generator');
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailDraft.trim());
+  const emailSignal = useFieldErrorSignal(emailErrorTick);
+  const showEmailError = emailErrorTick > 0 && !emailValid;
   const { data: quote } = useQuery({
     queryKey: ['quote', data.tipAmount, data.premium],
     queryFn: () => api.priceQuote(data.tipAmount || 0, !!data.premium),
@@ -1532,18 +1588,29 @@ function PayFirstStep({
       <h3>{tg('step5PayFirst.title')}</h3>
       <p className="ld">{tg('step5PayFirst.sub')}</p>
 
-      <div className="field" style={{ marginTop: 14 }}>
+      <div
+        ref={emailSignal.wrapperRef}
+        className={`field${showEmailError ? ' field-error' : ''}${emailSignal.shaking ? ' shake-x' : ''}`}
+        style={{ marginTop: 14 }}
+      >
         <label>{tg('step5PayFirst.emailLabel')}</label>
         <input
+          ref={emailSignal.inputRef}
           type="email"
           placeholder={tg('step5Demo.emailPlaceholder')}
           value={emailDraft}
           onChange={(e) => onEmailChange(e.target.value)}
+          aria-invalid={showEmailError || undefined}
           required
         />
-        {emailDraft && (
+        {emailDraft && !showEmailError && (
           <div style={{ fontSize: 11, color: 'var(--gold-2)', marginTop: 4 }}>
             {tg('step5PayFirst.emailSentTo')} <b>{emailDraft}</b>
+          </div>
+        )}
+        {showEmailError && (
+          <div style={{ fontSize: 12, color: 'var(--rose)', marginTop: 6, fontWeight: 600 }}>
+            {tg('humanError.emailInvalid')}
           </div>
         )}
       </div>
