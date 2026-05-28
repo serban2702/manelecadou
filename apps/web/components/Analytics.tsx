@@ -71,10 +71,10 @@ function MetaAdvancedMatching({ pixelId }: { pixelId: string }) {
           /* user anonim — încercăm guest mai jos */
         }
 
-        // 3. Dacă nu-i logat, încearcă /api/guests/me cu X-Guest-Id header.
+        // 3. Dacă nu-i logat, încearcă /api/guest-sessions/me cu X-Guest-Id header.
         if (!email && guestId) {
           try {
-            const res = await fetch(`${apiUrl}/api/guests/me`, {
+            const res = await fetch(`${apiUrl}/api/guest-sessions/me`, {
               credentials: 'include',
               headers: { 'X-Guest-Id': guestId },
             });
