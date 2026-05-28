@@ -257,10 +257,14 @@ export class AdminController {
     // Construim query-ul cu builder ca să putem aplica join-ul pe email
     // (user.email / guest.email) + filtru pe sursă într-o singură fetchare
     // paginabilă. Asta înlocuiește vechiul .find() + filtrare in-memory.
+    // TypeORM `leftJoin` cu prim arg string așteaptă numele unei relații, nu
+    // al tabelei — pentru join pe entitate fără relație definită folosim clasa
+    // entității. Altfel: TypeError: Cannot read properties of undefined
+    // (reading 'databaseName'). Filtrul `search` (email) îl aplicăm doar dacă
+    // user/guest au email — îl filtrăm prin scalar subquery ca să evităm
+    // dependența de relații care nu există în entități.
     const qb = this.payments
       .createQueryBuilder('p')
-      .leftJoin('users', 'u', 'u.id = p."userId"')
-      .leftJoin('guest_sessions', 'g', 'g.id = p."guestId"')
       .orderBy('p."createdAt"', 'DESC');
 
     if (siteId) qb.andWhere('p."siteId" = :siteId', { siteId });
@@ -268,7 +272,13 @@ export class AdminController {
 
     if (search && search.trim()) {
       const term = `%${search.trim().toLowerCase()}%`;
-      qb.andWhere('(LOWER(u.email) LIKE :term OR LOWER(g.email) LIKE :term)', { term });
+      qb.andWhere(
+        `(
+          EXISTS (SELECT 1 FROM users u WHERE u.id = p."userId" AND LOWER(u.email) LIKE :term)
+          OR EXISTS (SELECT 1 FROM guest_sessions g WHERE g.id = p."guestId" AND LOWER(g.email) LIKE :term)
+        )`,
+        { term },
+      );
     }
     if (from) {
       const d = new Date(from);
