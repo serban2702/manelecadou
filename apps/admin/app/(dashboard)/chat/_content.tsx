@@ -1968,6 +1968,10 @@ function DemoPaymentModal({
   const [amount, setAmount] = useState(defaultAmount); // cents
   const [currency, setCurrency] = useState(defaultCurrency);
   const [productName, setProductName] = useState('');
+  // Versuri custom — opțional. Dacă sunt completate, AI-ul writer/Suno le folosește
+  // EXACT, fără a mai genera versuri proprii. Util când adminul a discutat versurile
+  // cu userul în chat și le-a stabilit împreună.
+  const [customLyrics, setCustomLyrics] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiPrefilling, setAiPrefilling] = useState(false);
@@ -2022,6 +2026,9 @@ function DemoPaymentModal({
         amount,
         currency,
         productName: productName.trim() || undefined,
+        // Versuri custom — backend le forwardează la generation.customLyrics
+        // și writer-ul OpenAI/Suno le folosește exact, fără generare proprie.
+        customLyrics: customLyrics.trim() || undefined,
       });
       onSent();
     } catch (e) {
@@ -2083,6 +2090,39 @@ function DemoPaymentModal({
           <div>
             <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Mesaj / dedicație ({message.length}/600)</label>
             <Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} maxLength={600} placeholder="ex. La mulți ani, iubire! Tu ești totul pentru mine..." />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                Versuri custom (opțional) {customLyrics.length > 0 ? `(${customLyrics.length}/3000)` : ''}
+              </label>
+              {customLyrics.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setCustomLyrics('')}
+                  className="text-[11px] text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  șterge
+                </button>
+              )}
+            </div>
+            <Textarea
+              value={customLyrics}
+              onChange={(e) => setCustomLyrics(e.target.value)}
+              rows={6}
+              maxLength={3000}
+              placeholder="Dacă ai stabilit versurile cu userul în chat, lipește-le aici. Suno va folosi versurile astea EXACT, fără să mai genereze altele. Lasă gol pentru generare automată din mesaj/dedicație."
+              className="font-mono text-[12px] leading-relaxed"
+            />
+            {customLyrics.trim().length > 0 && (
+              <div className="mt-1.5 text-[11px] text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1.5 flex items-start gap-1.5">
+                <span>⚠️</span>
+                <span>
+                  Versurile vor fi folosite <strong>EXACT cum le-ai scris</strong>. AI-ul writer e bypass-uit complet.
+                  Verifică ortografia, refrenul, structura (couplet/refren) și că nu apar substituții ca „[nume]".
+                </span>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
