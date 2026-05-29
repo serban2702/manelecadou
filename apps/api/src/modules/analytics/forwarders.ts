@@ -227,7 +227,26 @@ export class AnalyticsForwarders {
 
     const tasks: Promise<unknown>[] = [];
     if (ga4) tasks.push(this.sendGA4(event, userEmail, ga4));
-    if (capi) tasks.push(this.sendMetaCAPI(event, userEmail, capi));
+    // ============== Meta CAPI: DISABLED în forwarder-ul legacy ==============
+    // Toate evenimentele Meta merg acum exclusiv prin MetaCapiService (canonical).
+    // Acel serviciu are:
+    //   - event_id deterministic (`pay-<paymentId>` pentru Purchase, `pv-<...>`
+    //     pentru PageView etc.) → dedup browser↔server garantat
+    //   - lock idempotent pe Payment (cross-path: webhook + FE mirror)
+    //   - Advanced Matching complet (fbp, fbc, IP, UA, phone, billing address)
+    //   - per-site config (pixel + token din Site, fără fallback env global)
+    //
+    // Forwarder-ul vechi folosea event_id-uri raw (ex. paymentId fără prefix
+    // `pay-`) → genera UN AL DOILEA event la Meta fără dedup cu pixel-ul +
+    // MetaCapiService → inflație 1:2-3 pe Purchase, PageView, InitiateCheckout
+    // etc. Detectat din log analysis 2026-05-29 când campania Meta raporta
+    // 9 conversions pentru 5 plăți reale.
+    //
+    // Capi config rămâne disponibil în service ca să poată fi reactivat selectiv
+    // pe viitor (ex. evenimente analytics-only fără pixel browser), dar by default
+    // nu mai trimitem. GA4 server-side forwarding RĂMÂNE activ (nu intră în
+    // conflict — GA4 dedup nativ prin transaction_id).
+    void capi; // (păstrat ca cf. config dacă cineva îl interoghează)
     if (tasks.length === 0) return { ok: true, attempted: false };
 
     try {
