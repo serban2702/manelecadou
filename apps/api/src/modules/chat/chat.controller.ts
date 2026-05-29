@@ -94,6 +94,18 @@ class LaunchGenerationDto {
   @IsOptional() @IsNumber() @Min(0) tipAmount?: number;
 }
 
+class AddBlacklistDto {
+  @IsString() @IsIn(['ip', 'email']) type!: 'ip' | 'email';
+  @IsString() @MinLength(1) @MaxLength(320) value!: string;
+  @IsOptional() @IsString() @MaxLength(500) reason?: string;
+}
+
+class BlockConversationDto {
+  @IsOptional() @IsBoolean() blockIp?: boolean;
+  @IsOptional() @IsBoolean() blockEmail?: boolean;
+  @IsOptional() @IsString() @MaxLength(500) reason?: string;
+}
+
 @UseGuards(OptionalJwtAuthGuard)
 @Controller('chat')
 export class ChatController {
@@ -414,6 +426,48 @@ export class AdminChatController {
   @Delete('quick-replies/:id')
   deleteQuickReply(@Param('id') id: string) {
     return this.svc.deleteQuickReply(id);
+  }
+
+  // ============== Blacklist (per-site) ==============
+
+  @Get('blacklist')
+  listBlacklist(@CurrentSiteId() siteId: string | null) {
+    return this.svc.listBlacklist(siteId);
+  }
+
+  @Post('blacklist')
+  addBlacklist(
+    @CurrentSiteId() siteId: string | null,
+    @Body() body: AddBlacklistDto,
+    @CurrentUser() user: AuthedRequestUser | null,
+  ) {
+    return this.svc.addBlacklist({
+      siteId,
+      type: body.type,
+      value: body.value,
+      reason: body.reason ?? null,
+      byEmail: user?.email ?? null,
+    });
+  }
+
+  @Delete('blacklist/:id')
+  removeBlacklist(@Param('id') id: string) {
+    return this.svc.removeBlacklist(id);
+  }
+
+  /** Blochează persoana dintr-o conversație (IP și/sau email) într-un singur click. */
+  @Post('conversations/:id/block')
+  blockFromConversation(
+    @Param('id') id: string,
+    @Body() body: BlockConversationDto,
+    @CurrentUser() user: AuthedRequestUser | null,
+  ) {
+    return this.svc.blockFromConversation(id, {
+      blockIp: body.blockIp,
+      blockEmail: body.blockEmail,
+      reason: body.reason ?? null,
+      byEmail: user?.email ?? null,
+    });
   }
 
   /** Trimite link de plată Stripe Checkout către utilizator. */

@@ -12,6 +12,16 @@ export interface QuickReply {
   updatedAt: string;
 }
 
+export interface ChatBlacklistEntry {
+  id: string;
+  siteId: string | null;
+  type: 'ip' | 'email';
+  value: string;
+  reason: string | null;
+  createdByEmail: string | null;
+  createdAt: string;
+}
+
 export interface PaymentLinkOpts {
   amount?: number;
   currency?: string;
@@ -171,6 +181,24 @@ export class ChatApi {
   }
   static deleteQuickReply(id: string): Promise<{ ok: true }> {
     return http.delete(`/admin/chat/quick-replies/${id}`);
+  }
+
+  // ====== Blacklist (per-site) ======
+  static listBlacklist(): Promise<ChatBlacklistEntry[]> {
+    return http.get('/admin/chat/blacklist');
+  }
+  static addBlacklist(dto: { type: 'ip' | 'email'; value: string; reason?: string }): Promise<ChatBlacklistEntry> {
+    return http.post('/admin/chat/blacklist', dto);
+  }
+  static removeBlacklist(id: string): Promise<{ ok: true }> {
+    return http.delete(`/admin/chat/blacklist/${id}`);
+  }
+  /** Blochează persoana dintr-o conversație (IP și/sau email). */
+  static blockConversation(
+    id: string,
+    dto: { blockIp?: boolean; blockEmail?: boolean; reason?: string },
+  ): Promise<{ ok: true; blocked: { ip?: string; email?: string } }> {
+    return http.post(`/admin/chat/conversations/${id}/block`, dto);
   }
 
   static demoWithPayment(

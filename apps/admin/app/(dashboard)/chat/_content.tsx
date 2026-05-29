@@ -6,6 +6,7 @@ import { ro } from 'date-fns/locale';
 import {
   Archive,
   ArchiveRestore,
+  Ban,
   Bot,
   Check,
   CheckCheck,
@@ -39,7 +40,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { ChatApi, SitesApi, AuthApi } from '@/lib/api';
-import type { QuickReply } from '@/lib/api/chat.api';
+import type { QuickReply, ChatBlacklistEntry } from '@/lib/api/chat.api';
 import { useAsync } from '@/lib/hooks/use-async';
 import {
   useAdminChatSocket,
@@ -423,6 +424,8 @@ export default function AdminChatPage() {
   const [showEmailModal, setShowEmailModal] = useState(false);
   /** Modal editare notă privată admin. */
   const [showNoteModal, setShowNoteModal] = useState(false);
+  /** Modal blocare (blacklist) persoană din conversație. */
+  const [showBlockModal, setShowBlockModal] = useState(false);
   /** Filtru sidebar: arată doar favoritele. */
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
 
@@ -857,6 +860,14 @@ export default function AdminChatPage() {
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowBlockModal(true)}
+                      title="Blochează această persoană (după IP sau email)"
+                      className="inline-flex items-center justify-center h-8 w-8 rounded-md border bg-secondary/40 border-border text-muted-foreground transition-colors hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-400"
+                    >
+                      <Ban className="h-3.5 w-3.5" />
+                    </button>
                     <AssignmentPill
                       assignedAdminId={thread.conversation.assignedAdminId ?? null}
                       assignedAdminEmail={thread.conversation.assignedAdminEmail ?? null}
@@ -1131,6 +1142,21 @@ export default function AdminChatPage() {
           onSave={async (note) => {
             await ChatApi.setNote(thread.conversation.id, note);
             setShowNoteModal(false);
+            refetchThread();
+            refetchConvs();
+          }}
+        />
+      )}
+
+      {/* Modal blocare (blacklist) persoană */}
+      {showBlockModal && thread && (
+        <BlockPersonModal
+          conversationId={thread.conversation.id}
+          ip={thread.conversation.ip ?? activeEnriched?.ip ?? null}
+          email={thread.conversation.email ?? null}
+          onClose={() => setShowBlockModal(false)}
+          onBlocked={() => {
+            setShowBlockModal(false);
             refetchThread();
             refetchConvs();
           }}
@@ -3021,6 +3047,161 @@ function AdminNoteModal({
             Salvează (Cmd+Enter)
           </Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function BlockPersonModal({
+  conversationId,
+  ip,
+  email,
+  onClose,
+  onBlocked,
+}: {
+  conversationId: string;
+  ip: string | null;
+  email: string | null;
+  onClose: () => void;
+  onBlocked: () => void;
+}) {
+  const [blockIp, setBlockIp] = useState(!!ip);
+  const [blockEmail, setBlockEmail] = useState(!!email && !ip);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [entries, setEntries] = useState<ChatBlacklistEntry[]>([]);
+
+  const loadEntries = useCallback(async () => {
+    try {
+      setEntries(await ChatApi.listBlacklist());
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadEntries();
+  }, [loadEntries]);
+
+  async function block() {
+    if (!blockIp && !blockEmail) return;
+    setBusy(true);
+    try {
+      await ChatApi.blockConversation(conversationId, {
+        blockIp,
+        blockEmail,
+        reason: reason.trim() || undefined,
+      });
+      onBlocked();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeEntry(id: string) {
+    await ChatApi.removeBlacklist(id);
+    void loadEntries();
+  }
+
+  const nothingToBlock = !ip && !email;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-card border border-border rounded-xl w-full max-w-md p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <Ban className="h-5 w-5 text-red-400" />
+          <h3 className="text-base font-semibold">Blochează persoana</h3>
+        </div>
+
+        {nothingToBlock ? (
+          <p className="text-sm text-muted-foreground">
+            Nu există IP sau email cunoscut pentru această conversație. Persoana poate fi blocată
+            după ce trimite un mesaj sau își setează email-ul.
+          </p>
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground mb-3">
+              Persoana blocată nu va mai putea trimite mesaje pe acest site, iar conexiunea
+              activă va fi întreruptă imediat.
+            </p>
+            <div className="space-y-2">
+              <label
+                className={cn(
+                  'flex items-center gap-2 rounded-md border p-2.5 text-sm',
+                  ip ? 'border-border cursor-pointer' : 'border-border/50 opacity-50',
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={blockIp}
+                  disabled={!ip}
+                  onChange={(e) => setBlockIp(e.target.checked)}
+                />
+                <span>Blochează IP:</span>
+                <span className="font-mono text-xs">{ip ?? 'necunoscut'}</span>
+              </label>
+              <label
+                className={cn(
+                  'flex items-center gap-2 rounded-md border p-2.5 text-sm',
+                  email ? 'border-border cursor-pointer' : 'border-border/50 opacity-50',
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={blockEmail}
+                  disabled={!email}
+                  onChange={(e) => setBlockEmail(e.target.checked)}
+                />
+                <span>Blochează email:</span>
+                <span className="font-mono text-xs truncate">{email ?? 'necunoscut'}</span>
+              </label>
+            </div>
+            <input
+              type="text"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              maxLength={500}
+              placeholder="Motiv (opțional) — ex. spam, abuz..."
+              className="mt-3 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={onClose} disabled={busy}>Anulează</Button>
+              <Button variant="destructive" onClick={block} disabled={busy || (!blockIp && !blockEmail)}>
+                {busy ? <Loader2 className="animate-spin" /> : <Ban className="h-4 w-4" />}
+                Blochează
+              </Button>
+            </div>
+          </>
+        )}
+
+        {entries.length > 0 && (
+          <div className="mt-5 border-t border-border pt-4">
+            <h4 className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+              Blocate pe acest site ({entries.length})
+            </h4>
+            <ul className="space-y-1.5 max-h-52 overflow-y-auto">
+              {entries.map((e) => (
+                <li key={e.id} className="flex items-center gap-2 text-sm">
+                  <Badge variant="muted">{e.type === 'ip' ? 'IP' : 'email'}</Badge>
+                  <span className="font-mono text-xs truncate flex-1" title={e.reason ?? undefined}>
+                    {e.value}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeEntry(e.id)}
+                    title="Deblochează"
+                    className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-muted-foreground hover:bg-secondary"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );

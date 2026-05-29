@@ -15,6 +15,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ChatMessage } from './message.entity';
 import { Conversation } from './conversation.entity';
+import { ChatBlacklistService } from './chat-blacklist.service';
 
 interface SocketIdentity {
   userId: string | null;
@@ -99,6 +100,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     @Inject(forwardRef(() => JwtService)) private readonly jwt: JwtService,
     @InjectRepository(Conversation) private readonly convRepo: Repository<Conversation>,
+    private readonly blacklist: ChatBlacklistService,
     private readonly moduleRef: ModuleRef,
   ) {}
 
@@ -192,6 +194,30 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     if (ident.userId || ident.guestId) {
+      // Blacklist: dacă IP-ul e blocat pe site-ul acestei sesiuni, deconectează.
+      // siteId se ia din cea mai recentă conversație a user/guest-ului. Best-effort
+      // (gardul autoritar e în ChatService.sendAsUser — blochează și după email).
+      if (ip) {
+        void (async () => {
+          try {
+            const whereClause = ident.userId
+              ? { userId: ident.userId }
+              : { guestId: ident.guestId! };
+            const conv = await this.convRepo.findOne({
+              where: whereClause,
+              order: { createdAt: 'DESC' },
+              select: ['siteId'],
+            });
+            if (await this.blacklist.isBlocked({ siteId: conv?.siteId ?? null, ip })) {
+              this.logger.warn(`blocked IP ${ip} — disconnecting ${client.id}`);
+              client.disconnect();
+            }
+          } catch {
+            /* best-effort */
+          }
+        })();
+      }
+
       const key = presenceKey(ident)!;
       if (ident.userId) {
         this.addPresence(this.presenceUsers, ident.userId, client.id);
@@ -415,6 +441,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /** @deprecated păstrat pentru backward-compat — folosește forceToggleChat. */
   forceOpenChat(target: { userId: string | null; guestId: string | null }) {
     this.forceToggleChat(target, true);
+  }
+
+  /** Deconectează imediat toate socket-urile unui user/guest (ex. după blocare). */
+  disconnectTarget(target: { userId: string | null; guestId: string | null }): void {
+    const room = target.userId
+      ? userRoom(target.userId)
+      : target.guestId
+        ? guestRoom(target.guestId)
+        : null;
+    if (room) this.server.in(room).disconnectSockets(true);
   }
 
   getKnownIp(target: { userId: string | null; guestId: string | null }): string | null {

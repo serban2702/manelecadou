@@ -20,6 +20,7 @@ import { TranslationService } from '../../openai/translation.service';
 import { OpenAiClient } from '../../openai/openai.client';
 import { WebPushService } from '../web-push/web-push.service';
 import { ChatAttachmentsService } from './chat-attachments.service';
+import { ChatBlacklistService } from './chat-blacklist.service';
 import { PaymentsService } from '../payments/payments.service';
 import { SitesService } from '../sites/sites.service';
 import { SettingsService } from '../settings/settings.service';
@@ -57,6 +58,7 @@ export class ChatService implements OnModuleInit {
     private readonly openai: OpenAiClient,
     private readonly webPush: WebPushService,
     private readonly attachments: ChatAttachmentsService,
+    private readonly blacklist: ChatBlacklistService,
     private readonly payments: PaymentsService,
     private readonly sites: SitesService,
     private readonly chatSettings: SettingsService,
@@ -356,6 +358,13 @@ export class ChatService implements OnModuleInit {
 
   async sendAsUser(ctx: OwnerCtx, body: string): Promise<ChatMessage> {
     const conversation = await this.getOrCreateMine(ctx);
+    // Blacklist per-site: blochează după IP (din WS sau lastIp persistat) sau email.
+    const ip =
+      this.gateway.getKnownIp({ userId: ctx.userId, guestId: ctx.guestId }) ??
+      conversation.lastIp;
+    if (await this.blacklist.isBlocked({ siteId: ctx.siteId, ip, email: conversation.email })) {
+      throw new ForbiddenException('blocked');
+    }
     const msg = this.msg.create({
       conversationId: conversation.id,
       siteId: ctx.siteId ?? null,
@@ -674,6 +683,69 @@ export class ChatService implements OnModuleInit {
     const c = await this.conv.findOne({ where: { id } });
     if (!c) throw new NotFoundException('Conversation not found');
     return c;
+  }
+
+  // ============== Blacklist chat (per-site) ==============
+
+  listBlacklist(siteId: string | null) {
+    return this.blacklist.list(siteId);
+  }
+
+  addBlacklist(args: {
+    siteId: string | null;
+    type: 'ip' | 'email';
+    value: string;
+    reason?: string | null;
+    byEmail?: string | null;
+  }) {
+    return this.blacklist.add({
+      siteId: args.siteId,
+      type: args.type,
+      value: args.value,
+      reason: args.reason,
+      createdByEmail: args.byEmail,
+    });
+  }
+
+  removeBlacklist(id: string) {
+    return this.blacklist.remove(id);
+  }
+
+  /**
+   * Blochează persoana dintr-o conversație după IP și/sau email, dintr-un singur
+   * click ("din latura de chat"). Deconectează imediat socket-urile active.
+   */
+  async blockFromConversation(
+    conversationId: string,
+    opts: { blockIp?: boolean; blockEmail?: boolean; reason?: string | null; byEmail?: string | null },
+  ): Promise<{ ok: true; blocked: { ip?: string; email?: string } }> {
+    const conv = await this.getConversation(conversationId);
+    const ip =
+      this.gateway.getKnownIp({ userId: conv.userId, guestId: conv.guestId }) ?? conv.lastIp;
+    const blocked: { ip?: string; email?: string } = {};
+    if (opts.blockIp && ip) {
+      await this.blacklist.add({
+        siteId: conv.siteId,
+        type: 'ip',
+        value: ip,
+        reason: opts.reason,
+        createdByEmail: opts.byEmail,
+      });
+      blocked.ip = ip;
+    }
+    if (opts.blockEmail && conv.email) {
+      await this.blacklist.add({
+        siteId: conv.siteId,
+        type: 'email',
+        value: conv.email,
+        reason: opts.reason,
+        createdByEmail: opts.byEmail,
+      });
+      blocked.email = conv.email.toLowerCase();
+    }
+    // Deconectează imediat sesiunea curentă.
+    this.gateway.disconnectTarget({ userId: conv.userId, guestId: conv.guestId });
+    return { ok: true, blocked };
   }
 
   async listMessages(conversationId: string): Promise<ChatMessage[]> {
