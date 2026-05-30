@@ -14,7 +14,11 @@ import {
   CreditCard,
   Eye,
   Globe,
+  Megaphone,
+  MousePointerClick,
+  RefreshCw,
   Smartphone,
+  Target,
   Timer,
   TrendingUp,
   UserCircle2,
@@ -35,9 +39,11 @@ import {
   YAxis,
   Legend,
 } from 'recharts';
-import { AnalyticsApi } from '@/lib/api';
+import { AnalyticsApi, type AdSpendPlatform } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DateRangePicker, type DateRangeValue } from '@/components/ui/date-range-picker';
 import { Empty } from '@/components/ui/empty';
@@ -97,6 +103,7 @@ export default function AnalyticsPage() {
           <TabsTrigger value="tech">Tech &amp; Geo</TabsTrigger>
           <TabsTrigger value="bots">Boți</TabsTrigger>
           <TabsTrigger value="payments">Payments</TabsTrigger>
+          <TabsTrigger value="ads">Ads &amp; ROAS</TabsTrigger>
           <TabsTrigger value="cross-check">Cross-check</TabsTrigger>
         </TabsList>
 
@@ -117,6 +124,9 @@ export default function AnalyticsPage() {
         </TabsContent>
         <TabsContent value="payments">
           <PaymentsTab range={rangeISO} />
+        </TabsContent>
+        <TabsContent value="ads">
+          <AdsTab range={rangeISO} />
         </TabsContent>
         <TabsContent value="cross-check">
           <CrossCheckTab range={rangeISO} />
@@ -740,6 +750,184 @@ function CrossCheckTab({ range }: { range: { from: string; to: string } }) {
 }
 
 // ============== Reusable bits ==============
+
+// ============== ADS & ROAS ==============
+
+const money = (cents: number, currency?: string | null) => {
+  const v = (cents / 100).toLocaleString('ro-RO', { maximumFractionDigits: 2 });
+  return currency ? `${v} ${currency}` : v;
+};
+
+const PLATFORM_META: Record<'meta' | 'tiktok', { label: string; color: string }> = {
+  meta: { label: 'Meta (Facebook/Instagram)', color: 'hsl(217 91% 65%)' },
+  tiktok: { label: 'TikTok', color: 'hsl(330 80% 60%)' },
+};
+
+function AdsTab({ range }: { range: { from: string; to: string } }) {
+  const { toast } = useToast();
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+  const report = useAsync(() => AnalyticsApi.adSpend(range), [range, refreshKey]);
+  const r = report.data;
+
+  const onSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await AnalyticsApi.adSpendSync(7);
+      const totalRows = res.results.reduce((a, x) => a + x.meta.rows + x.tiktok.rows, 0);
+      const errs = res.results
+        .flatMap((x) => [x.meta.error, x.tiktok.error])
+        .filter(Boolean) as string[];
+      toast({
+        variant: errs.length ? 'destructive' : 'success',
+        title: errs.length ? 'Sincronizare parțială' : 'Sincronizat',
+        description: errs.length
+          ? `Erori: ${errs.slice(0, 2).join(' · ')}`
+          : `${totalRows} rânduri actualizate din Marketing API.`,
+      });
+      setRefreshKey((k) => k + 1);
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Eroare', description: (e as Error).message });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Cheltuieli trase din Meta &amp; TikTok Marketing API, defalcate pe campanie. ROAS = venit ÷ cheltuială.
+        </p>
+        <Button variant="outline" size="sm" onClick={onSync} disabled={syncing}>
+          <RefreshCw className={cn('mr-2 h-4 w-4', syncing && 'animate-spin')} />
+          {syncing ? 'Se sincronizează…' : 'Sincronizează acum'}
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <KpiCard
+          label="Cheltuială totală"
+          value={r ? money(r.totalSpendCents, r.platforms.find((p) => p.currency)?.currency) : undefined}
+          icon={<Megaphone />}
+          tone="destructive"
+          loading={report.isLoading}
+        />
+        <KpiCard
+          label="Revenue (Stripe)"
+          value={r ? RON(r.revenueCents) : undefined}
+          icon={<CircleDollarSign />}
+          tone="success"
+          loading={report.isLoading}
+        />
+        <KpiCard
+          label="ROAS"
+          value={r ? (r.roas != null ? `${r.roas.toFixed(2)}×` : '—') : undefined}
+          sub={r?.roas != null ? (r.roas >= 1 ? 'profitabil' : 'sub pragul de rentabilitate') : undefined}
+          icon={<Target />}
+          tone={r && r.roas != null && r.roas >= 1 ? 'success' : 'primary'}
+          loading={report.isLoading}
+        />
+        <KpiCard
+          label="Cost / conversie"
+          value={r ? (r.costPerConversion != null ? money(Math.round(r.costPerConversion), r.platforms.find((p) => p.currency)?.currency) : '—') : undefined}
+          sub={r ? `${r.paidCount} plăți` : undefined}
+          icon={<MousePointerClick />}
+          tone="info"
+          loading={report.isLoading}
+        />
+      </div>
+
+      {r && r.totalSpendCents === 0 && !report.isLoading ? (
+        <Empty
+          title="Nicio cheltuială în interval"
+          description={'Verifică că ai completat Ad Account ID + Marketing API token pe site (Setări site → Cheltuieli ads) și apasă „Sincronizează acum".'}
+        />
+      ) : null}
+
+      {(['meta', 'tiktok'] as const).map((platform) => {
+        const p = r?.platforms.find((x) => x.platform === platform);
+        return (
+          <PlatformBreakdown
+            key={platform}
+            platform={platform}
+            data={p}
+            loading={report.isLoading}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function PlatformBreakdown({
+  platform,
+  data,
+  loading,
+}: {
+  platform: 'meta' | 'tiktok';
+  data: AdSpendPlatform | undefined;
+  loading: boolean;
+}) {
+  const meta = PLATFORM_META[platform];
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: meta.color }} />
+            {meta.label}
+          </CardTitle>
+          {data ? (
+            <div className="text-right text-sm">
+              <span className="font-semibold">{money(data.spendCents, data.currency)}</span>
+              <span className="text-muted-foreground"> · {data.impressions.toLocaleString('ro-RO')} impresii · {data.clicks.toLocaleString('ro-RO')} clickuri</span>
+            </div>
+          ) : null}
+        </div>
+        {data?.fetchedAt ? (
+          <CardDescription>
+            Ultima sincronizare: {format(new Date(data.fetchedAt), 'd MMM HH:mm', { locale: ro })}
+          </CardDescription>
+        ) : null}
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <Skeleton className="h-24 w-full" />
+        ) : !data || data.campaigns.length === 0 ? (
+          <Empty title="Fără date" description="Nicio campanie cu cheltuieli în intervalul selectat." />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Campanie</TableHead>
+                <TableHead className="text-right">Cheltuială</TableHead>
+                <TableHead className="text-right">Impresii</TableHead>
+                <TableHead className="text-right">Clickuri</TableHead>
+                <TableHead className="text-right">CPC</TableHead>
+                <TableHead className="text-right">CPM</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.campaigns.map((c) => (
+                <TableRow key={c.campaignId}>
+                  <TableCell className="max-w-[280px] truncate" title={c.campaignName ?? c.campaignId}>
+                    {c.campaignName ?? c.campaignId}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">{money(c.spendCents, c.currency)}</TableCell>
+                  <TableCell className="text-right">{c.impressions.toLocaleString('ro-RO')}</TableCell>
+                  <TableCell className="text-right">{c.clicks.toLocaleString('ro-RO')}</TableCell>
+                  <TableCell className="text-right">{c.cpc != null ? money(Math.round(c.cpc), c.currency) : '—'}</TableCell>
+                  <TableCell className="text-right">{c.cpm != null ? money(Math.round(c.cpm), c.currency) : '—'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function KpiCard({
   label,

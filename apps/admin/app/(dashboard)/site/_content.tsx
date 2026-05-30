@@ -650,6 +650,49 @@ function BrandSeoTab({ siteId, form, setForm }: { siteId: string; form: SiteDto;
         </Field>
       </Section>
 
+      <Section title="Cheltuieli ads (Marketing API)">
+        <Field
+          label="Meta Ad Account ID"
+          description={'Partea numerică din „act_1234567890" (Business Settings → Accounts → Ad Accounts). Folosit pentru a trage spend-ul defalcat pe campanie.'}
+        >
+          <Input
+            value={form.analytics?.metaAdAccountId ?? ''}
+            onChange={(e) => setForm({ ...form, analytics: { ...form.analytics, metaAdAccountId: e.target.value } })}
+            placeholder="1234567890"
+          />
+        </Field>
+        <Field
+          label="Meta Marketing API token"
+          description={'System User token cu scope „ads_read" (Business Settings → System Users → Generate Token). NU expiră. Diferit de tokenul CAPI de mai sus.'}
+        >
+          <Input
+            type="password"
+            value={form.analyticsSecrets?.metaMarketingToken ?? ''}
+            onChange={(e) => setForm({ ...form, analyticsSecrets: { ...form.analyticsSecrets, metaMarketingToken: e.target.value } })}
+          />
+        </Field>
+        <Field
+          label="TikTok Advertiser ID"
+          description={'ID-ul advertiser-ului (TikTok Ads Manager → Account info). Folosit pentru reporting de spend.'}
+        >
+          <Input
+            value={form.analytics?.tiktokAdvertiserId ?? ''}
+            onChange={(e) => setForm({ ...form, analytics: { ...form.analytics, tiktokAdvertiserId: e.target.value } })}
+            placeholder="700000000000000000"
+          />
+        </Field>
+        <Field
+          label="TikTok Marketing API token"
+          description={'Access token din TikTok for Business (app aprobat pentru Reporting). Diferit de tokenul Events API de mai sus.'}
+        >
+          <Input
+            type="password"
+            value={form.analyticsSecrets?.tiktokMarketingToken ?? ''}
+            onChange={(e) => setForm({ ...form, analyticsSecrets: { ...form.analyticsSecrets, tiktokMarketingToken: e.target.value } })}
+          />
+        </Field>
+      </Section>
+
       <TestimonialsSection form={form} setForm={setForm} />
 
       <Section title="Social">

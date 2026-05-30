@@ -30,6 +30,11 @@ export interface SiteAnalytics {
   ga4Id?: string;
   metaPixelId?: string;
   tiktokPixelId?: string;
+  /** ID-ul contului de ads Meta (partea numerică din `act_1234567890`). Folosit de
+   *  Marketing API pentru a trage spend-ul defalcat pe campanie. */
+  metaAdAccountId?: string;
+  /** Advertiser ID TikTok (din Ads Manager). Folosit de Marketing API reporting. */
+  tiktokAdvertiserId?: string;
 }
 
 /**
@@ -48,6 +53,13 @@ export interface SiteAnalyticsSecrets {
    *  debug — când e setat, evenimentele ajung în „Test events" tab în loc de
    *  reporting normal. Șterge după ce confirmi că vin. */
   metaTestEventCode?: string;
+  /** Meta Marketing API token (System User token cu scope `ads_read`, din Business
+   *  Settings → System Users → Generate Token). Citește spend-ul de campanie. Token
+   *  de system user nu expiră. Separat de `metaCapiToken` (Conversions API). */
+  metaMarketingToken?: string;
+  /** TikTok Marketing API access token (din TikTok for Business → app aprobat pentru
+   *  Reporting). Citește spend-ul de campanie. Separat de `tiktokAccessToken` (Events API). */
+  tiktokMarketingToken?: string;
 }
 
 export interface SiteStripe {

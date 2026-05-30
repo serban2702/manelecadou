@@ -16,6 +16,8 @@ import { AdminGuard } from '../../common/admin.guard';
 import { OptionalJwtAuthGuard } from '../../common/jwt.guard';
 import { CurrentSiteId } from '../../common/decorators';
 import { AnalyticsService } from './analytics.service';
+import { AdSpendService } from './ad-spend.service';
+import { SitesService } from '../sites/sites.service';
 import { TrackBatchDto, TrackEventDto } from './dto';
 
 function clientIp(req: Request): string | null {
@@ -103,7 +105,37 @@ export class AnalyticsPublicController {
 @UseGuards(AdminGuard)
 @Controller('admin/analytics')
 export class AnalyticsAdminController {
-  constructor(private readonly analytics: AnalyticsService) {}
+  constructor(
+    private readonly analytics: AnalyticsService,
+    private readonly adSpend: AdSpendService,
+    private readonly sites: SitesService,
+  ) {}
+
+  /** Raport cheltuieli ads (Meta + TikTok) defalcat pe campanie + ROAS. */
+  @Get('ad-spend')
+  adSpendReport(@Query() q: { from?: string; to?: string }, @CurrentSiteId() siteId: string | null) {
+    return this.adSpend.report(rangeFromQuery(q), siteId);
+  }
+
+  /** Trigger manual de sincronizare din Marketing API. Dacă `x-site-id: all`
+   *  (siteId null) sincronizează toate site-urile configurate; altfel doar
+   *  site-ul curent. `days` opțional (default 7). */
+  @Post('ad-spend/sync')
+  @HttpCode(200)
+  async adSpendSync(
+    @Query() q: { days?: string },
+    @CurrentSiteId() siteId: string | null,
+  ) {
+    const days = Math.min(90, Math.max(1, parseInt(q.days ?? '7', 10) || 7));
+    if (!siteId) {
+      const results = await this.adSpend.syncAll(days);
+      return { ok: true, scope: 'all', results };
+    }
+    const site = await this.sites.findById(siteId);
+    if (!site) throw new NotFoundException('Site negăsit');
+    const result = await this.adSpend.syncSite(site, days);
+    return { ok: true, scope: 'site', results: [result] };
+  }
 
   @Get('overview')
   overview(@Query() q: { from?: string; to?: string }, @CurrentSiteId() siteId: string | null) {

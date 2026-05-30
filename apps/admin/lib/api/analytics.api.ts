@@ -121,6 +121,50 @@ export class AnalyticsApi {
   static paymentDetail(id: string): Promise<PaymentDetail> {
     return http.get(`/admin/analytics/payments/${encodeURIComponent(id)}`);
   }
+  static adSpend(range: AnalyticsRange): Promise<AdSpendReport> {
+    return http.get(`/admin/analytics/ad-spend${qs(range)}`);
+  }
+  static adSpendSync(days = 7): Promise<{ ok: boolean; scope: string; results: AdSpendSyncResult[] }> {
+    return http.post(`/admin/analytics/ad-spend/sync?days=${days}`, {});
+  }
+}
+
+export interface AdSpendCampaign {
+  campaignId: string;
+  campaignName: string | null;
+  spendCents: number;
+  impressions: number;
+  clicks: number;
+  currency: string;
+  cpc: number | null;
+  cpm: number | null;
+}
+
+export interface AdSpendPlatform {
+  platform: 'meta' | 'tiktok';
+  spendCents: number;
+  impressions: number;
+  clicks: number;
+  currency: string | null;
+  configured: boolean;
+  fetchedAt: string | null;
+  campaigns: AdSpendCampaign[];
+}
+
+export interface AdSpendReport {
+  range: AnalyticsRange;
+  revenueCents: number;
+  paidCount: number;
+  totalSpendCents: number;
+  roas: number | null;
+  costPerConversion: number | null;
+  platforms: AdSpendPlatform[];
+}
+
+export interface AdSpendSyncResult {
+  siteId: string;
+  meta: { ok: boolean; rows: number; error?: string };
+  tiktok: { ok: boolean; rows: number; error?: string };
 }
 
 export interface AnalyticsSessionRow {

@@ -28,13 +28,21 @@ export interface SiteDto {
     emailBannerUrl?: string;
   };
   seo: { title?: string; description?: string; keywords?: string };
-  analytics: { ga4Id?: string; metaPixelId?: string; tiktokPixelId?: string };
+  analytics: {
+    ga4Id?: string;
+    metaPixelId?: string;
+    tiktokPixelId?: string;
+    metaAdAccountId?: string;
+    tiktokAdvertiserId?: string;
+  };
   /** Token-uri server-side pentru tracking (server-only — nu apare în /public/site). */
   analyticsSecrets?: {
     ga4ApiSecret?: string;
     metaCapiToken?: string;
     metaTestEventCode?: string;
     tiktokAccessToken?: string;
+    metaMarketingToken?: string;
+    tiktokMarketingToken?: string;
   };
   stripe: { priceId?: string | null; productName?: string; statementDescriptor?: string };
   suno: {
