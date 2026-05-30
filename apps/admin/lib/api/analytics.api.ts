@@ -129,26 +129,40 @@ export class AnalyticsApi {
   }
 }
 
-export interface AdSpendCampaign {
-  campaignId: string;
-  campaignName: string | null;
+/** Metrici comune fiecărui nivel din ierarhie (campanie / ad set / ad). */
+export interface AdMetrics {
   spendCents: number;
   impressions: number;
   clicks: number;
-  currency: string;
-  cpc: number | null;
-  cpm: number | null;
+  conversions: number;
+  conversionValueCents: number;
+  currency: string | null;
+  costPerConversion: number | null;
 }
 
-export interface AdSpendPlatform {
+export interface AdNode extends AdMetrics {
+  adId: string;
+  adName: string | null;
+}
+
+export interface AdsetNode extends AdMetrics {
+  adsetId: string | null;
+  adsetName: string | null;
+  ads: AdNode[];
+}
+
+export interface CampaignNode extends AdMetrics {
+  campaignId: string;
+  campaignName: string | null;
+  adsets: AdsetNode[];
+}
+
+export interface AdSpendPlatform extends AdMetrics {
   platform: 'meta' | 'tiktok';
-  spendCents: number;
-  impressions: number;
-  clicks: number;
-  currency: string | null;
   configured: boolean;
   fetchedAt: string | null;
-  campaigns: AdSpendCampaign[];
+  platformRoas: number | null;
+  campaigns: CampaignNode[];
 }
 
 export interface AdSpendReport {
@@ -156,6 +170,7 @@ export interface AdSpendReport {
   revenueCents: number;
   paidCount: number;
   totalSpendCents: number;
+  totalConversions: number;
   roas: number | null;
   costPerConversion: number | null;
   platforms: AdSpendPlatform[];

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useAsync } from "@/lib/hooks/use-async";
 import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 import { ro } from 'date-fns/locale';
@@ -10,6 +10,8 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   CircleDollarSign,
   CreditCard,
   Eye,
@@ -839,8 +841,8 @@ function AdsTab({ range }: { range: { from: string; to: string } }) {
         />
         <KpiCard
           label="Cost / conversie"
-          value={r ? (r.costPerConversion != null ? money(Math.round(r.costPerConversion), r.platforms.find((p) => p.currency)?.currency) : '—') : undefined}
-          sub={r ? `${r.paidCount} plăți` : undefined}
+          value={r ? (r.costPerConversion != null ? money(r.costPerConversion, r.platforms.find((p) => p.currency)?.currency) : '—') : undefined}
+          sub={r ? `${r.totalConversions} conversii (Purchase) · ${r.paidCount} plăți Stripe` : undefined}
           icon={<MousePointerClick />}
           tone="info"
           loading={report.isLoading}
@@ -879,6 +881,15 @@ function PlatformBreakdown({
   loading: boolean;
 }) {
   const meta = PLATFORM_META[platform];
+  const [openCamp, setOpenCamp] = useState<Set<string>>(new Set());
+  const [openAdset, setOpenAdset] = useState<Set<string>>(new Set());
+  const toggle = (set: Set<string>, setter: (s: Set<string>) => void, key: string) => {
+    const next = new Set(set);
+    next.has(key) ? next.delete(key) : next.add(key);
+    setter(next);
+  };
+  const num = (n: number) => n.toLocaleString('ro-RO');
+
   return (
     <Card>
       <CardHeader>
@@ -890,13 +901,16 @@ function PlatformBreakdown({
           {data ? (
             <div className="text-right text-sm">
               <span className="font-semibold">{money(data.spendCents, data.currency)}</span>
-              <span className="text-muted-foreground"> · {data.impressions.toLocaleString('ro-RO')} impresii · {data.clicks.toLocaleString('ro-RO')} clickuri</span>
+              <span className="text-muted-foreground">
+                {' · '}{data.conversions} conversii{' · '}
+                {data.costPerConversion != null ? `${money(data.costPerConversion, data.currency)}/conv` : '—/conv'}
+              </span>
             </div>
           ) : null}
         </div>
         {data?.fetchedAt ? (
           <CardDescription>
-            Ultima sincronizare: {format(new Date(data.fetchedAt), 'd MMM HH:mm', { locale: ro })}
+            Ultima sincronizare: {format(new Date(data.fetchedAt), 'd MMM HH:mm', { locale: ro })} · click pe campanie pentru ad set-uri și ad-uri
           </CardDescription>
         ) : null}
       </CardHeader>
@@ -909,27 +923,76 @@ function PlatformBreakdown({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Campanie</TableHead>
+                <TableHead>Campanie / Ad set / Ad</TableHead>
                 <TableHead className="text-right">Cheltuială</TableHead>
+                <TableHead className="text-right">Conversii</TableHead>
+                <TableHead className="text-right">Cost/conv.</TableHead>
                 <TableHead className="text-right">Impresii</TableHead>
                 <TableHead className="text-right">Clickuri</TableHead>
-                <TableHead className="text-right">CPC</TableHead>
-                <TableHead className="text-right">CPM</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.campaigns.map((c) => (
-                <TableRow key={c.campaignId}>
-                  <TableCell className="max-w-[280px] truncate" title={c.campaignName ?? c.campaignId}>
-                    {c.campaignName ?? c.campaignId}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">{money(c.spendCents, c.currency)}</TableCell>
-                  <TableCell className="text-right">{c.impressions.toLocaleString('ro-RO')}</TableCell>
-                  <TableCell className="text-right">{c.clicks.toLocaleString('ro-RO')}</TableCell>
-                  <TableCell className="text-right">{c.cpc != null ? money(Math.round(c.cpc), c.currency) : '—'}</TableCell>
-                  <TableCell className="text-right">{c.cpm != null ? money(Math.round(c.cpm), c.currency) : '—'}</TableCell>
-                </TableRow>
-              ))}
+              {data.campaigns.map((c) => {
+                const campOpen = openCamp.has(c.campaignId);
+                return (
+                  <Fragment key={c.campaignId}>
+                    <TableRow
+                      className="cursor-pointer hover:bg-secondary/40"
+                      onClick={() => toggle(openCamp, setOpenCamp, c.campaignId)}
+                    >
+                      <TableCell className="max-w-[320px]">
+                        <span className="flex items-center gap-1.5 font-medium">
+                          {campOpen ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                          <span className="truncate" title={c.campaignName ?? c.campaignId}>{c.campaignName ?? c.campaignId}</span>
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right font-medium">{money(c.spendCents, c.currency)}</TableCell>
+                      <TableCell className="text-right font-medium">{c.conversions}</TableCell>
+                      <TableCell className="text-right">{c.costPerConversion != null ? money(c.costPerConversion, c.currency) : '—'}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{num(c.impressions)}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{num(c.clicks)}</TableCell>
+                    </TableRow>
+
+                    {campOpen && c.adsets.map((s) => {
+                      const adsetKey = `${c.campaignId}:${s.adsetId ?? 'none'}`;
+                      const adsetOpen = openAdset.has(adsetKey);
+                      return (
+                        <Fragment key={adsetKey}>
+                          <TableRow
+                            className="cursor-pointer bg-secondary/20 hover:bg-secondary/40"
+                            onClick={() => toggle(openAdset, setOpenAdset, adsetKey)}
+                          >
+                            <TableCell className="max-w-[320px] pl-8">
+                              <span className="flex items-center gap-1.5 text-sm">
+                                {adsetOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                                <span className="truncate" title={s.adsetName ?? s.adsetId ?? ''}>{s.adsetName ?? s.adsetId ?? '(fără ad set)'}</span>
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">{money(s.spendCents, s.currency)}</TableCell>
+                            <TableCell className="text-right">{s.conversions}</TableCell>
+                            <TableCell className="text-right">{s.costPerConversion != null ? money(s.costPerConversion, s.currency) : '—'}</TableCell>
+                            <TableCell className="text-right text-muted-foreground">{num(s.impressions)}</TableCell>
+                            <TableCell className="text-right text-muted-foreground">{num(s.clicks)}</TableCell>
+                          </TableRow>
+
+                          {adsetOpen && s.ads.map((ad) => (
+                            <TableRow key={ad.adId} className="bg-secondary/10">
+                              <TableCell className="max-w-[320px] pl-16">
+                                <span className="block truncate text-sm text-muted-foreground" title={ad.adName ?? ad.adId}>{ad.adName ?? ad.adId}</span>
+                              </TableCell>
+                              <TableCell className="text-right text-sm">{money(ad.spendCents, ad.currency)}</TableCell>
+                              <TableCell className="text-right text-sm">{ad.conversions}</TableCell>
+                              <TableCell className="text-right text-sm">{ad.costPerConversion != null ? money(ad.costPerConversion, ad.currency) : '—'}</TableCell>
+                              <TableCell className="text-right text-sm text-muted-foreground">{num(ad.impressions)}</TableCell>
+                              <TableCell className="text-right text-sm text-muted-foreground">{num(ad.clicks)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </Fragment>
+                      );
+                    })}
+                  </Fragment>
+                );
+              })}
             </TableBody>
           </Table>
         )}

@@ -11,16 +11,18 @@ export type AdPlatform = 'meta' | 'tiktok';
 
 /**
  * Cheltuieli zilnice de advertising trase din Marketing API (Meta) / Marketing API
- * (TikTok), defalcate pe campanie. Un rând per (siteId, platform, campaignId, day).
+ * (TikTok), defalcate la nivel de AD (un rând per ad per zi). Fiecare rând conține
+ * și ierarhia părinte (campanie + ad set / ad group) ca să putem agrega în sus
+ * pentru drill-down campanie → ad set → ad.
  *
- * `synchronize: true` în prod creează tabelul + index-ul automat (additive, safe).
+ * `synchronize: true` în prod creează tabelul + index-ul automat.
  *
- * Upsert idempotent pe index-ul unic `(siteId, platform, campaignId, date)` —
+ * Upsert idempotent pe index-ul unic `(siteId, platform, adId, date)` —
  * sincronizarea trage ultimele ~N zile cu overlap, deci aceleași rânduri se
- * rescriu cu valorile finale (Meta/TikTok ajustează spend-ul retroactiv 1-2 zile).
+ * rescriu cu valorile finale (Meta/TikTok ajustează retroactiv 1-2 zile).
  */
 @Entity({ name: 'ad_spend' })
-@Index('ux_ad_spend_unique', ['siteId', 'platform', 'campaignId', 'date'], { unique: true })
+@Index('ux_ad_spend_unique', ['siteId', 'platform', 'adId', 'date'], { unique: true })
 export class AdSpend {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -39,6 +41,20 @@ export class AdSpend {
   @Column({ type: 'varchar', length: 256, nullable: true })
   campaignName!: string | null;
 
+  /** ID-ul ad set-ului (Meta adset_id) / ad group-ului (TikTok adgroup_id). */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  adsetId!: string | null;
+
+  @Column({ type: 'varchar', length: 256, nullable: true })
+  adsetName!: string | null;
+
+  /** ID-ul ad-ului individual (Meta ad_id / TikTok ad_id). */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  adId!: string | null;
+
+  @Column({ type: 'varchar', length: 256, nullable: true })
+  adName!: string | null;
+
   /** Ziua căreia i se atribuie cheltuiala (date, fără oră), format YYYY-MM-DD. */
   @Column({ type: 'date' })
   date!: string;
@@ -56,6 +72,16 @@ export class AdSpend {
 
   @Column({ type: 'integer', default: 0 })
   clicks!: number;
+
+  /** Număr de conversii Purchase atribuite de platformă (Meta omni_purchase /
+   *  TikTok complete_payment). Folosit pentru cost/conversie per nivel. */
+  @Column({ type: 'integer', default: 0 })
+  conversions!: number;
+
+  /** Valoarea conversiilor atribuită de platformă, în cents (moneda contului).
+   *  Pentru ROAS calculat de platformă (vs ROAS-ul nostru față de Stripe). */
+  @Column({ type: 'integer', default: 0 })
+  conversionValueCents!: number;
 
   /** Când a fost ultima dată trasă valoarea din API (pentru audit / staleness). */
   @Column({ type: 'timestamptz', nullable: true })
