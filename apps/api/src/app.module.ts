@@ -41,6 +41,7 @@ import { AiChatModule } from './modules/ai-chat/ai-chat.module';
 import { OutboundEmailModule } from './modules/outbound-email/outbound-email.module';
 import { MetaCapiModule } from './modules/meta-capi/meta-capi.module';
 import { SiteDemosModule } from './modules/site-demos/site-demos.module';
+import { InvoicesModule } from './modules/invoices/invoices.module';
 
 @Module({
   imports: [
@@ -91,6 +92,7 @@ import { SiteDemosModule } from './modules/site-demos/site-demos.module';
     WebPushModule,
     AiChatModule,
     SiteDemosModule,
+    InvoicesModule,
     SeederModule,
   ],
   providers: [

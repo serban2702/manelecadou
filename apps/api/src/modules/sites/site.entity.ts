@@ -126,6 +126,56 @@ export interface SiteCompanyInfo {
   ownerName?: string;
 }
 
+/**
+ * Datele de client folosite la emiterea unei facturi SmartBill. Pentru
+ * neplătitor TVA, clienții persoane fizice au de obicei doar nume (+ opțional
+ * CNP). `vatCode` ține CUI (firme) sau CNP (persoane fizice).
+ */
+export interface SiteSmartbillClient {
+  name?: string;
+  vatCode?: string; // CUI sau CNP
+  regCom?: string;
+  address?: string;
+  city?: string;
+  county?: string;
+  country?: string; // default "Romania"
+  email?: string;
+  /** Plătitor de TVA? Pentru persoane fizice / neplătitori → false. */
+  isTaxPayer?: boolean;
+}
+
+/**
+ * Configurare facturare SmartBill per-site. Tokenul e CRIPTAT la repaus cu
+ * `encryptSecret()` (cheia din env `MAIL_CRED_KEY`, la fel ca mailConfig).
+ *
+ * Firma e NEPLĂTITOARE de TVA → produsele se emit cu `taxPercentage: 0`, iar
+ * `companyVatCode` e CIF-ul fără prefixul „RO".
+ */
+export interface SiteSmartbill {
+  /** Dacă false/undefined, butoanele de emitere sunt dezactivate pentru site. */
+  enabled?: boolean;
+  /** Emailul contului SmartBill (username la Basic auth). */
+  email?: string;
+  /** Tokenul API SmartBill. CRIPTAT cu encryptSecret(). */
+  token?: string;
+  /** CIF-ul firmei tale (fără „RO" pentru neplătitor TVA). */
+  companyVatCode?: string;
+  /** Seria facturilor configurată în SmartBill (ex. „MNL"). */
+  seriesName?: string;
+  /** Seria încasărilor/chitanțelor (ex. „PLATA_MEL"). Folosită pe `payment.paymentSeries`. */
+  paymentSeriesName?: string;
+  /** Unitate de măsură pe linia de produs. Default „buc". */
+  measuringUnit?: string;
+  /** Denumirea serviciului pe factură. Ex. „Melodie personalizată". */
+  productName?: string;
+  /** Tip plată folosit pe încasarea embedded. Default „Card". */
+  paymentType?: string;
+  /** Dacă true, emiterea folosește `defaultClient` în loc de cumpărătorul real. */
+  useDefaultClient?: boolean;
+  /** Clientul implicit (ex. persoana ta fizică) folosit la facturile istorice. */
+  defaultClient?: SiteSmartbillClient;
+}
+
 export interface SiteSuno {
   // === Suno style tags (audio generation) ===
   // Promptul de bază pentru Suno (overwrites buildStyleTag default behavior)
@@ -380,6 +430,13 @@ export class Site {
 
   @Column({ type: 'jsonb', default: () => `'{}'::jsonb` })
   companyInfo!: SiteCompanyInfo;
+
+  /**
+   * Configurare facturare SmartBill (token criptat, CIF, serie, client implicit).
+   * Server-only — NU se serializează în public/site. Vezi `SiteSmartbill`.
+   */
+  @Column({ type: 'jsonb', default: () => `'{}'::jsonb` })
+  smartbill!: SiteSmartbill;
 
   /**
    * Configurare email per-site (provider + credențiale + from/name). Secretele
