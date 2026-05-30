@@ -111,10 +111,15 @@ export class AnalyticsAdminController {
     private readonly sites: SitesService,
   ) {}
 
-  /** Raport cheltuieli ads (Meta + TikTok) defalcat pe campanie + ROAS. */
+  /** Raport cheltuieli ads (Meta + TikTok) defalcat pe campanie + ROAS.
+   *  `fromDay`/`toDay` (YYYY-MM-DD, zile locale) — folosite pentru filtrul pe
+   *  cheltuieli ca să evite off-by-one din conversia UTC a datepicker-ului. */
   @Get('ad-spend')
-  adSpendReport(@Query() q: { from?: string; to?: string }, @CurrentSiteId() siteId: string | null) {
-    return this.adSpend.report(rangeFromQuery(q), siteId);
+  adSpendReport(
+    @Query() q: { from?: string; to?: string; fromDay?: string; toDay?: string },
+    @CurrentSiteId() siteId: string | null,
+  ) {
+    return this.adSpend.report(rangeFromQuery(q), siteId, { fromDay: q.fromDay, toDay: q.toDay });
   }
 
   /** Trigger manual de sincronizare din Marketing API. Dacă `x-site-id: all`

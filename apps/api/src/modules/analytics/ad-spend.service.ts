@@ -44,7 +44,7 @@ export class AdSpendService {
    *  retroactive ale platformelor). No-op dacă niciun site n-are creds. */
   @Cron('15 4 * * *', { name: 'ad-spend-sync', timeZone: 'UTC' })
   async nightlySync(): Promise<void> {
-    await this.syncAll(7).catch((e) =>
+    await this.syncAll(14).catch((e) =>
       this.logger.warn(`nightly ad-spend sync failed: ${(e as Error).message}`),
     );
   }
@@ -265,9 +265,15 @@ export class AdSpendService {
   async report(
     range: { from: Date; to: Date },
     siteId: string | null,
+    opts?: { fromDay?: string; toDay?: string },
   ) {
-    const fromDay = toDay(range.from);
-    const toDayStr = toDay(range.to);
+    // Cheltuiala e stocată per zi calendaristică (în TZ-ul contului de ads, cum o
+    // raportează Meta/TikTok). Datepicker-ul trimite instant-uri (miezul nopții
+    // LOCAL → în UTC poate fi ziua precedentă), așa că dacă frontend-ul ne dă
+    // explicit zilele locale (`fromDay`/`toDay`), le folosim direct — altfel
+    // cădem pe felia UTC a instant-ului (poate fi off-by-one în afara UTC).
+    const fromDay = opts?.fromDay && /^\d{4}-\d{2}-\d{2}$/.test(opts.fromDay) ? opts.fromDay : toDay(range.from);
+    const toDayStr = opts?.toDay && /^\d{4}-\d{2}-\d{2}$/.test(opts.toDay) ? opts.toDay : toDay(range.to);
 
     const qb = this.repo
       .createQueryBuilder('a')

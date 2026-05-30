@@ -767,13 +767,22 @@ function AdsTab({ range }: { range: { from: string; to: string } }) {
   const { toast } = useToast();
   const [refreshKey, setRefreshKey] = useState(0);
   const [syncing, setSyncing] = useState(false);
-  const report = useAsync(() => AnalyticsApi.adSpend(range), [range, refreshKey]);
+  // Cheltuiala e per zi calendaristică (TZ-ul contului de ads). Trimitem ziua
+  // LOCALĂ a marginilor (nu felia UTC a instant-ului) ca să evităm off-by-one.
+  const days = useMemo(
+    () => ({
+      fromDay: format(new Date(range.from), 'yyyy-MM-dd'),
+      toDay: format(new Date(range.to), 'yyyy-MM-dd'),
+    }),
+    [range],
+  );
+  const report = useAsync(() => AnalyticsApi.adSpend(range, days), [range, days, refreshKey]);
   const r = report.data;
 
   const onSync = async () => {
     setSyncing(true);
     try {
-      const res = await AnalyticsApi.adSpendSync(7);
+      const res = await AnalyticsApi.adSpendSync(30);
       const totalRows = res.results.reduce((a, x) => a + x.meta.rows + x.tiktok.rows, 0);
       const errs = res.results
         .flatMap((x) => [x.meta.error, x.tiktok.error])

@@ -121,8 +121,8 @@ export class AnalyticsApi {
   static paymentDetail(id: string): Promise<PaymentDetail> {
     return http.get(`/admin/analytics/payments/${encodeURIComponent(id)}`);
   }
-  static adSpend(range: AnalyticsRange): Promise<AdSpendReport> {
-    return http.get(`/admin/analytics/ad-spend${qs(range)}`);
+  static adSpend(range: AnalyticsRange, days?: { fromDay: string; toDay: string }): Promise<AdSpendReport> {
+    return http.get(`/admin/analytics/ad-spend${qs(range, days ? { fromDay: days.fromDay, toDay: days.toDay } : undefined)}`);
   }
   static adSpendSync(days = 7): Promise<{ ok: boolean; scope: string; results: AdSpendSyncResult[] }> {
     return http.post(`/admin/analytics/ad-spend/sync?days=${days}`, {});
