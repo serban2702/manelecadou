@@ -22,6 +22,8 @@ import { WebPushService } from '../web-push/web-push.service';
 import { ChatAttachmentsService } from './chat-attachments.service';
 import { ChatBlacklistService } from './chat-blacklist.service';
 import { PaymentsService } from '../payments/payments.service';
+import { normalizeTier, packageLabel, type PackageTier } from '../payments/packages';
+import { packageTotalCents } from '../payments/pricing';
 import { SitesService } from '../sites/sites.service';
 import { SettingsService } from '../settings/settings.service';
 import { LyricsService } from '../lyrics/lyrics.module';
@@ -978,9 +980,8 @@ export class ChatService implements OnModuleInit {
       voiceArtist: string;
       dedication?: string;
       customLyrics?: string;
-      premium?: boolean;
+      packageTier?: 'basic' | 'plus' | 'premium';
       email?: string;
-      tipAmount?: number;
     },
   ): Promise<{ generationId: string }> {
     const conv = await this.getConversation(conversationId);
@@ -1028,8 +1029,7 @@ export class ChatService implements OnModuleInit {
         voiceArtist: dto.voiceArtist,
         dedication: dto.dedication,
         customLyrics: dto.customLyrics,
-        premium: !!dto.premium,
-        tipAmount: dto.tipAmount,
+        packageTier: normalizeTier(dto.packageTier),
         paymentId: dto.paymentId,
         locale,
       },
@@ -1092,8 +1092,7 @@ export class ChatService implements OnModuleInit {
       voiceArtist: string;
       dedication?: string;
       customLyrics?: string;
-      premium?: boolean;
-      tipAmount?: number;
+      packageTier?: 'basic' | 'plus' | 'premium';
       email?: string;
       amount: number; // cents — preț custom setat de admin
       currency?: string;
@@ -1133,8 +1132,7 @@ export class ChatService implements OnModuleInit {
         voiceArtist: dto.voiceArtist,
         dedication: dto.dedication,
         customLyrics: dto.customLyrics,
-        premium: !!dto.premium,
-        tipAmount: dto.tipAmount,
+        packageTier: normalizeTier(dto.packageTier),
         locale: site.locale ?? 'ro',
       },
       { userId: conv.userId, guestId: conv.guestId, siteId: conv.siteId },
@@ -1196,10 +1194,11 @@ export class ChatService implements OnModuleInit {
 
     // Creează Stripe Checkout cu metadata unlockGenerationId — webhook va dezolba.
     const description = dto.productName?.trim() || `Manea personalizată pentru ${dto.recipientName}`;
+    const tier = normalizeTier(dto.packageTier);
     const checkout = await this.payments.createCheckoutSession({
       userId: conv.userId,
       guestId: conv.guestId,
-      premium: !!dto.premium,
+      packageTier: tier,
       email: conv.email ?? undefined,
       site,
       overrideAmount: Math.round(dto.amount),
@@ -1222,7 +1221,8 @@ export class ChatService implements OnModuleInit {
         description,
         checkoutUrl: checkout.url,
         paymentId: checkout.paymentId,
-        premium: !!dto.premium,
+        packageTier: tier,
+        packageLabel: packageLabel(tier),
         // Flag-ul ăsta îi spune client-ului că plata DEBLOCHEAZĂ o melodie
         // existentă (nu o lansează de la zero).
         unlockGenerationId: generation.id,
@@ -1526,10 +1526,10 @@ export class ChatService implements OnModuleInit {
     conversationId: string,
     adminUserId: string,
     opts: {
-      amount?: number; // cents — default site.basePriceCents
+      amount?: number; // cents — default = prețul pachetului
       currency?: string; // default site.currency
       description?: string;
-      premium?: boolean;
+      packageTier?: 'basic' | 'plus' | 'premium';
     },
   ): Promise<ChatMessage> {
     const conv = await this.getConversation(conversationId);
@@ -1539,7 +1539,9 @@ export class ChatService implements OnModuleInit {
     const site = await this.sites.findById(conv.siteId);
     if (!site) throw new NotFoundException('Site nu există');
 
-    const description = opts.description?.trim() || `Manea personalizată${opts.premium ? ' (premium)' : ''}`;
+    const tier = normalizeTier(opts.packageTier);
+    const tierLabel = packageLabel(tier);
+    const description = opts.description?.trim() || `Manea personalizată — pachet ${tierLabel}`;
     const customAmount = typeof opts.amount === 'number' && opts.amount > 0 ? Math.round(opts.amount) : undefined;
     const customCurrency = opts.currency?.toUpperCase();
 
@@ -1548,7 +1550,7 @@ export class ChatService implements OnModuleInit {
     const checkout = await this.payments.createCheckoutSession({
       userId: conv.userId,
       guestId: conv.guestId,
-      premium: !!opts.premium,
+      packageTier: tier,
       email: conv.email ?? undefined,
       site,
       overrideAmount: customAmount,
@@ -1557,7 +1559,7 @@ export class ChatService implements OnModuleInit {
     });
 
     // Computăm amount/currency efective pentru payload-ul mesajului (ce vede userul în card)
-    const amount = customAmount ?? site.basePriceCents + (opts.premium ? site.premiumExtraCents : 0);
+    const amount = customAmount ?? packageTotalCents(tier, site.packagePricesCents ?? null);
     const currency = customCurrency ?? site.currency.toUpperCase();
 
     const msg = this.msg.create({
@@ -1573,7 +1575,8 @@ export class ChatService implements OnModuleInit {
         description,
         checkoutUrl: checkout.url,
         paymentId: checkout.paymentId,
-        premium: !!opts.premium,
+        packageTier: tier,
+        packageLabel: tierLabel,
       },
       bodyRo: null,
       detectedLang: 'ro',
@@ -1836,8 +1839,7 @@ export class ChatService implements OnModuleInit {
     message: string | null;
     voiceArtist: string | null;
     dedication: string | null;
-    tipAmount: number | null;
-    premium: boolean | null;
+    packageTier: 'basic' | 'plus' | 'premium' | null;
     email: string | null;
     customLyrics: string | null;
     summary: string;
@@ -1861,8 +1863,7 @@ export class ChatService implements OnModuleInit {
         message: null,
         voiceArtist: null,
         dedication: null,
-        tipAmount: null,
-        premium: null,
+        packageTier: null,
         email: conv.email ?? null,
         customLyrics: null,
         summary: 'Conversație goală — nu sunt date de extras.',
@@ -1889,8 +1890,7 @@ Citește întregul transcript și returnează DOAR un JSON valid cu următoarele
   "message": null | "<mesajul/dedicația sentimentală, 1-3 propoziții>",
   "voiceArtist": null | "<preferință voce, ex. 'masculină', 'feminină', 'gravă'>",
   "dedication": null | "<de la cine, ex. 'de la Andrei și echipa'>",
-  "tipAmount": null | <număr întreg, suma de bani dedicată în RON, ex. 500>,
-  "premium": null | true | false,
+  "packageTier": null | "basic" | "plus" | "premium",
   "email": null | "<emailul clientului dacă apare>",
   "customLyrics": null | "<versurile complete dacă userul le-a furnizat explicit>",
   "summary": "<1-2 propoziții rezumat al conversației pentru context>"
@@ -1900,6 +1900,7 @@ Reguli:
 - style trebuie să fie EXACT unul din valorile listate (fuzzy match — "clasica" → "Clasică de pahar")
 - occasion la fel — EXACT unul din valorile listate
 - recipientName, message, dedication trebuie să fie ce a furnizat clientul, nu inventat
+- packageTier: "premium" dacă userul a cerut videoclip/colaj/pagină premium; "plus" dacă a cerut imagini social-media; altfel "basic" sau null
 - Dacă nu ești sigur, pune null
 - NU explica, NU adăuga text înainte/după JSON, doar JSON pur`;
 
@@ -1911,8 +1912,7 @@ Reguli:
         message: string | null;
         voiceArtist: string | null;
         dedication: string | null;
-        tipAmount: number | null;
-        premium: boolean | null;
+        packageTier: 'basic' | 'plus' | 'premium' | null;
         email: string | null;
         customLyrics: string | null;
         summary: string;
@@ -1930,8 +1930,7 @@ Reguli:
         message: d.message ?? null,
         voiceArtist: d.voiceArtist ?? null,
         dedication: d.dedication ?? null,
-        tipAmount: typeof d.tipAmount === 'number' ? d.tipAmount : null,
-        premium: typeof d.premium === 'boolean' ? d.premium : null,
+        packageTier: (d.packageTier === 'basic' || d.packageTier === 'plus' || d.packageTier === 'premium') ? d.packageTier : null,
         email: d.email ?? conv.email ?? null,
         customLyrics: d.customLyrics ?? null,
         summary: d.summary ?? 'Rezumat indisponibil.',

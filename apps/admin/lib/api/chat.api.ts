@@ -22,11 +22,13 @@ export interface ChatBlacklistEntry {
   createdAt: string;
 }
 
+export type PackageTier = 'basic' | 'plus' | 'premium';
+
 export interface PaymentLinkOpts {
   amount?: number;
   currency?: string;
   description?: string;
-  premium?: boolean;
+  packageTier?: PackageTier;
 }
 
 export class ChatApi {
@@ -53,7 +55,6 @@ export class ChatApi {
     message: string;
     voiceArtist: string;
     dedication?: string;
-    tipAmount?: number;
     refine?: boolean;
   }): Promise<{ draft: string; refined?: string; locale: string }> {
     return http.post('/admin/chat/lyrics/preview', dto);
@@ -84,8 +85,7 @@ export class ChatApi {
     message: string | null;
     voiceArtist: string | null;
     dedication: string | null;
-    tipAmount: number | null;
-    premium: boolean | null;
+    packageTier: PackageTier | null;
     email: string | null;
     customLyrics: string | null;
     summary: string;
@@ -158,9 +158,8 @@ export class ChatApi {
       voiceArtist: string;
       dedication?: string;
       customLyrics?: string;
-      premium?: boolean;
+      packageTier?: PackageTier;
       email?: string;
-      tipAmount?: number;
     },
   ): Promise<{ generationId: string }> {
     return http.post(`/admin/chat/conversations/${conversationId}/launch-generation`, dto);
@@ -211,8 +210,7 @@ export class ChatApi {
       voiceArtist: string;
       dedication?: string;
       customLyrics?: string;
-      premium?: boolean;
-      tipAmount?: number;
+      packageTier?: PackageTier;
       email?: string;
       amount: number;
       currency?: string;

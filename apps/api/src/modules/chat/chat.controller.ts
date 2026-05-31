@@ -53,8 +53,8 @@ class PaymentLinkDto {
   currency?: string;
   @IsOptional() @IsString() @MaxLength(200)
   description?: string;
-  @IsOptional() @IsBoolean()
-  premium?: boolean;
+  @IsOptional() @IsIn(['basic', 'plus', 'premium'])
+  packageTier?: 'basic' | 'plus' | 'premium';
 }
 
 class RenameDto {
@@ -74,7 +74,6 @@ class LyricsPreviewDto {
   @IsString() @MinLength(1) @MaxLength(600) message!: string;
   @IsString() @MinLength(1) @MaxLength(64) voiceArtist!: string;
   @IsOptional() @IsString() @MaxLength(120) dedication?: string;
-  @IsOptional() @IsNumber() @Min(0) tipAmount?: number;
   @IsOptional() @IsBoolean() refine?: boolean;
 }
 
@@ -87,11 +86,10 @@ class LaunchGenerationDto {
   @IsString() @MinLength(1) @MaxLength(64) voiceArtist!: string;
   @IsOptional() @IsString() @MaxLength(120) dedication?: string;
   @IsOptional() @IsString() @MaxLength(4000) customLyrics?: string;
-  @IsOptional() @IsBoolean() premium?: boolean;
+  /** Pachetul ales (determină livrabilele: imagini/video/durată). Default basic. */
+  @IsOptional() @IsIn(['basic', 'plus', 'premium']) packageTier?: 'basic' | 'plus' | 'premium';
   /** Email pentru livrare — necesar dacă guest nu l-a setat încă. */
   @IsOptional() @IsString() @MaxLength(320) email?: string;
-  /** Sumă dedicată audio (cents, opțional). Apare ca extra în melodie. */
-  @IsOptional() @IsNumber() @Min(0) tipAmount?: number;
 }
 
 class AddBlacklistDto {
@@ -348,8 +346,7 @@ export class AdminChatController {
       voiceArtist: string;
       dedication?: string;
       customLyrics?: string;
-      premium?: boolean;
-      tipAmount?: number;
+      packageTier?: 'basic' | 'plus' | 'premium';
       email?: string;
       amount: number;
       currency?: string;

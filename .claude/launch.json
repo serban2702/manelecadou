@@ -10,8 +10,8 @@
     },
     {
       "name": "web",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "manelecadou-web", "exec", "next", "dev"],
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd apps/web && exec pnpm dev"],
       "port": 1500,
       "autoPort": true
     }

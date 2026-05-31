@@ -19,6 +19,8 @@ export const PACKAGE_TIERS: PackageTier[] = ['basic', 'plus', 'premium'];
 
 export interface PackageDef {
   tier: PackageTier;
+  /** Nume afișat (UI + chat). */
+  label: string;
   /** Preț default (cents RON). Site-ul poate suprascrie via packagePricesCents. */
   priceCents: number;
   durationSec: number;
@@ -28,11 +30,14 @@ export interface PackageDef {
   premiumPage: boolean;
   /** Copy marketing — timp estimat de livrare. */
   deliveryLabel: string;
+  /** Descriere scurtă a livrabilelor (pentru Irina + carduri). */
+  featuresRo: string[];
 }
 
 export const PACKAGES: Record<PackageTier, PackageDef> = {
   basic: {
     tier: 'basic',
+    label: 'Basic',
     priceCents: 2999,
     durationSec: 90,
     instrumental: false,
@@ -40,9 +45,11 @@ export const PACKAGES: Record<PackageTier, PackageDef> = {
     video: false,
     premiumPage: false,
     deliveryLabel: '15-60 min',
+    featuresRo: ['Manea personalizată', 'Versuri personalizate', 'Livrare pe email'],
   },
   plus: {
     tier: 'plus',
+    label: 'Plus',
     priceCents: 4999,
     durationSec: 90,
     instrumental: false,
@@ -50,9 +57,15 @@ export const PACKAGES: Record<PackageTier, PackageDef> = {
     video: false,
     premiumPage: false,
     deliveryLabel: '10-15 min',
+    featuresRo: [
+      'Tot ce e în Basic',
+      '4 imagini social-media (TikTok/Instagram/Facebook)',
+      'Livrare mai rapidă',
+    ],
   },
   premium: {
     tier: 'premium',
+    label: 'Premium',
     priceCents: 6999,
     durationSec: 150,
     instrumental: false,
@@ -60,6 +73,13 @@ export const PACKAGES: Record<PackageTier, PackageDef> = {
     video: true,
     premiumPage: true,
     deliveryLabel: '3-5 min',
+    featuresRo: [
+      'Tot ce e în Plus',
+      'Videoclip personalizat',
+      'Pagină premium de ascultare',
+      'Melodie mai lungă',
+      'Colaj video din pozele tale',
+    ],
   },
 };
 
@@ -83,4 +103,23 @@ export function packagePriceCents(
 
 export function packageDef(tier: PackageTier): PackageDef {
   return PACKAGES[tier];
+}
+
+/** Numele afișat al pachetului (ex. 'Premium'). */
+export function packageLabel(tier: PackageTier): string {
+  return PACKAGES[tier].label;
+}
+
+/**
+ * Pitch text pentru toate pachetele (folosit de Irina înainte de link plată).
+ * Prețurile reflectă override-urile per-site dacă există.
+ */
+export function packagesPitchRo(
+  overrides?: Partial<Record<PackageTier, number>> | null,
+): string {
+  return PACKAGE_TIERS.map((tier) => {
+    const d = PACKAGES[tier];
+    const price = (packagePriceCents(tier, overrides) / 100).toFixed(2);
+    return `${d.label} (${price} lei): ${d.featuresRo.join(', ')}.`;
+  }).join(' ');
 }

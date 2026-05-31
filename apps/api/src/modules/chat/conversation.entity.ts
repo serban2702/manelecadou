@@ -36,7 +36,10 @@ export interface WizardData {
   recipientGender?: 'M' | 'F';
   dedication?: string;
   customLyrics?: string;
+  /** @deprecated înlocuit de packageTier (model 3 pachete). Păstrat pt compat. */
   premium?: boolean;
+  /** Pachetul ales de user în chat: basic | plus | premium. Default basic. */
+  packageTier?: 'basic' | 'plus' | 'premium';
 }
 
 export interface WizardState {

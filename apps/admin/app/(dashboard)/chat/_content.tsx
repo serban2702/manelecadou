@@ -40,7 +40,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { ChatApi, SitesApi, AuthApi } from '@/lib/api';
-import type { QuickReply, ChatBlacklistEntry } from '@/lib/api/chat.api';
+import type { QuickReply, ChatBlacklistEntry, PackageTier } from '@/lib/api/chat.api';
 import { useAsync } from '@/lib/hooks/use-async';
 import {
   useAdminChatSocket,
@@ -63,6 +63,21 @@ import { PushNotificationsToggle } from '@/components/PushNotificationsToggle';
 
 const presenceKey = (c: { userId: string | null; guestId: string | null }) =>
   c.userId ? `u:${c.userId}` : c.guestId ? `g:${c.guestId}` : '';
+
+const PACKAGE_OPTIONS: { tier: PackageTier; label: string; defaultCents: number; features: string }[] = [
+  { tier: 'basic', label: 'Basic', defaultCents: 2999, features: 'Manea + versuri + livrare email' },
+  { tier: 'plus', label: 'Plus', defaultCents: 4999, features: '+ 4 imagini social-media' },
+  { tier: 'premium', label: 'Premium', defaultCents: 6999, features: '+ videoclip + pagină premium + colaj' },
+];
+
+const PACKAGE_DEFAULT_CENTS: Record<PackageTier, number> = { basic: 2999, plus: 4999, premium: 6999 };
+const PACKAGE_LABELS: Record<PackageTier, string> = { basic: 'Basic', plus: 'Plus', premium: 'Premium' };
+
+function packagePriceCents(site: unknown, tier: PackageTier): number {
+  const overrides = (site as { packagePricesCents?: Partial<Record<PackageTier, number>> } | null | undefined)
+    ?.packagePricesCents;
+  return overrides?.[tier] ?? PACKAGE_DEFAULT_CENTS[tier];
+}
 
 /** Sunet sintetic discret (chime) pentru sugestii AI noi pe admin. */
 /**
@@ -495,7 +510,7 @@ export default function AdminChatPage() {
     return () => clearInterval(tick);
   }, []);
 
-  async function sendPaymentLink(opts: { amount?: number; currency?: string; description?: string; premium?: boolean }) {
+  async function sendPaymentLink(opts: { amount?: number; currency?: string; description?: string; packageTier?: PackageTier }) {
     if (!active) return;
     try {
       await ChatApi.sendPaymentLink(active, opts);
@@ -1219,8 +1234,7 @@ function applyOrderToForm(
     message: string | null;
     voiceArtist: string | null;
     dedication: string | null;
-    tipAmount: number | null;
-    premium: boolean | null;
+    packageTier: PackageTier | null;
     email: string | null;
   },
   setters: {
@@ -1230,8 +1244,7 @@ function applyOrderToForm(
     setMessage?: (v: string) => void;
     setVoiceId?: (v: string) => void;
     setDedication?: (v: string) => void;
-    setTipAmount?: (v: number) => void;
-    setPremium?: (v: boolean) => void;
+    setPackageTier?: (v: PackageTier) => void;
     setEmail?: (v: string) => void;
   },
 ) {
@@ -1248,8 +1261,7 @@ function applyOrderToForm(
     setters.setVoiceId(isFemale ? 'female' : 'male');
   }
   if (r.dedication && setters.setDedication) setters.setDedication(r.dedication);
-  if (typeof r.tipAmount === 'number' && setters.setTipAmount) setters.setTipAmount(r.tipAmount);
-  if (typeof r.premium === 'boolean' && setters.setPremium) setters.setPremium(r.premium);
+  if (r.packageTier && setters.setPackageTier) setters.setPackageTier(r.packageTier);
   if (r.email && setters.setEmail) setters.setEmail(r.email);
 }
 
@@ -1260,45 +1272,43 @@ function PaymentLinkModal({
 }: {
   siteId: string | null;
   onClose: () => void;
-  onSend: (opts: { amount?: number; currency?: string; description?: string; premium?: boolean }) => void;
+  onSend: (opts: { amount?: number; currency?: string; description?: string; packageTier?: PackageTier }) => void;
 }) {
   const [amountStr, setAmountStr] = useState('');
   const [currency, setCurrency] = useState('RON');
   const [description, setDescription] = useState('Manea personalizată');
-  const [premium, setPremium] = useState(false);
+  const [packageTier, setPackageTier] = useState<PackageTier>('basic');
   const [sending, setSending] = useState(false);
   const [loadingSite, setLoadingSite] = useState(true);
-  const [premiumExtraCents, setPremiumExtraCents] = useState(2000);
-  const [basePriceCents, setBasePriceCents] = useState(2999);
+  const [site, setSite] = useState<unknown>(null);
 
-  // Preîncarcă prețul + valuta din site la deschidere
+  // Preîncarcă valuta + prețurile pachetelor din site la deschidere
   useEffect(() => {
     if (!siteId) {
       setLoadingSite(false);
+      setAmountStr((packagePriceCents(null, 'basic') / 100).toFixed(2));
       return;
     }
     SitesApi.get(siteId)
-      .then((site) => {
-        const base = site.basePriceCents ?? 2999;
-        const curr = (site.currency ?? 'RON').toUpperCase();
-        const premiumExtra = (site as { premiumExtraCents?: number }).premiumExtraCents ?? 2000;
-        setBasePriceCents(base);
-        setPremiumExtraCents(premiumExtra);
+      .then((s) => {
+        setSite(s);
+        const curr = (s.currency ?? 'RON').toUpperCase();
         setCurrency(CURRENCY_OPTIONS.includes(curr) ? curr : 'RON');
-        setAmountStr((base / 100).toFixed(2));
+        setAmountStr((packagePriceCents(s, 'basic') / 100).toFixed(2));
       })
       .catch(() => {
-        // fallback la defaults
+        setAmountStr((packagePriceCents(null, 'basic') / 100).toFixed(2));
       })
       .finally(() => setLoadingSite(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteId]);
 
-  // Când userul comută premium, actualizează suma propusă
+  // Când userul schimbă pachetul, actualizează suma propusă (rămâne editabilă)
   useEffect(() => {
     if (loadingSite) return;
-    const target = basePriceCents + (premium ? premiumExtraCents : 0);
-    setAmountStr((target / 100).toFixed(2));
-  }, [premium, basePriceCents, premiumExtraCents, loadingSite]);
+    setAmountStr((packagePriceCents(site, packageTier) / 100).toFixed(2));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [packageTier]);
 
   return (
     <div
@@ -1359,10 +1369,23 @@ function PaymentLinkModal({
               </select>
             </div>
           </div>
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input type="checkbox" checked={premium} onChange={(e) => setPremium(e.target.checked)} />
-            Variantă premium (+{(premiumExtraCents / 100).toFixed(2)} {currency})
-          </label>
+          <div>
+            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">
+              Pachet
+            </label>
+            <select
+              value={packageTier}
+              onChange={(e) => setPackageTier(e.target.value as PackageTier)}
+              disabled={loadingSite}
+              className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none disabled:opacity-50"
+            >
+              {PACKAGE_OPTIONS.map((p) => (
+                <option key={p.tier} value={p.tier}>
+                  {p.label} — {(packagePriceCents(site, p.tier) / 100).toFixed(2)} {currency} ({p.features})
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="text-[11px] text-muted-foreground bg-secondary/30 rounded p-2">
             Suma și valuta sunt precompletate din configul site-ului. Le poți modifica înainte de trimitere. Linkul îl duce direct la Stripe Checkout.
           </div>
@@ -1380,7 +1403,7 @@ function PaymentLinkModal({
                   amount,
                   currency,
                   description: description.trim() || undefined,
-                  premium,
+                  packageTier,
                 });
               } finally {
                 setSending(false);
@@ -1845,6 +1868,8 @@ interface PaymentPayload {
   paymentId?: string;
   generationId?: string;
   premium?: boolean;
+  packageTier?: PackageTier;
+  packageLabel?: string;
   status?: 'paid' | 'failed';
   paidAt?: string;
 }
@@ -1892,7 +1917,14 @@ function PaymentCard({
             )}
           </div>
           <div className="text-sm font-medium truncate">{payload.description ?? 'Plată'}</div>
-          <div className="text-lg font-bold">{(amount / 100).toFixed(2)} {currency}</div>
+          <div className="flex items-center gap-2">
+            <div className="text-lg font-bold">{(amount / 100).toFixed(2)} {currency}</div>
+            {(payload.packageLabel || payload.packageTier) && (
+              <span className="text-[10px] uppercase tracking-wider font-semibold rounded px-1.5 py-0.5 bg-primary/15 text-primary">
+                Pachet: {payload.packageLabel ?? PACKAGE_LABELS[payload.packageTier as PackageTier]}
+              </span>
+            )}
+          </div>
         </div>
         {!isPaid && payload.checkoutUrl && (
           <a
@@ -1925,7 +1957,7 @@ function PaymentCard({
         <LaunchGenerationModal
           conversationId={conversationId}
           paymentId={payload.paymentId}
-          defaultPremium={!!payload.premium}
+          defaultPackageTier={payload.packageTier ?? 'basic'}
           defaultEmail={conversationEmail}
           onClose={() => setShowLaunchModal(false)}
           onLaunched={() => setShowLaunchModal(false)}
@@ -1988,8 +2020,7 @@ function DemoPaymentModal({
   const [message, setMessage] = useState('');
   const [voiceId, setVoiceId] = useState(GEN_VOICES[0].id);
   const [dedication, setDedication] = useState('');
-  const [tipAmount, setTipAmount] = useState(0);
-  const [premium, setPremium] = useState(false);
+  const [packageTier, setPackageTier] = useState<PackageTier>('basic');
   const [email, setEmail] = useState(defaultEmail ?? '');
   const [amount, setAmount] = useState(defaultAmount); // cents
   const [currency, setCurrency] = useState(defaultCurrency);
@@ -2010,7 +2041,7 @@ function DemoPaymentModal({
       const r = await ChatApi.summarizeOrder(conversationId);
       applyOrderToForm(r, {
         setStyleId, setOccasionId, setRecipientName, setMessage,
-        setVoiceId, setDedication, setTipAmount, setPremium, setEmail,
+        setVoiceId, setDedication, setPackageTier, setEmail,
       });
       setAiSummary(r.summary);
     } catch (e) {
@@ -2046,8 +2077,7 @@ function DemoPaymentModal({
         message: message.trim(),
         voiceArtist: voiceId,
         dedication: dedication.trim() || undefined,
-        tipAmount: tipAmount > 0 ? tipAmount : undefined,
-        premium,
+        packageTier,
         email: needsEmail ? email.trim() : undefined,
         amount,
         currency,
@@ -2162,15 +2192,23 @@ function DemoPaymentModal({
               <input type="text" value={dedication} onChange={(e) => setDedication(e.target.value)} maxLength={120} placeholder="ex. de la Andrei" className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Sumă dedicată (opțional)</label>
-              <input type="number" min={0} step={100} value={tipAmount || ''} onChange={(e) => setTipAmount(parseInt(e.target.value || '0', 10) || 0)} placeholder="ex. 500" className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
-            </div>
-            <label className="flex items-center gap-2 mt-6 text-sm cursor-pointer">
-              <input type="checkbox" checked={premium} onChange={(e) => setPremium(e.target.checked)} />
-              <span>Variantă premium</span>
-            </label>
+          <div>
+            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Pachet</label>
+            <select
+              value={packageTier}
+              onChange={(e) => {
+                const tier = e.target.value as PackageTier;
+                setPackageTier(tier);
+                if (amount > 0) setAmount(packagePriceCents(null, tier));
+              }}
+              className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none"
+            >
+              {PACKAGE_OPTIONS.map((p) => (
+                <option key={p.tier} value={p.tier}>
+                  {p.label} — {(p.defaultCents / 100).toFixed(2)} ({p.features})
+                </option>
+              ))}
+            </select>
           </div>
           {needsEmail && (
             <div>
@@ -2623,7 +2661,6 @@ function LyricsPreviewModal({
   const [message, setMessage] = useState('');
   const [voiceId, setVoiceId] = useState(GEN_VOICES[0].id);
   const [dedication, setDedication] = useState('');
-  const [tipAmount, setTipAmount] = useState(0);
   const [refine, setRefine] = useState(true);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ draft: string; refined?: string } | null>(null);
@@ -2640,7 +2677,7 @@ function LyricsPreviewModal({
       const r = await ChatApi.summarizeOrder(conversationId);
       applyOrderToForm(r, {
         setStyleId, setOccasionId, setRecipientName, setMessage,
-        setVoiceId, setDedication, setTipAmount,
+        setVoiceId, setDedication,
       });
       setAiSummary(r.summary);
     } catch (e) {
@@ -2668,7 +2705,6 @@ function LyricsPreviewModal({
         message: message.trim(),
         voiceArtist: voiceId,
         dedication: dedication.trim() || undefined,
-        tipAmount: tipAmount > 0 ? tipAmount : undefined,
         refine,
       });
       setResult({ draft: r.draft, refined: r.refined });
@@ -2756,10 +2792,6 @@ function LyricsPreviewModal({
                   <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">De la (opțional)</label>
                   <input type="text" value={dedication} onChange={(e) => setDedication(e.target.value)} maxLength={120} placeholder="ex. de la Andrei și echipa" className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
                 </div>
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Sumă dedicată (lei, opțional)</label>
-                <input type="number" min={0} step={100} value={tipAmount || ''} onChange={(e) => setTipAmount(parseInt(e.target.value || '0', 10) || 0)} placeholder="ex. 500" className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none" />
               </div>
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input type="checkbox" checked={refine} onChange={(e) => setRefine(e.target.checked)} />
@@ -3356,14 +3388,14 @@ const GEN_VOICES = [
 function LaunchGenerationModal({
   conversationId,
   paymentId,
-  defaultPremium,
+  defaultPackageTier,
   defaultEmail,
   onClose,
   onLaunched,
 }: {
   conversationId: string;
   paymentId: string;
-  defaultPremium: boolean;
+  defaultPackageTier?: PackageTier;
   defaultEmail?: string | null;
   onClose: () => void;
   onLaunched: () => void;
@@ -3377,13 +3409,9 @@ function LaunchGenerationModal({
   const [email, setEmail] = useState(defaultEmail ?? '');
   const [customLyricsOpen, setCustomLyricsOpen] = useState(false);
   const [customLyrics, setCustomLyrics] = useState('');
-  const [premium, setPremium] = useState(defaultPremium);
-  const [tipAmount, setTipAmount] = useState<number>(0); // dedicație în RON (UI)
+  const [packageTier, setPackageTier] = useState<PackageTier>(defaultPackageTier ?? 'basic');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Presets ca în wizard (RON): 0, 100, 250, 500, 1000, 2500
-  const TIP_PRESETS = [0, 100, 250, 500, 1000, 2500];
 
   function validate(): string | null {
     if (!recipientName.trim()) return 'Numele beneficiarului e obligatoriu';
@@ -3413,9 +3441,8 @@ function LaunchGenerationModal({
         voiceArtist: voiceId,
         dedication: dedication.trim() || undefined,
         customLyrics: customLyrics.trim() || undefined,
-        premium,
+        packageTier,
         email: email.trim() || undefined,
-        tipAmount: tipAmount > 0 ? tipAmount : undefined,
       });
       onLaunched();
     } catch (e) {
@@ -3560,50 +3587,23 @@ function LaunchGenerationModal({
             )}
           </div>
 
-          {/* Suma dedicată (tip) — ca în wizardul user */}
+          {/* Pachet */}
           <div>
             <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">
-              💰 Sumă dedicată (opțional) — apare în versurile/dedicația melodiei
+              Pachet
             </label>
-            <div className="flex flex-wrap gap-1.5">
-              {TIP_PRESETS.map((amt) => (
-                <button
-                  key={amt}
-                  type="button"
-                  onClick={() => setTipAmount(amt)}
-                  className={cn(
-                    'h-8 px-3 text-xs rounded-md border transition',
-                    tipAmount === amt
-                      ? 'bg-primary/20 border-primary/60 text-foreground font-semibold'
-                      : 'bg-secondary/30 border-border text-muted-foreground hover:bg-secondary/60',
-                  )}
-                >
-                  {amt === 0 ? 'Fără' : `${amt} lei`}
-                </button>
+            <select
+              value={packageTier}
+              onChange={(e) => setPackageTier(e.target.value as PackageTier)}
+              className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none"
+            >
+              {PACKAGE_OPTIONS.map((p) => (
+                <option key={p.tier} value={p.tier}>
+                  {p.label} — {(p.defaultCents / 100).toFixed(2)} ({p.features})
+                </option>
               ))}
-              <input
-                type="number"
-                min={0}
-                max={1_000_000_000}
-                step={100}
-                value={!TIP_PRESETS.includes(tipAmount) ? tipAmount : ''}
-                onChange={(e) => setTipAmount(Math.max(0, parseInt(e.target.value || '0', 10) || 0))}
-                placeholder="custom"
-                className="h-8 w-24 px-2 text-xs rounded-md bg-secondary/30 border border-border focus:outline-none focus:ring-1 focus:ring-primary/40"
-              />
-            </div>
-            {tipAmount > 0 && (
-              <div className="text-[10px] text-muted-foreground mt-1">
-                {tipAmount} lei — apare ca dedicație audio în melodie (informativ; nu afectează plata, e deja confirmată)
-              </div>
-            )}
+            </select>
           </div>
-
-          {/* Premium */}
-          <label className="flex items-center gap-2 text-sm cursor-pointer pt-1">
-            <input type="checkbox" checked={premium} onChange={(e) => setPremium(e.target.checked)} />
-            <span>👑 Variantă <b>Premium</b> — calitate audio 4× superioară</span>
-          </label>
 
           {error && <div className="text-xs text-destructive bg-destructive/10 rounded p-2">{error}</div>}
           <div className="text-[11px] text-muted-foreground bg-secondary/30 rounded p-2">

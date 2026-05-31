@@ -9,6 +9,8 @@ import { ChatGateway } from '../chat/chat.gateway';
 import { Conversation, WizardData, WizardState } from '../chat/conversation.entity';
 import { ChatMessage, ChatMessagePayload } from '../chat/message.entity';
 import { PaymentsService } from '../payments/payments.service';
+import { normalizeTier, packageLabel, packagesPitchRo, type PackageTier } from '../payments/packages';
+import { packageTotalCents } from '../payments/pricing';
 import { GenerationsService } from '../generations/generations.service';
 import { GuestSessionsService } from '../guest-sessions/guest-sessions.service';
 import { AiMemory } from './ai-memory.entity';
@@ -443,7 +445,10 @@ export class AIChatAgentService {
 
     const brand = site?.name ?? 'Manele Cadou';
     const locale = site?.locale ?? 'ro';
-    const price = site ? `${(site.basePriceCents / 100).toFixed(2)} ${site.currency}` : '29.99 RON';
+    const overrides = site?.packagePricesCents ?? null;
+    const basicCents = packageTotalCents('basic', overrides);
+    const price = `${(basicCents / 100).toFixed(2)} ${site?.currency ?? 'RON'}`;
+    const packagesPitch = packagesPitchRo(overrides);
 
     // Stil Irina — extras din analiza datelor reale: 146 mesaje "Buna, sunt Irina!👋",
     // colocvial RO fără diacritice obligatoriu, prietenos, max 2-3 fraze, emoji moderat.
@@ -476,7 +481,10 @@ ETA STANDARD (memorat și nealterat):
 - Generarea durează 5-10 minute în mod normal (NU 90 secunde, NU 1-2 minute!).
 - Suno API poate avea uneori probleme/lentoare — atunci durează mai mult sau eșuează.
 - NU folosi NICIODATĂ formulări tip „90 secunde", „1-2 minute", „2 minute" — totul e 5-10 min.
-Preț: ${price}. 50.000+ manele generate, garanție 30 zile.
+Preț de intrare: ${price} (pachetul Basic). 50.000+ manele generate, garanție 30 zile.
+
+PACHETE (3 niveluri — le explici DOAR în ultimul pas, vezi ETAPA 4):
+${packagesPitch}
 
 ═══════════════════════════════════════════════════════════════════════
 WORKFLOW DE SALES (REPLICĂM EXACT CE FACE IRINA UMANĂ):
@@ -555,6 +563,15 @@ ETAPA 5 — (CONDITIONAL) ÎNTREBARE VOCE M/F:
   → DACĂ user a trimis ≥ ${MAX_USER_MSGS_BEFORE_DEFAULT_GENDER} mesaje SAU userul nu vrea să răspundă:
     → wizard_update({recipientGender: 'M'}) silent — NU mai întreba, default masculin.
 
+ETAPA 5.5 — ALEGE PACHETUL (OBLIGATORIU înainte de finalize):
+  → Acesta e ULTIMUL pas înainte de linkul de plată. Prezintă SCURT cele 3 pachete
+    cu preț + ce conține fiecare și întreabă userul ce pachet vrea:
+    „Avem 3 variante: ${packagesPitch} Tu ce pachet vrei?"
+  → (Poți scurta dacă userul deja a zis ce vrea — ex. „vreau cu videoclip" → premium.)
+  → Când userul alege → \`wizard_update({packageTier: 'basic'|'plus'|'premium'})\`.
+  → Dacă userul nu alege explicit / spune „cel mai ieftin" / „simplu" → packageTier='basic'.
+  → NU sări peste pasul ăsta — pachetul determină prețul de pe linkul de plată.
+
 ETAPA 6 — FINALIZE:
   → Apelează \`wizard_finalize\`. Acesta:
     - Inferează automat style/occasion/voice din transcript (NU mai întreba).
@@ -606,8 +623,9 @@ REGULI STRICTE:
 ═══════════════════════════════════════════════════════════════════════
 1. Răspunzi DOAR prin tool call \`send_message\` (sau alte tools care trimit mesaje).
    NU scrie text liber în răspuns direct.
-2. NICIODATĂ nu întreba: stilul, ocazia, vocea concretă (male/female), premium da/nu.
-   Astea le DEDUCI la finalize din ce a zis userul + defaults rezonabile.
+2. NICIODATĂ nu întreba: stilul, ocazia. Astea le DEDUCI la finalize din ce a zis
+   userul + defaults rezonabile. EXCEPȚIE: vocea (M/F) o întrebi conform ETAPA 5, iar
+   PACHETUL îl întrebi OBLIGATORIU în ETAPA 5.5 (e singura alegere de preț a userului).
 3. Dacă userul a SPUS singur stilul/ocazia/vocea („vreau ceva clasic", „de jale",
    „voce de barbat") → ține minte și folosește exact ce a zis. NU inventa altceva.
 4. Dacă userul are 1-2 mesaje vagi → cere context întâi, nu sări la pași tehnici.
@@ -732,7 +750,7 @@ REGULI STRICTE:
             recipientGender: { type: 'string', enum: ['M', 'F'], description: 'Sex destinatar. Folosit pentru inferarea vocii când userul nu o cere explicit.' },
             voiceArtist: { type: 'string', enum: ['male', 'female'], description: 'Vocea maneaua: male (bărbătească) sau female (feminină).' },
             customLyrics: { type: 'string', description: 'OPTIONAL: versuri custom complete furnizate explicit de user.' },
-            premium: { type: 'boolean', description: 'OPTIONAL: dacă userul a cerut explicit variantă premium (+20 RON).' },
+            packageTier: { type: 'string', enum: ['basic', 'plus', 'premium'], description: 'Pachetul ales de user: basic (29.99, doar manea), plus (49.99, + imagini social), premium (69.99, + videoclip + pagină premium + colaj). Setează-l când userul alege pachetul (de obicei în ultimul pas, înainte de finalize). Default basic dacă nu alege.' },
           },
         },
       },
@@ -1037,7 +1055,12 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
     if (typeof args.voiceArtist === 'string' && args.voiceArtist.trim()) updates.voiceArtist = args.voiceArtist.trim().slice(0, 64);
     if (typeof args.dedication === 'string') updates.dedication = args.dedication.trim().slice(0, 120);
     if (typeof args.customLyrics === 'string' && args.customLyrics.length > 10) updates.customLyrics = args.customLyrics.trim().slice(0, 4000);
-    if (typeof args.premium === 'boolean') updates.premium = args.premium;
+    if (typeof args.packageTier === 'string' && ['basic', 'plus', 'premium'].includes(args.packageTier)) {
+      updates.packageTier = args.packageTier as PackageTier;
+    } else if (typeof args.premium === 'boolean') {
+      // Legacy compat: dacă AI mai trimite premium boolean, mapăm la pachet.
+      updates.packageTier = args.premium ? 'premium' : 'basic';
+    }
 
     // Email collection — pentru guest fără email
     let emailUpdated = false;
@@ -1154,6 +1177,7 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
       const inference = await this.inferCreativeFields(conv, state.data, site);
 
       // 1b. Crează Generation pending cu valorile inferate (sau user_said dacă există)
+      const tier = normalizeTier(state.data.packageTier);
       const generation = await this.generations.createPendingForPayment(
         {
           style: inference.style.value,
@@ -1163,7 +1187,7 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
           voiceArtist: inference.voiceArtist.value,
           dedication: state.data.dedication,
           customLyrics: state.data.customLyrics,
-          premium: !!state.data.premium,
+          packageTier: tier,
           locale: site.locale,
         },
         {
@@ -1200,7 +1224,7 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
         userId: conv.userId,
         guestId: conv.guestId,
         generationId: generation.id,
-        premium: !!state.data.premium,
+        packageTier: tier,
         email: conv.email ?? undefined,
         promoCode: activePromoCode ?? undefined,
         site,
@@ -1221,9 +1245,10 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
         .execute();
 
       // 4. Trimite payment_link în chat (vizibil user + admin)
-      const amount = site.basePriceCents + (state.data.premium ? site.premiumExtraCents : 0);
+      const amount = packageTotalCents(tier, site.packagePricesCents ?? null);
       const currency = site.currency.toUpperCase();
-      const description = `Manea pentru ${state.data.recipientName}${state.data.premium ? ' (premium)' : ''}`;
+      const tierLabel = packageLabel(tier);
+      const description = `Manea pentru ${state.data.recipientName} — pachet ${tierLabel}`;
       const msg = this.msg.create({
         conversationId: conv.id,
         siteId: conv.siteId,
@@ -1238,7 +1263,8 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
           checkoutUrl: checkout.url,
           paymentId: checkout.paymentId,
           generationId: generation.id,
-          premium: !!state.data.premium,
+          packageTier: tier,
+          packageLabel: tierLabel,
         },
         aiGenerated: true,
         detectedLang: site.locale,
@@ -1501,9 +1527,9 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
       const description = String(args.description ?? 'Manea personalizată');
       const amount = typeof args.amount === 'number' ? args.amount : undefined;
       const currency = typeof args.currency === 'string' ? args.currency : undefined;
-      const premium = !!args.premium;
+      const tier = normalizeTier(args.packageTier);
 
-      const payload: ChatMessagePayload = { description, premium, pendingApproval: true };
+      const payload: ChatMessagePayload = { description, packageTier: tier, packageLabel: packageLabel(tier), pendingApproval: true };
       if (amount !== undefined) payload.amount = amount;
       if (currency !== undefined) payload.currency = currency;
 
@@ -1532,24 +1558,24 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
     try {
       const site = await this.sites.findById(ctx.conv.siteId);
       if (!site) return { sent: false, status: 'SITE_NOT_FOUND' };
-      const premium = !!args.premium;
+      const tier = normalizeTier(args.packageTier);
       const description = String(args.description ?? 'Manea personalizată');
 
       const checkout = await this.payments.createCheckoutSession({
         userId: ctx.conv.userId,
         guestId: ctx.conv.guestId,
-        premium,
+        packageTier: tier,
         email: ctx.conv.email ?? undefined,
         site,
       });
 
       const amount = typeof args.amount === 'number'
         ? args.amount
-        : site.basePriceCents + (premium ? site.premiumExtraCents : 0);
+        : packageTotalCents(tier, site.packagePricesCents ?? null);
       const currency = (typeof args.currency === 'string' ? args.currency : site.currency).toUpperCase();
 
       const payload: ChatMessagePayload = {
-        amount, currency, description, premium,
+        amount, currency, description, packageTier: tier, packageLabel: packageLabel(tier),
         checkoutUrl: checkout.url, paymentId: checkout.paymentId,
       };
       const m = this.msg.create({
@@ -1850,7 +1876,9 @@ ${transcript}`;
     const site = await this.sites.findById(ctx.conv.siteId);
     if (!site) return { error: 'site_not_found' };
 
-    const basePrice = site.basePriceCents;
+    // Prețul de intrare anunțat = pachetul basic (29.99). Irina întreabă pachetul
+    // concret abia în ultimul pas, înainte de link (vezi system prompt ETAPA 4).
+    const basePrice = packageTotalCents('basic', site.packagePricesCents ?? null);
     const currency = site.currency.toUpperCase();
 
     // Verifică cod câștigat la roata norocului pentru acest user/guest
@@ -2013,7 +2041,7 @@ ${transcript}`;
 
     const site = await this.sites.findById(ctx.conv.siteId);
     if (!site) return { error: 'site_not_found' };
-    const baseCents = site.basePriceCents;
+    const baseCents = packageTotalCents('basic', site.packagePricesCents ?? null);
     const finalCents = Math.round(baseCents * (100 - pct) / 100);
     const cur = site.currency.toLowerCase() === 'ron' ? 'lei' : site.currency.toUpperCase();
     const finalFmt = `${(finalCents / 100).toFixed(2)} ${cur}`;
