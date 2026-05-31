@@ -57,7 +57,7 @@ export const PACKAGES: Record<PackageTier, PackageDef> = {
     durationSec: 150,
     instrumental: true,
     socialImage: true,
-    video: true,
+    video: false,
     premiumPage: true,
     deliveryLabel: '3-5 min',
   },

@@ -49,7 +49,6 @@ export const PACKAGES: PackageDef[] = [
       'Tot din pachetul Plus',
       'Pagină premium pentru ascultare',
       'Durată mai lungă a melodiei',
-      'Videoclip personalizat',
     ],
     deliveryLabel: 'Livrare în 3-5 minute',
   },
