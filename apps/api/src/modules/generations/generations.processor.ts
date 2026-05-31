@@ -8,6 +8,7 @@ import { Job, Queue } from 'bullmq';
 
 import { Generation } from './generation.entity';
 import { GENERATIONS_QUEUE } from './generations.constants';
+import type { MediaOpJob } from './generations.service';
 import { voiceArtistToGender } from '../../common/voice';
 import { SunoProvider, findChorusSegment } from '../suno/suno.types';
 import { LyricsService } from '../lyrics/lyrics.module';
@@ -136,8 +137,11 @@ export class GenerationsProcessor extends WorkerHost {
     }
   }
 
-  async process(job: Job<{ generationId: string }>): Promise<void> {
-    const { generationId } = job.data;
+  async process(job: Job<{ generationId: string } | MediaOpJob>): Promise<void> {
+    if (job.name === 'media-op') {
+      return this.processMediaOp(job.data as MediaOpJob);
+    }
+    const { generationId } = job.data as { generationId: string };
     const gen = await this.repo.findOne({ where: { id: generationId } });
     if (!gen) {
       this.logger.warn(`generation ${generationId} not found`);
@@ -395,6 +399,147 @@ export class GenerationsProcessor extends WorkerHost {
       }
       void this.notifyChat(gen.id, 'failed');
     }
+  }
+
+  /**
+   * Procesează un job 'media-op' (unelte Suno admin): extend / cover (creează
+   * un rând-copil variație cu audio nou) sau wav / separate / video (atașează
+   * fișiere derivate în `mediaExtras` pe generarea-sursă).
+   */
+  private async processMediaOp(data: MediaOpJob): Promise<void> {
+    const src = await this.repo.findOne({ where: { id: data.generationId } });
+    if (!src) {
+      this.logger.warn(`media-op: source generation ${data.generationId} not found`);
+      return;
+    }
+    const idx = data.slot === 'bonus' ? 1 : 0;
+    const audioId = src.tracks?.[idx]?.audioId;
+    const taskId = src.providerJobId;
+    const site = src.siteId ? await this.sites.findById(src.siteId) : null;
+
+    try {
+      if (data.op === 'extend' || data.op === 'cover') {
+        const child = data.childId ? await this.repo.findOne({ where: { id: data.childId } }) : null;
+        if (!child) {
+          this.logger.warn(`media-op ${data.op}: child ${data.childId} not found`);
+          return;
+        }
+        let result;
+        if (data.op === 'extend') {
+          if (!audioId) throw new Error('source has no Suno audioId for extend');
+          result = await this.suno.extendMusic({
+            audioId,
+            continueAt: data.params?.continueAt as number | undefined,
+            style: data.params?.style as string | undefined,
+            generationId: child.id,
+            siteId: child.siteId,
+          });
+        } else {
+          const uploadUrl = this.absoluteMediaUrl(src.audioUrl ?? src.demoAudioUrl);
+          if (!uploadUrl) throw new Error('source has no audio URL for cover');
+          result = await this.suno.coverMusic({
+            uploadUrl,
+            style: data.params?.style as string | undefined,
+            instrumental: !!data.params?.instrumental,
+            generationId: child.id,
+            siteId: child.siteId,
+          });
+        }
+
+        const mainSource = result.tracks[0]?.audioUrl;
+        if (!mainSource) throw new Error('Suno returned no audio');
+        const m = await this.audio.downloadAndMakeDemo(child.id, mainSource, 'full');
+        child.audioUrl = m.fullUrl;
+        child.demoAudioUrl = m.demoUrl;
+        const bonusSource = result.tracks[1]?.audioUrl;
+        if (bonusSource) {
+          try {
+            const b = await this.audio.downloadAndMakeDemo(child.id, bonusSource, 'bonus');
+            child.bonusAudioUrl = b.fullUrl;
+            child.demoBonusAudioUrl = b.demoUrl;
+          } catch (err) {
+            this.logger.warn(`media-op ${data.op} bonus dl failed: ${(err as Error).message}`);
+          }
+        }
+        child.tracks = result.tracks;
+        child.coverUrl = result.tracks[0]?.coverUrl ?? null;
+        child.providerJobId = result.providerJobId;
+        child.lyrics = result.lyrics ?? child.lyrics;
+        child.status = 'succeeded';
+        child.completedAt = new Date();
+        child.deliverablesReady = true;
+        await this.repo.save(child);
+        this.logger.log(`media-op ${data.op} done → variation ${child.id}`);
+        return;
+      }
+
+      // Operații care atașează fișiere derivate pe generarea-sursă.
+      if (!taskId || taskId === 'manual' || !audioId) {
+        throw new Error('source has no Suno task/audio for derived op');
+      }
+      const slotKey = data.slot === 'bonus' ? 'bonus' : 'main';
+
+      if (data.op === 'wav') {
+        const wavUrl = await this.suno.convertToWav(taskId, audioId);
+        if (wavUrl) {
+          await this.patchMediaExtras(src.id, (e) => {
+            if (slotKey === 'bonus') e.wavBonusUrl = wavUrl;
+            else e.wavUrl = wavUrl;
+          });
+        }
+      } else if (data.op === 'separate') {
+        const type = (data.params?.type as 'separate_vocal' | 'split_stem') ?? 'separate_vocal';
+        const res = await this.suno.separateVocals(taskId, audioId, type);
+        if (res) {
+          await this.patchMediaExtras(src.id, (e) => {
+            if (res.stems) e.stems = { ...(e.stems ?? {}), ...res.stems };
+            if (res.vocalUrl) e.vocalUrl = res.vocalUrl;
+            if (res.instrumentalUrl) e.accompanimentUrl = res.instrumentalUrl;
+          });
+        }
+      } else if (data.op === 'video') {
+        const videoUrl = await this.suno.createMusicVideo(taskId, audioId, {
+          author: site?.name ?? undefined,
+          domainName: site?.domain ?? undefined,
+        });
+        if (videoUrl) {
+          await this.patchMediaExtras(src.id, (e) => {
+            if (slotKey === 'bonus') e.musicVideoBonusUrl = videoUrl;
+            else e.musicVideoUrl = videoUrl;
+          });
+        }
+      }
+      this.logger.log(`media-op ${data.op} done for ${src.id}`);
+    } catch (err) {
+      this.logger.error(`media-op ${data.op} failed for ${data.generationId}: ${(err as Error).message}`);
+      if (data.childId) {
+        await this.repo
+          .update({ id: data.childId }, { status: 'failed', error: (err as Error).message, completedAt: new Date() })
+          .catch(() => {});
+      }
+    }
+  }
+
+  /** Citește-modifică-scrie `mediaExtras` atomic (best-effort) pentru a evita clobber. */
+  private async patchMediaExtras(
+    generationId: string,
+    mutate: (e: NonNullable<Generation['mediaExtras']>) => void,
+  ): Promise<void> {
+    const fresh = await this.repo.findOne({ where: { id: generationId } });
+    if (!fresh) return;
+    const extras = { ...(fresh.mediaExtras ?? {}) };
+    mutate(extras);
+    fresh.mediaExtras = extras;
+    await this.repo.save(fresh);
+  }
+
+  /** Construiește URL public absolut dintr-un path relativ `/uploads/...`. */
+  private absoluteMediaUrl(url: string | null | undefined): string | null {
+    if (!url) return null;
+    const clean = url.replace(/\?v=\d+$/, '');
+    if (/^https?:\/\//.test(clean)) return clean;
+    const base = (this.config.get<string>('APP_URL') ?? 'http://localhost:1500').replace(/\/$/, '');
+    return `${base}${clean.startsWith('/') ? '' : '/'}${clean}`;
   }
 
   async notifyOwner(gen: Generation): Promise<void> {

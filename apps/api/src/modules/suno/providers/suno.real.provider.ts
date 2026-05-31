@@ -3,9 +3,12 @@ import { ConfigService } from '@nestjs/config';
 import { SettingsService } from '../../settings/settings.service';
 import {
   SunoAlignedWord,
+  SunoCoverInput,
+  SunoExtendInput,
   SunoGenerateInput,
   SunoGenerateResult,
   SunoProvider,
+  SunoSeparateResult,
   SunoTimestampedLyrics,
 } from '../suno.types';
 import { SunoLogService } from '../suno-log.service';
@@ -330,6 +333,300 @@ export class SunoRealProvider extends SunoProvider {
     }
   }
 
+  // ======================================================================
+  //  Unelte Suno suplimentare (extend / cover / wav / karaoke / video / credits)
+  //  Toate refolosesc cheia + baseUrl din settings și loghează în suno_logs.
+  // ======================================================================
+
+  private async cfg(): Promise<{ baseUrl: string; apiKey: string; model: string; callBackUrl: string }> {
+    const baseUrl = (await this.settings.get('SUNO_API_BASE_URL')) || 'https://api.sunoapi.org';
+    const apiKey = await this.settings.get('SUNO_API_KEY');
+    const model = (await this.settings.get('SUNO_MODEL')) || 'V4_5';
+    const apiUrl = this.config.get<string>('API_URL') ?? 'http://localhost:1501';
+    if (!apiKey) throw new Error('SUNO_API_KEY not configured');
+    return { baseUrl, apiKey, model, callBackUrl: `${apiUrl}/api/suno/callback` };
+  }
+
+  /** Prelungește o piesă existentă (POST /api/v1/generate/extend). */
+  async extendMusic(input: SunoExtendInput): Promise<SunoGenerateResult> {
+    const { baseUrl, callBackUrl, model: cfgModel } = await this.cfg();
+    const custom = !!(input.prompt || input.style || input.title || input.continueAt != null);
+    const body: Record<string, unknown> = {
+      defaultParamFlag: custom,
+      audioId: input.audioId,
+      model: input.model || cfgModel,
+      callBackUrl,
+    };
+    if (custom) {
+      if (input.prompt) body.prompt = input.prompt;
+      if (input.style) body.style = input.style;
+      if (input.title) body.title = input.title;
+      if (typeof input.continueAt === 'number') body.continueAt = input.continueAt;
+    }
+    if (input.vocalGender === 'm' || input.vocalGender === 'f') body.vocalGender = input.vocalGender;
+    if (input.negativeTags?.trim()) body.negativeTags = input.negativeTags.trim();
+    if (typeof input.styleWeight === 'number') body.styleWeight = clamp01(input.styleWeight);
+    if (typeof input.weirdnessConstraint === 'number')
+      body.weirdnessConstraint = clamp01(input.weirdnessConstraint);
+    if (typeof input.audioWeight === 'number') body.audioWeight = clamp01(input.audioWeight);
+
+    return this.submitMusicTask(`${baseUrl}/api/v1/generate/extend`, body, {
+      generationId: input.generationId ?? null,
+      siteId: input.siteId ?? null,
+    });
+  }
+
+  /** Cover/restyle al unui audio încărcat (POST /api/v1/generate/upload-cover). */
+  async coverMusic(input: SunoCoverInput): Promise<SunoGenerateResult> {
+    const { baseUrl, callBackUrl, model: cfgModel } = await this.cfg();
+    const model = input.model || cfgModel;
+    const limits = modelLimits(model);
+    const custom = input.customMode ?? !!(input.prompt || input.style);
+    const body: Record<string, unknown> = {
+      uploadUrl: input.uploadUrl,
+      model,
+      customMode: custom,
+      instrumental: !!input.instrumental,
+      callBackUrl,
+    };
+    if (custom) {
+      if (input.style) body.style = truncate(input.style, limits.style);
+      if (input.title) body.title = truncate(input.title, limits.title);
+      if (!input.instrumental && input.prompt)
+        body.prompt = truncate(stripBannedArtistNames(input.prompt), limits.prompt);
+    } else if (input.prompt) {
+      body.prompt = truncate(input.prompt, limits.simplePrompt);
+    }
+    if (input.vocalGender === 'm' || input.vocalGender === 'f') body.vocalGender = input.vocalGender;
+    if (input.negativeTags?.trim()) body.negativeTags = input.negativeTags.trim();
+    if (typeof input.styleWeight === 'number') body.styleWeight = clamp01(input.styleWeight);
+    if (typeof input.weirdnessConstraint === 'number')
+      body.weirdnessConstraint = clamp01(input.weirdnessConstraint);
+    if (typeof input.audioWeight === 'number') body.audioWeight = clamp01(input.audioWeight);
+
+    return this.submitMusicTask(`${baseUrl}/api/v1/generate/upload-cover`, body, {
+      generationId: input.generationId ?? null,
+      siteId: input.siteId ?? null,
+    });
+  }
+
+  /** Convertește o piesă la WAV (POST /api/v1/wav/generate → poll /wav/record-info). */
+  async convertToWav(taskId: string, audioId: string): Promise<string | null> {
+    const { baseUrl, callBackUrl } = await this.cfg();
+    const newTaskId = await this.submitDerivedTask(`${baseUrl}/api/v1/wav/generate`, {
+      taskId,
+      audioId,
+      callBackUrl,
+    });
+    if (!newTaskId) return null;
+    const data = await this.pollDerivedTask(`${baseUrl}/api/v1/wav/record-info`, newTaskId);
+    return deepFindUrl(data, ['audioWavUrl', 'audio_wav_url', 'wavUrl', 'wav_url']);
+  }
+
+  /** Separă vocea/instrumentalul (POST /api/v1/vocal-removal/generate). */
+  async separateVocals(
+    taskId: string,
+    audioId: string,
+    type: 'separate_vocal' | 'split_stem' = 'separate_vocal',
+  ): Promise<SunoSeparateResult | null> {
+    const { baseUrl, callBackUrl } = await this.cfg();
+    const newTaskId = await this.submitDerivedTask(`${baseUrl}/api/v1/vocal-removal/generate`, {
+      taskId,
+      audioId,
+      type,
+      callBackUrl,
+    });
+    if (!newTaskId) return null;
+    const data = await this.pollDerivedTask(`${baseUrl}/api/v1/vocal-removal/record-info`, newTaskId);
+    if (!data) return null;
+    if (type === 'split_stem') {
+      const info = deepFindObject(data, ['vocal_removal_info', 'vocalRemovalInfo']) ?? {};
+      const stems: Record<string, string> = {};
+      for (const [k, v] of Object.entries(info)) {
+        if (typeof v === 'string' && /^https?:\/\//.test(v)) {
+          stems[k.replace(/_url$/i, '').replace(/Url$/, '')] = v;
+        }
+      }
+      return Object.keys(stems).length ? { stems } : null;
+    }
+    return {
+      vocalUrl: deepFindUrl(data, ['vocal_url', 'vocalUrl']) ?? undefined,
+      instrumentalUrl: deepFindUrl(data, ['instrumental_url', 'instrumentalUrl']) ?? undefined,
+    };
+  }
+
+  /** Generează un videoclip MP4 (POST /api/v1/mp4/generate → poll /mp4/record-info). */
+  async createMusicVideo(
+    taskId: string,
+    audioId: string,
+    opts?: { author?: string; domainName?: string },
+  ): Promise<string | null> {
+    const { baseUrl, callBackUrl } = await this.cfg();
+    const body: Record<string, unknown> = { taskId, audioId, callBackUrl };
+    if (opts?.author) body.author = opts.author.slice(0, 50);
+    if (opts?.domainName) body.domainName = opts.domainName.slice(0, 50);
+    const newTaskId = await this.submitDerivedTask(`${baseUrl}/api/v1/mp4/generate`, body);
+    if (!newTaskId) return null;
+    const data = await this.pollDerivedTask(`${baseUrl}/api/v1/mp4/record-info`, newTaskId);
+    return deepFindUrl(data, ['video_url', 'videoUrl']);
+  }
+
+  /** Soldul de credite Suno (GET /api/v1/generate/credit). */
+  async getCredits(): Promise<number | null> {
+    try {
+      const { baseUrl, apiKey } = await this.cfg();
+      const res = await fetch(`${baseUrl}/api/v1/generate/credit`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (!res.ok) return null;
+      const json = (await res.json()) as { code?: number; data?: unknown };
+      const v = typeof json.data === 'number' ? json.data : Number(json.data);
+      return Number.isFinite(v) ? v : null;
+    } catch (err) {
+      this.logger.warn(`getCredits failed: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Helper comun pentru task-urile care produc MUZICĂ (extend / cover): submit
+   * + polling pe `/generate/record-info` (același format ca generate). Loghează
+   * în suno_logs pentru cost tracking.
+   */
+  private async submitMusicTask(
+    endpoint: string,
+    body: Record<string, unknown>,
+    ctx: { generationId: string | null; siteId: string | null },
+  ): Promise<SunoGenerateResult> {
+    const { baseUrl, apiKey } = await this.cfg();
+    const log = await this.logs.start({
+      generationId: ctx.generationId,
+      endpoint,
+      requestBody: body,
+      siteId: ctx.siteId,
+    });
+    let res: Response;
+    try {
+      res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      await this.logs.finalize(log?.id, { outcome: 'http_error', errorMessage: `network: ${(err as Error).message}` });
+      throw new Error(`Suno network error: ${(err as Error).message}`);
+    }
+    if (!res.ok) {
+      const txt = await res.text();
+      await this.logs.finalize(log?.id, { responseStatus: res.status, responseBody: safeParseJson(txt), outcome: 'http_error', errorMessage: txt.slice(0, 1000) });
+      throw new Error(`Suno ${endpoint} failed ${res.status}: ${txt}`);
+    }
+    const json = (await res.json()) as { code: number; msg?: string; data?: { taskId?: string } };
+    if (json.code !== 200 || !json.data?.taskId) {
+      await this.logs.finalize(log?.id, { responseStatus: res.status, responseBody: json, outcome: 'failed', providerStatus: `code:${json.code}`, errorMessage: json.msg ?? 'no taskId' });
+      throw new Error(`Suno ${endpoint} returned ${json.code}: ${json.msg ?? 'no taskId'}`);
+    }
+    const taskId = json.data.taskId;
+
+    const deadline = Date.now() + 8 * 60_000;
+    let lastStatus = '';
+    let lastJson: unknown = null;
+    let lastHttp = 200;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 8000));
+      const poll = await fetch(`${baseUrl}/api/v1/generate/record-info?taskId=${encodeURIComponent(taskId)}`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (!poll.ok) { lastHttp = poll.status; continue; }
+      const pj = (await poll.json()) as {
+        code: number;
+        data?: { status?: string; response?: { sunoData?: Array<{ id: string; audioUrl?: string; imageUrl?: string; duration?: number; prompt?: string }> }; errorMessage?: string | null };
+      };
+      lastJson = pj; lastHttp = poll.status;
+      const status = pj.data?.status ?? '';
+      if (status !== lastStatus) { this.logger.log(`task=${taskId} status=${status}`); lastStatus = status; }
+      const items = (pj.data?.response?.sunoData ?? []).filter((it) => !!it.audioUrl);
+      if (items.length > 0 && (status === 'SUCCESS' || status === 'CALLBACK_EXCEPTION')) {
+        await this.logs.finalize(log?.id, { responseStatus: lastHttp, responseBody: pj, taskId, providerStatus: status, outcome: 'success' });
+        return {
+          tracks: items.map((it) => ({ audioUrl: it.audioUrl!, durationSec: Math.round(it.duration ?? 0), coverUrl: it.imageUrl, audioId: it.id })),
+          lyrics: items[0]?.prompt,
+          providerJobId: taskId,
+        };
+      }
+      if (status === 'CREATE_TASK_FAILED' || status === 'GENERATE_AUDIO_FAILED' || status === 'SENSITIVE_WORD_ERROR') {
+        await this.logs.finalize(log?.id, { responseStatus: lastHttp, responseBody: pj, taskId, providerStatus: status, outcome: 'failed', errorMessage: `${status} — ${pj.data?.errorMessage ?? ''}` });
+        throw new Error(`Suno failed: ${status} — ${pj.data?.errorMessage ?? ''}`);
+      }
+    }
+    await this.logs.finalize(log?.id, { responseStatus: lastHttp, responseBody: lastJson, taskId, providerStatus: lastStatus || 'TIMEOUT', outcome: 'timeout', errorMessage: `polling timeout after 8 minutes` });
+    throw new Error(`Suno task=${taskId} polling timeout`);
+  }
+
+  /**
+   * Submit pentru task-urile DERIVATE (wav / vocal-removal / mp4) — întoarce
+   * doar taskId-ul nou. Loghează best-effort. Întoarce null la eșec.
+   */
+  private async submitDerivedTask(endpoint: string, body: Record<string, unknown>): Promise<string | null> {
+    const { apiKey } = await this.cfg();
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        this.logger.warn(`derived task ${endpoint} http ${res.status}: ${(await res.text()).slice(0, 300)}`);
+        return null;
+      }
+      const json = (await res.json()) as { code?: number; msg?: string; data?: { taskId?: string } };
+      if (json.code !== 200 || !json.data?.taskId) {
+        this.logger.warn(`derived task ${endpoint} code=${json.code} msg=${json.msg}`);
+        return null;
+      }
+      return json.data.taskId;
+    } catch (err) {
+      this.logger.warn(`derived task ${endpoint} error: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Polling generic pentru task-uri derivate (wav/vocal/mp4). Răspunsul exact e
+   * `any` în spec — căutăm un URL de output în orice câmp; oprire pe successFlag
+   * de eroare (2/3) sau errorCode 500. Întoarce `data` brut pentru extragere.
+   */
+  private async pollDerivedTask(recordInfoUrl: string, taskId: string): Promise<unknown | null> {
+    const { apiKey } = await this.cfg();
+    const deadline = Date.now() + 6 * 60_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 6000));
+      let res: Response;
+      try {
+        res = await fetch(`${recordInfoUrl}?taskId=${encodeURIComponent(taskId)}`, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+      } catch {
+        continue;
+      }
+      if (!res.ok) continue;
+      const json = (await res.json()) as { code?: number; data?: Record<string, unknown> };
+      const data = json.data;
+      if (!data) continue;
+      const successFlag = data.successFlag as number | undefined;
+      const errorCode = data.errorCode as number | undefined;
+      // Eșec terminal.
+      if (successFlag === 2 || successFlag === 3 || errorCode === 500) {
+        this.logger.warn(`derived poll ${taskId} failed: ${String(data.errorMessage ?? '')}`);
+        return null;
+      }
+      // Dacă găsim deja un URL http în răspuns → gata.
+      if (deepFindUrl(data, ['_url', 'Url', 'url'], true)) return data;
+    }
+    this.logger.warn(`derived poll ${taskId} timeout`);
+    return null;
+  }
+
   /**
    * Construiește tag-ul de stil (genre + voice + occasion) pentru Suno.
    * Tag-urile sunt separate prin virgulă, max ~1000 chars.
@@ -512,6 +809,56 @@ function modelLimits(model: string): {
 function truncate(s: string, max: number): string {
   if (!s) return s;
   return s.length <= max ? s : s.slice(0, max - 3) + '...';
+}
+
+function clamp01(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(Math.min(1, Math.max(0, n)) * 100) / 100;
+}
+
+/**
+ * Caută recursiv în `obj` prima valoare string care e un URL http(s) și a cărei
+ * cheie se potrivește cu una dintre `keys`. Dacă `suffixMatch` e true, `keys`
+ * sunt tratate ca SUFIXE de cheie (ex. '_url' prinde 'audio_wav_url').
+ */
+function deepFindUrl(obj: unknown, keys: string[], suffixMatch = false): string | null {
+  const seen = new Set<unknown>();
+  const walk = (node: unknown): string | null => {
+    if (node == null || typeof node !== 'object' || seen.has(node)) return null;
+    seen.add(node);
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      const keyHit = suffixMatch
+        ? keys.some((s) => k.toLowerCase().endsWith(s.toLowerCase()))
+        : keys.some((s) => k.toLowerCase() === s.toLowerCase());
+      if (keyHit && typeof v === 'string' && /^https?:\/\//.test(v)) return v;
+    }
+    for (const v of Object.values(node as Record<string, unknown>)) {
+      const found = walk(v);
+      if (found) return found;
+    }
+    return null;
+  };
+  return walk(obj);
+}
+
+/** Caută recursiv primul obiect aflat sub una dintre `keys`. */
+function deepFindObject(obj: unknown, keys: string[]): Record<string, unknown> | null {
+  const seen = new Set<unknown>();
+  const walk = (node: unknown): Record<string, unknown> | null => {
+    if (node == null || typeof node !== 'object' || seen.has(node)) return null;
+    seen.add(node);
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      if (keys.some((s) => k.toLowerCase() === s.toLowerCase()) && v && typeof v === 'object') {
+        return v as Record<string, unknown>;
+      }
+    }
+    for (const v of Object.values(node as Record<string, unknown>)) {
+      const found = walk(v);
+      if (found) return found;
+    }
+    return null;
+  };
+  return walk(obj);
 }
 
 /** Scoate conținutul dintre paranteze pătrate (metadată Suno instrumentală) ca să

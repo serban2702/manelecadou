@@ -29,6 +29,46 @@ import { hashUnlock, verifyUnlock } from '../../common/unlock';
 export { GENERATIONS_QUEUE } from './generations.constants';
 import { GENERATIONS_QUEUE } from './generations.constants';
 
+/** Câmpuri editabile la regenerare din admin. */
+export interface AdminRegenerateEdits {
+  recipientName?: string;
+  dedication?: string | null;
+  message?: string;
+  style?: string;
+  occasion?: string;
+  voiceArtist?: string;
+  packageTier?: string;
+}
+
+export type AdminRegenerateTarget = 'overwrite' | 'new_track' | 'new_order';
+export type AdminRegenerateLyricsMode = 'rewrite' | 'keep' | 'custom';
+
+export interface AdminRegenerateInput {
+  target: AdminRegenerateTarget;
+  /** rewrite (AI scrie din câmpuri) | keep (refolosește versurile actuale) | custom (text dat). */
+  lyricsMode?: AdminRegenerateLyricsMode;
+  customLyrics?: string;
+  edits?: AdminRegenerateEdits;
+  /** Etichetă pentru variație (target=new_track). */
+  label?: string;
+}
+
+/** Payload pentru job-urile 'media-op' procesate de GenerationsProcessor. */
+export interface MediaOpJob {
+  op: 'extend' | 'cover' | 'wav' | 'separate' | 'video';
+  /** Generarea-sursă (existentă, succeeded) pe care operăm. */
+  generationId: string;
+  /** Pentru extend/cover: rândul-copil pre-creat care va primi audio-ul. */
+  childId?: string;
+  slot?: 'main' | 'bonus';
+  params?: Record<string, unknown>;
+}
+
+/** Scoate sufixul de cache-bust (`?v=...`) ca să nu se acumuleze la swap/promote. */
+export function stripCacheBust(url: string): string {
+  return url.replace(/\?v=\d+$/, '');
+}
+
 @Injectable()
 export class GenerationsService {
   private readonly logger = new Logger('GenerationsService');
@@ -438,6 +478,343 @@ export class GenerationsService {
 
     this.logger.warn(`[admin-retry] generation=${saved.id} retryCount=${saved.retryCount}`);
     return saved;
+  }
+
+  // ====================================================================
+  //  ADMIN: regenerare, variații, swap, promovare + unelte Suno (media-op)
+  // ====================================================================
+
+  /** Id-ul comenzii „rădăcină" — pentru ca variațiile unei variații să rămână
+   *  grupate sub comanda reală, nu sub un alt rând-variație. */
+  private rootGenerationId(gen: Generation): string {
+    return gen.parentGenerationId ?? gen.id;
+  }
+
+  /** Construiește payload-ul de creare pentru o variație/comandă nouă pornind de
+   *  la o generare-sursă + editări + versuri. */
+  private buildRegenPayload(
+    src: Generation,
+    edits: AdminRegenerateEdits | undefined,
+    customLyrics: string | null,
+  ): Partial<Generation> {
+    const tier = normalizeTier(edits?.packageTier ?? src.packageTier);
+    return {
+      ownerUserId: src.ownerUserId,
+      ownerGuestId: src.ownerGuestId,
+      siteId: src.siteId,
+      type: 'full',
+      status: 'queued',
+      durationSec: packageDef(tier).durationSec,
+      style: edits?.style ?? src.style,
+      occasion: edits?.occasion ?? src.occasion,
+      recipientName: edits?.recipientName ?? src.recipientName,
+      message: edits?.message ?? src.message,
+      dedication: edits?.dedication !== undefined ? edits.dedication : src.dedication,
+      voiceArtist: edits?.voiceArtist ?? src.voiceArtist,
+      packageTier: tier,
+      customLyrics,
+      locale: src.locale,
+      // Admin produce melodii cadou → deblocate complet, fără plată.
+      paidUnlocked: true,
+    };
+  }
+
+  /** Determină versurile (customLyrics) pe baza modului ales. */
+  private resolveRegenLyrics(src: Generation, input: AdminRegenerateInput): string | null {
+    const mode = input.lyricsMode ?? 'rewrite';
+    if (mode === 'rewrite') return null; // pipeline-ul scrie versuri noi din câmpuri
+    if (mode === 'custom') {
+      const t = (input.customLyrics ?? '').trim();
+      if (!t) throw new ConflictException('custom_lyrics_required');
+      return t;
+    }
+    // keep — refolosim versurile existente literal (sunt „sacre" în lyrics pipeline)
+    const existing = (src.lyrics ?? src.customLyrics ?? '').trim();
+    if (!existing) throw new ConflictException('no_existing_lyrics_to_keep');
+    return existing;
+  }
+
+  /**
+   * Regenerare din admin cu 3 ținte:
+   *  - `overwrite`  → re-rulează pe ACEEAȘI comandă (piesa veche dispare)
+   *  - `new_track`  → creează o VARIAȚIE (rând-copil) sub comandă, fără a atinge live-ul
+   *  - `new_order`  → creează o comandă nouă, independentă (melodie în plus)
+   */
+  async adminRegenerate(generationId: string, input: AdminRegenerateInput): Promise<Generation> {
+    const src = await this.repo.findOne({ where: { id: generationId } });
+    if (!src) throw new NotFoundException('Generation not found');
+
+    const customLyrics = this.resolveRegenLyrics(src, input);
+    const target = input.target;
+
+    if (target === 'overwrite') {
+      const tier = normalizeTier(input.edits?.packageTier ?? src.packageTier);
+      src.style = input.edits?.style ?? src.style;
+      src.occasion = input.edits?.occasion ?? src.occasion;
+      src.recipientName = input.edits?.recipientName ?? src.recipientName;
+      src.message = input.edits?.message ?? src.message;
+      if (input.edits?.dedication !== undefined) src.dedication = input.edits.dedication;
+      src.voiceArtist = input.edits?.voiceArtist ?? src.voiceArtist;
+      src.packageTier = tier;
+      if (src.type === 'full') src.durationSec = packageDef(tier).durationSec;
+      src.customLyrics = customLyrics;
+      // Reset audio + status pentru re-rulare.
+      src.status = 'queued';
+      src.error = null;
+      src.audioUrl = null;
+      src.bonusAudioUrl = null;
+      src.demoAudioUrl = null;
+      src.demoBonusAudioUrl = null;
+      src.coverUrl = null;
+      src.tracks = [];
+      src.providerJobId = null;
+      src.completedAt = null;
+      src.retryCount = (src.retryCount ?? 0) + 1;
+      src.nextRetryAt = null;
+      src.lastRetryAt = new Date();
+      const saved = await this.repo.save(src);
+      await this.enqueueGenerate(saved.id);
+      this.logger.warn(`[admin-regenerate] overwrite generation=${saved.id}`);
+      return saved;
+    }
+
+    const payload = this.buildRegenPayload(src, input.edits, customLyrics);
+    if (target === 'new_track') {
+      payload.parentGenerationId = this.rootGenerationId(src);
+      payload.variationLabel = input.label ?? 'Regenerare';
+    } else {
+      // new_order — comandă independentă
+      payload.parentGenerationId = null;
+      payload.paymentId = null;
+    }
+    const child = await this.repo.save(this.repo.create(payload));
+    await this.enqueueGenerate(child.id);
+    this.logger.warn(`[admin-regenerate] ${target} src=${src.id} → ${child.id}`);
+    return child;
+  }
+
+  /** Re-roll: variație nouă cu ACELEAȘI versuri (doar audio re-generat). */
+  async adminReroll(generationId: string): Promise<Generation> {
+    return this.adminRegenerate(generationId, {
+      target: 'new_track',
+      lyricsMode: 'keep',
+      label: 'Re-roll',
+    });
+  }
+
+  /** Interschimbă piesa principală ↔ bonus (audio + demo + video + wav). */
+  async adminSwapTracks(generationId: string): Promise<Generation> {
+    const gen = await this.repo.findOne({ where: { id: generationId } });
+    if (!gen) throw new NotFoundException('Generation not found');
+    if (!gen.bonusAudioUrl) throw new ConflictException('no_bonus_to_swap');
+    const v = Date.now();
+    const bust = (u: string | null): string | null => (u ? `${stripCacheBust(u)}?v=${v}` : null);
+    [gen.audioUrl, gen.bonusAudioUrl] = [bust(gen.bonusAudioUrl), bust(gen.audioUrl)];
+    [gen.demoAudioUrl, gen.demoBonusAudioUrl] = [bust(gen.demoBonusAudioUrl), bust(gen.demoAudioUrl)];
+    [gen.videoUrl, gen.videoUrlBonus] = [gen.videoUrlBonus, gen.videoUrl];
+    if (Array.isArray(gen.tracks) && gen.tracks.length >= 2) {
+      [gen.tracks[0], gen.tracks[1]] = [gen.tracks[1], gen.tracks[0]];
+    }
+    if (gen.mediaExtras) {
+      const m = gen.mediaExtras;
+      [m.wavUrl, m.wavBonusUrl] = [m.wavBonusUrl, m.wavUrl];
+      [m.musicVideoUrl, m.musicVideoBonusUrl] = [m.musicVideoBonusUrl, m.musicVideoUrl];
+    }
+    const saved = await this.repo.save(gen);
+    this.logger.warn(`[admin-swap] generation=${saved.id}`);
+    return saved;
+  }
+
+  /** Promovează o variație (rând-copil) în slot-ul principal/bonus al comenzii. */
+  async adminPromoteVariation(
+    variationId: string,
+    slot: 'main' | 'bonus',
+    opts: { notify?: boolean } = {},
+  ): Promise<Generation> {
+    const variation = await this.repo.findOne({ where: { id: variationId } });
+    if (!variation) throw new NotFoundException('Variation not found');
+    if (!variation.parentGenerationId) throw new ConflictException('not_a_variation');
+    if (variation.status !== 'succeeded' || !variation.audioUrl) {
+      throw new ConflictException('variation_not_ready');
+    }
+    const parent = await this.repo.findOne({ where: { id: variation.parentGenerationId } });
+    if (!parent) throw new NotFoundException('Parent generation not found');
+
+    const v = Date.now();
+    const full = `${stripCacheBust(variation.audioUrl)}?v=${v}`;
+    const demo = variation.demoAudioUrl ? `${stripCacheBust(variation.demoAudioUrl)}?v=${v}` : null;
+    if (slot === 'main') {
+      parent.audioUrl = full;
+      parent.demoAudioUrl = demo;
+      parent.coverUrl = variation.coverUrl ?? parent.coverUrl;
+      parent.providerJobId = variation.providerJobId;
+      if (Array.isArray(parent.tracks) && variation.tracks?.[0]) {
+        parent.tracks[0] = variation.tracks[0];
+      }
+    } else {
+      parent.bonusAudioUrl = full;
+      parent.demoBonusAudioUrl = demo;
+      if (variation.tracks?.[0]) {
+        parent.tracks = [...(parent.tracks ?? []), variation.tracks[0]].slice(0, 2);
+      }
+    }
+    parent.status = 'succeeded';
+    parent.error = null;
+    const saved = await this.repo.save(parent);
+    this.logger.warn(`[admin-promote] variation=${variationId} → ${slot} of ${parent.id}`);
+
+    if (opts.notify) {
+      try {
+        const proc = this.moduleRef.get(GenerationsProcessor, { strict: false });
+        await proc.notifyOwner(saved);
+        void proc.notifyChat(saved.id, 'succeeded');
+      } catch (err) {
+        this.logger.error(`notify after promote failed: ${(err as Error).message}`);
+      }
+    }
+    return saved;
+  }
+
+  /** Lista variațiilor (rânduri-copil) ale unei comenzi, cele mai noi primele. */
+  async adminListVariations(parentId: string): Promise<Generation[]> {
+    return this.repo.find({
+      where: { parentGenerationId: parentId },
+      order: { createdAt: 'DESC' },
+      take: 50,
+    });
+  }
+
+  /** Șterge o variație (doar rânduri-copil, niciodată o comandă reală). */
+  async adminDeleteVariation(variationId: string): Promise<void> {
+    const v = await this.repo.findOne({ where: { id: variationId } });
+    if (!v) throw new NotFoundException('Variation not found');
+    if (!v.parentGenerationId) throw new ConflictException('not_a_variation');
+    await this.repo.delete({ id: variationId });
+  }
+
+  /** Prelungește o piesă → creează o VARIAȚIE care va conține audio-ul mai lung. */
+  async adminExtend(
+    generationId: string,
+    opts: { slot?: 'main' | 'bonus'; continueAt?: number; style?: string } = {},
+  ): Promise<Generation> {
+    const src = await this.requireSunoTrack(generationId, opts.slot ?? 'main');
+    const child = await this.repo.save(
+      this.repo.create({
+        ...this.buildRegenPayload(src.gen, undefined, src.gen.lyrics ?? null),
+        parentGenerationId: this.rootGenerationId(src.gen),
+        variationLabel:
+          opts.continueAt != null ? `Extend de la ${Math.round(opts.continueAt)}s` : 'Extend',
+        status: 'generating_audio',
+      }),
+    );
+    await this.queue.add(
+      'media-op',
+      {
+        op: 'extend',
+        generationId: src.gen.id,
+        childId: child.id,
+        slot: opts.slot ?? 'main',
+        params: { continueAt: opts.continueAt, style: opts.style },
+      } satisfies MediaOpJob,
+      { removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
+    );
+    return child;
+  }
+
+  /** Cover/restyle al piesei → variație nouă cu alt stil. */
+  async adminCover(
+    generationId: string,
+    opts: { slot?: 'main' | 'bonus'; style?: string; instrumental?: boolean; label?: string } = {},
+  ): Promise<Generation> {
+    const src = await this.requireSunoTrack(generationId, opts.slot ?? 'main', { allowManual: true });
+    const child = await this.repo.save(
+      this.repo.create({
+        ...this.buildRegenPayload(
+          src.gen,
+          opts.style ? { style: opts.style } : undefined,
+          src.gen.lyrics ?? null,
+        ),
+        parentGenerationId: this.rootGenerationId(src.gen),
+        variationLabel: opts.label ?? (opts.style ? `Cover ${opts.style}` : 'Cover'),
+        status: 'generating_audio',
+      }),
+    );
+    await this.queue.add(
+      'media-op',
+      {
+        op: 'cover',
+        generationId: src.gen.id,
+        childId: child.id,
+        slot: opts.slot ?? 'main',
+        params: { style: opts.style, instrumental: !!opts.instrumental },
+      } satisfies MediaOpJob,
+      { removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
+    );
+    return child;
+  }
+
+  /** WAV studio pentru un slot → atașat în mediaExtras. */
+  async adminConvertWav(generationId: string, slot: 'main' | 'bonus' = 'main'): Promise<{ ok: true }> {
+    await this.requireSunoTrack(generationId, slot);
+    await this.queue.add(
+      'media-op',
+      { op: 'wav', generationId, slot } satisfies MediaOpJob,
+      { removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
+    );
+    return { ok: true };
+  }
+
+  /** Separare voce/instrumental (karaoke) sau stem-uri → mediaExtras. */
+  async adminSeparateVocals(
+    generationId: string,
+    slot: 'main' | 'bonus' = 'main',
+    type: 'separate_vocal' | 'split_stem' = 'separate_vocal',
+  ): Promise<{ ok: true }> {
+    await this.requireSunoTrack(generationId, slot);
+    await this.queue.add(
+      'media-op',
+      { op: 'separate', generationId, slot, params: { type } } satisfies MediaOpJob,
+      { removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
+    );
+    return { ok: true };
+  }
+
+  /** Videoclip MP4 oficial Suno pentru un slot → mediaExtras. */
+  async adminMusicVideo(generationId: string, slot: 'main' | 'bonus' = 'main'): Promise<{ ok: true }> {
+    await this.requireSunoTrack(generationId, slot);
+    await this.queue.add(
+      'media-op',
+      { op: 'video', generationId, slot } satisfies MediaOpJob,
+      { removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
+    );
+    return { ok: true };
+  }
+
+  /** Validează că generarea are un track Suno cu audioId (necesar pentru uneltele
+   *  care lucrează pe Suno-side). `allowManual` permite operațiile pe upload-uri
+   *  manuale (cover folosește URL-ul nostru public, nu audioId-ul Suno). */
+  private async requireSunoTrack(
+    generationId: string,
+    slot: 'main' | 'bonus',
+    opts: { allowManual?: boolean } = {},
+  ): Promise<{ gen: Generation; idx: number; audioId?: string }> {
+    const gen = await this.repo.findOne({ where: { id: generationId } });
+    if (!gen) throw new NotFoundException('Generation not found');
+    if (gen.status !== 'succeeded') throw new ConflictException('generation_not_succeeded');
+    const idx = slot === 'bonus' ? 1 : 0;
+    const audioId = gen.tracks?.[idx]?.audioId;
+    if (!opts.allowManual && (!gen.providerJobId || gen.providerJobId === 'manual' || !audioId)) {
+      throw new ConflictException('no_suno_track');
+    }
+    return { gen, idx, audioId };
+  }
+
+  private async enqueueGenerate(generationId: string): Promise<void> {
+    await this.queue.add(
+      'generate',
+      { generationId },
+      { removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
+    );
   }
 
   async unlockWithGift(

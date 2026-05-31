@@ -38,6 +38,58 @@ export interface SunoGenerateInput {
   instrumental?: boolean;
 }
 
+/** Input pentru prelungirea unei piese existente (POST /api/v1/generate/extend).
+ *  `audioId` + `model` trebuie să corespundă piesei sursă. */
+export interface SunoExtendInput {
+  audioId: string;
+  /** Modelul piesei sursă (V4_5 etc.) — extend cere același model. Omis → SUNO_MODEL. */
+  model?: string;
+  /** Secunda de la care se continuă. Omis → Suno continuă de la final. */
+  continueAt?: number;
+  /** Parametri custom (defaultParamFlag=true). Dacă lipsesc, Suno refolosește
+   *  setările piesei sursă (defaultParamFlag=false). */
+  prompt?: string;
+  style?: string;
+  title?: string;
+  negativeTags?: string;
+  vocalGender?: 'm' | 'f';
+  styleWeight?: number;
+  weirdnessConstraint?: number;
+  audioWeight?: number;
+  generationId?: string;
+  siteId?: string | null;
+}
+
+/** Input pentru cover/restyle al unui audio încărcat (POST /api/v1/generate/upload-cover).
+ *  `uploadUrl` = URL public al audio-ului sursă (full.mp3 găzduit la noi). */
+export interface SunoCoverInput {
+  uploadUrl: string;
+  /** Model Suno. Omis → SUNO_MODEL din settings. */
+  model?: string;
+  customMode?: boolean;
+  instrumental?: boolean;
+  prompt?: string;
+  style?: string;
+  title?: string;
+  negativeTags?: string;
+  vocalGender?: 'm' | 'f';
+  styleWeight?: number;
+  weirdnessConstraint?: number;
+  audioWeight?: number;
+  generationId?: string;
+  siteId?: string | null;
+}
+
+/** Rezultatul separării vocii (POST /api/v1/vocal-removal/generate). */
+export interface SunoSeparateResult {
+  /** Vocea izolată (separate_vocal). */
+  vocalUrl?: string;
+  /** Acompaniamentul instrumental (separate_vocal). */
+  instrumentalUrl?: string;
+  /** Stem-uri individuale (split_stem): { drums, bass, guitar, keyboard, ... }. */
+  stems?: Record<string, string>;
+}
+
 export interface SunoTrack {
   audioUrl: string;
   durationSec: number;
@@ -133,6 +185,44 @@ export abstract class SunoProvider {
     _taskId: string,
     _audioId: string,
   ): Promise<SunoTimestampedLyrics | null> {
+    return Promise.resolve(null);
+  }
+
+  /** Prelungește o piesă existentă. Întoarce noile track-uri (audio mai lung). */
+  extendMusic(_input: SunoExtendInput): Promise<SunoGenerateResult> {
+    return Promise.reject(new Error('extend not supported by this provider'));
+  }
+
+  /** Cover/restyle al unui audio încărcat (upload-cover). */
+  coverMusic(_input: SunoCoverInput): Promise<SunoGenerateResult> {
+    return Promise.reject(new Error('cover not supported by this provider'));
+  }
+
+  /** Convertește o piesă la WAV studio. Întoarce URL-ul WAV sau null. */
+  convertToWav(_taskId: string, _audioId: string): Promise<string | null> {
+    return Promise.resolve(null);
+  }
+
+  /** Separă vocea de instrumental (karaoke) sau în stem-uri individuale. */
+  separateVocals(
+    _taskId: string,
+    _audioId: string,
+    _type: 'separate_vocal' | 'split_stem' = 'separate_vocal',
+  ): Promise<SunoSeparateResult | null> {
+    return Promise.resolve(null);
+  }
+
+  /** Generează un videoclip MP4 oficial Suno pentru o piesă. Întoarce URL sau null. */
+  createMusicVideo(
+    _taskId: string,
+    _audioId: string,
+    _opts?: { author?: string; domainName?: string },
+  ): Promise<string | null> {
+    return Promise.resolve(null);
+  }
+
+  /** Soldul de credite rămase în contul Suno (GET /api/v1/generate/credit). */
+  getCredits(): Promise<number | null> {
     return Promise.resolve(null);
   }
 }

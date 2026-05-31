@@ -10,6 +10,34 @@ import type {
   AdminUser,
 } from '../types';
 
+export interface GenerationMediaExtras {
+  wavUrl?: string;
+  wavBonusUrl?: string;
+  vocalUrl?: string;
+  accompanimentUrl?: string;
+  stems?: Record<string, string>;
+  musicVideoUrl?: string;
+  musicVideoBonusUrl?: string;
+}
+
+/** O variație (rând-copil) a unei comenzi — re-roll/regenerare/extend/cover. */
+export interface AdminVariation {
+  id: string;
+  parentGenerationId: string | null;
+  variationLabel: string | null;
+  status: string;
+  style: string;
+  voiceArtist: string;
+  recipientName: string;
+  audioUrl: string | null;
+  demoAudioUrl: string | null;
+  bonusAudioUrl: string | null;
+  coverUrl: string | null;
+  error: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
 export interface OrderDetailTimelineEvent {
   at: string;
   kind: string;
@@ -75,7 +103,11 @@ export interface OrderDetail {
     demoAudioUrl: string | null;
     demoBonusAudioUrl: string | null;
     coverUrl: string | null;
-    tracks: Array<{ audioUrl: string; durationSec: number; coverUrl?: string }> | null;
+    tracks: Array<{ audioUrl: string; durationSec: number; coverUrl?: string; audioId?: string }> | null;
+    videoUrlBonus?: string | null;
+    parentGenerationId?: string | null;
+    variationLabel?: string | null;
+    mediaExtras?: GenerationMediaExtras | null;
     providerJobId: string | null;
     retryCount: number;
     nextRetryAt: string | null;
@@ -316,6 +348,76 @@ export class AdminApi {
   }
   static orderDetail(id: string): Promise<OrderDetail> {
     return http.get(`/admin/orders/${id}`);
+  }
+
+  // ============== Regenerare + variații + unelte Suno ==============
+  static generationRegenerate(
+    id: string,
+    body: {
+      target: 'overwrite' | 'new_track' | 'new_order';
+      lyricsMode?: 'rewrite' | 'keep' | 'custom';
+      customLyrics?: string;
+      label?: string;
+      edits?: {
+        recipientName?: string;
+        dedication?: string | null;
+        message?: string;
+        style?: string;
+        occasion?: string;
+        voiceArtist?: string;
+        packageTier?: string;
+      };
+    },
+  ): Promise<{ ok: boolean; id: string; status: string; parentGenerationId: string | null }> {
+    return http.post(`/admin/generations/${id}/regenerate`, body, { timeout: 30_000 });
+  }
+  static generationReroll(id: string): Promise<{ ok: boolean; id: string; status: string }> {
+    return http.post(`/admin/generations/${id}/reroll`);
+  }
+  static generationSwapTracks(
+    id: string,
+  ): Promise<{ ok: boolean; audioUrl: string | null; bonusAudioUrl: string | null }> {
+    return http.post(`/admin/generations/${id}/swap-tracks`);
+  }
+  static generationVariations(id: string): Promise<AdminVariation[]> {
+    return http.get(`/admin/generations/${id}/variations`);
+  }
+  static generationPromote(
+    variationId: string,
+    body: { slot: 'main' | 'bonus'; notify?: boolean },
+  ): Promise<{ ok: boolean; id: string }> {
+    return http.post(`/admin/generations/${variationId}/promote`, body);
+  }
+  static generationDeleteVariation(id: string): Promise<{ ok: boolean }> {
+    return http.delete(`/admin/generations/${id}/variation`);
+  }
+  static generationExtend(
+    id: string,
+    body: { slot?: 'main' | 'bonus'; continueAt?: number; style?: string },
+  ): Promise<{ ok: boolean; id: string; status: string }> {
+    return http.post(`/admin/generations/${id}/extend`, body);
+  }
+  static generationCover(
+    id: string,
+    body: { slot?: 'main' | 'bonus'; style?: string; instrumental?: boolean; label?: string },
+  ): Promise<{ ok: boolean; id: string; status: string }> {
+    return http.post(`/admin/generations/${id}/cover`, body);
+  }
+  static generationWav(id: string, slot: 'main' | 'bonus' = 'main'): Promise<{ ok: true }> {
+    return http.post(`/admin/generations/${id}/wav`, { slot });
+  }
+  static generationSeparateVocals(
+    id: string,
+    slot: 'main' | 'bonus' = 'main',
+    type: 'separate_vocal' | 'split_stem' = 'separate_vocal',
+  ): Promise<{ ok: true }> {
+    return http.post(`/admin/generations/${id}/separate-vocals`, { slot, type });
+  }
+  static generationMusicVideo(id: string, slot: 'main' | 'bonus' = 'main'): Promise<{ ok: true }> {
+    return http.post(`/admin/generations/${id}/music-video`, { slot });
+  }
+  static sunoCredits(): Promise<{ credits: number | null }> {
+    return http.get('/admin/suno/credits');
   }
   static paymentRefund(
     id: string,

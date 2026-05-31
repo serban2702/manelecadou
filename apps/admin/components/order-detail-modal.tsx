@@ -1,26 +1,37 @@
 'use client';
 
-import { useAsync } from '@/lib/hooks/use-async';
-import { AdminApi, type OrderDetail } from '@/lib/api';
+import { useState } from 'react';
+import { useAsync, useAsyncCallback } from '@/lib/hooks/use-async';
+import { AdminApi, type OrderDetail, type AdminVariation } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Empty } from '@/components/ui/empty';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useToast } from '@/components/ui/use-toast';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { format, formatDistanceStrict } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import {
   AlertCircle,
+  ArrowUpToLine,
   CheckCircle2,
   Clock,
   CreditCard,
+  Download,
   ExternalLink,
+  Film,
   Mail,
   MessageSquare,
   Music2,
   RefreshCw,
+  Repeat,
+  Scissors,
+  Shuffle,
   Sparkles,
+  Trash2,
   User,
+  Wand2,
   X,
 } from 'lucide-react';
 
@@ -47,7 +58,7 @@ function packageLabel(t: string | null | undefined): string {
 }
 
 export function OrderDetailModal({ id, onClose }: { id: string; onClose: () => void }) {
-  const { data, loading } = useAsync(() => AdminApi.orderDetail(id), [id]);
+  const { data, loading, refetch } = useAsync(() => AdminApi.orderDetail(id), [id]);
 
   return (
     <DialogPrimitive.Root open onOpenChange={(open) => !open && onClose()}>
@@ -80,7 +91,7 @@ export function OrderDetailModal({ id, onClose }: { id: string; onClose: () => v
             {loading || !data ? (
               <Skeleton className="h-96 w-full" />
             ) : (
-              <OrderTabs data={data} />
+              <OrderTabs data={data} refetch={refetch} />
             )}
           </div>
         </DialogPrimitive.Content>
@@ -89,7 +100,7 @@ export function OrderDetailModal({ id, onClose }: { id: string; onClose: () => v
   );
 }
 
-function OrderTabs({ data }: { data: OrderDetail }) {
+function OrderTabs({ data, refetch }: { data: OrderDetail; refetch: () => Promise<void> }) {
   const chatCount = data.chat?.messages.length ?? 0;
   const chatFallback = data.chat?.linkType === 'recent_fallback';
   const sunoCount = data.sunoLogs.length;
@@ -105,6 +116,7 @@ function OrderTabs({ data }: { data: OrderDetail }) {
         <TabsTrigger value="form">Comandă (formular)</TabsTrigger>
         <TabsTrigger value="payment">Plată</TabsTrigger>
         <TabsTrigger value="audio">Audio + versuri</TabsTrigger>
+        {data.generation && <TabsTrigger value="studio">🎚 Studio</TabsTrigger>}
         <TabsTrigger value="suno">Suno ({sunoCount})</TabsTrigger>
         <TabsTrigger value="openai">OpenAI ({lyricsCount})</TabsTrigger>
         <TabsTrigger value="emails">Email ({emailCount})</TabsTrigger>
@@ -122,6 +134,9 @@ function OrderTabs({ data }: { data: OrderDetail }) {
       <TabsContent value="form"><FormTab data={data} /></TabsContent>
       <TabsContent value="payment"><PaymentTab data={data} /></TabsContent>
       <TabsContent value="audio"><AudioTab data={data} /></TabsContent>
+      {data.generation && (
+        <TabsContent value="studio"><StudioTab data={data} refetch={refetch} /></TabsContent>
+      )}
       <TabsContent value="suno"><SunoTab data={data} /></TabsContent>
       <TabsContent value="openai"><OpenAiTab data={data} /></TabsContent>
       <TabsContent value="emails"><EmailsTab data={data} /></TabsContent>
@@ -592,6 +607,422 @@ function Deliverables({ g }: { g: NonNullable<OrderDetail['generation']> }) {
       </div>
     </Card>
   );
+}
+
+// ============== TAB: Studio (regenerare + unelte Suno + variații) ==============
+
+function StudioTab({ data, refetch }: { data: OrderDetail; refetch: () => Promise<void> }) {
+  const g = data.generation!;
+  const { toast } = useToast();
+  const rootId = g.parentGenerationId ?? g.id;
+  const variations = useAsync(() => AdminApi.generationVariations(rootId), [rootId], {
+    refetchInterval: 5000,
+  });
+
+  const [edits, setEdits] = useState({
+    recipientName: g.recipientName,
+    dedication: g.dedication ?? '',
+    message: g.message,
+    style: g.style,
+    occasion: g.occasion,
+    voiceArtist: g.voiceArtist,
+    packageTier: (g.packageTier ?? 'basic') as 'basic' | 'plus' | 'premium',
+  });
+  const [lyricsMode, setLyricsMode] = useState<'rewrite' | 'keep' | 'custom'>('rewrite');
+  const [customLyrics, setCustomLyrics] = useState(g.lyrics ?? g.customLyrics ?? '');
+  const [target, setTarget] = useState<'new_track' | 'overwrite' | 'new_order'>('new_track');
+  const [slot, setSlot] = useState<'main' | 'bonus'>('main');
+  const [coverStyle, setCoverStyle] = useState('');
+  const [extendAt, setExtendAt] = useState('');
+  const [acting, setActing] = useState<string | null>(null);
+
+  async function act(key: string, run: () => Promise<unknown>, okMsg: string) {
+    if (acting) return;
+    setActing(key);
+    try {
+      await run();
+      toast({ variant: 'success', title: okMsg });
+      await Promise.all([variations.refetch(), refetch()]);
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Eroare', description: errorMessage(e) });
+    } finally {
+      setActing(null);
+    }
+  }
+
+  const canSunoTools = !!g.providerJobId && g.providerJobId !== 'manual';
+  const upd = (patch: Partial<typeof edits>) => setEdits((s) => ({ ...s, ...patch }));
+
+  return (
+    <div className="space-y-4">
+      {/* ===== Editează & Regenerează ===== */}
+      <Card title="Editează & Regenerează" icon={<Wand2 className="h-4 w-4 text-amber-300" />}>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Field label="Destinatar">
+            <Inp value={edits.recipientName} onChange={(v) => upd({ recipientName: v })} />
+          </Field>
+          <Field label="Dedicație (de la)">
+            <Inp value={edits.dedication} onChange={(v) => upd({ dedication: v })} placeholder="(opțional)" />
+          </Field>
+          <Field label="Stil">
+            <Inp value={edits.style} onChange={(v) => upd({ style: v })} />
+          </Field>
+          <Field label="Ocazie">
+            <Inp value={edits.occasion} onChange={(v) => upd({ occasion: v })} />
+          </Field>
+          <Field label="Voce">
+            <Sel
+              value={edits.voiceArtist}
+              onChange={(v) => upd({ voiceArtist: v })}
+              options={[
+                { value: 'male', label: 'Bărbătească' },
+                { value: 'female', label: 'Feminină' },
+              ]}
+            />
+          </Field>
+          <Field label="Pachet">
+            <Sel
+              value={edits.packageTier}
+              onChange={(v) => upd({ packageTier: v as typeof edits.packageTier })}
+              options={[
+                { value: 'basic', label: 'Bază' },
+                { value: 'plus', label: 'Plus' },
+                { value: 'premium', label: 'Premium' },
+              ]}
+            />
+          </Field>
+        </div>
+        <Field label="Mesaj">
+          <textarea
+            value={edits.message}
+            onChange={(e) => upd({ message: e.target.value })}
+            rows={2}
+            className="w-full rounded border border-white/10 bg-black/40 p-2 text-xs"
+          />
+        </Field>
+
+        <div className="mt-2">
+          <p className="mb-1 text-[11px] font-medium text-muted-foreground">Versuri</p>
+          <RadioRow
+            value={lyricsMode}
+            onChange={(v) => setLyricsMode(v as typeof lyricsMode)}
+            options={[
+              { value: 'rewrite', label: 'Rescrie (AI din câmpuri)' },
+              { value: 'keep', label: 'Păstrează actualele' },
+              { value: 'custom', label: 'Versuri custom' },
+            ]}
+          />
+          {lyricsMode === 'custom' && (
+            <textarea
+              value={customLyrics}
+              onChange={(e) => setCustomLyrics(e.target.value)}
+              rows={8}
+              className="mt-1 w-full rounded border border-white/10 bg-black/40 p-2 font-mono text-[11px]"
+              placeholder="[Verse 1]&#10;..."
+            />
+          )}
+        </div>
+
+        <div className="mt-3">
+          <p className="mb-1 text-[11px] font-medium text-muted-foreground">Unde merge rezultatul</p>
+          <RadioRow
+            value={target}
+            onChange={(v) => setTarget(v as typeof target)}
+            options={[
+              { value: 'new_track', label: '➕ Piesă nouă în comandă (variație)' },
+              { value: 'overwrite', label: '⚠ Suprascrie melodia actuală' },
+              { value: 'new_order', label: '🆕 Comandă nouă separată' },
+            ]}
+          />
+        </div>
+
+        <Button
+          className="mt-3"
+          variant="default"
+          size="sm"
+          disabled={acting === 'regen'}
+          onClick={() =>
+            act(
+              'regen',
+              () =>
+                AdminApi.generationRegenerate(g.id, {
+                  target,
+                  lyricsMode,
+                  customLyrics: lyricsMode === 'custom' ? customLyrics : undefined,
+                  label: 'Regenerare',
+                  edits: {
+                    recipientName: edits.recipientName,
+                    dedication: edits.dedication.trim() || null,
+                    message: edits.message,
+                    style: edits.style,
+                    occasion: edits.occasion,
+                    voiceArtist: edits.voiceArtist,
+                    packageTier: edits.packageTier,
+                  },
+                }),
+              'Regenerare pornită',
+            )
+          }
+        >
+          <Wand2 className="h-4 w-4" /> {acting === 'regen' ? 'Se trimite…' : 'Regenerează'}
+        </Button>
+      </Card>
+
+      {/* ===== Unelte rapide ===== */}
+      <Card title="Unelte rapide (Suno)" icon={<Sparkles className="h-4 w-4 text-amber-300" />}>
+        <div className="mb-2 flex items-center gap-2 text-[11px]">
+          <span className="text-muted-foreground">Operează pe:</span>
+          <Sel
+            value={slot}
+            onChange={(v) => setSlot(v as 'main' | 'bonus')}
+            options={[
+              { value: 'main', label: 'Piesa principală' },
+              { value: 'bonus', label: 'Piesa bonus' },
+            ]}
+          />
+        </div>
+        {!canSunoTools && (
+          <p className="mb-2 rounded bg-amber-500/10 p-2 text-[11px] text-amber-200">
+            Uneltele Suno (extend, WAV, karaoke, video) nu sunt disponibile — melodia a fost
+            încărcată manual sau nu are un task Suno. Cover și regenerarea funcționează.
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Button size="xs" variant="secondary" disabled={!!acting}
+            onClick={() => act('reroll', () => AdminApi.generationReroll(g.id), 'Re-roll pornit')}>
+            <Repeat className="h-3.5 w-3.5" /> Re-roll
+          </Button>
+          <Button size="xs" variant="secondary" disabled={!!acting || !g.bonusAudioUrl}
+            onClick={() => act('swap', () => AdminApi.generationSwapTracks(g.id), 'Piese interschimbate')}>
+            <Shuffle className="h-3.5 w-3.5" /> Swap principală↔bonus
+          </Button>
+          <Button size="xs" variant="secondary" disabled={!!acting || !canSunoTools}
+            onClick={() => act('extend', () => AdminApi.generationExtend(g.id, { slot, continueAt: extendAt ? Number(extendAt) : undefined }), 'Extend pornit')}>
+            <ArrowUpToLine className="h-3.5 w-3.5" /> Prelungește
+          </Button>
+          <input
+            value={extendAt}
+            onChange={(e) => setExtendAt(e.target.value.replace(/[^\d]/g, ''))}
+            placeholder="de la sec"
+            className="w-20 rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px]"
+          />
+          <Button size="xs" variant="secondary" disabled={!!acting}
+            onClick={() => act('cover', () => AdminApi.generationCover(g.id, { slot, style: coverStyle.trim() || undefined }), 'Cover pornit')}>
+            <Wand2 className="h-3.5 w-3.5" /> Cover/restyle
+          </Button>
+          <input
+            value={coverStyle}
+            onChange={(e) => setCoverStyle(e.target.value)}
+            placeholder="stil cover (opțional)"
+            className="w-40 rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px]"
+          />
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button size="xs" variant="outline" disabled={!!acting || !canSunoTools}
+            onClick={() => act('wav', () => AdminApi.generationWav(g.id, slot), 'WAV în lucru')}>
+            <Download className="h-3.5 w-3.5" /> WAV studio
+          </Button>
+          <Button size="xs" variant="outline" disabled={!!acting || !canSunoTools}
+            onClick={() => act('karaoke', () => AdminApi.generationSeparateVocals(g.id, slot, 'separate_vocal'), 'Karaoke în lucru')}>
+            <Scissors className="h-3.5 w-3.5" /> Voce/Instrumental
+          </Button>
+          <Button size="xs" variant="outline" disabled={!!acting || !canSunoTools}
+            onClick={() => act('stems', () => AdminApi.generationSeparateVocals(g.id, slot, 'split_stem'), 'Stem-uri în lucru')}>
+            <Scissors className="h-3.5 w-3.5" /> Stem-uri (12)
+          </Button>
+          <Button size="xs" variant="outline" disabled={!!acting || !canSunoTools}
+            onClick={() => act('video', () => AdminApi.generationMusicVideo(g.id, slot), 'Videoclip în lucru')}>
+            <Film className="h-3.5 w-3.5" /> Videoclip MP4
+          </Button>
+        </div>
+        <p className="mt-2 text-[10px] text-muted-foreground">
+          Operațiile rulează în fundal (Suno + procesare). Variațiile apar mai jos; fișierele
+          derivate (WAV/karaoke/video) apar în secțiunea respectivă după ~1-3 min.
+        </p>
+      </Card>
+
+      {/* ===== Variații ===== */}
+      <Card title={`Variații (${variations.data?.length ?? 0})`} icon={<Music2 className="h-4 w-4" />}>
+        {!variations.data || variations.data.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Nicio variație încă. Folosește „Regenerează" (piesă nouă), „Re-roll", „Prelungește" sau „Cover".
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {variations.data.map((v) => (
+              <VariationRow key={v.id} v={v} acting={!!acting}
+                onPromote={(s) => act('promote', () => AdminApi.generationPromote(v.id, { slot: s, notify: false }), `Pusă ca ${s === 'main' ? 'principală' : 'bonus'}`)}
+                onDelete={() => act('delvar', () => AdminApi.generationDeleteVariation(v.id), 'Variație ștearsă')}
+              />
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* ===== Fișiere derivate ===== */}
+      <MediaExtrasCard g={g} />
+    </div>
+  );
+}
+
+function VariationRow({
+  v,
+  acting,
+  onPromote,
+  onDelete,
+}: {
+  v: AdminVariation;
+  acting: boolean;
+  onPromote: (slot: 'main' | 'bonus') => void;
+  onDelete: () => void;
+}) {
+  const ready = v.status === 'succeeded' && !!v.audioUrl;
+  const audio = v.demoAudioUrl ?? v.audioUrl;
+  return (
+    <div className="rounded-lg border border-white/5 bg-black/20 p-2">
+      <div className="mb-1 flex items-center gap-2 text-[11px]">
+        <Badge variant="info">{v.variationLabel ?? 'Variație'}</Badge>
+        <StatusBadge status={v.status} />
+        <code className="text-muted-foreground">{v.style}</code>
+        <span className="text-muted-foreground">· {voiceLabel(v.voiceArtist)}</span>
+        <span className="ml-auto text-[10px] text-muted-foreground">{fmtDateTime(v.createdAt)}</span>
+      </div>
+      {v.error && <p className="mb-1 text-[11px] text-rose-300">{v.error}</p>}
+      {audio && <audio controls src={audio} className="mb-1 h-8 w-full" />}
+      <div className="flex flex-wrap gap-1.5">
+        <Button size="xs" variant="success" disabled={acting || !ready} onClick={() => onPromote('main')}>
+          <ArrowUpToLine className="h-3 w-3" /> Pune ca principală
+        </Button>
+        <Button size="xs" variant="secondary" disabled={acting || !ready} onClick={() => onPromote('bonus')}>
+          <ArrowUpToLine className="h-3 w-3" /> Ca bonus
+        </Button>
+        <Button size="xs" variant="destructive" disabled={acting} onClick={onDelete}>
+          <Trash2 className="h-3 w-3" /> Șterge
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function MediaExtrasCard({ g }: { g: NonNullable<OrderDetail['generation']> }) {
+  const m = g.mediaExtras;
+  const stems = m?.stems ? Object.entries(m.stems) : [];
+  const hasAny =
+    !!m &&
+    (m.wavUrl || m.wavBonusUrl || m.vocalUrl || m.accompanimentUrl || m.musicVideoUrl || m.musicVideoBonusUrl || stems.length);
+  if (!hasAny) return null;
+  return (
+    <Card title="Fișiere derivate (WAV / karaoke / video)" icon={<Download className="h-4 w-4" />}>
+      <div className="space-y-1 text-xs">
+        {m?.wavUrl && <ExtLink label="WAV principal" url={m.wavUrl} />}
+        {m?.wavBonusUrl && <ExtLink label="WAV bonus" url={m.wavBonusUrl} />}
+        {m?.vocalUrl && <ExtLink label="Voce izolată" url={m.vocalUrl} />}
+        {m?.accompanimentUrl && <ExtLink label="Instrumental (karaoke)" url={m.accompanimentUrl} />}
+        {stems.map(([k, url]) => (
+          <ExtLink key={k} label={`Stem: ${k}`} url={url} />
+        ))}
+        {m?.musicVideoUrl && <ExtLink label="Videoclip principal" url={m.musicVideoUrl} />}
+        {m?.musicVideoBonusUrl && <ExtLink label="Videoclip bonus" url={m.musicVideoBonusUrl} />}
+      </div>
+    </Card>
+  );
+}
+
+function ExtLink({ label, url }: { label: string; url: string }) {
+  return (
+    <div className="flex items-center justify-between gap-2 border-b border-white/5 py-1">
+      <span className="text-muted-foreground">{label}</span>
+      <a href={url} target="_blank" rel="noopener" className="inline-flex items-center gap-1 text-primary hover:underline">
+        descarcă <ExternalLink className="h-3 w-3" />
+      </a>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-0.5 block text-[11px] text-muted-foreground">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function Inp({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <input
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full rounded border border-white/10 bg-black/40 px-2 py-1 text-xs"
+    />
+  );
+}
+
+function Sel({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="rounded border border-white/10 bg-black/40 px-2 py-1 text-xs"
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value} className="bg-[hsl(220_22%_9%)]">
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function RadioRow({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          onClick={() => onChange(o.value)}
+          className={`rounded border px-2 py-1 text-[11px] ${
+            value === o.value
+              ? 'border-amber-400/50 bg-amber-500/15 text-amber-200'
+              : 'border-white/10 bg-black/30 text-muted-foreground hover:bg-white/5'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function errorMessage(e: unknown): string {
+  const anyErr = e as { response?: { data?: { message?: string } }; message?: string };
+  return anyErr?.response?.data?.message ?? anyErr?.message ?? 'Eroare necunoscută';
 }
 
 // ============== TAB: Suno ==============

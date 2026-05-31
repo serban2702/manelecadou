@@ -7,6 +7,23 @@ import {
 } from 'typeorm';
 
 export type GenerationType = 'demo' | 'full';
+
+/** Fișiere derivate atașate unei generări (din uneltele Suno admin). Stocate
+ *  în coloana `mediaExtras` (jsonb). Toate URL-urile sunt găzduite local
+ *  (`/uploads/audio/<id>/...`) sau, ca fallback, URL-uri Suno temporare. */
+export interface GenerationMediaExtras {
+  /** WAV studio pentru piesa principală / bonus (Suno /wav/generate). */
+  wavUrl?: string;
+  wavBonusUrl?: string;
+  /** Voce izolată + acompaniament (Suno /vocal-removal, type=separate_vocal). */
+  vocalUrl?: string;
+  accompanimentUrl?: string;
+  /** Stem-uri individuale (type=split_stem): { drums, bass, guitar, ... }. */
+  stems?: Record<string, string>;
+  /** Videoclip MP4 generat de Suno (/mp4/generate) — principal / bonus. */
+  musicVideoUrl?: string;
+  musicVideoBonusUrl?: string;
+}
 export type GenerationStatus =
   | 'pending'
   | 'queued'
@@ -209,6 +226,25 @@ export class Generation {
    *  owner-ului în payload, ca s-o poată partaja. Public nu o primește niciodată. */
   @Column({ type: 'varchar', length: 32, nullable: true })
   unlockPin!: string | null;
+
+  // ============== Variații + unelte Suno admin ==============
+
+  /** Dacă această generare este o VARIAȚIE (re-roll / regenerare / extend / cover)
+   *  produsă din admin pentru o comandă existentă, aici e id-ul comenzii-părinte.
+   *  NULL = generare normală/independentă. Variațiile nu apar în galeria publică
+   *  și nu se livrează clientului până nu sunt promovate (principală/bonus). */
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  parentGenerationId!: string | null;
+
+  /** Etichetă scurtă pentru variație, afișată în admin (ex. „Re-roll",
+   *  „Extend +30s", „Cover modern", „Versuri editate"). */
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  variationLabel!: string | null;
+
+  /** Fișiere derivate (WAV, karaoke/stems, videoclip) generate cu uneltele Suno. */
+  @Column({ type: 'jsonb', nullable: true })
+  mediaExtras!: GenerationMediaExtras | null;
 
   @CreateDateColumn()
   createdAt!: Date;

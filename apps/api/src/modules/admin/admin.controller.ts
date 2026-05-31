@@ -14,7 +14,11 @@ import { AnalyticsSession } from '../analytics/analytics-session.entity';
 import { MailerService } from '../../mailer/mailer.module';
 import { SeederService } from '../../database/seeder/seeder.service';
 import { SitesService } from '../sites/sites.service';
-import { GenerationsService } from '../generations/generations.service';
+import {
+  GenerationsService,
+  type AdminRegenerateInput,
+} from '../generations/generations.service';
+import { SunoProvider } from '../suno/suno.types';
 
 class TestMailDto {
   @IsEmail()
@@ -41,6 +45,7 @@ export class AdminController {
     private readonly seeder: SeederService,
     private readonly sites: SitesService,
     private readonly generationsService: GenerationsService,
+    private readonly suno: SunoProvider,
   ) {}
 
   @Post('seeder/run')
@@ -517,6 +522,107 @@ export class AdminController {
   async retryGeneration(@Param('id') id: string) {
     const g = await this.generationsService.adminRetry(id);
     return { ok: true, status: g.status, retryCount: g.retryCount };
+  }
+
+  // ============== Regenerare + variații + unelte Suno ==============
+
+  /** Regenerare cu editări + țintă (overwrite | new_track | new_order). */
+  @Post('generations/:id/regenerate')
+  async regenerate(@Param('id') id: string, @Body() body: AdminRegenerateInput) {
+    const g = await this.generationsService.adminRegenerate(id, body);
+    return { ok: true, id: g.id, status: g.status, parentGenerationId: g.parentGenerationId };
+  }
+
+  /** Re-roll: variație nouă cu aceleași versuri. */
+  @Post('generations/:id/reroll')
+  async reroll(@Param('id') id: string) {
+    const g = await this.generationsService.adminReroll(id);
+    return { ok: true, id: g.id, status: g.status };
+  }
+
+  /** Interschimbă piesa principală cu bonusul. */
+  @Post('generations/:id/swap-tracks')
+  async swapTracks(@Param('id') id: string) {
+    const g = await this.generationsService.adminSwapTracks(id);
+    return { ok: true, audioUrl: g.audioUrl, bonusAudioUrl: g.bonusAudioUrl };
+  }
+
+  /** Lista variațiilor unei comenzi. */
+  @Get('generations/:id/variations')
+  async listVariations(@Param('id') id: string) {
+    return this.generationsService.adminListVariations(id);
+  }
+
+  /** Promovează o variație în slot-ul principal/bonus al comenzii. */
+  @Post('generations/:id/promote')
+  async promoteVariation(
+    @Param('id') variationId: string,
+    @Body() body: { slot?: 'main' | 'bonus'; notify?: boolean },
+  ) {
+    const g = await this.generationsService.adminPromoteVariation(
+      variationId,
+      body.slot === 'bonus' ? 'bonus' : 'main',
+      { notify: !!body.notify },
+    );
+    return { ok: true, id: g.id, audioUrl: g.audioUrl, bonusAudioUrl: g.bonusAudioUrl };
+  }
+
+  @Delete('generations/:id/variation')
+  async deleteVariation(@Param('id') id: string) {
+    await this.generationsService.adminDeleteVariation(id);
+    return { ok: true };
+  }
+
+  /** Prelungește o piesă (Suno extend) → variație nouă mai lungă. */
+  @Post('generations/:id/extend')
+  async extend(
+    @Param('id') id: string,
+    @Body() body: { slot?: 'main' | 'bonus'; continueAt?: number; style?: string },
+  ) {
+    const g = await this.generationsService.adminExtend(id, body);
+    return { ok: true, id: g.id, status: g.status };
+  }
+
+  /** Cover/restyle → variație nouă cu alt stil. */
+  @Post('generations/:id/cover')
+  async cover(
+    @Param('id') id: string,
+    @Body() body: { slot?: 'main' | 'bonus'; style?: string; instrumental?: boolean; label?: string },
+  ) {
+    const g = await this.generationsService.adminCover(id, body);
+    return { ok: true, id: g.id, status: g.status };
+  }
+
+  /** WAV studio pentru un slot. */
+  @Post('generations/:id/wav')
+  async wav(@Param('id') id: string, @Body() body: { slot?: 'main' | 'bonus' }) {
+    return this.generationsService.adminConvertWav(id, body.slot === 'bonus' ? 'bonus' : 'main');
+  }
+
+  /** Separare voce/instrumental (karaoke) sau stem-uri. */
+  @Post('generations/:id/separate-vocals')
+  async separateVocals(
+    @Param('id') id: string,
+    @Body() body: { slot?: 'main' | 'bonus'; type?: 'separate_vocal' | 'split_stem' },
+  ) {
+    return this.generationsService.adminSeparateVocals(
+      id,
+      body.slot === 'bonus' ? 'bonus' : 'main',
+      body.type === 'split_stem' ? 'split_stem' : 'separate_vocal',
+    );
+  }
+
+  /** Videoclip MP4 oficial Suno. */
+  @Post('generations/:id/music-video')
+  async musicVideo(@Param('id') id: string, @Body() body: { slot?: 'main' | 'bonus' }) {
+    return this.generationsService.adminMusicVideo(id, body.slot === 'bonus' ? 'bonus' : 'main');
+  }
+
+  /** Soldul real de credite din contul Suno. */
+  @Get('suno/credits')
+  async sunoCredits() {
+    const credits = await this.suno.getCredits();
+    return { credits };
   }
 
   @Delete('generations/:id')
