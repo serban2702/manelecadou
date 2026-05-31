@@ -126,6 +126,10 @@ function ShareGenerationViewInner() {
   if (!g) return <main style={{ padding: 40, textAlign: 'center' }}><p className="ld">{t('loading')}</p></main>;
 
   const isPaid = g.type === 'full' || g.paidUnlocked;
+  // Owner-ul (user logat sau aceeași sesiune guest) e singurul care primește
+  // owner ids în payload — payload-ul public le omite. Folosit ca să afișăm
+  // colajul DOAR pentru cine a generat maneaua (backend-ul oricum impune 403).
+  const isOwner = !!(g.ownerUserId || g.ownerGuestId);
   const inProgress = IN_PROGRESS_STATUSES.has(g.status);
   // Pachetele plus/premium au livrabile extra (imagini sociale; + videoclip la
   // premium) care se generează în fundal după ce melodia e gata. Cât
@@ -280,8 +284,9 @@ function ShareGenerationViewInner() {
       })()}
 
       {/* Colaj video din pozele tale — DOAR pachetul premium (cel mai scump),
-          după plată și melodie finalizată. */}
-      {isPaid && g.status === 'succeeded' && g.packageTier === 'premium' && (
+          după plată și melodie finalizată, și DOAR pentru owner (cine a generat
+          maneaua: același user logat sau aceeași sesiune guest). */}
+      {isOwner && isPaid && g.status === 'succeeded' && g.packageTier === 'premium' && (
         <CollageSection generation={g} />
       )}
 
