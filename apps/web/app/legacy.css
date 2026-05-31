@@ -80,8 +80,8 @@ input, textarea, select { font-family: inherit; }
   letter-spacing: 0.02em;
   position: sticky; top: 0; z-index: 30;
 }
-.urgency .pulse { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: white; margin-right: 6px; animation: blink 1s infinite; vertical-align: middle; }
-@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.urgency .urgency-text { display: inline-block; animation: blink 1.2s infinite; }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
 /* ========== Header ========== */
 .hdr {

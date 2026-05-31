@@ -491,10 +491,13 @@ export class Site {
   styles!: SiteStyleEntry[];
 
   /**
-   * Voci/artiști disponibili pe acest site. Dacă goală, fallback la VOICES
-   * din `seed-data.ts`.
+   * Voci disponibile pe acest site. Sistem canonic: doar male / female.
    */
-  @Column({ type: 'jsonb', default: () => `'[]'::jsonb` })
+  @Column({
+    type: 'jsonb',
+    default: () =>
+      `'[{"id":"male","nm":"Bărbătească","tg":"Voce de bărbat","av":"♂","gender":"m"},{"id":"female","nm":"Feminină","tg":"Voce de femeie","av":"♀","gender":"f"}]'::jsonb`,
+  })
   voices!: SiteVoiceEntry[];
 
   /**

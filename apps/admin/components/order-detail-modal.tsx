@@ -30,6 +30,14 @@ import {
  * Înlocuiește drawer-ul vechi. ID = paymentId SAU generationId (server-ul
  * acceptă ambele și completează cealaltă latură automat).
  */
+
+/** Mapează id-ul vocii la eticheta prietenoasă (male/female). Legacy → valoarea brută. */
+function voiceLabel(v: string | null | undefined): string {
+  if (v === 'male') return 'Bărbătească';
+  if (v === 'female') return 'Feminină';
+  return v ?? '';
+}
+
 export function OrderDetailModal({ id, onClose }: { id: string; onClose: () => void }) {
   const { data, loading } = useAsync(() => AdminApi.orderDetail(id), [id]);
 
@@ -129,7 +137,7 @@ function OverviewTab({ data }: { data: OrderDetail }) {
           <>
             <Kv k="Destinatar" v={<span className="font-medium">{g.recipientName}</span>} />
             <Kv k="Stil" v={<code>{g.style}</code>} />
-            <Kv k="Voce" v={<code>{g.voiceArtist}</code>} />
+            <Kv k="Voce" v={<code>{voiceLabel(g.voiceArtist)}</code>} />
             <Kv k="Ocazie" v={<code>{g.occasion}</code>} />
             <Kv k="Tip" v={<Badge variant={g.type === 'demo' ? 'info' : 'success'}>{g.type}</Badge>} />
             <Kv k="Status" v={<StatusBadge status={g.status} />} />
@@ -297,7 +305,7 @@ function FormTab({ data }: { data: OrderDetail }) {
         {g.dedicatorName && <Kv k="De la (dedică)" v={g.dedicatorName} />}
         <Kv k="Ocazie" v={g.occasion} />
         <Kv k="Stil" v={g.style} />
-        <Kv k="Voce" v={g.voiceArtist} />
+        <Kv k="Voce" v={voiceLabel(g.voiceArtist)} />
         <Kv k="Locale" v={g.locale} />
         <Kv k="Durată" v={`${g.durationSec}s`} />
         <Kv k="Premium" v={g.premium ? 'da' : 'nu'} />

@@ -1242,10 +1242,10 @@ function applyOrderToForm(
   if (r.recipientName && setters.setRecipientName) setters.setRecipientName(r.recipientName);
   if (r.message && setters.setMessage) setters.setMessage(r.message);
   if (r.voiceArtist && setters.setVoiceId) {
-    // Fuzzy: caut un voice care conține preferința AI (ex. "masculină" → primul cu gender m)
+    // Doar 2 voci globale: male / female. Mapez fuzzy preferința AI.
     const lower = r.voiceArtist.toLowerCase();
-    const match = GEN_VOICES.find((v) => v.name.toLowerCase().includes(lower) || v.tag.toLowerCase().includes(lower));
-    if (match) setters.setVoiceId(match.id);
+    const isFemale = /f|femei|feminin/.test(lower);
+    setters.setVoiceId(isFemale ? 'female' : 'male');
   }
   if (r.dedication && setters.setDedication) setters.setDedication(r.dedication);
   if (typeof r.tipAmount === 'number' && setters.setTipAmount) setters.setTipAmount(r.tipAmount);
@@ -3349,12 +3349,8 @@ const GEN_OCCASIONS = [
 ];
 
 const GEN_VOICES = [
-  { id: 'florinel', name: 'Florinel de Aur', tag: 'voce caldă, clasic' },
-  { id: 'adi', name: 'Adi Șampanie', tag: 'modern, club' },
-  { id: 'ticu', name: 'Țicu Diamante', tag: 'trap-manea, tânăr' },
-  { id: 'mariana', name: 'Mariana Trandafir', tag: 'voce feminină' },
-  { id: 'nicu', name: 'Nicu Mercedes', tag: 'orientală, plâns' },
-  { id: 'gigi', name: 'Gigi Cash', tag: 'comercial, voios' },
+  { id: 'male', name: 'Bărbătească', tag: 'voce de bărbat' },
+  { id: 'female', name: 'Feminină', tag: 'voce de femeie' },
 ];
 
 function LaunchGenerationModal({
@@ -3376,7 +3372,7 @@ function LaunchGenerationModal({
   const [occasionId, setOccasionId] = useState(GEN_OCCASIONS[0].id); // Zi naștere
   const [recipientName, setRecipientName] = useState('');
   const [message, setMessage] = useState('');
-  const [voiceId, setVoiceId] = useState(GEN_VOICES[0].id); // Florinel
+  const [voiceId, setVoiceId] = useState(GEN_VOICES[0].id); // male
   const [dedication, setDedication] = useState('');
   const [email, setEmail] = useState(defaultEmail ?? '');
   const [customLyricsOpen, setCustomLyricsOpen] = useState(false);

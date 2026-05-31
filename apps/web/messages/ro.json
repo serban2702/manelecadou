@@ -17,12 +17,12 @@
     "copy": "Copiază",
     "copied": "Copiat!"
   },
-  "urgency": "OFERTĂ LIMITATĂ — Manea personalizată doar <b>29,99 lei</b> (preț întreg 49,99)",
+  "urgency": "Oferta limitată - Generare manea la <s style=\"color:#ffd0d0;font-weight:600;text-decoration-color:#ff2d2d;text-decoration-thickness:2px\">59,99 lei</s> <b>29,99 lei</b>",
   "nav": {
     "asculta": "Ascultă",
     "studio": "Fă o manea",
     "top": "Top",
-    "intra": "Intră",
+    "intra": "Cont",
     "cont": "Contul meu",
     "istoric": "Istoric"
   },
@@ -32,9 +32,9 @@
   },
   "hero": {
     "flag": "⭐ #1 GENERATOR DE MANELE PERSONALIZATE ÎN ROMÂNIA",
-    "titleA": "Fă-i o manea cu",
-    "titleHl": "numele lui",
-    "titleB": "în 90 de secunde",
+    "titleA": "Fă o manea în",
+    "titleHl": "3 minute",
+    "titleB": "",
     "sub": "Bă fine, fă-i cadou o manea. Alegi stilul, ocazia, vocea — primești manea profi pe email.",
     "trustReviews": "<b>4.9/5</b> · 12.483 review",
     "trustCount": "<b>50.000+</b> manele",
@@ -319,14 +319,14 @@
     }
   },
   "home": {
-    "giftRibbon": "🎁 Oferta 1+1 GRATIS — primești 2 manele la prețul de una",
-    "subLead": "Bă fine, fă-i cadou o manea. Alegi stilul, ocazia, vocea — primești 2 versiuni profi pe email.",
+    "giftRibbon": "🎁 OFERTĂ - PLĂTEȘTI 1 ȘI PRIMEȘTI 2",
+    "subLead": "Generează o manea în 5 minute și apoi dăruiește-o unei persoane dragi.",
     "pay": "🛡️ Plată unică, fără abonament",
     "warranty": "Garanție 30 zile.",
     "trust": {
       "reviews": "<b>4.9/5</b> · 12.483 review-uri",
       "count": "<b>50.000+</b> manele generate",
-      "speed": "Livrare <b>~90 sec</b>",
+      "speed": "Livrare în <b>3 minute</b>",
       "versions": "<b>2 versiuni</b> incluse"
     },
     "side": {
@@ -402,21 +402,21 @@
       "hintVoice": "👆 Alege un artist."
     },
     "step3": {
-      "title": "3. Detalii, voce și (opțional) versurile tale",
+      "title": "3. Detalii și voce",
       "sub": "Cu cât mai concret, cu atât mai tare iese.",
-      "nameLabel": "Numele persoanei",
+      "nameLabel": "Pentru cine este",
       "namePlaceholder": "ex. Costel, Mariana, șefu' Florin...",
       "messageLabel": "Mesajul tău (max 600)",
       "messageSuggesting": "✨ Sugerez…",
       "messageNewSuggestion": "✨ Sugestie nouă",
       "messagePlaceholder": "ex. La mulți ani, șefule! Să dea Domnu' să luăm bonus de Crăciun...",
       "dedicLabel": "Dedicație opțională (de la cine)",
-      "dedicPlaceholder": "de la Andrei și echipa",
+      "dedicPlaceholder": "cumnatu Dani și familia Popescu",
       "lyricsLabel": "📝 Vrei să scrii tu versurile?",
       "lyricsActive": "✓ activ",
       "lyricsActivate": "Activează",
       "lyricsPlaceholder": "Scrie aici versurile tale dacă vrei. Lasă gol = scriem noi versurile pe baza mesajului.\n\nRefren:\n...\nCuplet:\n...",
-      "voicesTitle": "🎤 Care artist îți cântă?",
+      "voicesTitle": "🎤 Ce voce să fie?",
       "voiceHint": "Ascultă vocea",
       "errCompleteFirst": "Completează stilul, ocazia și numele întâi.",
       "errTooManySuggestions": "Prea multe sugestii. Încearcă peste un minut.",

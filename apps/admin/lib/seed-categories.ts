@@ -131,12 +131,8 @@ export const SEED_STYLES: SiteStyleEntry[] = [
 ];
 
 export const SEED_VOICES: SiteVoiceEntry[] = [
-  { id: 'florinel', nm: 'Florinel de Aur', tg: 'Voce caldă, clasic', av: 'FA', ic: { name: 'Mic', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
-  { id: 'adi', nm: 'Adi Șampanie', tg: 'Modern, club', av: 'AȘ', ic: { name: 'MicVocal', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
-  { id: 'ticu', nm: 'Țicu Diamante', tg: 'Trap-manea, tânăr', av: 'ȚD', ic: { name: 'Headphones', fill: 'none', stroke: '#8b5cf6', strokeWidth: 2 } },
-  { id: 'mariana', nm: 'Mariana Trandafir', tg: 'Voce feminină', av: 'MT', ic: { name: 'Flower2', fill: '#ec4899', stroke: '#db2777', strokeWidth: 1.5 } },
-  { id: 'nicu', nm: 'Nicu Mercedes', tg: 'Orientală, plâns', av: 'NM', ic: { name: 'HeartCrack', fill: 'none', stroke: '#ef4444', strokeWidth: 2 } },
-  { id: 'gigi', nm: 'Gigi Cash', tg: 'Comercial, voios', av: 'GC', ic: { name: 'Sparkles', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'male', nm: 'Bărbătească', tg: 'Voce de bărbat', av: '♂', gender: 'm', ic: { name: 'Mic', fill: 'none', stroke: '#f59e0b', strokeWidth: 2 } },
+  { id: 'female', nm: 'Feminină', tg: 'Voce de femeie', av: '♀', gender: 'f', ic: { name: 'Flower2', fill: '#ec4899', stroke: '#db2777', strokeWidth: 1.5 } },
 ];
 
 export const SEED_OCCASIONS: SiteOccasionEntry[] = [

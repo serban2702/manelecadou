@@ -14,6 +14,7 @@ import { GuestSessionsService } from '../guest-sessions/guest-sessions.service';
 import { AiMemory } from './ai-memory.entity';
 import { AiToolCall } from './ai-tool-call.entity';
 import { MetaCapiService } from '../meta-capi/meta-capi.service';
+import { voiceArtistToGender, type VoiceArtist } from '../../common/voice';
 
 /** Lista oficială de stiluri (sincronă cu UI generator). Folosită pentru fuzzy match în wizard_update. */
 const STYLES = [
@@ -49,8 +50,8 @@ const MAX_MESSAGES_BEFORE_HUMAN = 35;
 
 /** Voci active per gen — folosit la inferarea automată când userul spune doar M/F. */
 const VOICE_DEFAULTS = {
-  M: 'florinel',  // Florin Stelaru — voce caldă clasic, default masculin
-  F: 'mariana',   // Mariana Dumitru — voce feminină caldă, default feminin
+  M: 'male',    // voce bărbătească — default masculin
+  F: 'female',  // voce feminină — default feminin
 } as const;
 
 /** Jaccard similarity pe cuvinte. Returnează 0..1 — 1 = identice, 0 = disjuncte.
@@ -597,7 +598,7 @@ DEMO / MOSTRE AUDIO:
 ═══════════════════════════════════════════════════════════════════════
 Dacă userul cere mostre („cum suna?", „vreau sa aud o manea", „arata-mi exemple",
 „vreau sa-mi dau seama cum e vocea"):
-  → Apelează \`play_sample\` cu kind='style' sau 'voice' și un ID (florinel, modern, etc.)
+  → Apelează \`play_sample\` cu kind='style' sau 'voice' și un ID (male, female, modern, etc.)
   → Trimite link-ul ca atare în chat — userul poate da play.
 
 ═══════════════════════════════════════════════════════════════════════
@@ -605,7 +606,7 @@ REGULI STRICTE:
 ═══════════════════════════════════════════════════════════════════════
 1. Răspunzi DOAR prin tool call \`send_message\` (sau alte tools care trimit mesaje).
    NU scrie text liber în răspuns direct.
-2. NICIODATĂ nu întreba: stilul, ocazia, vocea concretă (florinel etc.), premium da/nu.
+2. NICIODATĂ nu întreba: stilul, ocazia, vocea concretă (male/female), premium da/nu.
    Astea le DEDUCI la finalize din ce a zis userul + defaults rezonabile.
 3. Dacă userul a SPUS singur stilul/ocazia/vocea („vreau ceva clasic", „de jale",
    „voce de barbat") → ține minte și folosește exact ce a zis. NU inventa altceva.
@@ -729,6 +730,7 @@ REGULI STRICTE:
             message: { type: 'string', description: 'Mesajul/contextul personalizat (max 1000 char). Include detalii autobiografice dacă userul le-a dat (locuri, ani, momente, copii, etc.).' },
             email: { type: 'string', description: 'Email-ul user-ului (necesar pentru livrare).' },
             recipientGender: { type: 'string', enum: ['M', 'F'], description: 'Sex destinatar. Folosit pentru inferarea vocii când userul nu o cere explicit.' },
+            voiceArtist: { type: 'string', enum: ['male', 'female'], description: 'Vocea maneaua: male (bărbătească) sau female (feminină).' },
             customLyrics: { type: 'string', description: 'OPTIONAL: versuri custom complete furnizate explicit de user.' },
             premium: { type: 'boolean', description: 'OPTIONAL: dacă userul a cerut explicit variantă premium (+20 RON).' },
           },
@@ -762,7 +764,7 @@ REGULI STRICTE:
           type: 'object',
           properties: {
             kind: { type: 'string', enum: ['style', 'voice'], description: 'Tip mostră.' },
-            id: { type: 'string', description: 'ID-ul stilului (ex. clasic, modern) sau vocii (florinel, mariana).' },
+            id: { type: 'string', description: 'ID-ul stilului (ex. clasic, modern) sau vocii (male, female).' },
           },
           required: ['kind', 'id'],
         },
@@ -1671,7 +1673,7 @@ Pe baza conversației user-ului de mai jos și a datelor wizard deja colectate, 
 
 1. **style** — unul EXACT din: ${STYLES.join(', ')}
 2. **occasion** — una EXACT din: ${OCCASIONS.join(', ')}
-3. **voiceArtist** — alege ID din: florinel (M caldă clasic), ticu (M trap), adita (M modern club), nicu (M energic), mariana (F caldă), gigi (F luminoasă). Match cu sexul destinatarului (M pentru femeie dedicata, F pentru bărbat dedicat) sau cu preferința explicită.
+3. **voiceArtist** — EXACT una din: male (voce bărbătească) sau female (voce feminină). Alege după preferința explicită a userului ("voce de femeie" → female, "bărbătească" → male) sau, în lipsa ei, după sexul destinatarului.
 4. **enrichedMessage** — versiunea îmbogățită a mesajului inițial: include detalii autobiografice menționate de user (locuri unde s-au cunoscut, ani, momente importante, copii, profesie, etc.) ÎN MOD NATURAL, nu listate. Păstrează tonul mesajului original. Max 800 char.
 
 REGULI:
@@ -1737,9 +1739,27 @@ ${transcript}`;
     styleResult.value = this.normalizeStyle(styleResult.value);
     occasionResult.value = this.normalizeOccasion(occasionResult.value);
 
-    // Voice: dacă user a setat string custom (legacy „masculină grav"), îl păstrăm,
-    // altfel folosim ID-ul preset inferat sau fallback pe gender.
-    const voiceResult = pick<string>(wizardData.voiceArtist, inferred.voiceArtist, fallbackVoice);
+    // Voice: doar male/female. Matching simplu pe transcript pentru preferință
+    // explicită; altfel inferat de AI; altfel fallback pe sexul destinatarului.
+    const lowerTranscript = transcript.toLowerCase();
+    let transcriptVoice: VoiceArtist | undefined;
+    if (/voce (de )?(femei|feminin)|feminin|cânt[ăa]rea[ţt][ăa]|voce de femeie/.test(lowerTranscript)) {
+      transcriptVoice = 'female';
+    } else if (/b[ăa]rb[ăa]t|masculin|voce de b[ăa]rbat/.test(lowerTranscript)) {
+      transcriptVoice = 'male';
+    }
+    // Normalizează orice valoare (user/inferat) la male/female canonic.
+    const normalizeVoice = (v?: string): VoiceArtist | undefined => {
+      const g = voiceArtistToGender(v);
+      if (g === 'm') return 'male';
+      if (g === 'f') return 'female';
+      return undefined;
+    };
+    const voiceResult = pick<string>(
+      normalizeVoice(wizardData.voiceArtist) ?? transcriptVoice,
+      normalizeVoice(inferred.voiceArtist),
+      fallbackVoice,
+    );
 
     // Message: dacă AI a enrich-uit cu context, folosim enriched; altfel originalul
     const enrichedMsg = inferred.enrichedMessage?.trim() ?? '';

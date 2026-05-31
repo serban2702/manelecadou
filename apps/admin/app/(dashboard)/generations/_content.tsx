@@ -46,6 +46,13 @@ const STATUS_VARIANT: Record<string, BadgeProps['variant']> = {
   generating_audio: 'warning',
 };
 
+/** Mapează id-ul vocii la eticheta prietenoasă (male/female). Legacy → valoarea brută. */
+function voiceLabel(v: string | null | undefined): string {
+  if (v === 'male') return 'Bărbătească';
+  if (v === 'female') return 'Feminină';
+  return v ?? '';
+}
+
 export default function GenerationsPage() {
   const { toast } = useToast();
   const { isAllSelected } = useSitesMap();
@@ -208,7 +215,7 @@ export default function GenerationsPage() {
                   <TableCell className="font-medium">{g.recipientName}</TableCell>
                   <TableCell className="text-xs">
                     <code>{g.style}</code> <span className="text-muted-foreground">/</span>{' '}
-                    <code>{g.voiceArtist}</code>
+                    <code>{voiceLabel(g.voiceArtist)}</code>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     <div className="flex flex-col gap-0.5">

@@ -51,13 +51,11 @@ export default function HomePage() {
           </div>
 
           <h1>
-            {tHero('titleA')} <span className="gold-text">{tHero('titleHl')}</span><br />
-            {tHero('titleB')}
+            {tHero('titleA')} <span className="gold-text">{tHero('titleHl')}</span>
+            {tHero('titleB') && <><br />{tHero('titleB')}</>}
           </h1>
           <p className="sub-lead">
             {tHome('subLead')}
-            <br />
-            <b style={{ color: 'var(--gold-2)' }}>{tHome('pay')}</b> · {tHome('warranty')}
           </p>
           <div className="cta-row">
             <Link

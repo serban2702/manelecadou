@@ -31,7 +31,6 @@ import {
   type SiteSampleDefaults,
   type SiteStyleEntry,
   type SiteTestimonialEntry,
-  type SiteVoiceEntry,
   ALL_SITES,
   getSelectedSiteId,
   setSelectedSiteId,
@@ -53,6 +52,10 @@ import {
   type PendingChoice,
 } from '@/components/site/sample-chooser-dialog';
 import type { SampleCandidateDto } from '@/lib/api/sites.api';
+
+// Vocile sunt globale și fixe: doar bărbătească / feminină. Configurarea
+// per-site de artiști a fost eliminată.
+const GLOBAL_VOICE_IDS = ['male', 'female'];
 
 const LOCALES = ['ro', 'bg', 'sr', 'tr', 'el', 'hr', 'sl', 'bs', 'sq', 'mk', 'hu', 'en'];
 const CURRENCIES = ['RON', 'EUR', 'USD', 'BGN', 'RSD', 'TRY', 'HUF', 'GBP'];
@@ -116,8 +119,7 @@ export default function SiteConfigPage() {
   // Polling soft cât timp ceva e în curs de generare.
   useEffect(() => {
     if (!samples) return;
-    const anyGenerating =
-      samples.styles.some((s) => s.generating) || samples.voices.some((s) => s.generating);
+    const anyGenerating = samples.styles.some((s) => s.generating);
     if (!anyGenerating) return;
     const t = setInterval(async () => {
       try {
@@ -1094,23 +1096,18 @@ function CategoriesTab({
   // Identitatea de referință cu seed-ul = lista încă nu a fost editată / salvată
   // (orice modificare creează un array nou prin spread / filter / map).
   const seededStyles = form.styles === SEED_STYLES;
-  const seededVoices = form.voices === SEED_VOICES;
   const seededOccasions = form.occasions === SEED_OCCASIONS;
-  const anySeeded = seededStyles || seededVoices || seededOccasions;
+  const anySeeded = seededStyles || seededOccasions;
 
   // Helpers ────────────────────────────────────────────────────────────────
   const styleSample = (key: string) => samples?.styles.find((s) => s.key === key) ?? null;
-  const voiceSample = (key: string) => samples?.voices.find((s) => s.key === key) ?? null;
 
-  function entryLabel(kind: 'style' | 'voice', key: string): string {
-    if (kind === 'style') {
-      return form.styles?.find((s) => s.id === key)?.nm || key;
-    }
-    return form.voices?.find((v) => v.id === key)?.nm || key;
+  function entryLabel(kind: 'style', key: string): string {
+    return form.styles?.find((s) => s.id === key)?.nm || key;
   }
 
   async function generateOne(
-    kind: 'style' | 'voice',
+    kind: 'style',
     key: string,
     regenerate: boolean,
     overrides?: {
@@ -1165,7 +1162,7 @@ function CategoriesTab({
     }
   }
 
-  async function updateSampleStartSec(kind: 'style' | 'voice', key: string, sec: number) {
+  async function updateSampleStartSec(kind: 'style', key: string, sec: number) {
     if (!samples) return;
     // Optimistic local update.
     onSamplesChange(
@@ -1183,7 +1180,7 @@ function CategoriesTab({
     }
   }
 
-  async function uploadSample(kind: 'style' | 'voice', key: string, file: File) {
+  async function uploadSample(kind: 'style', key: string, file: File) {
     const token = `${kind}-${key}`;
     markBusy(token, true);
     try {
@@ -1239,7 +1236,7 @@ function CategoriesTab({
 
   async function generateAllMissing() {
     if (!samples) return;
-    const missing = [...samples.styles.filter((s) => !s.entry), ...samples.voices.filter((v) => !v.entry)];
+    const missing = samples.styles.filter((s) => !s.entry);
     if (missing.length === 0) {
       toast({ title: 'Nimic de făcut', description: 'Toate mostrele sunt generate.' });
       return;
@@ -1261,26 +1258,24 @@ function CategoriesTab({
   }
 
   // Add / remove entries (with auto-save) ───────────────────────────────────
-  async function addEntry(kind: 'style' | 'voice' | 'occasion') {
-    const blank: SiteStyleEntry | SiteVoiceEntry | SiteOccasionEntry =
-      kind === 'voice'
-        ? { id: `new-${Date.now()}`, nm: 'Voce nouă', tg: '', av: '' }
-        : kind === 'occasion'
-          ? { id: `new-${Date.now()}`, em: '✨', nm: 'Ocazie nouă' }
-          : { id: `new-${Date.now()}`, em: '🎵', nm: 'Stil nou', ds: '' };
-    const field = kind === 'style' ? 'styles' : kind === 'voice' ? 'voices' : 'occasions';
+  async function addEntry(kind: 'style' | 'occasion') {
+    const blank: SiteStyleEntry | SiteOccasionEntry =
+      kind === 'occasion'
+        ? { id: `new-${Date.now()}`, em: '✨', nm: 'Ocazie nouă' }
+        : { id: `new-${Date.now()}`, em: '🎵', nm: 'Stil nou', ds: '' };
+    const field = kind === 'style' ? 'styles' : 'occasions';
     const next = [...((form as any)[field] ?? []), blank];
     setForm({ ...form, [field]: next });
     await onSavePartial({ [field]: next } as Partial<SiteDto>);
   }
 
-  async function removeEntry(kind: 'style' | 'voice' | 'occasion', idx: number) {
-    const field = kind === 'style' ? 'styles' : kind === 'voice' ? 'voices' : 'occasions';
+  async function removeEntry(kind: 'style' | 'occasion', idx: number) {
+    const field = kind === 'style' ? 'styles' : 'occasions';
     const list = (form as any)[field] as Array<{ id: string; nm: string }>;
     const entry = list[idx];
     const ok = await confirmDialog({
       title: `Șterge ${entry?.nm || entry?.id}?`,
-      description: `Vei elimina această ${kind === 'voice' ? 'voce' : kind === 'occasion' ? 'ocazie' : 'categorie'} din site. Mostra audio existentă rămâne pe disc dar nu mai e vizibilă.`,
+      description: `Vei elimina această ${kind === 'occasion' ? 'ocazie' : 'categorie'} din site. Mostra audio existentă rămâne pe disc dar nu mai e vizibilă.`,
       confirmText: 'Șterge',
       variant: 'destructive',
     });
@@ -1290,8 +1285,8 @@ function CategoriesTab({
     await onSavePartial({ [field]: next } as Partial<SiteDto>);
   }
 
-  function moveEntry(kind: 'style' | 'voice' | 'occasion', idx: number, dir: -1 | 1) {
-    const field = kind === 'style' ? 'styles' : kind === 'voice' ? 'voices' : 'occasions';
+  function moveEntry(kind: 'style' | 'occasion', idx: number, dir: -1 | 1) {
+    const field = kind === 'style' ? 'styles' : 'occasions';
     const list = [...((form as any)[field] ?? [])];
     const j = idx + dir;
     if (j < 0 || j >= list.length) return;
@@ -1300,18 +1295,17 @@ function CategoriesTab({
   }
 
   function updateEntry(
-    kind: 'style' | 'voice' | 'occasion',
+    kind: 'style' | 'occasion',
     idx: number,
-    patch: Partial<SiteStyleEntry & SiteVoiceEntry & SiteOccasionEntry>,
+    patch: Partial<SiteStyleEntry & SiteOccasionEntry>,
   ) {
-    const field = kind === 'style' ? 'styles' : kind === 'voice' ? 'voices' : 'occasions';
+    const field = kind === 'style' ? 'styles' : 'occasions';
     const list = [...((form as any)[field] ?? [])];
     list[idx] = { ...list[idx], ...patch };
     setForm({ ...form, [field]: list });
   }
 
   const styles = form.styles ?? [];
-  const voices = form.voices ?? [];
   const occasions = form.occasions ?? [];
 
   return (
@@ -1327,7 +1321,6 @@ function CategoriesTab({
               <div className="text-muted-foreground text-xs leading-relaxed">
                 {[
                   seededStyles ? `${SEED_STYLES.length} stiluri` : null,
-                  seededVoices ? `${SEED_VOICES.length} voci` : null,
                   seededOccasions ? `${SEED_OCCASIONS.length} ocazii` : null,
                 ]
                   .filter(Boolean)
@@ -1398,7 +1391,7 @@ function CategoriesTab({
             Reset la default (cu iconițe noi)
           </Button>
           <div className="text-xs text-muted-foreground">
-            {styles.length} stiluri · {voices.length} voci · {occasions.length} ocazii
+            {styles.length} stiluri · {occasions.length} ocazii
           </div>
         </CardContent>
       </Card>
@@ -1427,7 +1420,7 @@ function CategoriesTab({
                 entry={s}
                 sample={styleSample(s.id)}
                 busy={busyKeys.has(`style-${s.id}`)}
-                voiceKeys={voices.map((v) => v.id)}
+                voiceKeys={GLOBAL_VOICE_IDS}
                 site={form}
                 siteId={siteId}
                 onChange={(patch) => updateEntry('style', idx, patch)}
@@ -1436,45 +1429,6 @@ function CategoriesTab({
                 onGenerate={(regen, overrides) => generateOne('style', s.id, regen, overrides)}
                 onUpload={(file) => uploadSample('style', s.id, file)}
                 onUpdateStartSec={(sec) => updateSampleStartSec('style', s.id, sec)}
-              />
-            ))}
-          </div>
-        )}
-      </SubSection>
-
-      {/* VOCI ───────────────────────────────────────────────────────────────*/}
-      <SubSection
-        title="Voci / artiști"
-        subtitle="Carduri din step 3. Fiecare voce are mostră audio dedicată."
-        action={
-          <Button size="sm" variant="ghost" onClick={() => addEntry('voice')}>
-            <Plus className="h-3.5 w-3.5" />
-            Adaugă voce
-          </Button>
-        }
-      >
-        {voices.length === 0 ? (
-          <EmptyHint kind="voci" />
-        ) : (
-          <div className="space-y-2">
-            {voices.map((v, idx) => (
-              <CategoryRow
-                key={idx}
-                kind="voice"
-                idx={idx}
-                total={voices.length}
-                entry={v}
-                sample={voiceSample(v.id)}
-                busy={busyKeys.has(`voice-${v.id}`)}
-                voiceKeys={voices.map((x) => x.id)}
-                site={form}
-                siteId={siteId}
-                onChange={(patch) => updateEntry('voice', idx, patch)}
-                onMove={(dir) => moveEntry('voice', idx, dir)}
-                onRemove={() => removeEntry('voice', idx)}
-                onGenerate={(regen, overrides) => generateOne('voice', v.id, regen, overrides)}
-                onUpload={(file) => uploadSample('voice', v.id, file)}
-                onUpdateStartSec={(sec) => updateSampleStartSec('voice', v.id, sec)}
               />
             ))}
           </div>
@@ -1562,16 +1516,16 @@ function CategoryRow({
   onUpload,
   onUpdateStartSec,
 }: {
-  kind: 'style' | 'voice' | 'occasion';
+  kind: 'style' | 'occasion';
   idx: number;
   total: number;
-  entry: SiteStyleEntry | SiteVoiceEntry | SiteOccasionEntry;
+  entry: SiteStyleEntry | SiteOccasionEntry;
   sample: SampleStatusDto | null;
   busy: boolean;
   voiceKeys: string[];
   site: SiteDto;
   siteId: string;
-  onChange: (patch: Partial<SiteStyleEntry & SiteVoiceEntry & SiteOccasionEntry>) => void;
+  onChange: (patch: Partial<SiteStyleEntry & SiteOccasionEntry>) => void;
   onMove: (dir: -1 | 1) => void;
   onRemove: () => void;
   onGenerate?: (
@@ -1601,25 +1555,22 @@ function CategoryRow({
   // Toate inputurile din „Personalizează mostra" sunt persistate pe entry.sampleDefaults.
   // Modificările sunt salvate doar când userul apasă „Salvează modificările" (parent form),
   // exact ca celelalte câmpuri editabile ale entry-ului.
-  const sd = (entry as SiteStyleEntry | SiteVoiceEntry).sampleDefaults ?? {};
+  const sd = (entry as SiteStyleEntry).sampleDefaults ?? {};
   const updSampleDefaults = (patch: Partial<SiteSampleDefaults>) => {
     onChange({
       sampleDefaults: { ...sd, ...patch },
-    } as Partial<SiteStyleEntry & SiteVoiceEntry & SiteOccasionEntry>);
+    } as Partial<SiteStyleEntry & SiteOccasionEntry>);
   };
 
   // Valori efective afișate (cu fallback la entity-level defaults sau preset).
   const recipient = sd.recipient ?? 'Andrei';
   const dedication = sd.dedication ?? '';
   const voiceOverride = sd.voice ?? '';
-  const styleOverride =
-    sd.style ?? (kind === 'voice' ? site.styles?.[0]?.id ?? '' : '');
   const occasionOverride = sd.occasion ?? (site.occasions?.[0]?.id ?? '');
   const messageDraft = sd.message ?? '';
   const tipAmountDraft = sd.tipAmount != null ? String(sd.tipAmount) : '';
   const premiumDraft = sd.premium ?? false;
-  const genderOverride: '' | 'm' | 'f' =
-    sd.gender ?? (kind === 'voice' ? (entry as SiteVoiceEntry).gender ?? '' : '');
+  const genderOverride: '' | 'm' | 'f' = sd.gender ?? '';
   const aiHint =
     sd.aiHint ?? (kind === 'style' ? (entry as SiteStyleEntry).lyricsHint ?? '' : '');
   const sunoPromptDraft =
@@ -1646,13 +1597,12 @@ function CategoryRow({
     setLyricsBusy(true);
     try {
       const res = await SitesApi.previewSampleLyrics(siteId, {
-        kind: kind as 'style' | 'voice',
+        kind: kind as 'style',
         key: entry.id,
         voice: voiceOverride || undefined,
         recipientName: recipient || undefined,
         dedication: dedication.trim() || undefined,
         customStylePrompt: aiHint.trim() || sunoPromptDraft.trim() || undefined,
-        style: kind === 'voice' && styleOverride ? styleOverride : undefined,
         occasion: occasionOverride || undefined,
         message: messageDraft.trim() || undefined,
         tipAmount: parseTipAmount(),
@@ -1688,7 +1638,6 @@ function CategoryRow({
     }
     if (recipient.trim()) overrides.recipientName = recipient.trim();
     if (dedication.trim()) overrides.dedication = dedication.trim();
-    if (kind === 'voice' && styleOverride) overrides.style = styleOverride;
     if (occasionOverride) overrides.occasion = occasionOverride;
     if (messageDraft.trim()) overrides.message = messageDraft.trim();
     const tip = parseTipAmount();
@@ -1705,14 +1654,10 @@ function CategoryRow({
         <div className="flex items-center gap-2 flex-wrap">
           {/* Icon display: SVG from ic field, else emoji, else initials */}
           <span className="w-8 h-8 flex items-center justify-center shrink-0">
-            {(entry as SiteStyleEntry | SiteOccasionEntry | SiteVoiceEntry).ic ? (
-              renderSiteIcon((entry as SiteStyleEntry | SiteOccasionEntry | SiteVoiceEntry).ic!, 22)
+            {(entry as SiteStyleEntry | SiteOccasionEntry).ic ? (
+              renderSiteIcon((entry as SiteStyleEntry | SiteOccasionEntry).ic!, 22)
             ) : 'em' in entry && entry.em ? (
               <span className="text-lg">{entry.em}</span>
-            ) : kind === 'voice' ? (
-              <span className="text-[11px] font-bold w-8 h-7 grid place-items-center rounded bg-secondary/40">
-                {(entry as SiteVoiceEntry).av || '··'}
-              </span>
             ) : null}
           </span>
           <div className="w-40 min-w-0">
@@ -1798,49 +1743,10 @@ function CategoryRow({
               </Field>
               <Field label="Icoană SVG">
                 <IconPicker
-                  value={(entry as SiteStyleEntry | SiteOccasionEntry | SiteVoiceEntry).ic ?? null}
-                  onChange={(ic) => onChange({ ic: ic ?? undefined } as Partial<SiteStyleEntry & SiteVoiceEntry & SiteOccasionEntry>)}
+                  value={(entry as SiteStyleEntry | SiteOccasionEntry).ic ?? null}
+                  onChange={(ic) => onChange({ ic: ic ?? undefined } as Partial<SiteStyleEntry & SiteOccasionEntry>)}
                 />
               </Field>
-              {kind === 'voice' && (
-                <>
-                  <Field label="Inițiale avatar (2 caractere)">
-                    <Input
-                      value={(entry as SiteVoiceEntry).av ?? ''}
-                      maxLength={2}
-                      onChange={(e) => onChange({ av: e.target.value.toUpperCase() })}
-                    />
-                  </Field>
-                  <Field label="Tagline">
-                    <Input
-                      value={(entry as SiteVoiceEntry).tg ?? ''}
-                      onChange={(e) => onChange({ tg: e.target.value })}
-                    />
-                  </Field>
-                  <Field label="Sex vocal (trimis ca vocalGender la Suno)">
-                    <select
-                      value={(entry as SiteVoiceEntry).gender ?? ''}
-                      onChange={(e) =>
-                        onChange({ gender: (e.target.value || undefined) as 'm' | 'f' | undefined })
-                      }
-                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
-                    >
-                      <option value="">Auto (Suno alege)</option>
-                      <option value="m">♂ Bărbat</option>
-                      <option value="f">♀ Femeie</option>
-                    </select>
-                  </Field>
-                  <div className="sm:col-span-2">
-                    <PersonaControl
-                      siteId={siteId}
-                      voiceId={entry.id}
-                      voice={entry as SiteVoiceEntry}
-                      sample={sample}
-                      onPersonaCreated={(patch) => onChange(patch)}
-                    />
-                  </div>
-                </>
-              )}
               {kind === 'style' && (
                 <>
                   <Field label="Descriere">
@@ -1951,23 +1857,7 @@ function CategoryRow({
                         <option value="">— default —</option>
                         {voiceKeys.map((v) => (
                           <option key={v} value={v}>
-                            {v}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                  )}
-                  {kind === 'voice' && (
-                    <Field label="Stil muzical (mostra cântă vocea pe stilul ales)">
-                      <select
-                        value={styleOverride}
-                        onChange={(e) => updSampleDefaults({ style: e.target.value || undefined })}
-                        className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm"
-                      >
-                        <option value="">— primul din site —</option>
-                        {(site.styles ?? []).map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.nm || s.id}
+                            {v === 'male' ? 'Bărbătească' : v === 'female' ? 'Feminină' : v}
                           </option>
                         ))}
                       </select>
@@ -2010,26 +1900,6 @@ function CategoryRow({
                       placeholder="Ex: 1500"
                     />
                   </Field>
-                  {kind === 'voice' && (
-                    <Field
-                      label="Sex vocal (override pentru această mostră)"
-                      description="Trimis ca vocalGender la Suno. Pre-completat din configul vocii — schimbă-l fără să salvezi entry-ul."
-                    >
-                      <select
-                        value={genderOverride}
-                        onChange={(e) =>
-                          updSampleDefaults({
-                            gender: (e.target.value || undefined) as 'm' | 'f' | undefined,
-                          })
-                        }
-                        className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm"
-                      >
-                        <option value="">Auto (Suno alege)</option>
-                        <option value="m">♂ Bărbat</option>
-                        <option value="f">♀ Femeie</option>
-                      </select>
-                    </Field>
-                  )}
                 </div>
 
                 <Field label="Dedicație — expeditor (opțional)">
@@ -2590,135 +2460,5 @@ function Toggle({ label, value, onChange }: { label: string; value: boolean; onC
       <span className="text-sm">{label}</span>
       <Switch checked={value} onCheckedChange={onChange} />
     </label>
-  );
-}
-
-/**
- * Control inline pentru a genera un Persona Suno pornind de la mostra audio
- * existentă a unei voci. Persona = vocea cantăreață consistentă pe care Suno
- * o aplică pe toate generările (prin parametrul `personaId`).
- *
- * Stări:
- *  - Persona deja generat: afișează nume + data, buton „Regenerează" (re-call).
- *  - Mostră audio cu audioId: buton „Generează persona" activ.
- *  - Fără mostră / mostră fără audioId: dezactivat cu hint.
- */
-function PersonaControl({
-  siteId,
-  voiceId,
-  voice,
-  sample,
-  onPersonaCreated,
-}: {
-  siteId: string;
-  voiceId: string;
-  voice: SiteVoiceEntry;
-  sample: SampleStatusDto | null;
-  onPersonaCreated: (patch: Partial<SiteVoiceEntry>) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [description, setDescription] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const { toast } = useToast();
-
-  const hasSample = !!sample?.entry;
-  const sampleHasAudioId = !!(sample?.entry as any)?.sunoAudioId;
-  const hasPersona = !!voice.sunoPersonaId;
-
-  async function run() {
-    setBusy(true);
-    try {
-      const res = await SitesApi.generatePersona(siteId, voiceId, {
-        name: voice.nm || voiceId,
-        description: description.trim() || undefined,
-      });
-      onPersonaCreated({
-        sunoPersonaId: res.voice.sunoPersonaId,
-        sunoPersonaName: res.voice.sunoPersonaName,
-        sunoPersonaSourceTaskId: res.voice.sunoPersonaSourceTaskId,
-        sunoPersonaSourceAudioId: res.voice.sunoPersonaSourceAudioId,
-        sunoPersonaCreatedAt: res.voice.sunoPersonaCreatedAt,
-      });
-      toast({ variant: 'success', title: 'Persona generat', description: res.voice.sunoPersonaName ?? voiceId });
-    } catch (err: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Eroare la generare persona',
-        description: err?.response?.data?.message ?? err?.message ?? 'unknown',
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="rounded-md border border-border/60 bg-secondary/20 p-3 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-medium uppercase text-muted-foreground">Persona Suno</div>
-        {hasPersona && (
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
-            ACTIV
-          </span>
-        )}
-      </div>
-
-      {hasPersona ? (
-        <div className="text-xs space-y-1">
-          <div>
-            <span className="text-muted-foreground">Nume:</span>{' '}
-            <span className="font-medium">{voice.sunoPersonaName ?? '—'}</span>
-          </div>
-          <div className="font-mono text-[11px] text-muted-foreground truncate">
-            id: {voice.sunoPersonaId}
-          </div>
-          {voice.sunoPersonaCreatedAt && (
-            <div className="text-[11px] text-muted-foreground">
-              creat: {new Date(voice.sunoPersonaCreatedAt).toLocaleString('ro-RO')}
-            </div>
-          )}
-        </div>
-      ) : !hasSample ? (
-        <p className="text-xs text-muted-foreground">
-          Generează întâi o mostră audio pentru această voce, apoi vei putea crea persona.
-        </p>
-      ) : !sampleHasAudioId ? (
-        <p className="text-xs text-yellow-500">
-          Mostra existentă nu are <code>audioId</code> Suno (a fost generată înainte de această
-          versiune). Regenerează mostra pentru a putea crea persona.
-        </p>
-      ) : (
-        <p className="text-xs text-muted-foreground">
-          Mostra are <code>audioId</code> ✓. Click pe „Generează persona" pentru a crea o voce
-          consistentă pe care Suno o va aplica pe toate manelele cu această voce.
-        </p>
-      )}
-
-      <button
-        type="button"
-        onClick={() => setShowAdvanced((v) => !v)}
-        className="text-[11px] text-muted-foreground hover:text-foreground"
-      >
-        {showAdvanced ? '▾' : '▸'} Descriere personalizată (opțional)
-      </button>
-      {showAdvanced && (
-        <Textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={2}
-          placeholder="Ex: Authentic Romanian manele singer, melismatic male vocal, heavy auto-tune, oriental phrasing."
-        />
-      )}
-
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          size="sm"
-          disabled={busy || !hasSample || !sampleHasAudioId}
-          onClick={run}
-        >
-          {busy ? 'Generează…' : hasPersona ? 'Regenerează persona' : 'Generează persona'}
-        </Button>
-      </div>
-    </div>
   );
 }

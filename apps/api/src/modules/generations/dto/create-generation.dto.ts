@@ -1,6 +1,7 @@
 import {
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -38,6 +39,7 @@ export class CreateGenerationDto {
 
   @IsString()
   @Length(1, 64)
+  @IsIn(['male', 'female'])
   voiceArtist!: string;
 
   @IsOptional()

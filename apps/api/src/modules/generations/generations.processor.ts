@@ -8,6 +8,7 @@ import { Job, Queue } from 'bullmq';
 
 import { Generation } from './generation.entity';
 import { GENERATIONS_QUEUE } from './generations.constants';
+import { voiceArtistToGender } from '../../common/voice';
 import { SunoProvider } from '../suno/suno.types';
 import { LyricsService } from '../lyrics/lyrics.module';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
@@ -136,6 +137,9 @@ export class GenerationsProcessor extends WorkerHost {
       // styleWeight, weirdnessConstraint, negativeTags) și le pasăm la Suno.
       const voiceEntry = site?.voices?.find((v) => v.id === gen.voiceArtist);
       const styleEntry = site?.styles?.find((s) => s.id === gen.style);
+      // Genul vocal e derivat PRIORITAR din voiceArtist canonic (male/female) +
+      // fallback legacy; cade pe voiceEntry?.gender doar dacă helper-ul nu știe.
+      const vocalGender = voiceArtistToGender(gen.voiceArtist) ?? voiceEntry?.gender;
 
       const result = await this.suno.generate({
         type: gen.type,
@@ -149,7 +153,7 @@ export class GenerationsProcessor extends WorkerHost {
         lyrics: refined,
         generationId: gen.id,
         site: site ?? undefined,
-        vocalGender: voiceEntry?.gender,
+        vocalGender,
         personaId: voiceEntry?.sunoPersonaId,
         styleWeight: styleEntry?.styleWeight,
         weirdnessConstraint: styleEntry?.weirdnessConstraint,

@@ -8,9 +8,10 @@ import { LyricsService } from '../lyrics/lyrics.module';
 import { SettingsService } from '../settings/settings.service';
 import { SitesService } from './sites.service';
 import { Site, SiteSampleEntry, SiteSuno, SiteVoiceEntry } from './site.entity';
+import { voiceArtistToGender } from '../../common/voice';
 
 export interface SampleOverrides {
-  /** Override pentru voice (default = pentru style: 'adi'; pentru voice: key-ul însuși) */
+  /** Override pentru voice (default = pentru style: 'male'; pentru voice: key-ul însuși) */
   voice?: string;
   /** Override lyrics — dacă e setat, sare peste demoLyrics auto. */
   lyrics?: string;
@@ -41,7 +42,7 @@ export const SAMPLE_STYLES = [
 ] as const;
 
 export const SAMPLE_VOICES = [
-  'adi', 'florinel', 'ticu', 'mariana', 'nicu', 'gigi',
+  'male', 'female',
 ] as const;
 
 export type SampleKind = 'style' | 'voice';
@@ -326,8 +327,8 @@ export class SiteSamplesService {
     lyrics: string,
   ): SunoGenerateInput {
     // Voice mapping: site.voices[].sunoVoice > suno.voiceMap > id-ul cheii.
-    // Pentru style sample, vocea default e 'adi' (sau prima din site.voices).
-    const fallbackVoice = site.voices?.[0]?.id ?? 'adi';
+    // Pentru style sample, vocea default e 'male' (sau prima din site.voices).
+    const fallbackVoice = site.voices?.[0]?.id ?? 'male';
     const voiceKey = overrides?.voice ?? (kind === 'voice' ? key : fallbackVoice);
     const voiceFromConfig = site.voices?.find((v) => v.id === voiceKey)?.sunoVoice;
     const voiceArtist = voiceFromConfig ?? site.suno?.voiceMap?.[voiceKey] ?? voiceKey;
@@ -366,7 +367,10 @@ export class SiteSamplesService {
     // auto-salvează — userul ar putea seta „Femeie" în UI dar baza de date încă
     // să aibă valoarea veche când mostra e generată. Override-ul rezolvă asta.
     const voiceCfg = site.voices?.find((v) => v.id === voiceKey);
-    const vocalGender = overrides?.vocalGender ?? voiceCfg?.gender ?? undefined;
+    // Gen vocal — override per-mostră > voiceArtist canonic (male/female) +
+    // fallback legacy > config voce persistată > undefined.
+    const vocalGender =
+      overrides?.vocalGender ?? voiceArtistToGender(voiceKey) ?? voiceCfg?.gender ?? undefined;
     // Mostrele rulează ca piese full (lyrics 20-28 rânduri din writer + critic),
     // ca să iasă ~2-3 min — aceeași calitate / durată ca o comandă reală.
     // Toggle-ul `premium` din UI rămâne ca metadata (nu mai afectează durata,
@@ -492,7 +496,7 @@ export class SiteSamplesService {
   ): Promise<string> {
     const fallbackStyle = site.styles?.[0]?.id ?? 'clasic';
     const styleId = kind === 'style' ? key : (opts?.style?.trim() || fallbackStyle);
-    const voiceKey = opts?.voiceKey ?? (kind === 'voice' ? key : (site.voices?.[0]?.id ?? 'adi'));
+    const voiceKey = opts?.voiceKey ?? (kind === 'voice' ? key : (site.voices?.[0]?.id ?? 'male'));
     const voiceArtist = site.suno?.voiceMap?.[voiceKey] ?? voiceKey;
     const styleHint =
       opts?.customStylePrompt?.trim() || site.suno?.stylePromptMap?.[styleId] || undefined;

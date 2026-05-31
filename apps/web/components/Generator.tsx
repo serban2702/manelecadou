@@ -1151,7 +1151,6 @@ function DetailsStep({ data, upd, playing, onPlay, voices, nudgeFields = [] }: a
   const nudgeMsg = nudgeFields.includes('msg');
   const nudgeVoice = nudgeFields.includes('voice');
   const site = useSite();
-  const [showLyricsEditor, setShowLyricsEditor] = useState(!!data.customLyrics);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
 
@@ -1248,43 +1247,6 @@ function DetailsStep({ data, upd, playing, onPlay, voices, nudgeFields = [] }: a
         <label>{tg('step3.dedicLabel')}</label>
         <input type="text" placeholder={tg('step3.dedicPlaceholder')}
           value={data.dedic} onChange={(e) => upd('dedic', e.target.value)} maxLength={40} />
-      </div>
-
-      <div className="field" style={{ marginTop: 6 }}>
-        <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>{tg('step3.lyricsLabel')}</span>
-          <button
-            type="button"
-            onClick={() => {
-              if (showLyricsEditor) {
-                setShowLyricsEditor(false);
-                upd('customLyrics', '');
-              } else {
-                setShowLyricsEditor(true);
-              }
-            }}
-            style={{
-              fontSize: 11, padding: '3px 10px',
-              background: showLyricsEditor ? 'var(--gold)' : 'rgba(241,200,77,0.1)',
-              color: showLyricsEditor ? '#2a1a04' : 'var(--gold)',
-              border: '1px solid rgba(241,200,77,0.4)', borderRadius: 999, cursor: 'pointer',
-            }}
-          >
-            {showLyricsEditor ? tg('step3.lyricsActive') : tg('step3.lyricsActivate')}
-          </button>
-        </label>
-        {showLyricsEditor && (
-          <>
-            <textarea
-              placeholder={tg('step3.lyricsPlaceholder')}
-              value={data.customLyrics}
-              onChange={(e) => upd('customLyrics', e.target.value)}
-              maxLength={4000}
-              style={{ minHeight: 120 }}
-            />
-            <div className="cc">{data.customLyrics.length}/4000</div>
-          </>
-        )}
       </div>
 
       <h3 style={{ marginTop: 22 }}>{tg('step3.voicesTitle')}</h3>

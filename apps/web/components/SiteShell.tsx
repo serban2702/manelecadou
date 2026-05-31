@@ -65,8 +65,7 @@ export function SiteShell({ children, hideStickyCta: _ignored }: { children: Rea
   return (
     <div className="app site-shell">
       <div className="urgency">
-        <span className="pulse"></span>
-        <span dangerouslySetInnerHTML={{ __html: t.raw('urgency') as string }} />
+        <span className="urgency-text" dangerouslySetInnerHTML={{ __html: t.raw('urgency') as string }} />
       </div>
       <header className="hdr">
         <div className="hdr-inner">
