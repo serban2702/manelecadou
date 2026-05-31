@@ -55,7 +55,7 @@ export const PACKAGES: PackageDef[] = [
   },
 ];
 
-export const DEFAULT_PACKAGE_TIER: PackageTier = 'plus';
+export const DEFAULT_PACKAGE_TIER: PackageTier = 'basic';
 
 export function getPackage(tier: PackageTier): PackageDef {
   return PACKAGES.find((p) => p.tier === tier) ?? PACKAGES[1];
