@@ -212,6 +212,7 @@ export class GenerationsController {
         socialImageUploaded: pub.socialImageUploaded,
         instrumentalUrl: isPaid ? pub.instrumentalUrl : null,
         videoUrl: isPaid ? pub.videoUrl : null,
+        videoUrlBonus: isPaid ? pub.videoUrlBonus : null,
         createdAt: pub.createdAt,
         completedAt: pub.completedAt,
         // datele sensibile (message, dedication, owner ids, custom lyrics) NU expuse public
@@ -368,6 +369,7 @@ function sanitizeAudio<T extends {
   demoBonusAudioUrl?: string | null;
   instrumentalUrl?: string | null;
   videoUrl?: string | null;
+  videoUrlBonus?: string | null;
 }>(g: T): T {
   const isPaid = g.type === 'full' || g.paidUnlocked === true;
   if (isPaid) return g;
@@ -378,5 +380,6 @@ function sanitizeAudio<T extends {
     // Livrabile premium gated până la plată.
     instrumentalUrl: null,
     videoUrl: null,
+    videoUrlBonus: null,
   };
 }

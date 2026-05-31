@@ -13,9 +13,14 @@ export interface IGenerationMediaService {
    *  Întoarce 4 URL-uri publice (`/uploads/social/<id>/v1.png` ...) sau `[]` la eșec. */
   generateSocialImages(gen: Generation): Promise<string[]>;
 
-  /** Generează un videoclip slideshow MP4 din imaginea socială + audio full.
-   *  Întoarce URL-ul public (`/uploads/video/<id>/clip.mp4`) sau `null` la eșec. */
-  generateVideo(gen: Generation): Promise<string | null>;
+  /** Generează un videoclip slideshow MP4 din imaginile sociale + audio.
+   *  `opts.audioPath` (disk) și `opts.outName` permit generarea per-track
+   *  (ex. track 2 → bonus.mp3 / clip2.mp4). Default: full.mp3 / clip.mp4.
+   *  Întoarce URL-ul public (`/uploads/video/<id>/<outName>`) sau `null` la eșec. */
+  generateVideo(
+    gen: Generation,
+    opts?: { audioPath?: string; outName?: string },
+  ): Promise<string | null>;
 }
 
 /** Token de injecție (DI) pentru contractul de mai sus. */

@@ -101,9 +101,13 @@ export class Generation {
   @Column({ type: 'varchar', length: 1024, nullable: true })
   instrumentalUrl!: string | null;
 
-  /** URL videoclip generat (premium). */
+  /** URL videoclip generat (premium) — versiunea 1 (track 1). */
   @Column({ type: 'varchar', length: 1024, nullable: true })
   videoUrl!: string | null;
+
+  /** URL videoclip pentru a 2-a versiune de melodie (track 2, premium). */
+  @Column({ type: 'varchar', length: 1024, nullable: true })
+  videoUrlBonus!: string | null;
 
   @Column({ type: 'varchar', length: 128, nullable: true })
   providerJobId!: string | null;

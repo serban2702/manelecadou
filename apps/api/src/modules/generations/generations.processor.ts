@@ -259,10 +259,21 @@ export class GenerationsProcessor extends WorkerHost {
         }
       }
       if (def.video && gen.type === 'full') {
+        // Generăm un videoclip pentru AMBELE versiuni de melodie (track 1 + track 2).
         try {
           gen.videoUrl = await this.media.generateVideo(gen);
         } catch (err) {
           this.logger.warn(`video generation failed for ${gen.id}: ${(err as Error).message}`);
+        }
+        if (gen.bonusAudioUrl) {
+          try {
+            gen.videoUrlBonus = await this.media.generateVideo(gen, {
+              audioPath: `/app/uploads/audio/${gen.id}/bonus.mp3`,
+              outName: 'clip2.mp4',
+            });
+          } catch (err) {
+            this.logger.warn(`bonus video generation failed for ${gen.id}: ${(err as Error).message}`);
+          }
         }
       }
 

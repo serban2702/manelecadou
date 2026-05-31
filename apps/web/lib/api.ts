@@ -171,8 +171,10 @@ export interface GenerationDto {
   socialImageUploaded?: string | null;
   /** Versiune instrumentală (plus/premium). */
   instrumentalUrl?: string | null;
-  /** Videoclip personalizat (premium). */
+  /** Videoclip personalizat (premium) — versiunea 1. */
   videoUrl?: string | null;
+  /** Videoclip pentru a 2-a versiune de melodie (premium). */
+  videoUrlBonus?: string | null;
 }
 
 export interface RecentDto {

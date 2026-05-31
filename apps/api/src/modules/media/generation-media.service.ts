@@ -22,7 +22,10 @@ export class GenerationMediaService implements IGenerationMediaService {
     return this.socialImages.generateSocialImages(gen);
   }
 
-  generateVideo(gen: Generation): Promise<string | null> {
-    return this.video.generateVideo(gen);
+  generateVideo(
+    gen: Generation,
+    opts?: { audioPath?: string; outName?: string },
+  ): Promise<string | null> {
+    return this.video.generateVideo(gen, opts);
   }
 }

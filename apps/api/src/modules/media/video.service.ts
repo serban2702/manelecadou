@@ -1,11 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { spawn } from 'node:child_process';
-import { access, mkdir } from 'node:fs/promises';
+import { access, mkdir, writeFile, rm } from 'node:fs/promises';
 import { constants as FS } from 'node:fs';
 import { join } from 'node:path';
 
 import type { Generation } from '../generations/generation.entity';
+
+/** Opțiuni per-track pentru generateVideo. Permite generarea unui clip pentru
+ *  versiunea alternativă a melodiei (ex. bonus.mp3 → clip2.mp4) cu aceleași
+ *  imagini sociale. Interfața `IGenerationMediaService.generateVideo(gen)`
+ *  rămâne compatibilă deoarece `opts` e opțional. */
+export interface GenerateVideoOpts {
+  /** Path/URL audio explicit (default: /uploads/audio/<id>/full.mp3). */
+  audioPath?: string;
+  /** Numele fișierului de output (default: clip.mp4). */
+  outName?: string;
+}
 
 /** Fonturi candidate pentru drawtext, în ordinea preferinței.
  *  font-noto (Dockerfile) → /usr/share/fonts/noto/...
@@ -25,21 +36,43 @@ const W = 1080;
 const H = 1920;
 const FPS = 30;
 
-// Tranziții xfade variate, alese ciclic în funcție de index slide.
+// Tranziții xfade variate și „punchy", alese ciclic în funcție de index slide.
+// Mix de slide / wipe / circle / zoom / dissolve pentru senzație dinamică.
 const XFADE_TRANSITIONS = [
-  'fade',
   'slideleft',
-  'wiperight',
   'circleopen',
+  'wiperight',
+  'zoomin',
   'slideup',
-  'smoothleft',
-  'fadeblack',
   'diagtl',
+  'dissolve',
+  'smoothright',
+  'circleclose',
+  'wipeup',
 ];
 
-const TRANSITION_DUR = 1.0; // secunde per tranziție xfade
-const MIN_SLIDE_DUR = 2.5; // durată minimă per slide (sec)
+const TRANSITION_DUR = 0.7; // secunde per tranziție xfade (mai scurt = mai punchy)
+const MIN_SLIDE_DUR = 1.8; // durată minimă per slide (sec) — slide-uri scurte = dinamic
+const MAX_SLIDE_DUR = 4.0; // durată maximă per slide (sec) — forțează schimbări dese
+const TARGET_SLIDES = 5; // țintă de slide-uri (4 imagini + repetiție/al 5-lea cadru)
 const MAX_SLIDES = 5; // cap pe nr de slide-uri (cost filtergraph)
+
+// Lățimea „sigură" pentru text (marje laterale): ~90% din W.
+const TEXT_SAFE_W = Math.floor(W * 0.9);
+// Factor empiric lățime/caracter pentru fonturi bold (≈0.58 * fontsize per char).
+const CHAR_WIDTH_FACTOR = 0.58;
+// Limită inferioară rezonabilă pentru fontsize (texte foarte lungi).
+const MIN_FONTSIZE = 34;
+
+type DrawKind = 'name' | 'occasion' | 'brand';
+
+/** Un fișier temporar cu text pentru `textfile=` (safe pe diacritice/apostrof),
+ *  + textul original (pentru calculul fontsize) + categoria. */
+interface DrawTextFile {
+  kind: DrawKind;
+  path: string;
+  text: string;
+}
 
 @Injectable()
 export class VideoService {
@@ -59,12 +92,17 @@ export class VideoService {
    * Robust: dacă varianta complexă eșuează → fallback la slideshow simplu (o
    * imagine + Ken Burns). `null` doar dacă și fallback-ul eșuează.
    */
-  async generateVideo(gen: Generation): Promise<string | null> {
+  async generateVideo(gen: Generation, opts?: GenerateVideoOpts): Promise<string | null> {
     let dir: string;
     let outPath: string;
     let audioPath: string | null;
     let images: string[];
     let font: string | null;
+
+    const outName = this.sanitizeOutName(opts?.outName) ?? 'clip.mp4';
+
+    // Fișiere temporare pentru drawtext (textfile= e mai sigur cu diacritice/apostrof).
+    const tmpFiles: string[] = [];
 
     try {
       images = await this.resolveImagePaths(gen);
@@ -73,15 +111,15 @@ export class VideoService {
         return null;
       }
 
-      audioPath = await this.resolveAudioPath(gen);
+      audioPath = await this.resolveAudioPath(gen, opts?.audioPath);
       if (!audioPath) {
-        this.logger.warn(`generateVideo: lipsește audio full pe disc pentru gen ${gen.id}`);
+        this.logger.warn(`generateVideo: lipsește audio pe disc pentru gen ${gen.id}`);
         return null;
       }
 
       dir = join(this.uploadsDir, 'video', gen.id);
       await mkdir(dir, { recursive: true });
-      outPath = join(dir, 'clip.mp4');
+      outPath = join(dir, outName);
       font = await this.findFont();
     } catch (err) {
       this.logger.error(`generateVideo setup eșuat (gen ${gen.id}): ${(err as Error).message}`);
@@ -90,29 +128,47 @@ export class VideoService {
 
     const audioDur = await this.probeDuration(audioPath);
 
-    // 1) Încearcă varianta complexă (multi-slide + xfade) dacă avem >= 2 imagini.
-    if (images.length >= 2 && audioDur && audioDur > 0) {
-      try {
-        const args = this.buildComplexArgs(images, audioPath, outPath, gen, font, audioDur);
-        this.logger.log(`generateVideo complex (gen ${gen.id}): ${images.length} slide-uri, ${audioDur.toFixed(1)}s`);
-        await this.runFfmpeg(args);
-        return `/uploads/video/${gen.id}/clip.mp4`;
-      } catch (err) {
-        this.logger.warn(
-          `generateVideo complex eșuat (gen ${gen.id}), cad pe simplu: ${(err as Error).message}`,
-        );
-      }
-    }
-
-    // 2) Fallback: slideshow simplu (o imagine + Ken Burns) — varianta robustă.
     try {
-      const args = this.buildSimpleArgs(images[0], audioPath, outPath, gen, font);
-      this.logger.log(`generateVideo simplu (gen ${gen.id})`);
-      await this.runFfmpeg(args);
-      return `/uploads/video/${gen.id}/clip.mp4`;
-    } catch (err) {
-      this.logger.error(`generateVideo fallback eșuat (gen ${gen.id}): ${(err as Error).message}`);
-      return null;
+      // Expandăm la TARGET_SLIDES (repetăm imagini cu efecte diferite dacă <5).
+      const slides = this.expandSlides(images, TARGET_SLIDES);
+
+      // 1) Încearcă varianta complexă (multi-slide + xfade) dacă avem >= 2 slide-uri.
+      if (slides.length >= 2 && audioDur && audioDur > 0) {
+        try {
+          const drawFiles = await this.writeDrawtextFiles(dir, gen, outName);
+          tmpFiles.push(...drawFiles.map((d) => d.path));
+          const args = this.buildComplexArgs(slides, audioPath, outPath, drawFiles, font, audioDur);
+          this.logger.log(
+            `generateVideo complex (gen ${gen.id}, ${outName}): ${slides.length} slide-uri, ${audioDur.toFixed(1)}s`,
+          );
+          await this.runFfmpeg(args);
+          return `/uploads/video/${gen.id}/${outName}`;
+        } catch (err) {
+          this.logger.warn(
+            `generateVideo complex eșuat (gen ${gen.id}, ${outName}), cad pe simplu: ${(err as Error).message}`,
+          );
+        }
+      }
+
+      // 2) Fallback: slideshow simplu (o imagine + Ken Burns) — varianta robustă.
+      try {
+        const drawFiles = await this.writeDrawtextFiles(dir, gen, `${outName}.simple`);
+        tmpFiles.push(...drawFiles.map((d) => d.path));
+        const args = this.buildSimpleArgs(images[0], audioPath, outPath, drawFiles, font);
+        this.logger.log(`generateVideo simplu (gen ${gen.id}, ${outName})`);
+        await this.runFfmpeg(args);
+        return `/uploads/video/${gen.id}/${outName}`;
+      } catch (err) {
+        this.logger.error(
+          `generateVideo fallback eșuat (gen ${gen.id}, ${outName}): ${(err as Error).message}`,
+        );
+        return null;
+      }
+    } finally {
+      // Curăță fișierele temp drawtext (best-effort).
+      for (const f of tmpFiles) {
+        await rm(f, { force: true }).catch(() => undefined);
+      }
     }
   }
 
@@ -135,14 +191,16 @@ export class VideoService {
     images: string[],
     audioPath: string,
     outPath: string,
-    gen: Generation,
+    drawFiles: DrawTextFile[],
     font: string | null,
     audioDur: number,
   ): string[] {
     const n = images.length;
     // slideDur ales astfel încât după înlănțuirea xfade durata totală ≈ audioDur.
     let slideDur = (audioDur + (n - 1) * TRANSITION_DUR) / n;
+    // Clamp în [MIN, MAX] — slide-uri scurte = senzație dinamică, „se tot schimbă".
     if (slideDur < MIN_SLIDE_DUR) slideDur = MIN_SLIDE_DUR;
+    if (slideDur > MAX_SLIDE_DUR) slideDur = MAX_SLIDE_DUR;
     const slideFrames = Math.max(1, Math.round(slideDur * FPS));
 
     // Ken Burns: alternăm zoom-in / zoom-out + pan ușor per slide pentru varietate.
@@ -178,7 +236,7 @@ export class VideoService {
 
     // Text overlays peste rezultatul xfade.
     let videoLabel = lastLabel;
-    const drawChain = this.buildDrawtextChain(gen, font, totalDur);
+    const drawChain = this.buildDrawtextChain(drawFiles, font, totalDur);
     if (drawChain) {
       filterParts.push(`[${lastLabel}]${drawChain}[vout]`);
       videoLabel = 'vout';
@@ -212,61 +270,70 @@ export class VideoService {
     return args;
   }
 
-  /** Expresie zoompan (Ken Burns) variată per slide: alternativ zoom-in / out + pan. */
+  /** Expresie zoompan (Ken Burns) MAI pronunțată, variată per slide: alternativ
+   *  zoom-in / zoom-out + pan amplu în 5 direcții pentru senzația de mișcare. */
   private kenBurns(i: number, frames: number): string {
-    const mode = i % 4;
-    // increment per frame ca să ajungem la ~1.18 zoom până la finalul slide-ului.
-    const inc = (0.18 / Math.max(1, frames)).toFixed(6);
+    const mode = i % 5;
+    // zoom max mai mare (1.30) → mișcare mai vizibilă decât 1.18.
+    const inc = (0.30 / Math.max(1, frames)).toFixed(6);
+    const pan = 220; // amplitudine pan (px) — mai mare = mai dinamic
     switch (mode) {
       case 0:
-        // zoom-in centrat
-        return (
-          `z='min(zoom+${inc},1.18)':` +
-          `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`
-        );
-      case 1:
         // zoom-in cu pan spre dreapta-jos
         return (
-          `z='min(zoom+${inc},1.18)':` +
-          `x='iw/2-(iw/zoom/2)+(on/${frames})*120':` +
-          `y='ih/2-(ih/zoom/2)+(on/${frames})*120'`
+          `z='min(zoom+${inc},1.30)':` +
+          `x='iw/2-(iw/zoom/2)+(on/${frames})*${pan}':` +
+          `y='ih/2-(ih/zoom/2)+(on/${frames})*${pan}'`
+        );
+      case 1:
+        // zoom-out amplu (pornește zoomat) cu pan spre stânga
+        return (
+          `z='if(eq(on,0),1.30,max(zoom-${inc},1.02))':` +
+          `x='iw/2-(iw/zoom/2)-(on/${frames})*${pan}':` +
+          `y='ih/2-(ih/zoom/2)'`
         );
       case 2:
-        // zoom-out lent (pornește zoomat)
-        return (
-          `z='if(eq(on,0),1.18,max(zoom-${inc},1.0))':` +
-          `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`
-        );
-      default:
         // zoom-in cu pan spre stânga-sus
         return (
-          `z='min(zoom+${inc},1.18)':` +
-          `x='iw/2-(iw/zoom/2)-(on/${frames})*120':` +
-          `y='ih/2-(ih/zoom/2)-(on/${frames})*120'`
+          `z='min(zoom+${inc},1.30)':` +
+          `x='iw/2-(iw/zoom/2)-(on/${frames})*${pan}':` +
+          `y='ih/2-(ih/zoom/2)-(on/${frames})*${pan}'`
+        );
+      case 3:
+        // zoom-in cu pan spre dreapta-sus
+        return (
+          `z='min(zoom+${inc},1.30)':` +
+          `x='iw/2-(iw/zoom/2)+(on/${frames})*${pan}':` +
+          `y='ih/2-(ih/zoom/2)-(on/${frames})*${pan}'`
+        );
+      default:
+        // zoom-out cu pan spre dreapta-jos
+        return (
+          `z='if(eq(on,0),1.30,max(zoom-${inc},1.02))':` +
+          `x='iw/2-(iw/zoom/2)+(on/${frames})*${pan}':` +
+          `y='ih/2-(ih/zoom/2)+(on/${frames})*${pan}'`
         );
     }
   }
 
   /**
    * Lanț de drawtext cu fade in/out, poziționate estetic și apărând la momente
-   * diferite (nu static tot timpul). Întoarce `null` dacă nu avem font.
+   * diferite (nu static tot timpul). Folosește `textfile=` (diacritice/apostrof
+   * safe) și fontsize auto-scalat ca textul să încapă mereu în cadru.
+   * Întoarce `null` dacă nu avem font sau nimic de afișat.
    */
-  private buildDrawtextChain(gen: Generation, font: string | null, totalDur: number): string | null {
-    if (!font) return null;
+  private buildDrawtextChain(
+    drawFiles: DrawTextFile[],
+    font: string | null,
+    totalDur: number,
+  ): string | null {
+    if (!font || drawFiles.length === 0) return null;
 
-    const name = this.cleanText(gen.recipientName);
-    const occasion = this.cleanText(gen.occasion);
     const chain: string[] = [];
 
-    // Helper local pentru a construi un drawtext cu fade in/out pe interval.
-    const make = (
-      text: string,
-      fontsize: number,
-      y: string,
-      start: number,
-      end: number,
-    ): string => {
-      const esc = this.escDrawtext(text);
+    // Helper local pentru un drawtext cu fade in/out + fontsize încadrat în cadru.
+    const make = (df: DrawTextFile, baseSize: number, y: string, start: number, end: number): string => {
+      const fontsize = this.fitFontSize(df.text, baseSize);
       // alpha animat: fade-in 0.5s la start, fade-out 0.5s la end, opac între.
       const fi = 0.5;
       const fo = 0.5;
@@ -276,41 +343,41 @@ export class VideoService {
         `if(lt(t,${(end - fo).toFixed(2)}),1,` +
         `if(lt(t,${end.toFixed(2)}),(${end.toFixed(2)}-t)/${fo},0))))`;
       return (
-        `drawtext=fontfile='${font}':text='${esc}':` +
+        `drawtext=fontfile='${this.escPath(font)}':textfile='${this.escPath(df.path)}':` +
         `fontcolor=white:fontsize=${fontsize}:` +
         `borderw=4:bordercolor=black@0.7:` +
         `shadowx=2:shadowy=2:shadowcolor=black@0.6:` +
-        `x=(w-text_w)/2:y=${y}:` +
+        // auto-centrat orizontal; expr clamp pe x în caz extrem ca textul să nu iasă.
+        `x='max(20,(w-text_w)/2)':y=${y}:` +
         `alpha='${alpha}':` +
         `enable='between(t,${start.toFixed(2)},${end.toFixed(2)})'`
       );
     };
 
+    const byKind = (k: DrawKind) => drawFiles.find((d) => d.kind === k);
+
     // 1) „Pentru <nume>" — apare devreme, sus-centru.
-    if (name) {
+    const nameDf = byKind('name');
+    if (nameDf) {
       const start = 0.6;
       const end = Math.min(totalDur - 0.5, 5.0);
-      if (end > start + 1) {
-        chain.push(make(`Pentru ${name}`, 84, 'h*0.18', start, end));
-      }
+      if (end > start + 1) chain.push(make(nameDf, 84, 'h*0.18', start, end));
     }
 
     // 2) Ocazia — la mijloc, jos-centru.
-    if (occasion) {
+    const occDf = byKind('occasion');
+    if (occDf) {
       const start = Math.min(totalDur * 0.4, totalDur - 4);
       const end = Math.min(totalDur - 0.5, start + 4);
-      if (end > start + 1) {
-        chain.push(make(occasion, 64, 'h-360', start, end));
-      }
+      if (end > start + 1) chain.push(make(occDf, 64, 'h-360', start, end));
     }
 
     // 3) Brand „manelecadou.ro" — finalul clipului, jos-centru.
-    {
+    const brandDf = byKind('brand');
+    if (brandDf) {
       const end = totalDur - 0.4;
       const start = Math.max(0.5, end - 4);
-      if (end > start + 1) {
-        chain.push(make('manelecadou.ro', 56, 'h-220', start, end));
-      }
+      if (end > start + 1) chain.push(make(brandDf, 56, 'h-220', start, end));
     }
 
     if (chain.length === 0) return null;
@@ -321,12 +388,12 @@ export class VideoService {
   // VARIANTA SIMPLĂ (FALLBACK)
   // ─────────────────────────────────────────────────────────────────────────
 
-  /** Slideshow simplu: o imagine + Ken Burns + text static. Robust, vechi-stabil. */
+  /** Slideshow simplu: o imagine + Ken Burns + text static încadrat. Robust. */
   private buildSimpleArgs(
     imagePath: string,
     audioPath: string,
     outPath: string,
-    gen: Generation,
+    drawFiles: DrawTextFile[],
     font: string | null,
   ): string[] {
     const maxFrames = FPS * 60 * 30; // 30 min cap (audio real e mult mai scurt)
@@ -341,21 +408,26 @@ export class VideoService {
       `format=yuv420p`,
     ];
 
-    const name = this.cleanText(gen.recipientName);
-    if (font && name) {
-      const text = this.escDrawtext(`Pentru ${name}`);
-      filters.push(
-        `drawtext=fontfile='${font}':text='${text}':fontcolor=white:fontsize=72:` +
-          `box=1:boxcolor=black@0.45:boxborderw=24:` +
-          `x=(w-text_w)/2:y=h-260`,
-      );
-    }
     if (font) {
-      const brand = this.escDrawtext('manelecadou.ro');
-      filters.push(
-        `drawtext=fontfile='${font}':text='${brand}':fontcolor=white:fontsize=52:` +
-          `borderw=3:bordercolor=black@0.7:x=(w-text_w)/2:y=h-150`,
-      );
+      const nameDf = drawFiles.find((d) => d.kind === 'name');
+      if (nameDf) {
+        const fontsize = this.fitFontSize(nameDf.text, 72);
+        filters.push(
+          `drawtext=fontfile='${this.escPath(font)}':textfile='${this.escPath(nameDf.path)}':` +
+            `fontcolor=white:fontsize=${fontsize}:` +
+            `box=1:boxcolor=black@0.45:boxborderw=24:` +
+            `x='max(20,(w-text_w)/2)':y=h-260`,
+        );
+      }
+      const brandDf = drawFiles.find((d) => d.kind === 'brand');
+      if (brandDf) {
+        const fontsize = this.fitFontSize(brandDf.text, 52);
+        filters.push(
+          `drawtext=fontfile='${this.escPath(font)}':textfile='${this.escPath(brandDf.path)}':` +
+            `fontcolor=white:fontsize=${fontsize}:` +
+            `borderw=3:bordercolor=black@0.7:x='max(20,(w-text_w)/2)':y=h-150`,
+        );
+      }
     }
 
     return [
@@ -475,9 +547,21 @@ export class VideoService {
     return resolved;
   }
 
-  /** Audio full pe disc: `/uploads/audio/<id>/full.mp3` (sau din `audioUrl`). */
-  private async resolveAudioPath(gen: Generation): Promise<string | null> {
+  /**
+   * Audio pe disc. Dacă `override` e dat (ex. al doilea track `bonus.mp3` ca
+   * URL `/uploads/audio/<id>/bonus.mp3` sau path absolut), îl folosim prioritar.
+   * Altfel: `gen.audioUrl` → `/uploads/audio/<id>/full.mp3`.
+   */
+  private async resolveAudioPath(gen: Generation, override?: string): Promise<string | null> {
     const candidates: string[] = [];
+
+    if (typeof override === 'string' && override) {
+      // Suportă atât URL `/uploads/...` cât și path absolut pe disc.
+      const fromUrl = this.localPathFromUrl(override);
+      if (fromUrl) candidates.push(fromUrl);
+      else candidates.push(override);
+    }
+
     if (typeof gen.audioUrl === 'string' && gen.audioUrl) {
       const p = this.localPathFromUrl(gen.audioUrl);
       if (p) candidates.push(p);
@@ -524,12 +608,79 @@ export class VideoService {
     return (s ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
   }
 
-  /** Escape pentru filtru drawtext ffmpeg (`:`, `'`, `\`, `%`). */
-  private escDrawtext(s: string): string {
-    return s
-      .replace(/\\/g, '\\\\')
-      .replace(/'/g, "\\\\'")
-      .replace(/:/g, '\\:')
-      .replace(/%/g, '\\%');
+  /**
+   * Calculează un fontsize care garantează încadrarea textului în TEXT_SAFE_W
+   * (~90% din 1080px). Pentru texte lungi scade proporțional, cu limită
+   * inferioară MIN_FONTSIZE. Formulă: lățime estimată = len*factor*fontsize.
+   *   maxFit = TEXT_SAFE_W / (len * CHAR_WIDTH_FACTOR)
+   */
+  private fitFontSize(text: string, base: number): number {
+    const len = Math.max(1, text.length);
+    const maxFit = Math.floor(TEXT_SAFE_W / (len * CHAR_WIDTH_FACTOR));
+    const size = Math.min(base, maxFit);
+    return Math.max(MIN_FONTSIZE, size);
+  }
+
+  /**
+   * Scrie fișierele temp pentru `textfile=` (drawtext). Conținutul e textul brut
+   * (UTF-8) — ffmpeg `textfile` nu cere escape de `:`/`'`, doar `%` și `\` sunt
+   * interpretate; le escapăm. Diacriticele trec nealterate (font Noto le acoperă).
+   */
+  private async writeDrawtextFiles(
+    dir: string,
+    gen: Generation,
+    suffix: string,
+  ): Promise<DrawTextFile[]> {
+    const safeSuffix = suffix.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const out: DrawTextFile[] = [];
+
+    const name = this.cleanText(gen.recipientName);
+    const occasion = this.cleanText(gen.occasion);
+
+    const entries: Array<{ kind: DrawKind; text: string }> = [];
+    if (name) entries.push({ kind: 'name', text: `Pentru ${name}` });
+    if (occasion) entries.push({ kind: 'occasion', text: occasion });
+    entries.push({ kind: 'brand', text: 'manelecadou.ro' });
+
+    for (const e of entries) {
+      const path = join(dir, `.dt-${e.kind}-${safeSuffix}.txt`);
+      await writeFile(path, this.escTextFile(e.text), 'utf8');
+      out.push({ kind: e.kind, path, text: e.text });
+    }
+    return out;
+  }
+
+  /** Escape minimal pentru conținut `textfile=` (doar `\` și `%` sunt speciale). */
+  private escTextFile(s: string): string {
+    return s.replace(/\\/g, '\\\\').replace(/%/g, '\\%');
+  }
+
+  /** Escape path-uri folosite în opțiuni drawtext (`fontfile=`, `textfile=`). */
+  private escPath(p: string): string {
+    return p.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "\\'");
+  }
+
+  /**
+   * Expandează lista de imagini la `target` slide-uri repetând ciclic imaginile
+   * disponibile (cele 4 v1..v4 + un al 5-lea cadru = repetă v1 cu alt efect KB).
+   * Dacă avem deja >= target, păstrăm primele `target`.
+   */
+  private expandSlides(images: string[], target: number): string[] {
+    if (images.length === 0) return [];
+    if (images.length >= target) return images.slice(0, target);
+    const out: string[] = [];
+    for (let i = 0; i < target; i++) {
+      out.push(images[i % images.length]);
+    }
+    return out;
+  }
+
+  /** Validează `outName` pentru a evita path traversal; întoarce null dacă invalid. */
+  private sanitizeOutName(name?: string): string | null {
+    if (!name) return null;
+    const base = name.trim();
+    if (!base || base.includes('/') || base.includes('\\') || base.includes('..')) return null;
+    if (!/^[a-zA-Z0-9._-]+\.mp4$/.test(base)) return null;
+    return base;
   }
 }

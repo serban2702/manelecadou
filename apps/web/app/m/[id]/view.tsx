@@ -251,10 +251,22 @@ function ShareGenerationViewInner() {
       {g.videoUrl && (
         <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
-            🎬 Videoclip personalizat
+            🎬 Videoclip personalizat{g.videoUrlBonus ? ' — versiunea 1' : ''}
           </div>
           <VideoPlayer
             src={resolveMediaUrl(g.videoUrl)!}
+            poster={resolveMediaUrl(g.socialImageUploaded ?? g.socialImageSelected ?? g.coverUrl)}
+          />
+        </div>
+      )}
+
+      {g.videoUrlBonus && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
+            🎬 Videoclip personalizat — versiunea 2
+          </div>
+          <VideoPlayer
+            src={resolveMediaUrl(g.videoUrlBonus)!}
             poster={resolveMediaUrl(g.socialImageUploaded ?? g.socialImageSelected ?? g.coverUrl)}
           />
         </div>
