@@ -213,6 +213,7 @@ export class GenerationsController {
         instrumentalUrl: isPaid ? pub.instrumentalUrl : null,
         videoUrl: isPaid ? pub.videoUrl : null,
         videoUrlBonus: isPaid ? pub.videoUrlBonus : null,
+        deliverablesReady: pub.deliverablesReady,
         createdAt: pub.createdAt,
         completedAt: pub.completedAt,
         // datele sensibile (message, dedication, owner ids, custom lyrics) NU expuse public

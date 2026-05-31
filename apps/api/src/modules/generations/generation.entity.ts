@@ -109,6 +109,15 @@ export class Generation {
   @Column({ type: 'varchar', length: 1024, nullable: true })
   videoUrlBonus!: string | null;
 
+  /**
+   * true când TOATE livrabilele pachetului (instrumental/imagini) au fost
+   * procesate (cu succes sau eșec). Melodia poate fi `succeeded` înainte ca
+   * extras-urile să fie gata — frontend-ul face polling până aici devine true.
+   * Default true: basic + generări legacy nu au extras de așteptat.
+   */
+  @Column({ type: 'boolean', default: true })
+  deliverablesReady!: boolean;
+
   @Column({ type: 'varchar', length: 128, nullable: true })
   providerJobId!: string | null;
 

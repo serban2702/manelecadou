@@ -60,10 +60,13 @@ function ShareGenerationViewInner() {
   // din Generator (progress bar + statusuri vii).
   useEffect(() => {
     if (!g) return;
-    if (!IN_PROGRESS_STATUSES.has(g.status)) return;
+    // Continuăm polling-ul cât timp generarea e în lucru SAU melodia e gata dar
+    // livrabilele extra (instrumental/imagini) încă se generează în fundal.
+    const stillEnriching = g.status === 'succeeded' && g.deliverablesReady === false;
+    if (!IN_PROGRESS_STATUSES.has(g.status) && !stillEnriching) return;
     const id = setInterval(refresh, 2500);
     return () => clearInterval(id);
-  }, [g?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [g?.status, g?.deliverablesReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!g || viewTrackedRef.current) return;
@@ -124,6 +127,11 @@ function ShareGenerationViewInner() {
 
   const isPaid = g.type === 'full' || g.paidUnlocked;
   const inProgress = IN_PROGRESS_STATUSES.has(g.status);
+  // Pachetele plus/premium au livrabile extra (instrumental + imagini) care se
+  // generează în fundal după ce melodia e gata. Cât `deliverablesReady` e false,
+  // arătăm placeholder-e „se generează" pentru ce încă lipsește.
+  const tierHasExtras = g.packageTier === 'plus' || g.packageTier === 'premium';
+  const enriching = isPaid && tierHasExtras && g.deliverablesReady === false;
   // Lookup chain: admin-defined config per site (cu i18n localizare) → seed-data
   //               → traduceri next-intl (pentru seed-data ids) → literal id.
   const adminStyle = site.styles?.find((s) => s.id === g.style);
@@ -231,7 +239,7 @@ function ShareGenerationViewInner() {
         <PaywallSection generationId={g.id} />
       )}
 
-      {g.instrumentalUrl && (
+      {g.instrumentalUrl ? (
         <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
             🎼 Versiune instrumentală
@@ -246,7 +254,16 @@ function ShareGenerationViewInner() {
             ⬇ Descarcă instrumentalul
           </a>
         </div>
-      )}
+      ) : enriching ? (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
+            🎼 Versiune instrumentală
+          </div>
+          <div className="ld" style={{ fontSize: 13, opacity: 0.85 }}>
+            ⏳ Se pregătește versiunea instrumentală… (apare automat în câteva minute)
+          </div>
+        </div>
+      ) : null}
 
       {g.videoUrl && (
         <div style={{ marginTop: 16 }}>
@@ -272,7 +289,7 @@ function ShareGenerationViewInner() {
         </div>
       )}
 
-      {g.status === 'succeeded' && !!(g.socialImages && g.socialImages.length) && (
+      {g.status === 'succeeded' && !!(g.socialImages && g.socialImages.length) ? (
         <SocialImageSection
           generation={g}
           // BUG FIX: endpoint-urile select/upload întorc un obiect PARȚIAL
@@ -281,7 +298,19 @@ function ShareGenerationViewInner() {
           // păstrăm restul câmpurilor (recipientName, type, audioUrl, videoUrl…).
           onUpdated={(fresh) => setG((prev) => (prev ? { ...prev, ...fresh } : prev))}
         />
-      )}
+      ) : enriching ? (
+        <div style={{
+          marginTop: 16, padding: 16, borderRadius: 12,
+          border: '1px solid rgba(241,200,77,0.25)', background: 'rgba(241,200,77,0.04)',
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
+            📸 Poza ta de share
+          </div>
+          <div className="ld" style={{ fontSize: 13, opacity: 0.85 }}>
+            ⏳ Se generează pozele pentru share… (apar automat în câteva momente)
+          </div>
+        </div>
+      ) : null}
 
       {g.status === 'succeeded' && (
         <ShareSection

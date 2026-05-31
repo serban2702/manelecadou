@@ -175,6 +175,8 @@ export interface GenerationDto {
   videoUrl?: string | null;
   /** Videoclip pentru a 2-a versiune de melodie (premium). */
   videoUrlBonus?: string | null;
+  /** false cât timp livrabilele extra (instrumental/imagini) încă se generează în fundal. */
+  deliverablesReady?: boolean;
 }
 
 export interface RecentDto {

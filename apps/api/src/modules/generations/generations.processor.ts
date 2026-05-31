@@ -208,83 +208,95 @@ export class GenerationsProcessor extends WorkerHost {
       }
 
       const def = packageDef(tier);
+      const hasExtras =
+        gen.type === 'full' && (def.instrumental || def.socialImage || def.video);
 
-      // ===== INSTRUMENTAL (plus / premium) =====
-      // După ce melodia principală e gata, lansăm o generare instrumentală
-      // separată (Suno cu instrumental:true, același style/voce). Robust:
-      // eșecul NU pică melodia principală.
-      if (def.instrumental && gen.type === 'full') {
-        try {
-          const instr = await this.suno.generate({
-            type: gen.type,
-            durationSec: targetDuration,
-            style: gen.style,
-            occasion: gen.occasion,
-            recipientName: gen.recipientName,
-            message: gen.message,
-            dedication: gen.dedication ?? undefined,
-            voiceArtist: gen.voiceArtist,
-            lyrics: refined,
-            generationId: gen.id,
-            site: site ?? undefined,
-            vocalGender,
-            personaId: voiceEntry?.sunoPersonaId,
-            styleWeight: styleEntry?.styleWeight,
-            weirdnessConstraint: styleEntry?.weirdnessConstraint,
-            negativeTags: styleEntry?.negativeTags,
-            instrumental: true,
-          });
-          const instrSource = instr.tracks[0]?.audioUrl;
-          if (instrSource) {
-            try {
-              const im = await this.audio.downloadAndMakeDemo(gen.id, instrSource, 'instrumental');
-              gen.instrumentalUrl = im.fullUrl;
-            } catch (err) {
-              this.logger.warn(
-                `instrumental audio processing failed for ${gen.id}: ${(err as Error).message}`,
-              );
-              gen.instrumentalUrl = instrSource;
-            }
-          }
-        } catch (err) {
-          this.logger.warn(`instrumental generation failed for ${gen.id}: ${(err as Error).message}`);
-        }
-      }
-
-      // ===== MEDIA (imagine socială + video) =====
-      // Graceful — eșecul NU pică livrarea. media.* sunt furnizate de MediaModule.
-      if (def.socialImage && gen.type === 'full') {
-        try {
-          gen.socialImages = await this.media.generateSocialImages(gen);
-          gen.socialImageSelected = gen.socialImages[0] ?? null;
-        } catch (err) {
-          this.logger.warn(`social image generation failed for ${gen.id}: ${(err as Error).message}`);
-        }
-      }
-      if (def.video && gen.type === 'full') {
-        // Generăm un videoclip pentru AMBELE versiuni de melodie (track 1 + track 2).
-        try {
-          gen.videoUrl = await this.media.generateVideo(gen);
-        } catch (err) {
-          this.logger.warn(`video generation failed for ${gen.id}: ${(err as Error).message}`);
-        }
-        if (gen.bonusAudioUrl) {
-          try {
-            gen.videoUrlBonus = await this.media.generateVideo(gen, {
-              audioPath: `/app/uploads/audio/${gen.id}/bonus.mp3`,
-              outName: 'clip2.mp4',
-            });
-          } catch (err) {
-            this.logger.warn(`bonus video generation failed for ${gen.id}: ${(err as Error).message}`);
-          }
-        }
-      }
-
+      // Melodia principală e gata → marcăm `succeeded` ACUM, ca să fie ascultabilă
+      // imediat, FĂRĂ a aștepta extras-urile (instrumental/imagini/video). Acestea
+      // se generează după și se atașează PROGRESIV (cu save după fiecare), iar
+      // frontend-ul face polling până când `deliverablesReady` devine true.
       gen.status = 'succeeded';
       gen.completedAt = new Date();
       gen.nextRetryAt = null;
+      gen.deliverablesReady = !hasExtras;
       await this.repo.save(gen);
       this.logger.log(`generation ${gen.id} succeeded with ${result.tracks.length} tracks`);
+
+      if (hasExtras) {
+        // ===== INSTRUMENTAL (plus / premium) — în fundal, după ce melodia e live =====
+        if (def.instrumental) {
+          try {
+            const instr = await this.suno.generate({
+              type: gen.type,
+              durationSec: targetDuration,
+              style: gen.style,
+              occasion: gen.occasion,
+              recipientName: gen.recipientName,
+              message: gen.message,
+              dedication: gen.dedication ?? undefined,
+              voiceArtist: gen.voiceArtist,
+              lyrics: refined,
+              generationId: gen.id,
+              site: site ?? undefined,
+              vocalGender,
+              personaId: voiceEntry?.sunoPersonaId,
+              styleWeight: styleEntry?.styleWeight,
+              weirdnessConstraint: styleEntry?.weirdnessConstraint,
+              negativeTags: styleEntry?.negativeTags,
+              instrumental: true,
+            });
+            const instrSource = instr.tracks[0]?.audioUrl;
+            if (instrSource) {
+              try {
+                const im = await this.audio.downloadAndMakeDemo(gen.id, instrSource, 'instrumental');
+                gen.instrumentalUrl = im.fullUrl;
+              } catch (err) {
+                this.logger.warn(
+                  `instrumental audio processing failed for ${gen.id}: ${(err as Error).message}`,
+                );
+                gen.instrumentalUrl = instrSource;
+              }
+            }
+          } catch (err) {
+            this.logger.warn(`instrumental generation failed for ${gen.id}: ${(err as Error).message}`);
+          }
+          await this.repo.save(gen); // apare imediat la polling
+        }
+
+        // ===== IMAGINI SOCIALE (plus / premium) =====
+        if (def.socialImage) {
+          try {
+            gen.socialImages = await this.media.generateSocialImages(gen);
+            gen.socialImageSelected = gen.socialImages[0] ?? null;
+          } catch (err) {
+            this.logger.warn(`social image generation failed for ${gen.id}: ${(err as Error).message}`);
+          }
+          await this.repo.save(gen);
+        }
+
+        // ===== VIDEO (dezactivat momentan via def.video=false; păstrat) =====
+        if (def.video) {
+          try {
+            gen.videoUrl = await this.media.generateVideo(gen);
+          } catch (err) {
+            this.logger.warn(`video generation failed for ${gen.id}: ${(err as Error).message}`);
+          }
+          if (gen.bonusAudioUrl) {
+            try {
+              gen.videoUrlBonus = await this.media.generateVideo(gen, {
+                audioPath: `/app/uploads/audio/${gen.id}/bonus.mp3`,
+                outName: 'clip2.mp4',
+              });
+            } catch (err) {
+              this.logger.warn(`bonus video generation failed for ${gen.id}: ${(err as Error).message}`);
+            }
+          }
+          await this.repo.save(gen);
+        }
+
+        gen.deliverablesReady = true;
+        await this.repo.save(gen);
+      }
 
       await this.notifyOwner(gen);
       void this.notifyChat(gen.id, 'succeeded');
