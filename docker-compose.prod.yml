@@ -49,6 +49,9 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       MAGIC_LINK_TTL_MIN: ${MAGIC_LINK_TTL_MIN:-15}
       SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY}
+      # Microserviciu media pe Hetzner (offload ffmpeg/resvg). Gol → randare locală.
+      MEDIA_SERVICE_URL: ${MEDIA_SERVICE_URL:-}
+      MEDIA_SERVICE_TOKEN: ${MEDIA_SERVICE_TOKEN:-}
       MAIL_PROVIDER: ${MAIL_PROVIDER:-mailgun}
       MAIL_FROM: ${MAIL_FROM}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-}
