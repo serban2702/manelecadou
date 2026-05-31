@@ -918,6 +918,7 @@ function CollageSection({ generation }: { generation: GenerationDto }) {
   const [previews, setPreviews] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   // Colajul curent (din mount sau după submit) + flag de polling activ.
   const [collage, setCollage] = useState<
     { id: string; status: 'pending' | 'processing' | 'succeeded' | 'failed'; videoUrl?: string | null } | null
@@ -956,10 +957,13 @@ function CollageSection({ generation }: { generation: GenerationDto }) {
     return () => { previews.forEach((u) => URL.revokeObjectURL(u)); };
   }, [previews]);
 
-  function onPick(e: React.ChangeEvent<HTMLInputElement>) {
-    const picked = Array.from(e.target.files ?? []);
-    e.target.value = ''; // permite re-pick aceleași fișiere
-    if (picked.length === 0) return;
+  // Validează + acceptă o listă de fișiere (folosit de input ȘI de drag&drop).
+  function acceptFiles(all: File[]) {
+    const picked = all.filter((f) => f.type.startsWith('image/'));
+    if (picked.length === 0) {
+      if (all.length > 0) setErr('Trage doar fișiere imagine (JPG, PNG, WEBP…).');
+      return;
+    }
     setErr(null);
     if (picked.length > MAX_COLLAGE_IMAGES) {
       setErr(`Poți alege maxim ${MAX_COLLAGE_IMAGES} imagini. Ai selectat ${picked.length}.`);
@@ -974,6 +978,12 @@ function CollageSection({ generation }: { generation: GenerationDto }) {
     previews.forEach((u) => URL.revokeObjectURL(u));
     setFiles(picked);
     setPreviews(picked.map((f) => URL.createObjectURL(f)));
+  }
+
+  function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []);
+    e.target.value = ''; // permite re-pick aceleași fișiere
+    if (picked.length > 0) acceptFiles(picked);
   }
 
   async function submit() {
@@ -1029,14 +1039,47 @@ function CollageSection({ generation }: { generation: GenerationDto }) {
     );
   }
 
-  // Stare: în lucru (pending/processing).
+  // Stare: în lucru (pending/processing) — card animat.
   if (collage && (collage.status === 'pending' || collage.status === 'processing')) {
     return (
       <div style={sectionStyle}>
-        <div style={headerStyle}>🎞️ Fă-ți un colaj video</div>
-        <div className="ld" style={{ fontSize: 13, opacity: 0.85 }}>
-          ⏳ Se generează colajul video… (durează câteva minute, primești și pe email)
+        <div style={headerStyle}>🎞️ Colajul tău video</div>
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
+          padding: '22px 12px 18px', gap: 14,
+        }}>
+          {/* Spinner cu inel auriu */}
+          <div style={{
+            width: 56, height: 56, borderRadius: '50%',
+            border: '4px solid rgba(241,200,77,0.18)', borderTopColor: 'var(--gold)',
+            animation: 'spin 0.9s linear infinite',
+          }} />
+          <div style={{ fontFamily: "'Cinzel', serif", fontSize: 17, fontWeight: 700, color: 'var(--gold-2)' }}>
+            Îți montăm colajul…
+          </div>
+          {/* Bară shimmer indeterminată */}
+          <div style={{
+            width: '100%', maxWidth: 320, height: 8, borderRadius: 999, overflow: 'hidden',
+            background: 'rgba(241,200,77,0.12)', position: 'relative',
+          }}>
+            <div style={{
+              position: 'absolute', top: 0, bottom: 0, width: '45%', borderRadius: 999,
+              background: 'linear-gradient(90deg, transparent, var(--gold), transparent)',
+              animation: 'collageShimmer 1.4s ease-in-out infinite',
+            }} />
+          </div>
+          <div style={{ fontSize: 12.5, lineHeight: 1.6, color: 'rgba(255,245,220,0.6)', maxWidth: 340 }}>
+            🖼️ Aranjăm pozele · 🎬 Adăugăm tranziții · 🎵 Sincronizăm pe melodie<br />
+            Durează câteva minute. <b style={{ color: 'var(--gold-2)' }}>Primești și pe email</b> când e gata —
+            poți închide pagina.
+          </div>
         </div>
+        <style>{`
+          @keyframes collageShimmer {
+            0% { left: -45%; }
+            100% { left: 100%; }
+          }
+        `}</style>
       </div>
     );
   }
@@ -1109,15 +1152,38 @@ function CollageSection({ generation }: { generation: GenerationDto }) {
         onChange={onPick}
         style={{ display: 'none' }}
       />
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => fileRef.current?.click()}
-        disabled={submitting}
-        className="btn btn-ghost"
-        style={{ width: '100%', opacity: submitting ? 0.6 : 1 }}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileRef.current?.click(); }}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragEnter={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          acceptFiles(Array.from(e.dataTransfer.files ?? []));
+        }}
+        style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          gap: 6, padding: '26px 16px', cursor: 'pointer', textAlign: 'center',
+          borderRadius: 12,
+          border: `2px dashed ${dragOver ? 'var(--gold)' : 'rgba(241,200,77,0.35)'}`,
+          background: dragOver ? 'rgba(241,200,77,0.12)' : 'rgba(0,0,0,0.2)',
+          transition: 'border-color 0.15s, background 0.15s',
+        }}
       >
-        {files.length > 0 ? `📷 ${files.length} imagini selectate (schimbă)` : '⬆ Alege imagini (max 15)'}
-      </button>
+        <div style={{ fontSize: 28, lineHeight: 1 }}>{dragOver ? '📥' : '🖼️'}</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--gold-2)' }}>
+          {files.length > 0
+            ? `📷 ${files.length} imagini selectate — apasă să schimbi`
+            : dragOver ? 'Dă drumul pozelor aici' : 'Trage pozele aici sau apasă să alegi'}
+        </div>
+        <div style={{ fontSize: 11.5, color: 'rgba(255,245,220,0.5)' }}>
+          max 15 imagini · până la 10MB fiecare · JPG / PNG / WEBP
+        </div>
+      </div>
 
       {previews.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, marginTop: 10 }}>
