@@ -42,6 +42,7 @@ import { OutboundEmailModule } from './modules/outbound-email/outbound-email.mod
 import { MetaCapiModule } from './modules/meta-capi/meta-capi.module';
 import { SiteDemosModule } from './modules/site-demos/site-demos.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
+import { MarketingModule } from './modules/marketing/marketing.module';
 
 @Module({
   imports: [
@@ -93,6 +94,7 @@ import { InvoicesModule } from './modules/invoices/invoices.module';
     AiChatModule,
     SiteDemosModule,
     InvoicesModule,
+    MarketingModule,
     SeederModule,
   ],
   providers: [

@@ -19,3 +19,4 @@ export * from './api/database.api';
 export * from './api/sites.api';
 export * from './api/web-push.api';
 export * from './api/ai-chat.api';
+export * from './api/marketing.api';

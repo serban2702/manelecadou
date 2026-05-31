@@ -51,6 +51,7 @@ const SiteConfig      = dynamic(() => import('../site/_content'),            { s
 const AiMemory        = dynamic(() => import('../ai-memory/_content'),       { ssr: false, loading: Loading });
 const AiMonitor       = dynamic(() => import('../ai-monitor/_content'),      { ssr: false, loading: Loading });
 const Emails          = dynamic(() => import('../emails/_content'),          { ssr: false, loading: Loading });
+const Marketing       = dynamic(() => import('../marketing/_content'),       { ssr: false, loading: Loading });
 const SiteDemos       = dynamic(() => import('../site-demos/_content'),      { ssr: false, loading: Loading });
 
 const ROUTES: Record<string, ComponentType> = {
@@ -77,6 +78,7 @@ const ROUTES: Record<string, ComponentType> = {
   '/ai-memory':          AiMemory,
   '/ai-monitor':         AiMonitor,
   '/emails':             Emails,
+  '/marketing':          Marketing,
   '/site-demos':         SiteDemos,
 };
 

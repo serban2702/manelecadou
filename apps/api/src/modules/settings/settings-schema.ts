@@ -163,6 +163,28 @@ export const SETTINGS_SCHEMA: SettingCategory[] = [
     ],
   },
   {
+    id: 'marketing',
+    title: 'Marketing emails',
+    description: 'Trimiteri automate de oferte (drip). Campaniile manuale și regulile se gestionează în pagina /marketing.',
+    settings: [
+      {
+        key: 'MARKETING_AUTOMATION_ENABLED',
+        label: 'Reguli automate active',
+        description: 'Master switch pentru cron-ul nightly (09:00 UTC) care rulează regulile de drip. Fiecare regulă are și propriul on/off.',
+        kind: 'bool',
+        hotReload: true,
+      },
+      {
+        key: 'MARKETING_RULE_MAX_PER_RUN',
+        label: 'Max emailuri per regulă / rulare',
+        description: 'Plafon de siguranță pentru fiecare rulare a unei reguli (evită burst-uri când activezi o regulă pe un backlog mare).',
+        kind: 'number',
+        hotReload: true,
+        placeholder: '200',
+      },
+    ],
+  },
+  {
     id: 'web-push',
     title: 'Web Push (notificări admin)',
     description: 'VAPID keys pentru notificări push la admin când vine mesaj nou. Generează-le o singură dată cu: npx web-push generate-vapid-keys',
