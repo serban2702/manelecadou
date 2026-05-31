@@ -52,8 +52,10 @@ export default function FacturarePage() {
   const { toast } = useToast();
   const { isAllSelected } = useSitesMap();
 
-  const billable = useAsync(() => InvoicesApi.billable(), [], { refetchInterval: 20_000 });
-  const issued = useAsync(() => InvoicesApi.issued(), [], { refetchInterval: 20_000 });
+  // Fără auto-refetch pe billable: fiecare încărcare interoghează Stripe per plată
+  // pentru numele real al plătitorului. E un flux manual (o dată/zi), refresh la nevoie.
+  const billable = useAsync(() => InvoicesApi.billable(), []);
+  const issued = useAsync(() => InvoicesApi.issued(), [], { refetchInterval: 30_000 });
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [previewFor, setPreviewFor] = useState<string | null>(null);

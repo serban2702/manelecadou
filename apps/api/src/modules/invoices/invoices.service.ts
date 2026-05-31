@@ -12,8 +12,10 @@ import { join } from 'node:path';
 import { Invoice, InvoiceClientSnapshot } from './invoice.entity';
 import { Payment } from '../payments/payment.entity';
 import { User } from '../users/user.entity';
+import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { Site, SiteSmartbill } from '../sites/site.entity';
 import { SitesService } from '../sites/sites.service';
+import { PaymentsService } from '../payments/payments.service';
 import { decryptSecret } from '../../common/crypto.util';
 import {
   SmartbillClient,
@@ -52,10 +54,42 @@ export class InvoicesService {
     @InjectRepository(Invoice) private readonly invoices: Repository<Invoice>,
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(GuestSession) private readonly guests: Repository<GuestSession>,
     private readonly sites: SitesService,
     private readonly smartbill: SmartbillClient,
+    private readonly paymentsSvc: PaymentsService,
     private readonly config: ConfigService,
   ) {}
+
+  /** Mapează codul de țară ISO (ex. „RO") la denumirea cerută de SmartBill. */
+  private mapCountry(code?: string | null): string {
+    if (!code) return 'Romania';
+    const c = code.trim();
+    if (c.toUpperCase() === 'RO' || c.toLowerCase() === 'romania') return 'Romania';
+    return c;
+  }
+
+  /** Datele de plătitor din Stripe (nume + adresă din billing). Best-effort. */
+  private async stripeDetails(paymentId: string) {
+    try {
+      return await this.paymentsSvc.fetchStripeCustomerDetails(paymentId);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Emailul cumpărătorului din DB (user sau guest). */
+  private async buyerEmail(p: Payment): Promise<string | null> {
+    if (p.userId) {
+      const u = await this.users.findOne({ where: { id: p.userId } });
+      if (u?.email) return u.email;
+    }
+    if (p.guestId) {
+      const g = await this.guests.findOne({ where: { id: p.guestId } });
+      if (g?.email) return g.email;
+    }
+    return null;
+  }
 
   private uploadsDir(): string {
     return this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
@@ -95,19 +129,31 @@ export class InvoicesService {
     if (siteId) qb.andWhere('p.siteId = :siteId', { siteId });
 
     const rows = await qb.getMany();
-    return Promise.all(rows.map((p) => this.enrichPayment(p)));
+    // Îmbogățim în loturi mici ca să nu lovim rate-limit-ul Stripe (fiecare rând
+    // = un retrieve de sesiune Stripe pentru numele real al plătitorului).
+    const out: BillableRow[] = [];
+    const CHUNK = 8;
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      const slice = rows.slice(i, i + CHUNK);
+      const enriched = await Promise.all(slice.map((p) => this.enrichPayment(p)));
+      out.push(...enriched);
+    }
+    return out;
   }
 
   private async enrichPayment(p: Payment): Promise<BillableRow> {
-    let buyerName: string | null = null;
-    let buyerEmail: string | null = null;
-    if (p.userId) {
-      const u = await this.users.findOne({ where: { id: p.userId } });
-      buyerName = u?.name ?? null;
-      buyerEmail = u?.email ?? null;
-    }
     const site = p.siteId ? await this.sites.findById(p.siteId) : null;
     const creds = this.resolveCreds(site?.smartbill);
+    // Numele real al plătitorului vine din billing-ul Stripe; emailul din DB.
+    const [stripe, email] = await Promise.all([
+      this.stripeDetails(p.id),
+      this.buyerEmail(p),
+    ]);
+    let buyerName = stripe?.name ?? null;
+    if (!buyerName && p.userId) {
+      const u = await this.users.findOne({ where: { id: p.userId } });
+      buyerName = u?.name ?? null;
+    }
     return {
       paymentId: p.id,
       siteId: p.siteId,
@@ -115,7 +161,7 @@ export class InvoicesService {
       currency: p.currency,
       createdAt: p.createdAt,
       buyerName,
-      buyerEmail,
+      buyerEmail: stripe?.email ?? email,
       smartbillReady: !!(site?.smartbill?.enabled && creds),
     };
   }
@@ -139,22 +185,29 @@ export class InvoicesService {
     if (sb.useDefaultClient && sb.defaultClient?.name) {
       return { country: 'Romania', isTaxPayer: false, ...sb.defaultClient };
     }
-    // cumpărătorul real
-    let name = '';
-    let email = '';
-    if (p.userId) {
+    // Cumpărătorul real: nume + adresă din billing-ul Stripe, email din DB.
+    const [stripe, email] = await Promise.all([
+      this.stripeDetails(p.id),
+      this.buyerEmail(p),
+    ]);
+    let name = stripe?.name ?? '';
+    if (!name && p.userId) {
       const u = await this.users.findOne({ where: { id: p.userId } });
       name = u?.name ?? '';
-      email = u?.email ?? '';
     }
-    // fallback pe clientul implicit dacă nu avem nume de la cumpărător
+    // Fallback pe clientul implicit dacă nu avem nume de la cumpărător.
     if (!name && sb.defaultClient?.name) {
       return { country: 'Romania', isTaxPayer: false, ...sb.defaultClient };
     }
+    const addr = stripe?.address ?? null;
+    const street = [addr?.line1, addr?.line2].filter(Boolean).join(', ');
     return {
       name,
-      email,
-      country: 'Romania',
+      email: email ?? undefined,
+      address: street || undefined,
+      city: addr?.city ?? undefined,
+      county: addr?.state ?? undefined,
+      country: this.mapCountry(addr?.country),
       isTaxPayer: false,
     };
   }
