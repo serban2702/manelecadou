@@ -69,6 +69,34 @@ export interface SiteDto {
     iban?: string;
     ownerName?: string;
   };
+  /**
+   * Configurare facturare SmartBill. Tokenul vine mascat ca `__MASKED__` dacă e
+   * setat (la fel ca secretele din mailConfig). La PATCH: trimite valoare nouă
+   * pentru a-l seta, `''` pentru clear, `__MASKED__`/lipsă pentru păstrare.
+   */
+  smartbill?: {
+    enabled?: boolean;
+    email?: string;
+    token?: string;
+    companyVatCode?: string;
+    seriesName?: string;
+    paymentSeriesName?: string;
+    measuringUnit?: string;
+    productName?: string;
+    paymentType?: string;
+    useDefaultClient?: boolean;
+    defaultClient?: {
+      name?: string;
+      vatCode?: string;
+      regCom?: string;
+      address?: string;
+      city?: string;
+      county?: string;
+      country?: string;
+      email?: string;
+      isTaxPayer?: boolean;
+    };
+  };
   fromEmail: string | null;
   supportEmail: string | null;
   adminEmails: string[];

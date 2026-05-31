@@ -39,6 +39,7 @@ const Errors          = dynamic(() => import('../errors/_content'),          { s
 const GiftCodes       = dynamic(() => import('../gift-codes/_content'),      { ssr: false, loading: Loading });
 const Generations     = dynamic(() => import('../generations/_content'),     { ssr: false, loading: Loading });
 const Payments        = dynamic(() => import('../payments/_content'),        { ssr: false, loading: Loading });
+const Facturare       = dynamic(() => import('../facturare/_content'),       { ssr: false, loading: Loading });
 const Users           = dynamic(() => import('../users/_content'),           { ssr: false, loading: Loading });
 const Guests          = dynamic(() => import('../guests/_content'),          { ssr: false, loading: Loading });
 const Suno            = dynamic(() => import('../suno/_content'),            { ssr: false, loading: Loading });
@@ -64,6 +65,7 @@ const ROUTES: Record<string, ComponentType> = {
   '/gift-codes':         GiftCodes,
   '/generations':        Generations,
   '/payments':           Payments,
+  '/facturare':          Facturare,
   '/users':              Users,
   '/guests':             Guests,
   '/suno':               Suno,

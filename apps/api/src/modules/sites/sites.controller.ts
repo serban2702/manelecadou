@@ -217,6 +217,11 @@ export class AdminSitesController {
       const current = await this.sites.findById(id);
       body.mailConfig = this.normalizeMailConfig(body.mailConfig, current?.mailConfig);
     }
+    // SmartBill: tokenul e criptat la repaus + mascat în UI (la fel ca mailConfig).
+    if (body.smartbill && typeof body.smartbill === 'object') {
+      const current = await this.sites.findById(id);
+      body.smartbill = this.normalizeSmartbill(body.smartbill, current?.smartbill);
+    }
     const updated = await this.sites.update(id, body);
     return this.serializeFull(updated);
   }
@@ -257,6 +262,46 @@ export class AdminSitesController {
       };
     }
     return out;
+  }
+
+  /** Normalizează configul SmartBill: criptează tokenul (sau păstrează cel
+   *  existent dacă vine mascat), restul câmpurilor sunt plain. */
+  private normalizeSmartbill(
+    incoming: Partial<Site['smartbill']>,
+    current?: Site['smartbill'],
+  ): Site['smartbill'] {
+    const cur = current ?? {};
+    return {
+      enabled: incoming.enabled ?? cur.enabled ?? false,
+      email: incoming.email ?? cur.email,
+      token: this.handleSecret(incoming.token, cur.token),
+      companyVatCode: incoming.companyVatCode ?? cur.companyVatCode,
+      seriesName: incoming.seriesName ?? cur.seriesName,
+      paymentSeriesName: incoming.paymentSeriesName ?? cur.paymentSeriesName,
+      measuringUnit: incoming.measuringUnit ?? cur.measuringUnit,
+      productName: incoming.productName ?? cur.productName,
+      paymentType: incoming.paymentType ?? cur.paymentType,
+      useDefaultClient: incoming.useDefaultClient ?? cur.useDefaultClient ?? false,
+      defaultClient: incoming.defaultClient ?? cur.defaultClient ?? {},
+    };
+  }
+
+  /** Adminul nu vede tokenul în plain — îl mascăm dacă e setat. */
+  private serializeSmartbill(sb: Site['smartbill'] | null | undefined): Site['smartbill'] {
+    const s = sb ?? {};
+    return {
+      enabled: s.enabled ?? false,
+      email: s.email,
+      token: s.token ? MASKED_SECRET : '',
+      companyVatCode: s.companyVatCode,
+      seriesName: s.seriesName,
+      paymentSeriesName: s.paymentSeriesName,
+      measuringUnit: s.measuringUnit,
+      productName: s.productName,
+      paymentType: s.paymentType,
+      useDefaultClient: s.useDefaultClient ?? false,
+      defaultClient: s.defaultClient ?? {},
+    };
   }
 
   private handleSecret(incoming: string | undefined, current: string | undefined): string | undefined {
@@ -323,6 +368,7 @@ export class AdminSitesController {
       suno: s.suno,
       social: s.social,
       companyInfo: s.companyInfo,
+      smartbill: this.serializeSmartbill(s.smartbill),
       fromEmail: s.fromEmail,
       supportEmail: s.supportEmail,
       adminEmails: s.adminEmails,
