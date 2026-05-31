@@ -21,7 +21,10 @@ import { AudioProcessorService } from './audio-processor.service';
 import { GenerationMediaService } from '../media/generation-media.service';
 import { normalizeTier, packageDef } from '../payments/packages';
 
-@Processor(GENERATIONS_QUEUE)
+// concurrency: 3 — mai multe comenzi avansează în paralel (timpul e dominat de
+// așteptarea pe Suno, I/O-bound), ca a 2-a/3-a comandă să nu aștepte în coadă
+// după una premium lentă. ffmpeg-ul (CPU) se suprapune rar pe toate 3 simultan.
+@Processor(GENERATIONS_QUEUE, { concurrency: 3 })
 export class GenerationsProcessor extends WorkerHost {
   private readonly logger = new Logger('GenerationsProcessor');
 
