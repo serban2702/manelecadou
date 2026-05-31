@@ -23,6 +23,7 @@ import { MailerService } from '../../mailer/mailer.module';
 import { paymentSuccessTemplate } from '../../mailer/templates/templates';
 import { brandingFromSite } from '../../mailer/branding';
 import { SitesService } from '../sites/sites.service';
+import { normalizeTier, packageDef } from '../payments/packages';
 
 export { GENERATIONS_QUEUE } from './generations.constants';
 import { GENERATIONS_QUEUE } from './generations.constants';
@@ -83,12 +84,14 @@ export class GenerationsService {
         }
       }
 
+      const tier = normalizeTier(dto.packageTier);
       const created = generationRepo.create({
         ownerUserId: ctx.userId,
         ownerGuestId: ctx.userId ? null : ctx.guestId,
         type: dto.type,
         status: 'queued',
-        durationSec: dto.type === 'demo' ? 30 : 90,
+        // Demo rămâne scurt; pentru full folosim durata pachetului (premium = 150s).
+        durationSec: dto.type === 'demo' ? 30 : packageDef(tier).durationSec,
         style: dto.style,
         occasion: dto.occasion,
         recipientName: dto.recipientName,
@@ -98,6 +101,7 @@ export class GenerationsService {
         customLyrics: dto.customLyrics ?? null,
         tipAmount: dto.tipAmount ?? 0,
         premium: dto.premium ?? false,
+        packageTier: tier,
         paymentId: dto.paymentId ?? null,
         locale: dto.locale ?? 'ro',
         siteId: ctx.siteId ?? null,
@@ -453,12 +457,13 @@ export class GenerationsService {
       if (!guest) throw new NotFoundException('Guest session not found');
       if (!guest.email) throw new ForbiddenException('email_required');
     }
+    const tier = normalizeTier(dto.packageTier);
     const gen = this.repo.create({
       ownerUserId: ctx.userId,
       ownerGuestId: ctx.userId ? null : ctx.guestId,
       type: 'full',
       status: 'pending',
-      durationSec: 90,
+      durationSec: packageDef(tier).durationSec,
       style: dto.style,
       occasion: dto.occasion,
       recipientName: dto.recipientName,
@@ -468,6 +473,7 @@ export class GenerationsService {
       customLyrics: dto.customLyrics ?? null,
       tipAmount: dto.tipAmount ?? 0,
       premium: dto.premium ?? false,
+      packageTier: tier,
       paymentId: null,
       paidUnlocked: false,
       locale: dto.locale ?? 'ro',
@@ -560,6 +566,55 @@ export class GenerationsService {
         `payment confirmation email failed for gen ${gen.id}: ${(err as Error).message}`,
       );
     }
+  }
+
+  /**
+   * Setează imaginea socială curentă (aleasă din variantele generate sau
+   * upload-ul propriu). Owner-only. Validează că URL-ul aparține generation-ului
+   * (e în socialImages SAU == socialImageUploaded).
+   */
+  async selectSocialImage(
+    generationId: string,
+    url: string,
+    ctx: { userId: string | null; guestId: string | null },
+  ): Promise<Generation> {
+    const gen = await this.repo.findOne({ where: { id: generationId } });
+    if (!gen) throw new NotFoundException('Generation not found');
+    const ownerOk =
+      (gen.ownerUserId && gen.ownerUserId === ctx.userId) ||
+      (gen.ownerGuestId && gen.ownerGuestId === ctx.guestId);
+    if (!ownerOk) throw new ForbiddenException('Not your generation');
+
+    const allowed = [...(gen.socialImages ?? []), gen.socialImageUploaded].filter(
+      (u): u is string => !!u,
+    );
+    if (!allowed.includes(url)) {
+      throw new ForbiddenException('invalid_social_image_url');
+    }
+    gen.socialImageSelected = url;
+    return this.repo.save(gen);
+  }
+
+  /**
+   * Persistă URL-ul unei imagini sociale încărcate de owner + o setează ca
+   * selectată. Owner-only. Fișierul a fost deja salvat de
+   * SocialImageUploadService.
+   */
+  async setUploadedSocialImage(
+    generationId: string,
+    url: string,
+    ctx: { userId: string | null; guestId: string | null },
+  ): Promise<Generation> {
+    const gen = await this.repo.findOne({ where: { id: generationId } });
+    if (!gen) throw new NotFoundException('Generation not found');
+    const ownerOk =
+      (gen.ownerUserId && gen.ownerUserId === ctx.userId) ||
+      (gen.ownerGuestId && gen.ownerGuestId === ctx.guestId);
+    if (!ownerOk) throw new ForbiddenException('Not your generation');
+
+    gen.socialImageUploaded = url;
+    gen.socialImageSelected = url;
+    return this.repo.save(gen);
   }
 
   async unlockWithPayment(

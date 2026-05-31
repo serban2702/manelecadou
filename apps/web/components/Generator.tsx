@@ -25,6 +25,7 @@ import { RotatingStatus } from './RotatingStatus';
 import { track } from '@/lib/tracking';
 import { formatPrice } from '@/lib/site-shared';
 import { claimPlayback, releasePlayback } from '@/lib/audio-registry';
+import { PACKAGES, DEFAULT_PACKAGE_TIER, type PackageTier } from '@/lib/packages';
 
 type Data = {
   style: string;
@@ -34,6 +35,9 @@ type Data = {
   voice: string;
   customLyrics: string;
   dedic: string;
+  packageTier: PackageTier;
+  // Câmpuri legacy păstrate pentru compatibilitate cu referințe vechi —
+  // nu mai sunt folosite în pasul de pachete.
   tipAmount: number;
   premium: boolean;
 };
@@ -46,12 +50,13 @@ const EMPTY: Data = {
   voice: '',
   customLyrics: '',
   dedic: '',
+  packageTier: DEFAULT_PACKAGE_TIER,
   tipAmount: 0,
   premium: false,
 };
 
-const STEP_NAMES_FALLBACK = ['Stil', 'Ocazie', 'Detalii', 'Cadou', 'Demo', 'Deblochează'];
-const STEP_NAMES_PAYFIRST_FALLBACK = ['Stil', 'Ocazie', 'Detalii', 'Cadou', 'Plătește'];
+const STEP_NAMES_FALLBACK = ['Stil', 'Ocazie', 'Detalii', 'Pachet', 'Demo', 'Deblochează'];
+const STEP_NAMES_PAYFIRST_FALLBACK = ['Stil', 'Ocazie', 'Detalii', 'Pachet', 'Plătește'];
 
 // Cache global pentru mostrele audio (voice/style) — evită refetch-urile.
 // `null` înseamnă "am cerut, nu există mostră publică pentru această voce/stil".
@@ -297,6 +302,7 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
             voice: gen.voiceArtist ?? '',
             customLyrics: gen.customLyrics ?? '',
             dedic: gen.dedication ?? '',
+            packageTier: gen.packageTier ?? DEFAULT_PACKAGE_TIER,
             tipAmount: gen.tipAmount ?? 0,
             premium: !!gen.premium,
           });
@@ -542,8 +548,6 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
       });
       const { url } = await api.createCheckoutSession({
         generationId,
-        tipAmount: data.tipAmount || 0,
-        premium: data.premium,
         promoCode: promoApplied?.code,
         email: emailDraft.trim() || undefined,
       });
@@ -606,8 +610,6 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
       if (generationId) {
         const r = await api.createCheckoutSession({
           generationId,
-          tipAmount: data.tipAmount || 0,
-          premium: data.premium,
           promoCode: promoApplied?.code,
           email: candidate,
         });
@@ -622,11 +624,8 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
             dedication: data.dedic || undefined,
             voiceArtist: data.voice,
             customLyrics: data.customLyrics || undefined,
-            tipAmount: data.tipAmount || 0,
-            premium: data.premium,
+            packageTier: data.packageTier,
           },
-          tipAmount: data.tipAmount || 0,
-          premium: data.premium,
           promoCode: promoApplied?.code,
           email: candidate,
         });
@@ -677,13 +676,11 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
           <DetailsStep
             data={data}
             upd={upd}
-            playing={playing}
-            onPlay={onPlay}
             voices={effectiveVoices}
             nudgeFields={nudgeStep === 2 ? currentMissing : []}
           />
         )}
-        {step === 3 && <DedicStep data={data} upd={upd} />}
+        {step === 3 && <PackageStep data={data} upd={upd} />}
         {step === 4 && demoEnabled && (
           <DemoStep
             data={data}
@@ -705,8 +702,6 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
             emailDraft={emailDraft}
             onEmailChange={onEmailDraftChange}
             emailErrorTick={emailErrorTick}
-            updTip={(v) => upd('tipAmount', v)}
-            updPremium={(v) => upd('premium', v)}
             onPay={startDirectCheckout}
             submitting={submitting}
             error={error}
@@ -722,8 +717,6 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
           <UnlockStep
             generation={poll ?? null}
             data={data}
-            updTip={(v) => upd('tipAmount', v)}
-            updPremium={(v) => upd('premium', v)}
             onPay={startCheckout}
             onAgain={reset}
             submitting={submitting}
@@ -1145,7 +1138,7 @@ function siteVoicesToOptions(
 }
 
 // ============ STEP 3 — Detalii + Voce + Versuri ============
-function DetailsStep({ data, upd, playing, onPlay, voices, nudgeFields = [] }: any & { voices: Array<{ id: string; nm: string; tg: string; av: string }>; nudgeFields?: string[] }) {
+function DetailsStep({ data, upd, voices, nudgeFields = [] }: any & { voices: Array<{ id: string; nm: string; tg: string; av: string }>; nudgeFields?: string[] }) {
   const tg = useTranslations('generator');
   const nudgeName = nudgeFields.includes('name');
   const nudgeMsg = nudgeFields.includes('msg');
@@ -1259,151 +1252,127 @@ function DetailsStep({ data, upd, playing, onPlay, voices, nudgeFields = [] }: a
         className={`voice-list ${nudgeVoice ? 'nudge-outline' : ''}`}
         data-nudge-target={nudgeVoice ? 'voice' : undefined}
       >
-        {(voices as Array<{ id: string; nm: string; tg: string; av: string; ic?: any }>).map((v, idx) => {
-          const isP = playing === `voice-${v.id}`;
-          return (
-            <div key={v.id} role="button" tabIndex={0} className={`voice-pick ${data.voice === v.id ? 'on' : ''}`} onClick={() => upd('voice', v.id)}>
-              <div className="av">{v.ic ? <SiteIcon ic={v.ic} em={v.av} size={22} /> : v.av}</div>
-              <div className="info">
-                <div className="nm">{v.nm}</div>
-                <div className="tg">{v.tg}</div>
-              </div>
-              <button
-                className={`play-it ${isP ? 'playing' : ''}`}
-                onClick={(e) => { e.stopPropagation(); upd('voice', v.id); onPlay(`voice-${v.id}`); }}
-                {...(idx === 0 ? { 'data-hint': 'true', 'data-hint-label': tg('step3.voiceHint') } : {})}
-              >
-                {isP ? <Ic.Pause s={11} /> : <Ic.Play s={11} />}
-              </button>
+        {(voices as Array<{ id: string; nm: string; tg: string; av: string; ic?: any }>).map((v) => (
+          <div key={v.id} role="button" tabIndex={0} className={`voice-pick ${data.voice === v.id ? 'on' : ''}`} onClick={() => upd('voice', v.id)}>
+            <div className="av">{v.ic ? <SiteIcon ic={v.ic} em={v.av} size={22} /> : v.av}</div>
+            <div className="info">
+              <div className="nm">{v.nm}</div>
+              <div className="tg">{v.tg}</div>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
     </>
   );
 }
 
-// ============ STEP 4 — Dedicație + Premium ============
-const TIP_PRESETS = [0, 100, 250, 500, 1000, 2500];
-
-function DedicStep({ data, upd }: any) {
+// ============ STEP 4 — PACHETE ============
+/** Card individual de pachet — își ia prețul real din quote API, cu fallback
+ *  la priceCents din contractul local. */
+function PackageCard({
+  tier,
+  selected,
+  onSelect,
+}: {
+  tier: PackageTier;
+  selected: boolean;
+  onSelect: () => void;
+}) {
   const site = useSite();
-  const tg = useTranslations('generator');
+  const pkg = PACKAGES.find((p) => p.tier === tier)!;
   const { data: quote } = useQuery({
-    queryKey: ['quote', data.tipAmount, data.premium],
-    queryFn: () => api.priceQuote(data.tipAmount || 0, !!data.premium),
+    queryKey: ['package-quote', tier],
+    queryFn: () => api.priceQuote(tier),
+    staleTime: 5 * 60_000,
   });
+  const priceCents = quote?.total ?? pkg.priceCents;
   const fmt = (cents: number) => formatPrice(site, cents);
-  const [customMode, setCustomMode] = useState(!TIP_PRESETS.includes(data.tipAmount));
 
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(); } }}
+      className={`occ-pick ${selected ? 'on' : ''}`}
+      aria-pressed={selected}
+      style={{
+        position: 'relative',
+        display: 'block',
+        textAlign: 'left',
+        padding: '16px 14px',
+        borderRadius: 12,
+        border: `2px solid ${selected ? 'var(--gold)' : pkg.recommended ? 'rgba(241,200,77,0.4)' : 'rgba(241,200,77,0.18)'}`,
+        background: selected
+          ? 'linear-gradient(135deg, rgba(241,200,77,0.12), rgba(176,124,30,0.06))'
+          : 'rgba(255,255,255,0.02)',
+        cursor: 'pointer',
+      }}
+    >
+      {pkg.recommended && (
+        <span
+          style={{
+            position: 'absolute', top: -10, right: 12,
+            fontSize: 10, fontWeight: 900, letterSpacing: '0.08em',
+            padding: '3px 10px', borderRadius: 999,
+            background: 'linear-gradient(180deg,#ffe28a,#f1c84d,#b07c1e)',
+            color: '#2a1a04',
+            boxShadow: '0 3px 10px rgba(241,200,77,0.4)',
+          }}
+        >
+          RECOMANDAT
+        </span>
+      )}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ fontWeight: 900, fontSize: 16, color: 'var(--gold-2)', fontFamily: 'Cinzel, serif' }}>
+          {pkg.nameRO}
+        </div>
+        <div className="gold-text" style={{ fontWeight: 900, fontSize: 20, whiteSpace: 'nowrap' }}>
+          {fmt(priceCents)}
+        </div>
+      </div>
+      <ul style={{ listStyle: 'none', padding: 0, margin: '12px 0 0' }}>
+        {pkg.features.map((f, i) => (
+          <li
+            key={i}
+            style={{
+              display: 'flex', gap: 8, alignItems: 'flex-start',
+              fontSize: 13, lineHeight: 1.4, color: 'rgba(255,245,220,0.85)',
+              marginBottom: 6,
+            }}
+          >
+            <span style={{ color: 'var(--gold)', flexShrink: 0, fontWeight: 900 }}>✓</span>
+            <span>{f}</span>
+          </li>
+        ))}
+      </ul>
+      <div style={{
+        marginTop: 10, fontSize: 12, fontWeight: 700,
+        color: selected ? 'var(--gold)' : 'rgba(255,245,220,0.55)',
+        display: 'flex', alignItems: 'center', gap: 6,
+      }}>
+        ⚡ {pkg.deliveryLabel}
+      </div>
+    </div>
+  );
+}
+
+function PackageStep({ data, upd }: { data: Data; upd: <K extends keyof Data>(k: K, v: Data[K]) => void }) {
+  const tg = useTranslations('generator');
   return (
     <>
       <h3>{tg('step4.title')}</h3>
       <p className="ld">{tg('step4.sub')}</p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
-        {TIP_PRESETS.map((amt) => (
-          <button
-            key={amt}
-            onClick={() => { setCustomMode(false); upd('tipAmount', amt); }}
-            className={`occ-pick ${data.tipAmount === amt && !customMode ? 'on' : ''}`}
-            style={{ padding: '12px 6px', textAlign: 'center' }}
-          >
-            <span className="nm" style={{ fontSize: 14, fontWeight: 800 }}>
-              {amt === 0 ? tg('step4.tipNone') : tg('step4.tipUnit', { amount: amt })}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      <div className="field" style={{ marginTop: 14 }}>
-        <label>
-          {tg('step4.customLabel')}
-          <button
-            type="button"
-            onClick={() => { setCustomMode(true); upd('tipAmount', 0); }}
-            style={{
-              marginLeft: 10, fontSize: 11, padding: '3px 8px',
-              background: customMode ? 'var(--gold)' : 'rgba(241,200,77,0.1)',
-              color: customMode ? '#2a1a04' : 'var(--gold)',
-              border: '1px solid rgba(241,200,77,0.3)', borderRadius: 999,
-            }}
-          >
-            {customMode ? tg('step4.customActive') : tg('step4.customBtn')}
-          </button>
-        </label>
-        {customMode && (
-          <input
-            type="number"
-            min={0}
-            max={1_000_000_000}
-            step={100}
-            placeholder={tg('step4.customPlaceholder')}
-            value={data.tipAmount || ''}
-            onChange={(e) => upd('tipAmount', Math.max(0, Math.min(1_000_000_000, Number(e.target.value) || 0)))}
+      <div style={{ display: 'grid', gap: 14, marginTop: 16 }}>
+        {PACKAGES.map((pkg) => (
+          <PackageCard
+            key={pkg.tier}
+            tier={pkg.tier}
+            selected={data.packageTier === pkg.tier}
+            onSelect={() => upd('packageTier', pkg.tier)}
           />
-        )}
-        {customMode && data.tipAmount > 0 && (
-          <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.5)', marginTop: 4 }}>
-            {tg('step4.customSurcharge', { amount: Math.min(50, Math.round(data.tipAmount * 0.05)) })}
-          </div>
-        )}
-      </div>
-
-      <div
-        onClick={() => upd('premium', !data.premium)}
-        style={{
-          marginTop: 18, padding: 14, borderRadius: 10, cursor: 'pointer',
-          border: `2px solid ${data.premium ? 'var(--gold)' : 'rgba(241,200,77,0.25)'}`,
-          background: data.premium ? 'rgba(241,200,77,0.08)' : 'rgba(241,200,77,0.03)',
-          display: 'flex', gap: 12, alignItems: 'flex-start',
-        }}
-      >
-        <div style={{ fontSize: 28 }}>👑</div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800, color: 'var(--gold-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
-            {tg('step4.premiumTitle')}
-            <span style={{ fontSize: 10, padding: '2px 6px', background: 'var(--rose)', color: 'white', borderRadius: 999 }}>
-              {tg('step4.premiumRecommended')}
-            </span>
-          </div>
-          <div style={{ fontSize: 12, color: 'rgba(255,245,220,0.65)', marginTop: 4 }}>
-            {tg('step4.premiumDesc')}
-          </div>
-        </div>
-        <input type="checkbox" checked={data.premium} readOnly />
-      </div>
-
-      <div style={{
-        marginTop: 18, padding: 14, borderRadius: 10,
-        background: 'linear-gradient(135deg, rgba(90,13,24,0.3), rgba(40,12,18,0.3))',
-        border: '1px solid var(--line)',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(255,245,220,0.7)' }}>
-          <span>{tg('step4.baseLine')}</span>
-          <span>{fmt(quote?.base ?? site.basePriceCents)}</span>
-        </div>
-        {(quote?.premiumExtra ?? 0) > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(255,245,220,0.7)', marginTop: 4 }}>
-            <span>{tg('step4.premiumLine')}</span>
-            <span>+{fmt(quote?.premiumExtra ?? 0)}</span>
-          </div>
-        )}
-        {(quote?.tipSurcharge ?? 0) > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(255,245,220,0.7)', marginTop: 4 }}>
-            <span>{tg('step4.tipSurchargeLine', { amount: data.tipAmount })}</span>
-            <span>+{fmt(quote?.tipSurcharge ?? 0)}</span>
-          </div>
-        )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
-          <span style={{ fontWeight: 800 }}>{tg('step4.totalUnlock')}</span>
-          <span className="gold-text" style={{ fontWeight: 900, fontSize: 18 }}>
-            {fmt(quote?.total ?? site.basePriceCents)}
-          </span>
-        </div>
-        <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.4)', marginTop: 8 }}>
-          {tg('step4.demoFooter')}
-        </div>
+        ))}
       </div>
     </>
   );
@@ -1524,8 +1493,6 @@ function PayFirstStep({
   emailDraft,
   onEmailChange,
   emailErrorTick,
-  updTip,
-  updPremium,
   onPay,
   submitting,
   error,
@@ -1541,8 +1508,6 @@ function PayFirstStep({
   emailDraft: string;
   onEmailChange: (v: string) => void;
   emailErrorTick: number;
-  updTip: (v: number) => void;
-  updPremium: (v: boolean) => void;
   onPay: () => void;
   submitting: boolean;
   error: string | null;
@@ -1558,12 +1523,15 @@ function PayFirstStep({
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailDraft.trim());
   const emailSignal = useFieldErrorSignal(emailErrorTick);
   const showEmailError = emailErrorTick > 0 && !emailValid;
+  const pkg = PACKAGES.find((p) => p.tier === data.packageTier)!;
   const { data: quote } = useQuery({
-    queryKey: ['quote', data.tipAmount, data.premium],
-    queryFn: () => api.priceQuote(data.tipAmount || 0, !!data.premium),
+    queryKey: ['package-quote', data.packageTier],
+    queryFn: () => api.priceQuote(data.packageTier),
+    staleTime: 5 * 60_000,
   });
   const fmt = (cents: number) => formatPrice(site, cents);
-  const finalTotal = Math.max(0, (quote?.total ?? site.basePriceCents) - (promoApplied?.discountCents ?? 0));
+  const packagePrice = quote?.total ?? pkg.priceCents;
+  const finalTotal = Math.max(0, packagePrice - (promoApplied?.discountCents ?? 0));
 
   return (
     <>
@@ -1603,21 +1571,9 @@ function PayFirstStep({
         border: '1px solid var(--gold)',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-          <span>{tg('step5PayFirst.completeLine')}</span>
-          <span>{fmt(quote?.base ?? site.basePriceCents)}</span>
+          <span>{pkg.nameRO}</span>
+          <span>{fmt(packagePrice)}</span>
         </div>
-        {(quote?.premiumExtra ?? 0) > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
-            <span>{tg('step4.premiumLine')}</span>
-            <span>+{fmt(quote?.premiumExtra ?? 0)}</span>
-          </div>
-        )}
-        {(quote?.tipSurcharge ?? 0) > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
-            <span>{tg('step5PayFirst.tipLine', { amount: data.tipAmount, currency: site.currency })}</span>
-            <span>+{fmt(quote?.tipSurcharge ?? 0)}</span>
-          </div>
-        )}
         {promoApplied && (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4, color: 'var(--green)' }}>
             <span>{tg('step5PayFirst.promoLine')} <code>{promoApplied.code}</code></span>
@@ -1653,7 +1609,7 @@ function PayFirstStep({
               onClick={async () => {
                 setPromoError(null);
                 try {
-                  const r = await api.validatePromo(promoCode.trim(), email ?? undefined, quote?.total ?? site.basePriceCents);
+                  const r = await api.validatePromo(promoCode.trim(), email ?? undefined, packagePrice);
                   if (r.ok && r.appliedDiscountCents) {
                     setPromoApplied({ code: promoCode.trim(), discountCents: r.appliedDiscountCents });
                   } else {
@@ -1900,8 +1856,6 @@ function GenerationLive({ generation, recent }: { generation: GenerationDto; rec
 function UnlockStep({
   generation,
   data,
-  updTip,
-  updPremium,
   onPay,
   onAgain,
   submitting,
@@ -1916,8 +1870,6 @@ function UnlockStep({
 }: {
   generation: GenerationDto | null;
   data: Data;
-  updTip: (v: number) => void;
-  updPremium: (v: boolean) => void;
   onPay: () => void;
   onAgain: () => void;
   submitting: boolean;
@@ -1932,11 +1884,14 @@ function UnlockStep({
 }) {
   const site = useSite();
   const tg = useTranslations('generator');
+  const pkg = PACKAGES.find((p) => p.tier === data.packageTier)!;
   const { data: quote } = useQuery({
-    queryKey: ['quote', data.tipAmount, data.premium],
-    queryFn: () => api.priceQuote(data.tipAmount || 0, !!data.premium),
+    queryKey: ['package-quote', data.packageTier],
+    queryFn: () => api.priceQuote(data.packageTier),
+    staleTime: 5 * 60_000,
   });
   const fmt = (cents: number) => formatPrice(site, cents);
+  const packagePrice = quote?.total ?? pkg.priceCents;
 
   if (!generation) return <p className="ld">{tg('step6.waiting')}</p>;
   if (generation.status === 'failed') {
@@ -2013,21 +1968,9 @@ function UnlockStep({
         border: '1px solid var(--gold)',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-          <span>{tg('step5PayFirst.completeLine')}</span>
-          <span>{fmt(quote?.base ?? site.basePriceCents)}</span>
+          <span>{pkg.nameRO}</span>
+          <span>{fmt(packagePrice)}</span>
         </div>
-        {(quote?.premiumExtra ?? 0) > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
-            <span>{tg('step4.premiumLine')}</span>
-            <span>+{fmt(quote?.premiumExtra ?? 0)}</span>
-          </div>
-        )}
-        {(quote?.tipSurcharge ?? 0) > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
-            <span>{tg('step6.tipLine', { amount: data.tipAmount })}</span>
-            <span>+{fmt(quote?.tipSurcharge ?? 0)}</span>
-          </div>
-        )}
         {promoApplied && (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4, color: 'var(--green)' }}>
             <span>{tg('step5PayFirst.promoLine')} <code>{promoApplied.code}</code></span>
@@ -2037,7 +1980,7 @@ function UnlockStep({
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
           <span style={{ fontWeight: 800 }}>{tg('step5PayFirst.totalLabel')}</span>
           <span className="gold-text" style={{ fontWeight: 900, fontSize: 22 }}>
-            {fmt(Math.max(0, (quote?.total ?? site.basePriceCents) - (promoApplied?.discountCents ?? 0)))}
+            {fmt(Math.max(0, packagePrice - (promoApplied?.discountCents ?? 0)))}
           </span>
         </div>
       </div>
@@ -2071,7 +2014,7 @@ function UnlockStep({
               onClick={async () => {
                 setPromoError(null);
                 try {
-                  const r = await api.validatePromo(promoCode.trim(), email ?? undefined, quote?.total ?? site.basePriceCents);
+                  const r = await api.validatePromo(promoCode.trim(), email ?? undefined, packagePrice);
                   if (r.ok && r.appliedDiscountCents) {
                     setPromoApplied({ code: promoCode.trim(), discountCents: r.appliedDiscountCents });
                   } else {
@@ -2117,7 +2060,7 @@ function UnlockStep({
       >
         {submitting
           ? tg('step6.payingCta')
-          : tg('step6.unlockCta', { amount: fmt(Math.max(0, (quote?.total ?? site.basePriceCents) - (promoApplied?.discountCents ?? 0))) })}
+          : tg('step6.unlockCta', { amount: fmt(Math.max(0, packagePrice - (promoApplied?.discountCents ?? 0))) })}
       </button>
 
       <button onClick={onAgain} style={{

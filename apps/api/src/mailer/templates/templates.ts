@@ -196,6 +196,10 @@ export interface GenerationReadyVars {
   type: 'demo' | 'full';
   link: string;
   audioUrl?: string | null;
+  /** Livrabile extra ale pachetelor plus/premium (când există). */
+  socialImageUrl?: string | null;
+  instrumentalUrl?: string | null;
+  videoUrl?: string | null;
   locale?: string;
   branding?: EmailBranding;
 }
@@ -203,6 +207,17 @@ export function generationReadyTemplate(v: GenerationReadyVars): { subject: stri
   const d = dict(v.locale).generationReady;
   const title = v.type === 'demo' ? d.titleDemo : d.titleFull;
   const brandName = resolveBranding(v.branding).name;
+  // Linkuri extra pentru livrabilele pachetelor (afișate doar dacă există).
+  const extraLink = (href: string, label: string) =>
+    `<a href="${escape(href)}" style="color:${COLORS.goldMid};text-decoration:none;font-weight:700;">${escape(label)}</a>`;
+  const extras: string[] = [];
+  if (v.socialImageUrl) extras.push(extraLink(v.socialImageUrl, '🖼️ Imagine'));
+  if (v.instrumentalUrl) extras.push(extraLink(v.instrumentalUrl, '🎼 Instrumental'));
+  if (v.videoUrl) extras.push(extraLink(v.videoUrl, '🎬 Videoclip'));
+  const extrasHtml =
+    extras.length > 0
+      ? `<p style="text-align:center;margin:0 0 18px;font-size:13px;color:rgba(255,245,220,0.7);">${extras.join(' &nbsp;·&nbsp; ')}</p>`
+      : '';
   return {
     subject: d.subject(v.recipientName),
     html: layout({
@@ -216,6 +231,7 @@ export function generationReadyTemplate(v: GenerationReadyVars): { subject: stri
         </div>
         <div style="text-align:center;margin: 24px 0;">${buttonGold(v.link, d.listenButton)}</div>
         ${v.audioUrl ? `<p style="text-align:center;margin:0 0 18px;font-size:12px;color:rgba(255,245,220,0.5);">${d.download.replace('{link}', `<a href="${escape(v.audioUrl)}" style="color:${COLORS.goldMid};">MP3</a>`)}</p>` : ''}
+        ${extrasHtml}
         ${v.type === 'demo' ? `
           <div style="margin-top:24px;padding:16px;background:rgba(255,45,126,0.08);border:1px solid rgba(255,45,126,0.3);border-radius:10px;">
             <p style="margin:0 0 8px;font-size:14px;color:${COLORS.goldMid};font-weight:700;">${d.promoTitle}</p>

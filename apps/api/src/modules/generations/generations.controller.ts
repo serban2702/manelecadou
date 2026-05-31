@@ -1,17 +1,23 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
+  HttpCode,
   NotFoundException,
   Param,
   Post,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { GenerationsService } from './generations.service';
+import { SocialImageUploadService } from './social-image-upload.service';
 import { CreateGenerationDto } from './dto/create-generation.dto';
 import { GiftCodesService } from '../gift-codes/gift-codes.service';
 import {
@@ -79,6 +85,7 @@ export class GenerationsController {
   constructor(
     private readonly svc: GenerationsService,
     private readonly giftCodes: GiftCodesService,
+    private readonly socialUpload: SocialImageUploadService,
   ) {}
 
   @Get('recent')
@@ -198,6 +205,13 @@ export class GenerationsController {
         coverUrl: pub.coverUrl,
         lyrics: pub.lyrics,
         paidUnlocked: pub.paidUnlocked,
+        // Model PACHETE — livrabile extra (instrumental/video doar pentru plătiți).
+        packageTier: pub.packageTier,
+        socialImages: pub.socialImages ?? [],
+        socialImageSelected: pub.socialImageSelected,
+        socialImageUploaded: pub.socialImageUploaded,
+        instrumentalUrl: isPaid ? pub.instrumentalUrl : null,
+        videoUrl: isPaid ? pub.videoUrl : null,
         createdAt: pub.createdAt,
         completedAt: pub.completedAt,
         // datele sensibile (message, dedication, owner ids, custom lyrics) NU expuse public
@@ -290,6 +304,54 @@ export class GenerationsController {
       guestId: user ? null : guestId,
     });
   }
+
+  /** Alege imaginea socială curentă (din variantele generate sau upload propriu). */
+  @UseGuards(OptionalJwtAuthGuard)
+  @Post(':id/social-image/select')
+  async selectSocialImage(
+    @Param('id') id: string,
+    @Body() body: { url: string },
+    @CurrentUser() user: AuthedRequestUser | null,
+    @CurrentGuestId() guestId: string | null,
+  ) {
+    if (!body?.url) throw new BadRequestException('url este obligatoriu');
+    const gen = await this.svc.selectSocialImage(id, body.url, {
+      userId: user?.id ?? null,
+      guestId: user ? null : guestId,
+    });
+    return { ok: true, socialImageSelected: gen.socialImageSelected };
+  }
+
+  /** Upload imagine socială proprie (png/jpg/webp, max 5MB). O setează ca selectată. */
+  @UseGuards(OptionalJwtAuthGuard)
+  @Post(':id/social-image/upload')
+  @HttpCode(200)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  async uploadSocialImage(
+    @Param('id') id: string,
+    @UploadedFile()
+    file: { buffer: Buffer; originalname: string; size: number; mimetype: string } | undefined,
+    @CurrentUser() user: AuthedRequestUser | null,
+    @CurrentGuestId() guestId: string | null,
+  ) {
+    if (!file) throw new BadRequestException('Lipsește fișierul (field name: file)');
+    // Verificăm ownership ÎNAINTE de a scrie pe disc.
+    const ctx = { userId: user?.id ?? null, guestId: user ? null : guestId };
+    await this.svc.findOne(id, ctx);
+    const saved = await this.socialUpload.save({
+      generationId: id,
+      fileBuffer: file.buffer,
+      originalName: file.originalname,
+      mime: file.mimetype,
+    });
+    const gen = await this.svc.setUploadedSocialImage(id, saved.url, ctx);
+    return {
+      ok: true,
+      url: saved.url,
+      socialImageUploaded: gen.socialImageUploaded,
+      socialImageSelected: gen.socialImageSelected,
+    };
+  }
 }
 
 /**
@@ -304,6 +366,8 @@ function sanitizeAudio<T extends {
   bonusAudioUrl?: string | null;
   demoAudioUrl?: string | null;
   demoBonusAudioUrl?: string | null;
+  instrumentalUrl?: string | null;
+  videoUrl?: string | null;
 }>(g: T): T {
   const isPaid = g.type === 'full' || g.paidUnlocked === true;
   if (isPaid) return g;
@@ -311,5 +375,8 @@ function sanitizeAudio<T extends {
     ...g,
     audioUrl: g.demoAudioUrl ?? null,
     bonusAudioUrl: g.demoBonusAudioUrl ?? null,
+    // Livrabile premium gated până la plată.
+    instrumentalUrl: null,
+    videoUrl: null,
   };
 }

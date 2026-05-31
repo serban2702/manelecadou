@@ -7,6 +7,7 @@ import { GenerationsService, GENERATIONS_QUEUE } from './generations.service';
 import { GenerationsProcessor } from './generations.processor';
 import { GenerationsController, PublicTopController } from './generations.controller';
 import { AudioProcessorService } from './audio-processor.service';
+import { SocialImageUploadService } from './social-image-upload.service';
 import { SunoModule } from '../suno/suno.module';
 import { AuthModule } from '../auth/auth.module';
 import { PaymentsModule } from '../payments/payments.module';
@@ -16,6 +17,7 @@ import { MailerModule } from '../../mailer/mailer.module';
 import { LyricsModule } from '../lyrics/lyrics.module';
 import { GiftCodesModule } from '../gift-codes/gift-codes.module';
 import { SitesModule } from '../sites/sites.module';
+import { MediaModule } from '../media/media.module';
 
 @Module({
   imports: [
@@ -28,8 +30,14 @@ import { SitesModule } from '../sites/sites.module';
     LyricsModule,
     GiftCodesModule,
     SitesModule,
+    MediaModule,
   ],
-  providers: [GenerationsService, GenerationsProcessor, AudioProcessorService],
+  providers: [
+    GenerationsService,
+    GenerationsProcessor,
+    AudioProcessorService,
+    SocialImageUploadService,
+  ],
   controllers: [GenerationsController, PublicTopController],
   exports: [GenerationsService],
 })

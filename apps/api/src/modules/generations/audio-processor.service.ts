@@ -10,6 +10,14 @@ import { Readable } from 'node:stream';
 const DEMO_DURATION_SEC = 30;
 const FADE_OUT_SEC = 2;
 
+/** Numele fișierelor pe disc per variantă audio. `instrumental` are propriul
+ *  fișier ca să nu suprascrie full.mp3 (track-ul principal cu voce). */
+const AUDIO_FILE_NAMES: Record<'full' | 'bonus' | 'instrumental', { full: string; demo: string }> = {
+  full: { full: 'full.mp3', demo: 'demo.mp3' },
+  bonus: { full: 'bonus.mp3', demo: 'demo-bonus.mp3' },
+  instrumental: { full: 'instrumental.mp3', demo: 'demo-instrumental.mp3' },
+};
+
 @Injectable()
 export class AudioProcessorService {
   private readonly logger = new Logger('AudioProcessor');
@@ -26,13 +34,13 @@ export class AudioProcessorService {
   async downloadAndMakeDemo(
     generationId: string,
     sourceUrl: string,
-    variant: 'full' | 'bonus' = 'full',
+    variant: 'full' | 'bonus' | 'instrumental' = 'full',
   ): Promise<{ fullUrl: string; demoUrl: string }> {
     const dir = join(this.uploadsDir, 'audio', generationId);
     await mkdir(dir, { recursive: true });
 
-    const fullName = variant === 'full' ? 'full.mp3' : 'bonus.mp3';
-    const demoName = variant === 'full' ? 'demo.mp3' : 'demo-bonus.mp3';
+    const fullName = AUDIO_FILE_NAMES[variant].full;
+    const demoName = AUDIO_FILE_NAMES[variant].demo;
     const fullPath = join(dir, fullName);
     const demoPath = join(dir, demoName);
 
@@ -60,13 +68,13 @@ export class AudioProcessorService {
   async saveAndMakeDemo(
     generationId: string,
     buffer: Buffer,
-    variant: 'full' | 'bonus' = 'full',
+    variant: 'full' | 'bonus' | 'instrumental' = 'full',
   ): Promise<{ fullUrl: string; demoUrl: string }> {
     const dir = join(this.uploadsDir, 'audio', generationId);
     await mkdir(dir, { recursive: true });
 
-    const fullName = variant === 'full' ? 'full.mp3' : 'bonus.mp3';
-    const demoName = variant === 'full' ? 'demo.mp3' : 'demo-bonus.mp3';
+    const fullName = AUDIO_FILE_NAMES[variant].full;
+    const demoName = AUDIO_FILE_NAMES[variant].demo;
     const fullPath = join(dir, fullName);
     const demoPath = join(dir, demoName);
 

@@ -57,6 +57,11 @@ export class CreateGenerationDto {
   @IsBoolean()
   premium?: boolean;
 
+  /** Tier-ul pachetului ales (model nou). Default 'basic' la persistare. */
+  @IsOptional()
+  @IsIn(['basic', 'plus', 'premium'])
+  packageTier?: string;
+
   @IsOptional()
   @IsUUID()
   paymentId?: string;

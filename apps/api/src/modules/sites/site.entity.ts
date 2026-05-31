@@ -405,6 +405,15 @@ export class Site {
   @Column({ type: 'integer', default: 0 })
   giftPriceCents!: number; // preț cod cadou single
 
+  /**
+   * Override per-site al prețurilor de pachet (cents, în valuta site-ului).
+   * Cheie = tier ('basic'|'plus'|'premium'). Lipsa unei chei → fallback la
+   * prețul default din `PACKAGES` (vezi payments/packages.ts). NULL = toate
+   * tier-urile pe default. Synchronize-safe (jsonb nullable).
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  packagePricesCents!: Partial<Record<'basic' | 'plus' | 'premium', number>> | null;
+
   @Column({ type: 'jsonb', default: () => `'{}'::jsonb` })
   brand!: SiteBrand;
 

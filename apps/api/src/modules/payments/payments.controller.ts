@@ -30,8 +30,9 @@ function extractMetaContext(req: Request, ua: string | undefined, xff: string | 
     ipAddress: ((xff && xff.split(',')[0].trim()) || ip || null) as string | null,
   };
 }
-import { IsBoolean, IsEmail, IsInt, IsObject, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsInt, IsObject, IsOptional, IsUUID, Max, Min } from 'class-validator';
 import { PaymentsService } from './payments.service';
+import { normalizeTier, isPackageTier } from './packages';
 import { GuestSessionsService } from '../guest-sessions/guest-sessions.service';
 import { OptionalJwtAuthGuard } from '../../common/jwt.guard';
 import {
@@ -56,6 +57,11 @@ class CheckoutDto {
   @IsOptional()
   @IsBoolean()
   premium?: boolean;
+
+  /** Tier-ul pachetului (model nou). Când e setat, totalul = prețul pachetului. */
+  @IsOptional()
+  @IsIn(['basic', 'plus', 'premium'])
+  packageTier?: string;
 
   @IsOptional()
   promoCode?: string;
@@ -103,6 +109,8 @@ class DirectCheckoutDto {
     locale?: string;
     tipAmount?: number;
     premium?: boolean;
+    /** Tier-ul pachetului ales (basic|plus|premium). Default 'basic'. */
+    packageTier?: string;
   };
 }
 
@@ -130,7 +138,13 @@ export class PaymentsController {
     @CurrentSite() site: Site,
     @Query('tipAmount') tipAmount?: string,
     @Query('premium') premium?: string,
+    @Query('packageTier') packageTier?: string,
   ) {
+    // Model PACHETE: dacă vine ?packageTier=basic|plus|premium → întoarcem
+    // { packageTier, total, currency }. Altfel comportamentul legacy (tip+premium).
+    if (packageTier && isPackageTier(packageTier)) {
+      return this.svc.quote(site, { packageTier: normalizeTier(packageTier) });
+    }
     const tip = Math.max(0, Math.min(1_000_000_000, Number(tipAmount ?? '0') || 0));
     return this.svc.quote(site, { tipAmount: tip, premium: premium === 'true' });
   }
@@ -164,6 +178,7 @@ export class PaymentsController {
       userId: user?.id ?? null,
       guestId: user ? null : guestId,
       generationId: body.generationId,
+      packageTier: body.packageTier ? normalizeTier(body.packageTier) : undefined,
       tipAmount: body.tipAmount ?? 0,
       premium: body.premium ?? false,
       promoCode: body.promoCode,

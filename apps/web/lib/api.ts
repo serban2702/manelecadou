@@ -1,5 +1,7 @@
 'use client';
 
+import type { PackageTier } from './packages';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
 const GUEST_KEY = 'mc_guest_id';
 const TOKEN_KEY = 'mc_access_token';
@@ -159,6 +161,18 @@ export interface GenerationDto {
   error: string | null;
   createdAt: string;
   completedAt: string | null;
+  // ── Pachete (model nou) ──────────────────────────────────────────────────
+  packageTier?: PackageTier;
+  /** Variante de poză de share generate (plus/premium). */
+  socialImages?: string[];
+  /** Varianta selectată de user (sau prima implicit). */
+  socialImageSelected?: string | null;
+  /** Poză încărcată de user (override). */
+  socialImageUploaded?: string | null;
+  /** Versiune instrumentală (plus/premium). */
+  instrumentalUrl?: string | null;
+  /** Videoclip personalizat (premium). */
+  videoUrl?: string | null;
 }
 
 export interface RecentDto {
@@ -174,10 +188,7 @@ export interface RecentDto {
 }
 
 export interface PriceQuote {
-  base: number;
-  tipAmount: number;
-  tipSurcharge: number;
-  premiumExtra: number;
+  packageTier: PackageTier;
   total: number;
   currency: string;
 }
@@ -330,10 +341,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ code }),
     }),
-  priceQuote: (tipAmount: number, premium: boolean) =>
-    request<PriceQuote>(
-      `/payments/quote?tipAmount=${tipAmount}&premium=${premium ? 'true' : 'false'}`,
-    ),
+  priceQuote: (packageTier: PackageTier) =>
+    request<PriceQuote>(`/payments/quote?packageTier=${packageTier}`),
   getPayment: (id: string) =>
     request<{ id: string; status: string; amount: number; currency: string }>(`/payments/${id}`),
   createCheckoutSession: (input: {
@@ -361,11 +370,8 @@ export const api = {
       voiceArtist: string;
       customLyrics?: string;
       locale?: string;
-      tipAmount?: number;
-      premium?: boolean;
+      packageTier: PackageTier;
     };
-    tipAmount?: number;
-    premium?: boolean;
     promoCode?: string;
     /** Override email destinație. Dacă lipsește, backend-ul îl rezolvă din
      *  contul logat / guest-ul curent. */
@@ -378,6 +384,43 @@ export const api = {
         body: JSON.stringify(input),
       },
     ),
+
+  /** Selectează una dintre variantele de poză de share (plus/premium). */
+  selectSocialImage: (genId: string, url: string) =>
+    request<GenerationDto>(`/generations/${genId}/social-image/select`, {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    }),
+  /** Încarcă o poză proprie de share (multipart). */
+  uploadSocialImage: async (genId: string, file: File): Promise<GenerationDto> => {
+    const headers = new Headers();
+    headers.set('X-Locale', getCurrentLocale());
+    const guestId = getGuestId();
+    if (guestId) headers.set('X-Guest-Id', guestId);
+    const token = getAccessToken();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    if (typeof window !== 'undefined') {
+      const orSid = window.__OR_SESSION_ID__;
+      if (orSid) headers.set('X-OpenReplay-SessionID', orSid);
+    }
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${API_URL}/api/generations/${genId}/social-image/upload`, {
+      method: 'POST',
+      headers,
+      body: form,
+    });
+    if (!res.ok) {
+      let body: unknown;
+      try {
+        body = await res.json();
+      } catch {
+        body = await res.text();
+      }
+      throw new ApiError(res.status, body);
+    }
+    return (await res.json()) as GenerationDto;
+  },
 
   reportClientError: (input: { message: string; stack?: string; path?: string; level?: 'error' | 'warn' | 'info' }) =>
     request<{ ok: boolean }>('/errors/client', {

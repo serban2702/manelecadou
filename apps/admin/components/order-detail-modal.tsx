@@ -38,6 +38,14 @@ function voiceLabel(v: string | null | undefined): string {
   return v ?? '';
 }
 
+/** Mapează pachetul la etichetă prietenoasă cu preț. Legacy/necunoscut → valoarea brută. */
+function packageLabel(t: string | null | undefined): string {
+  if (t === 'basic') return 'Bază (29,99)';
+  if (t === 'plus') return 'Plus (49,99)';
+  if (t === 'premium') return 'Premium (69,99)';
+  return t ?? '';
+}
+
 export function OrderDetailModal({ id, onClose }: { id: string; onClose: () => void }) {
   const { data, loading } = useAsync(() => AdminApi.orderDetail(id), [id]);
 
@@ -142,6 +150,9 @@ function OverviewTab({ data }: { data: OrderDetail }) {
             <Kv k="Tip" v={<Badge variant={g.type === 'demo' ? 'info' : 'success'}>{g.type}</Badge>} />
             <Kv k="Status" v={<StatusBadge status={g.status} />} />
             <Kv k="Locale" v={g.locale} />
+            {g.packageTier && (
+              <Kv k="Pachet" v={<Badge variant="warning">{packageLabel(g.packageTier)}</Badge>} />
+            )}
             {g.premium && <Kv k="Premium" v={<Badge variant="warning">premium</Badge>} />}
             {g.tipAmount > 0 && <Kv k="Bacșiș" v={`${g.tipAmount} ${data.site?.currency ?? ''}`} />}
             {g.inferredFromChat && (
@@ -308,6 +319,7 @@ function FormTab({ data }: { data: OrderDetail }) {
         <Kv k="Voce" v={voiceLabel(g.voiceArtist)} />
         <Kv k="Locale" v={g.locale} />
         <Kv k="Durată" v={`${g.durationSec}s`} />
+        {g.packageTier && <Kv k="Pachet" v={packageLabel(g.packageTier)} />}
         <Kv k="Premium" v={g.premium ? 'da' : 'nu'} />
         <Kv k="Bacșiș (tipAmount)" v={String(g.tipAmount)} />
       </Card>
@@ -505,6 +517,7 @@ function AudioTab({ data }: { data: OrderDetail }) {
           <img src={g.coverUrl} alt="cover" className="max-w-xs rounded" />
         </Card>
       )}
+      <Deliverables g={g} />
       {g.lyricsDraft && (
         <Card title="Versuri — ciornă (OpenAI writer)">
           <pre className="whitespace-pre-wrap rounded bg-black/40 p-3 text-xs">{g.lyricsDraft}</pre>
@@ -516,6 +529,68 @@ function AudioTab({ data }: { data: OrderDetail }) {
         </Card>
       )}
     </div>
+  );
+}
+
+/**
+ * Secțiune „Livrabile" pentru pachetele noi: imagini social, videoclip,
+ * instrumental. Se randează doar ce există (comenzi legacy → nimic).
+ */
+function Deliverables({ g }: { g: NonNullable<OrderDetail['generation']> }) {
+  const images = g.socialImages ?? [];
+  const hasAny =
+    images.length > 0 ||
+    !!g.socialImageSelected ||
+    !!g.socialImageUploaded ||
+    !!g.videoUrl ||
+    !!g.instrumentalUrl;
+  if (!hasAny) return null;
+  return (
+    <Card title="Livrabile (pachet)">
+      <div className="space-y-4">
+        {g.socialImageSelected && (
+          <div>
+            <p className="mb-1 text-[11px] text-muted-foreground">Imagine selectată de client</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={g.socialImageSelected} alt="social selectat" className="max-w-xs rounded border border-amber-400/40" />
+          </div>
+        )}
+        {g.socialImageUploaded && (
+          <div>
+            <p className="mb-1 text-[11px] text-muted-foreground">Imagine încărcată manual</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={g.socialImageUploaded} alt="social încărcat" className="max-w-xs rounded" />
+          </div>
+        )}
+        {images.length > 0 && (
+          <div>
+            <p className="mb-1 text-[11px] text-muted-foreground">Imagini social generate</p>
+            <div className="flex flex-wrap gap-2">
+              {images.map((url, i) => (
+                <a key={url + i} href={url} target="_blank" rel="noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt={`social ${i + 1}`} className="h-24 w-24 rounded object-cover" />
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+        {g.videoUrl && (
+          <div>
+            <p className="mb-1 text-[11px] text-muted-foreground">Videoclip</p>
+            <video controls src={g.videoUrl} className="max-w-md rounded" />
+            <p className="mt-1 break-all text-[11px] text-muted-foreground">{g.videoUrl}</p>
+          </div>
+        )}
+        {g.instrumentalUrl && (
+          <div>
+            <p className="mb-1 text-[11px] text-muted-foreground">Instrumental</p>
+            <audio controls src={g.instrumentalUrl} className="w-full" />
+            <p className="mt-1 break-all text-[11px] text-muted-foreground">{g.instrumentalUrl}</p>
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
 

@@ -30,6 +30,12 @@ export interface SunoGenerateInput {
   weirdnessConstraint?: number;
   /** Tag-uri de exclus (CSV) — ex. 'pop, EDM, trap-rap'. */
   negativeTags?: string;
+  /**
+   * Generează varianta instrumentală (fără voce). Trimis la Suno ca
+   * `instrumental: true`. Default false. Folosit pentru pachetele plus/premium
+   * care includ un track instrumental separat.
+   */
+  instrumental?: boolean;
 }
 
 export interface SunoTrack {

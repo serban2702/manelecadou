@@ -18,6 +18,8 @@ import { generationReadyTemplate } from '../../mailer/templates/templates';
 import { brandingFromSite } from '../../mailer/branding';
 import { SitesService } from '../sites/sites.service';
 import { AudioProcessorService } from './audio-processor.service';
+import { GenerationMediaService } from '../media/generation-media.service';
+import { normalizeTier, packageDef } from '../payments/packages';
 
 @Processor(GENERATIONS_QUEUE)
 export class GenerationsProcessor extends WorkerHost {
@@ -33,6 +35,7 @@ export class GenerationsProcessor extends WorkerHost {
     private readonly config: ConfigService,
     private readonly sites: SitesService,
     private readonly audio: AudioProcessorService,
+    private readonly media: GenerationMediaService,
     private readonly moduleRef: ModuleRef,
     @InjectQueue(GENERATIONS_QUEUE) private readonly queue: Queue,
   ) {
@@ -141,9 +144,16 @@ export class GenerationsProcessor extends WorkerHost {
       // fallback legacy; cade pe voiceEntry?.gender doar dacă helper-ul nu știe.
       const vocalGender = voiceArtistToGender(gen.voiceArtist) ?? voiceEntry?.gender;
 
+      // Durata țintă vine din pachet (premium = 150s). Pentru demo păstrăm
+      // durata existentă (scurtă). Defensiv: dacă gen.durationSec lipsește
+      // (rânduri vechi), cădem pe durata pachetului.
+      const tier = normalizeTier(gen.packageTier);
+      const targetDuration =
+        gen.type === 'demo' ? gen.durationSec : gen.durationSec || packageDef(tier).durationSec;
+
       const result = await this.suno.generate({
         type: gen.type,
-        durationSec: gen.durationSec,
+        durationSec: targetDuration,
         style: gen.style,
         occasion: gen.occasion,
         recipientName: gen.recipientName,
@@ -191,6 +201,68 @@ export class GenerationsProcessor extends WorkerHost {
           this.logger.warn(`audio processing failed for ${gen.id} (bonus): ${(err as Error).message}`);
           gen.bonusAudioUrl = bonusSource;
           gen.demoBonusAudioUrl = null;
+        }
+      }
+
+      const def = packageDef(tier);
+
+      // ===== INSTRUMENTAL (plus / premium) =====
+      // După ce melodia principală e gata, lansăm o generare instrumentală
+      // separată (Suno cu instrumental:true, același style/voce). Robust:
+      // eșecul NU pică melodia principală.
+      if (def.instrumental && gen.type === 'full') {
+        try {
+          const instr = await this.suno.generate({
+            type: gen.type,
+            durationSec: targetDuration,
+            style: gen.style,
+            occasion: gen.occasion,
+            recipientName: gen.recipientName,
+            message: gen.message,
+            dedication: gen.dedication ?? undefined,
+            voiceArtist: gen.voiceArtist,
+            lyrics: refined,
+            generationId: gen.id,
+            site: site ?? undefined,
+            vocalGender,
+            personaId: voiceEntry?.sunoPersonaId,
+            styleWeight: styleEntry?.styleWeight,
+            weirdnessConstraint: styleEntry?.weirdnessConstraint,
+            negativeTags: styleEntry?.negativeTags,
+            instrumental: true,
+          });
+          const instrSource = instr.tracks[0]?.audioUrl;
+          if (instrSource) {
+            try {
+              const im = await this.audio.downloadAndMakeDemo(gen.id, instrSource, 'instrumental');
+              gen.instrumentalUrl = im.fullUrl;
+            } catch (err) {
+              this.logger.warn(
+                `instrumental audio processing failed for ${gen.id}: ${(err as Error).message}`,
+              );
+              gen.instrumentalUrl = instrSource;
+            }
+          }
+        } catch (err) {
+          this.logger.warn(`instrumental generation failed for ${gen.id}: ${(err as Error).message}`);
+        }
+      }
+
+      // ===== MEDIA (imagine socială + video) =====
+      // Graceful — eșecul NU pică livrarea. media.* sunt furnizate de MediaModule.
+      if (def.socialImage && gen.type === 'full') {
+        try {
+          gen.socialImages = await this.media.generateSocialImages(gen);
+          gen.socialImageSelected = gen.socialImages[0] ?? null;
+        } catch (err) {
+          this.logger.warn(`social image generation failed for ${gen.id}: ${(err as Error).message}`);
+        }
+      }
+      if (def.video && gen.type === 'full') {
+        try {
+          gen.videoUrl = await this.media.generateVideo(gen);
+        } catch (err) {
+          this.logger.warn(`video generation failed for ${gen.id}: ${(err as Error).message}`);
         }
       }
 
@@ -271,18 +343,31 @@ export class GenerationsProcessor extends WorkerHost {
       type: effectiveType,
       link,
       audioUrl: effectiveType === 'full' ? gen.audioUrl : gen.demoAudioUrl,
+      // Livrabile extra pachete (doar pentru full/paid). Relative URLs sunt OK —
+      // socialImage/video pot fi deja absolute (uploads service le prefixează cu API_URL).
+      socialImageUrl: effectiveType === 'full' ? gen.socialImageSelected : null,
+      instrumentalUrl: effectiveType === 'full' ? gen.instrumentalUrl : null,
+      videoUrl: effectiveType === 'full' ? gen.videoUrl : null,
       locale: site?.locale ?? gen.locale ?? 'ro',
       branding,
     });
-    await this.mailer.send(
-      {
-        to: email,
-        subject: tpl.subject,
-        html: tpl.html,
-        text: tpl.text,
-        from: site?.fromEmail ?? undefined,
-      },
-      { site, kind: 'generation_ready', userId: gen.ownerUserId ?? null, relatedId: gen.id },
-    );
+    // Eșecul notificării NU trebuie să pice job-ul (altfel BullMQ ar reîncerca și
+    // ar regenera melodia + livrabilele = cost dublu la Suno). Melodia e deja gata.
+    try {
+      await this.mailer.send(
+        {
+          to: email,
+          subject: tpl.subject,
+          html: tpl.html,
+          text: tpl.text,
+          from: site?.fromEmail ?? undefined,
+        },
+        { site, kind: 'generation_ready', userId: gen.ownerUserId ?? null, relatedId: gen.id },
+      );
+    } catch (err) {
+      this.logger.warn(
+        `notifyOwner mail failed for gen ${gen.id}: ${(err as Error).message}`,
+      );
+    }
   }
 }

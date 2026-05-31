@@ -1,3 +1,5 @@
+import { PackageTier, packagePriceCents } from './packages';
+
 /** Sume în BANI (cents RON). Tot ce expunem la API folosim cents. */
 export const BASE_PRICE_RON = 2999; // 29.99 lei
 export const PREMIUM_EXTRA_CENTS = 2000; // +20 lei pentru Manea Premium
@@ -25,4 +27,15 @@ export function totalPriceCents(tipAmountRON: number, premium: boolean): number 
     (premium ? PREMIUM_EXTRA_CENTS : 0) +
     tipSurchargeCents(tipAmountRON)
   );
+}
+
+/**
+ * Prețul total pentru noul model de PACHETE. Totalul = prețul pachetului
+ * (cu override per-site). Fără tip/premium — pachetul include tot.
+ */
+export function packageTotalCents(
+  tier: PackageTier,
+  overrides?: Partial<Record<PackageTier, number>> | null,
+): number {
+  return packagePriceCents(tier, overrides);
 }

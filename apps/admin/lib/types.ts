@@ -69,6 +69,18 @@ export interface AdminGeneration {
   lastRetryAt?: string | null;
   /** Marker upload manual din admin (sare peste Suno API). */
   providerJobId?: string | null;
+  /** Pachetul ales (model nou cu 3 pachete). Lipsește la comenzile legacy. */
+  packageTier?: 'basic' | 'plus' | 'premium';
+  /** Imagini social generate pentru livrabile. */
+  socialImages?: string[];
+  /** Imaginea social selectată de client. */
+  socialImageSelected?: string | null;
+  /** Imaginea social încărcată manual. */
+  socialImageUploaded?: string | null;
+  /** URL piesă instrumentală (livrabil pachet). */
+  instrumentalUrl?: string | null;
+  /** URL videoclip (livrabil pachet). */
+  videoUrl?: string | null;
   /** Email-ul owner-ului (user.email sau guest.email). Populat de listGenerations. */
   ownerEmail?: string | null;
   /** Plata legată de această generare (via paymentId). Populat de listGenerations. */

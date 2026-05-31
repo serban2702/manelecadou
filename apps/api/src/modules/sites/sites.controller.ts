@@ -8,6 +8,7 @@ import { Site } from './site.entity';
 import { SiteSamplesService, SAMPLE_STYLES, SAMPLE_VOICES, SampleKind } from './site-samples.service';
 import { SiteBrandUploadService, BrandAssetField } from './site-brand-upload.service';
 import { encryptSecret } from '../../common/crypto.util';
+import { PACKAGE_TIERS, packagePriceCents } from '../payments/packages';
 
 /**
  * Placeholder folosit de admin UI pentru câmpurile criptate (apiKey, smtp.pass):
@@ -71,6 +72,9 @@ export class PublicSiteController {
       tipSurchargeCapCents: site.tipSurchargeCapCents ?? 5000,
       tipSurchargePercent: site.tipSurchargePercent ?? 5,
       giftPriceCents: site.giftPriceCents,
+      // Model PACHETE: override-urile brute + prețurile efective per tier.
+      packagePricesCents: site.packagePricesCents ?? null,
+      packagePrices: effectivePackagePrices(site.packagePricesCents),
       brand: site.brand,
       seo: site.seo,
       analytics: site.analytics,
@@ -123,6 +127,20 @@ function isIpWhitelisted(clientIp: string | null, whitelist: string[]): boolean 
     if (entry.endsWith('*') && ip.startsWith(entry.slice(0, -1))) return true;
   }
   return false;
+}
+
+/** Prețurile efective per tier (cu override per-site aplicat). Câmp derivat
+ *  expus în config-ul public ca web-ul să afișeze direct prețul fiecărui pachet. */
+function effectivePackagePrices(
+  overrides: Partial<Record<'basic' | 'plus' | 'premium', number>> | null | undefined,
+): Record<'basic' | 'plus' | 'premium', number> {
+  return PACKAGE_TIERS.reduce(
+    (acc, tier) => {
+      acc[tier] = packagePriceCents(tier, overrides ?? null);
+      return acc;
+    },
+    {} as Record<'basic' | 'plus' | 'premium', number>,
+  );
 }
 
 function extractClientIp(req: Request): string | null {
@@ -360,6 +378,8 @@ export class AdminSitesController {
       tipSurchargeCapCents: s.tipSurchargeCapCents ?? 5000,
       tipSurchargePercent: s.tipSurchargePercent ?? 5,
       giftPriceCents: s.giftPriceCents,
+      packagePricesCents: s.packagePricesCents ?? null,
+      packagePrices: effectivePackagePrices(s.packagePricesCents),
       brand: s.brand,
       seo: s.seo,
       analytics: s.analytics,

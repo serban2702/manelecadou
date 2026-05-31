@@ -13,7 +13,8 @@ import { Repository } from 'typeorm';
 import Stripe from 'stripe';
 
 import { Payment } from './payment.entity';
-import { PREMIUM_EXTRA_CENTS } from './pricing';
+import { PREMIUM_EXTRA_CENTS, packageTotalCents } from './pricing';
+import { normalizeTier, PackageTier } from './packages';
 import { PromoService } from '../promo/promo.service';
 import { GiftCodesService } from '../gift-codes/gift-codes.service';
 import { GiftTier, TIER_PRICES_RON } from '../gift-codes/gift-code.entity';
@@ -39,6 +40,11 @@ interface CheckoutInput {
   generationId?: string;
   tipAmount?: number;
   premium?: boolean;
+  /**
+   * Tier-ul pachetului (model nou). Când e setat, totalul = prețul pachetului
+   * (`packageTotalCents`, cu override per-site) și se IGNORĂ tip/premium.
+   */
+  packageTier?: PackageTier;
   promoCode?: string;
   email?: string;
   site: Site;
@@ -140,8 +146,20 @@ export class PaymentsService {
     );
   }
 
-  /** Returnează prețul calculat (nu apelează Stripe). */
-  quote(site: Site, input: { tipAmount?: number; premium?: boolean }) {
+  /** Totalul pentru un pachet, cu override per-site (cents). */
+  private sitePackageTotal(site: Site, tier: PackageTier): number {
+    return packageTotalCents(tier, site.packagePricesCents ?? null);
+  }
+
+  /** Returnează prețul calculat (nu apelează Stripe). Suportă AMBELE modele:
+   *  - PACHETE (input.packageTier setat) → total = prețul pachetului,
+   *  - LEGACY (tip + premium) → comportamentul vechi, păstrat pentru compat. */
+  quote(site: Site, input: { tipAmount?: number; premium?: boolean; packageTier?: PackageTier }) {
+    if (input.packageTier) {
+      const tier = normalizeTier(input.packageTier);
+      const total = this.sitePackageTotal(site, tier);
+      return { packageTier: tier, total, currency: site.currency };
+    }
     const tip = input.tipAmount ?? 0;
     const premium = !!input.premium;
     const surcharge = this.siteTipSurcharge(site, tip);
@@ -233,7 +251,10 @@ export class PaymentsService {
     const hasOverride = typeof input.overrideAmount === 'number' && input.overrideAmount > 0;
     const baseTotal = hasOverride
       ? Math.max(50, Math.round(input.overrideAmount!))
-      : this.siteTotal(site, input.tipAmount ?? 0, !!input.premium);
+      : input.packageTier
+        ? // Model PACHETE: total = prețul pachetului (ignorăm tip/premium).
+          this.sitePackageTotal(site, normalizeTier(input.packageTier))
+        : this.siteTotal(site, input.tipAmount ?? 0, !!input.premium);
     const effectiveCurrency = (input.overrideCurrency ?? site.currency).toUpperCase();
     let promoCodeId: string | undefined;
     let appliedDiscountCents = 0;
@@ -408,9 +429,14 @@ export class PaymentsService {
     if (!stripe) throw new ServiceUnavailableException('Stripe not configured');
     const site = input.site;
 
+    // Model PACHETE: tier-ul vine din obiectul generation (web wizard).
+    // Dacă lipsește → 'basic'. createPendingForPayment persistă packageTier +
+    // setează durata corectă a melodiei (premium = 150s).
+    const tier = normalizeTier((input.generation as { packageTier?: string }).packageTier);
     const gen = await this.generations.createPendingForPayment(
       {
         ...input.generation,
+        packageTier: tier,
         tipAmount: input.tipAmount ?? input.generation.tipAmount ?? 0,
         premium: input.premium ?? input.generation.premium ?? false,
       },
@@ -425,6 +451,9 @@ export class PaymentsService {
       userId: input.userId,
       guestId: input.guestId,
       generationId: gen.id,
+      // Pachetul determină totalul; tip/premium rămân pentru audit/compat dar
+      // sunt ignorate de calcul când packageTier e setat.
+      packageTier: tier,
       tipAmount: input.tipAmount ?? 0,
       premium: input.premium ?? false,
       promoCode: input.promoCode,

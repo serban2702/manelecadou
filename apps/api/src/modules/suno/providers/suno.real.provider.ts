@@ -47,7 +47,8 @@ export class SunoRealProvider extends SunoProvider {
 
     const body: Record<string, unknown> = {
       customMode,
-      instrumental: false,
+      // Instrumental (fără voce) pentru pachetele plus/premium — parametrizabil.
+      instrumental: !!input.instrumental,
       model,
       callBackUrl: `${apiUrl}/api/suno/callback`,
     };

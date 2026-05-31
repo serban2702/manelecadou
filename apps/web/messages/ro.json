@@ -370,7 +370,7 @@
       "Stil",
       "Ocazie",
       "Detalii",
-      "Cadou",
+      "Pachet",
       "Demo",
       "Deblochează"
     ],
@@ -378,7 +378,7 @@
       "Stil",
       "Ocazie",
       "Detalii",
-      "Cadou",
+      "Pachet",
       "Plătește"
     ],
     "step1Title": "1. Ce fel de manea?",
@@ -425,8 +425,8 @@
       "defaultDraftYou": "tine"
     },
     "step4": {
-      "title": "4. Cadou & Premium",
-      "sub": "Cât îi pui în versuri, ca să-l dai pe spate? (Suprataxă 5%, plafon 50 lei.)",
+      "title": "4. Alege pachetul",
+      "sub": "Alege ce vrei să primești. Poți schimba oricând până la plată.",
       "tipNone": "Fără",
       "tipUnit": "{amount} lei",
       "customLabel": "Sau pune cât vrei tu (până la 1.000.000.000 lei 😅)",

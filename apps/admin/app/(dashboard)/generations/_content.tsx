@@ -53,6 +53,14 @@ function voiceLabel(v: string | null | undefined): string {
   return v ?? '';
 }
 
+/** Mapează pachetul la etichetă prietenoasă cu preț. Legacy/necunoscut → valoarea brută. */
+function packageLabel(t: string | null | undefined): string {
+  if (t === 'basic') return 'Bază (29,99)';
+  if (t === 'plus') return 'Plus (49,99)';
+  if (t === 'premium') return 'Premium (69,99)';
+  return t ?? '';
+}
+
 export default function GenerationsPage() {
   const { toast } = useToast();
   const { isAllSelected } = useSitesMap();
@@ -216,6 +224,11 @@ export default function GenerationsPage() {
                   <TableCell className="text-xs">
                     <code>{g.style}</code> <span className="text-muted-foreground">/</span>{' '}
                     <code>{voiceLabel(g.voiceArtist)}</code>
+                    {g.packageTier && (
+                      <div className="mt-1">
+                        <Badge variant="warning">{packageLabel(g.packageTier)}</Badge>
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     <div className="flex flex-col gap-0.5">

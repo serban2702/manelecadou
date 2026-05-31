@@ -170,6 +170,15 @@ function ShareGenerationViewInner() {
         }}>
           {isPaid ? t('unlockedBadge') : t('demoBadge')}
         </span>
+        {g.packageTier === 'premium' && (
+          <span style={{
+            fontSize: 11, padding: '3px 10px', borderRadius: 999,
+            background: 'linear-gradient(180deg,#ffe28a,#f1c84d,#b07c1e)',
+            color: '#2a1a04', fontWeight: 800, letterSpacing: '0.04em',
+          }}>
+            👑 PREMIUM
+          </span>
+        )}
         {g.status === 'failed' && (
           <span style={{
             fontSize: 11, padding: '3px 10px', borderRadius: 999,
@@ -221,8 +230,57 @@ function ShareGenerationViewInner() {
         <PaywallSection generationId={g.id} />
       )}
 
+      {g.instrumentalUrl && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
+            🎼 Versiune instrumentală
+          </div>
+          <ManeaPlayer audioUrl={resolveMediaUrl(g.instrumentalUrl)!} title="Instrumental" />
+          <a
+            href={resolveMediaUrl(g.instrumentalUrl)!}
+            download
+            className="btn btn-ghost btn-sm"
+            style={{ marginTop: 8, display: 'inline-block', textDecoration: 'none' }}
+          >
+            ⬇ Descarcă instrumentalul
+          </a>
+        </div>
+      )}
+
+      {g.videoUrl && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
+            🎬 Videoclip personalizat
+          </div>
+          <video
+            controls
+            playsInline
+            src={resolveMediaUrl(g.videoUrl)!}
+            style={{ width: '100%', borderRadius: 12, background: '#000', border: '1px solid rgba(241,200,77,0.25)' }}
+          />
+          <a
+            href={resolveMediaUrl(g.videoUrl)!}
+            download
+            className="btn btn-ghost btn-sm"
+            style={{ marginTop: 8, display: 'inline-block', textDecoration: 'none' }}
+          >
+            ⬇ Descarcă videoclipul
+          </a>
+        </div>
+      )}
+
+      {g.status === 'succeeded' && !!(g.socialImages && g.socialImages.length) && (
+        <SocialImageSection
+          generation={g}
+          onUpdated={(fresh) => setG(fresh)}
+        />
+      )}
+
       {g.status === 'succeeded' && (
-        <ShareSection recipientName={g.recipientName ?? 'cadou'} />
+        <ShareSection
+          recipientName={g.recipientName ?? 'cadou'}
+          imageUrl={resolveMediaUrl(g.socialImageUploaded ?? g.socialImageSelected ?? g.coverUrl)}
+        />
       )}
 
       {g.lyrics && (
@@ -525,7 +583,7 @@ function PaywallSection({ generationId }: { generationId: string }) {
  * Buton share: Web Share API pe mobile, fallback grid pentru desktop
  * (Facebook, WhatsApp, X/Twitter, Copy link).
  */
-function ShareSection({ recipientName }: { recipientName: string }) {
+function ShareSection({ recipientName, imageUrl }: { recipientName: string; imageUrl?: string | null }) {
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
 
@@ -537,10 +595,29 @@ function ShareSection({ recipientName }: { recipientName: string }) {
     return `🎵 Ascultă maneaua personalizată pentru ${recipientName}`;
   }
 
+  /** Încearcă să atașeze poza de share la Web Share API (share nativ cu fișier).
+   *  Dacă browserul nu suportă fișiere, cade pe share doar cu link+text. */
+  async function buildShareFile(): Promise<File | null> {
+    if (!imageUrl || typeof fetch === 'undefined') return null;
+    try {
+      const res = await fetch(imageUrl);
+      const blob = await res.blob();
+      const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+      return new File([blob], `manea-${recipientName}.${ext}`, { type: blob.type });
+    } catch {
+      return null;
+    }
+  }
+
   async function tryNativeShare() {
     if (typeof navigator === 'undefined' || !('share' in navigator)) return false;
+    const payload: ShareData = { title: 'Maneaua mea', text: getText(), url: getUrl() };
+    const file = await buildShareFile();
+    if (file && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+      (payload as ShareData & { files: File[] }).files = [file];
+    }
     try {
-      await navigator.share({ title: 'Maneaua mea', text: getText(), url: getUrl() });
+      await navigator.share(payload);
       setShared(true);
       setTimeout(() => setShared(false), 2000);
       return true;
@@ -641,6 +718,137 @@ function ShareSection({ recipientName }: { recipientName: string }) {
       <div style={{ fontSize: 11, opacity: 0.6, marginTop: 10, lineHeight: 1.4 }}>
         💡 Pentru Instagram: copiază linkul, deschide app-ul și lipește-l în story sau bio.
       </div>
+    </div>
+  );
+}
+
+/**
+ * Galerie de poze de share (plus/premium). Afișează variantele generate ca
+ * thumbnails stil Spotify, una preselectată (`socialImageSelected`). Click pe
+ * alta → select optimistic + persist. Buton de upload pentru poza proprie.
+ */
+function SocialImageSection({
+  generation,
+  onUpdated,
+}: {
+  generation: GenerationDto;
+  onUpdated: (fresh: GenerationDto) => void;
+}) {
+  const images = generation.socialImages ?? [];
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [selected, setSelected] = useState<string | null>(
+    generation.socialImageSelected ?? images[0] ?? null,
+  );
+  const [uploaded, setUploaded] = useState<string | null>(generation.socialImageUploaded ?? null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function pick(url: string) {
+    const prev = selected;
+    setSelected(url); // optimistic
+    setErr(null);
+    try {
+      const fresh = await api.selectSocialImage(generation.id, url);
+      onUpdated(fresh);
+    } catch {
+      setSelected(prev); // rollback
+      setErr('Nu am putut salva selecția. Încearcă din nou.');
+    }
+  }
+
+  async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permite re-upload același fișier
+    if (!file) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const fresh = await api.uploadSocialImage(generation.id, file);
+      onUpdated(fresh);
+      setUploaded(fresh.socialImageUploaded ?? null);
+      setSelected(fresh.socialImageSelected ?? fresh.socialImageUploaded ?? selected);
+    } catch (e2) {
+      setErr(e2 instanceof ApiError ? e2.message : 'Încărcarea a eșuat.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const allThumbs = uploaded ? [uploaded, ...images] : images;
+
+  return (
+    <div style={{
+      marginTop: 20, padding: 16, borderRadius: 12,
+      background: 'rgba(241,200,77,0.06)',
+      border: '1px solid rgba(241,200,77,0.2)',
+    }}>
+      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
+        📸 Poza ta de share
+      </div>
+      <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
+        Alege poza care apare când distribui melodia pe TikTok, Facebook sau Instagram.
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+        {allThumbs.map((url) => {
+          const resolved = resolveMediaUrl(url)!;
+          const isSel = selected === url;
+          return (
+            <button
+              key={url}
+              type="button"
+              onClick={() => pick(url)}
+              style={{
+                position: 'relative', padding: 0, borderRadius: 10, overflow: 'hidden',
+                border: `3px solid ${isSel ? 'var(--gold)' : 'transparent'}`,
+                cursor: 'pointer', background: '#000', aspectRatio: '1 / 1',
+                boxShadow: isSel ? '0 4px 16px rgba(241,200,77,0.4)' : 'none',
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={resolved}
+                alt="Variantă poză de share"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              />
+              {isSel && (
+                <span style={{
+                  position: 'absolute', top: 6, right: 6,
+                  width: 22, height: 22, borderRadius: '50%',
+                  background: 'var(--gold)', color: '#2a1a04',
+                  display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 900,
+                }}>✓</span>
+              )}
+              {uploaded === url && (
+                <span style={{
+                  position: 'absolute', bottom: 0, left: 0, right: 0,
+                  fontSize: 10, fontWeight: 700, textAlign: 'center',
+                  padding: '3px 0', background: 'rgba(0,0,0,0.6)', color: 'var(--gold)',
+                }}>A ta</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        onChange={onUpload}
+        style={{ display: 'none' }}
+      />
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        disabled={busy}
+        className="btn btn-ghost"
+        style={{ width: '100%', marginTop: 12, opacity: busy ? 0.6 : 1 }}
+      >
+        {busy ? 'Se încarcă…' : '⬆ Încarcă poza ta'}
+      </button>
+
+      {err && <div style={{ marginTop: 8, fontSize: 12, color: '#ff8888' }}>{err}</div>}
     </div>
   );
 }

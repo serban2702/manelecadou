@@ -56,6 +56,18 @@ export interface OrderDetail {
     lyrics: string | null;
     tipAmount: number;
     premium: boolean;
+    /** Pachetul ales (model nou cu 3 pachete). Lipsește la comenzile legacy. */
+    packageTier?: 'basic' | 'plus' | 'premium';
+    /** Imagini social generate pentru livrabile. */
+    socialImages?: string[];
+    /** Imaginea social selectată de client. */
+    socialImageSelected?: string | null;
+    /** Imaginea social încărcată manual. */
+    socialImageUploaded?: string | null;
+    /** URL piesă instrumentală (livrabil pachet). */
+    instrumentalUrl?: string | null;
+    /** URL videoclip (livrabil pachet). */
+    videoUrl?: string | null;
     paymentId: string | null;
     paidUnlocked: boolean;
     audioUrl: string | null;

@@ -79,6 +79,32 @@ export class Generation {
   @Column({ type: 'boolean', default: false })
   premium!: boolean;
 
+  // ============== Model PACHETE (basic | plus | premium) ==============
+  /** Tier-ul pachetului ales de client. Înlocuiește vechiul model premium/tip.
+   *  Default 'basic' pentru rândurile vechi (synchronize-safe). */
+  @Column({ type: 'varchar', length: 16, default: 'basic' })
+  packageTier!: string;
+
+  /** URL-urile celor 4 variante de imagine social-share generate (plus/premium). */
+  @Column({ type: 'jsonb', default: () => `'[]'::jsonb` })
+  socialImages!: string[];
+
+  /** Imaginea socială aleasă/curentă (din socialImages sau upload propriu). */
+  @Column({ type: 'varchar', length: 1024, nullable: true })
+  socialImageSelected!: string | null;
+
+  /** Imagine socială încărcată manual de client. */
+  @Column({ type: 'varchar', length: 1024, nullable: true })
+  socialImageUploaded!: string | null;
+
+  /** URL track instrumental (plus/premium). */
+  @Column({ type: 'varchar', length: 1024, nullable: true })
+  instrumentalUrl!: string | null;
+
+  /** URL videoclip generat (premium). */
+  @Column({ type: 'varchar', length: 1024, nullable: true })
+  videoUrl!: string | null;
+
   @Column({ type: 'varchar', length: 128, nullable: true })
   providerJobId!: string | null;
 
