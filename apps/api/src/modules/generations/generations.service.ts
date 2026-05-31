@@ -24,6 +24,7 @@ import { paymentSuccessTemplate } from '../../mailer/templates/templates';
 import { brandingFromSite } from '../../mailer/branding';
 import { SitesService } from '../sites/sites.service';
 import { normalizeTier, packageDef } from '../payments/packages';
+import { hashUnlock, verifyUnlock } from '../../common/unlock';
 
 export { GENERATIONS_QUEUE } from './generations.constants';
 import { GENERATIONS_QUEUE } from './generations.constants';
@@ -139,6 +140,27 @@ export class GenerationsService {
 
   async findOnePublic(id: string): Promise<Generation | null> {
     return this.repo.findOne({ where: { id } });
+  }
+
+  /** Owner setează (sau șterge cu password=null/'') parola de deblocare a
+   *  conținutului privat (poze custom + colaje). Doar owner-ul (findOne throws). */
+  async setUnlockPassword(
+    id: string,
+    ctx: { userId: string | null; guestId: string | null },
+    password: string | null,
+  ): Promise<{ ok: true; hasPassword: boolean }> {
+    const g = await this.findOne(id, ctx); // aruncă dacă nu e owner
+    const pwd = (password ?? '').trim();
+    g.unlockPasswordHash = pwd ? hashUnlock(g.id, pwd) : null;
+    await this.repo.save(g);
+    return { ok: true, hasPassword: !!g.unlockPasswordHash };
+  }
+
+  /** Verifică o parolă de deblocare pentru o manea (vizitator non-owner). */
+  async checkUnlock(id: string, password: string): Promise<boolean> {
+    const g = await this.repo.findOne({ where: { id } });
+    if (!g) return false;
+    return verifyUnlock(g.id, password, g.unlockPasswordHash);
   }
 
   async countMine(ctx: { userId: string | null; guestId: string | null }): Promise<number> {

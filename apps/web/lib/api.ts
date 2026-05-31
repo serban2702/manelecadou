@@ -2,6 +2,9 @@
 
 import type { PackageTier } from './packages';
 
+/** Raport de aspect pentru colaje / image→video. */
+export type CollageAspect = '9x16' | '1x1' | '16x9';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
 const GUEST_KEY = 'mc_guest_id';
 const TOKEN_KEY = 'mc_access_token';
@@ -54,7 +57,11 @@ function getCurrentLocale(): string {
   return process.env.NEXT_PUBLIC_DEFAULT_LOCALE ?? 'ro';
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  extraHeaders?: Record<string, string>,
+): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
   headers.set('X-Locale', getCurrentLocale());
@@ -71,6 +78,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (typeof window !== 'undefined') {
     const orSid = window.__OR_SESSION_ID__;
     if (orSid) headers.set('X-OpenReplay-SessionID', orSid);
+  }
+
+  // Headere extra (ex. `x-unlock-password` pentru conținut privat).
+  if (extraHeaders) {
+    for (const [k, v] of Object.entries(extraHeaders)) headers.set(k, v);
   }
 
   const url = path.startsWith('http') ? path : `${API_URL}/api${path}`;
@@ -177,6 +189,25 @@ export interface GenerationDto {
   videoUrlBonus?: string | null;
   /** false cât timp livrabilele extra (instrumental/imagini) încă se generează în fundal. */
   deliverablesReady?: boolean;
+  // ── Owner / privacy ──────────────────────────────────────────────────────
+  /** true dacă vizitatorul deține maneaua (același user logat / aceeași sesiune guest). */
+  isOwner?: boolean;
+  /** owner-ul a setat o parolă de privacy peste pozele/colajele private. */
+  hasUnlockPassword?: boolean;
+  /** request-ul a furnizat parola corectă (sau e owner) → conținutul privat e vizibil. */
+  unlocked?: boolean;
+}
+
+/** Colaj video sau image→video atașat unei generări. */
+export interface CollageDto {
+  id: string;
+  status: 'pending' | 'processing' | 'succeeded' | 'failed';
+  videoUrl?: string | null;
+  track?: string;
+  kind?: 'collage' | 'image_video';
+  aspect?: string;
+  imageCount?: number;
+  error?: string | null;
 }
 
 export interface RecentDto {
@@ -288,7 +319,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ locale: getCurrentLocale(), ...input }),
     }),
-  getGeneration: (id: string) => request<GenerationDto>(`/generations/${id}`),
+  getGeneration: (id: string, password?: string) =>
+    request<GenerationDto>(
+      `/generations/${id}`,
+      {},
+      password ? { 'x-unlock-password': password } : undefined,
+    ),
   listGenerations: () => request<GenerationDto[]>('/generations'),
   countMyGenerations: () =>
     request<{ count: number; scope: 'user' | 'guest' | 'anonymous' }>('/generations/count/mine'),
@@ -436,6 +472,7 @@ export const api = {
     generationId: string,
     track: 'main' | 'bonus',
     files: File[],
+    aspect: CollageAspect,
   ): Promise<{ collageId: string; status: string }> => {
     const headers = new Headers();
     headers.set('X-Locale', getCurrentLocale());
@@ -449,6 +486,7 @@ export const api = {
     }
     const form = new FormData();
     form.append('track', track);
+    form.append('aspect', aspect);
     for (const f of files) form.append('images', f);
     const res = await fetch(`${API_URL}/api/generations/${generationId}/collage`, {
       method: 'POST',
@@ -470,24 +508,17 @@ export const api = {
   /** Întoarce ultimul colaj video pentru o generare (sau `null` dacă nu există). */
   getLatestCollage: async (
     generationId: string,
-  ): Promise<{
-    id: string;
-    status: 'pending' | 'processing' | 'succeeded' | 'failed';
-    videoUrl?: string | null;
-    track?: string;
-  } | null> => {
+    password?: string,
+  ): Promise<CollageDto | null> => {
     try {
       // Backend întoarce { collage: {...} | null } — dezambalăm aici ca să
       // potrivim tipul plat folosit de CollageSection (altfel status=undefined
       // și UI-ul de „se generează" dispare instant → revine dropzone-ul).
-      const res = await request<{
-        collage: {
-          id: string;
-          status: 'pending' | 'processing' | 'succeeded' | 'failed';
-          videoUrl?: string | null;
-          track?: string;
-        } | null;
-      }>(`/generations/${generationId}/collage/latest`);
+      const res = await request<{ collage: CollageDto | null }>(
+        `/generations/${generationId}/collage/latest`,
+        {},
+        password ? { 'x-unlock-password': password } : undefined,
+      );
       return res.collage ?? null;
     } catch (e) {
       // 404 = niciun colaj încă; degradare grațioasă pentru orice eroare.
@@ -495,6 +526,52 @@ export const api = {
       return null;
     }
   },
+
+  /** Listează toate colajele/clipurile (cele mai noi primele). */
+  listCollages: async (
+    generationId: string,
+    password?: string,
+  ): Promise<CollageDto[]> => {
+    try {
+      const res = await request<{ collages: CollageDto[] }>(
+        `/generations/${generationId}/collage/list`,
+        {},
+        password ? { 'x-unlock-password': password } : undefined,
+      );
+      return res.collages ?? [];
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Pornește un image→video: un singur cadru (una dintre pozele cunoscute ale
+   * maneaua) animat peste o melodie (`main`/`bonus`). `imageUrl` TREBUIE să fie
+   * una dintre pozele cunoscute (socialImages / socialImageSelected /
+   * socialImageUploaded / `/uploads/social/<id>/vN.png`). Owner-only.
+   */
+  createImageVideo: async (
+    generationId: string,
+    args: { track: 'main' | 'bonus'; aspect: CollageAspect; imageUrl: string },
+  ): Promise<{ collageId: string; status: string }> =>
+    request<{ collageId: string; status: string }>(
+      `/generations/${generationId}/collage/image-video`,
+      { method: 'POST', body: JSON.stringify(args) },
+    ),
+
+  /** Owner setează/șterge parola de privacy. Parolă goală/null o șterge. */
+  setUnlockPassword: (generationId: string, password: string | null) =>
+    request<{ ok: boolean; hasPassword: boolean }>(
+      `/generations/${generationId}/unlock-password`,
+      { method: 'POST', body: JSON.stringify({ password }) },
+    ),
+
+  /** Verifică parola de privacy ca vizitator non-owner. */
+  checkUnlock: (generationId: string, password: string) =>
+    request<{ ok: boolean }>(
+      `/generations/${generationId}/unlock-check`,
+      { method: 'POST', body: JSON.stringify({ password }) },
+    ),
 
   reportClientError: (input: { message: string; stack?: string; path?: string; level?: 'error' | 'warn' | 'info' }) =>
     request<{ ok: boolean }>('/errors/client', {

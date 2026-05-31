@@ -95,6 +95,8 @@ export class RemoteMediaClient {
     occasion: string;
     startSec?: number;
     durationSec?: number;
+    /** Format canvas: '9x16' | '1x1' | '16x9'. Default '9x16'. */
+    aspect?: string;
   }): Promise<Buffer> {
     const form = new FormData();
     await this.appendFile(form, 'audio', args.audioPath);
@@ -105,6 +107,7 @@ export class RemoteMediaClient {
     form.append('occasion', args.occasion ?? '');
     if (typeof args.startSec === 'number') form.append('startSec', String(args.startSec));
     if (typeof args.durationSec === 'number') form.append('durationSec', String(args.durationSec));
+    if (args.aspect) form.append('aspect', args.aspect);
 
     return this.postMultipartForVideo(`${this.baseUrl}/render/clip`, form);
   }
@@ -114,6 +117,8 @@ export class RemoteMediaClient {
     audioPath: string;
     imagePaths: string[];
     recipientName?: string;
+    /** Format canvas: '9x16' | '1x1' | '16x9'. Default '9x16'. */
+    aspect?: string;
   }): Promise<Buffer> {
     const form = new FormData();
     await this.appendFile(form, 'audio', args.audioPath);
@@ -123,6 +128,7 @@ export class RemoteMediaClient {
     if (typeof args.recipientName === 'string') {
       form.append('recipientName', args.recipientName);
     }
+    if (args.aspect) form.append('aspect', args.aspect);
 
     return this.postMultipartForVideo(`${this.baseUrl}/render/collage`, form);
   }

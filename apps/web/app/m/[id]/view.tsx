@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { api, ApiError, resolveMediaUrl, type GenerationDto } from '@/lib/api';
+import { api, ApiError, resolveMediaUrl, type GenerationDto, type CollageAspect, type CollageDto } from '@/lib/api';
 import { track } from '@/lib/tracking';
 import { ManeaPlayer } from '@/components/ManeaPlayer';
 import { VideoPlayer } from '@/components/VideoPlayer';
@@ -40,21 +40,33 @@ function ShareGenerationViewInner() {
   const [g, setG] = useState<GenerationDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
+  // Parola de privacy (non-owner) — persistată în localStorage ca refresh-ul să
+  // păstreze accesul. `null` = neintrodusă / owner.
+  const [unlockPw, setUnlockPw] = useState<string | null>(null);
   const viewTrackedRef = useRef(false);
   const purchaseTrackedRef = useRef(false);
 
-  async function refresh() {
+  // Citește parola persistată la mount (înainte de primul refresh).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
     try {
-      const fresh = await api.getGeneration(params.id);
+      const saved = window.localStorage.getItem(`mc_unlock_${params.id}`);
+      if (saved) setUnlockPw(saved);
+    } catch {/* ignore */}
+  }, [params.id]);
+
+  const refresh = useCallback(async () => {
+    try {
+      const fresh = await api.getGeneration(params.id, unlockPw ?? undefined);
       setG(fresh);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('errUnknown'));
     }
-  }
+  }, [params.id, unlockPw, t]);
 
   useEffect(() => {
     refresh();
-  }, [params.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [params.id, unlockPw]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Polling cât timp generation e încă în lucru — UX identic cu pasul demo
   // din Generator (progress bar + statusuri vii).
@@ -129,7 +141,9 @@ function ShareGenerationViewInner() {
   // Owner-ul (user logat sau aceeași sesiune guest) e singurul care primește
   // owner ids în payload — payload-ul public le omite. Folosit ca să afișăm
   // colajul DOAR pentru cine a generat maneaua (backend-ul oricum impune 403).
-  const isOwner = !!(g.ownerUserId || g.ownerGuestId);
+  const isOwner = g.isOwner ?? !!(g.ownerUserId || g.ownerGuestId);
+  // Owner SAU vizitator care a deblocat cu parola → poate vedea conținutul privat.
+  const canSeePrivate = isOwner || !!g.unlocked;
   const inProgress = IN_PROGRESS_STATUSES.has(g.status);
   // Pachetele plus/premium au livrabile extra (imagini sociale; + videoclip la
   // premium) care se generează în fundal după ce melodia e gata. Cât
@@ -211,6 +225,27 @@ function ShareGenerationViewInner() {
         </div>
       )}
 
+      {/* Privacy: non-owner cu manea privată — cere parola. */}
+      {!isOwner && g.hasUnlockPassword && !g.unlocked && (
+        <UnlockPrompt
+          onUnlocked={(pw) => {
+            setUnlockPw(pw);
+            try { window.localStorage.setItem(`mc_unlock_${params.id}`, pw); } catch {/* ignore */}
+            // refresh se declanșează automat via effect [unlockPw].
+          }}
+          generationId={params.id}
+        />
+      )}
+
+      {/* Privacy: owner setează/șterge parola peste pozele private. */}
+      {isOwner && isPaid && g.status === 'succeeded' && g.packageTier === 'premium' && (
+        <OwnerPasswordControl
+          generationId={g.id}
+          hasPassword={!!g.hasUnlockPassword}
+          onChanged={() => refresh()}
+        />
+      )}
+
       {inProgress && (
         <GenerationProgress
           generation={g}
@@ -284,15 +319,17 @@ function ShareGenerationViewInner() {
       })()}
 
       {/* Colaj video din pozele tale — DOAR pachetul premium (cel mai scump),
-          după plată și melodie finalizată, și DOAR pentru owner (cine a generat
-          maneaua: același user logat sau aceeași sesiune guest). */}
-      {isOwner && isPaid && g.status === 'succeeded' && g.packageTier === 'premium' && (
-        <CollageSection generation={g} />
+          după plată și melodie finalizată. Owner SAU vizitator deblocat poate
+          VEDEA colajele; doar owner-ul poate CREA (backend impune 403). */}
+      {canSeePrivate && isPaid && g.status === 'succeeded' && g.packageTier === 'premium' && (
+        <CollageSection generation={g} isOwner={isOwner} password={unlockPw ?? undefined} />
       )}
 
       {g.status === 'succeeded' && !!(g.socialImages && g.socialImages.length) ? (
         <SocialImageSection
           generation={g}
+          isOwner={isOwner}
+          password={unlockPw ?? undefined}
           // BUG FIX: endpoint-urile select/upload întorc un obiect PARȚIAL
           // (ex. `{ ok, socialImageSelected }`). Înlocuirea totală a obiectului
           // golea pagina (titlu fără nume, „Demo — preview"). Facem MERGE ca să
@@ -441,6 +478,157 @@ function GenerationProgress({
           </pre>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Card de deblocare (non-owner) — input parolă + buton „Deblochează". */
+function UnlockPrompt({
+  generationId,
+  onUnlocked,
+}: {
+  generationId: string;
+  onUnlocked: (password: string) => void;
+}) {
+  const [pw, setPw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    if (!pw.trim()) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await api.checkUnlock(generationId, pw);
+      if (r.ok) {
+        onUnlocked(pw);
+      } else {
+        setErr('Parolă greșită. Mai încearcă.');
+      }
+    } catch {
+      setErr('Parolă greșită. Mai încearcă.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{
+      marginTop: 14, padding: 16, borderRadius: 12,
+      background: 'rgba(241,200,77,0.06)', border: '1px solid rgba(241,200,77,0.3)',
+    }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--gold-2)', marginBottom: 4 }}>
+        🔒 Conținut privat
+      </div>
+      <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
+        Introdu parola pentru a vedea pozele și colajele.
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input
+          type="password"
+          value={pw}
+          onChange={(e) => { setPw(e.target.value); setErr(null); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+          placeholder="Parola"
+          style={{
+            flex: 1, padding: '8px 10px', borderRadius: 8,
+            background: 'rgba(0,0,0,0.3)', border: '1px solid var(--line)',
+            color: 'var(--gold-2)', fontFamily: 'inherit', fontSize: 13,
+          }}
+        />
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!pw.trim() || busy}
+          className="btn btn-gold"
+          style={{ padding: '8px 16px', opacity: busy ? 0.7 : 1 }}
+        >
+          {busy ? 'Verific…' : 'Deblochează'}
+        </button>
+      </div>
+      {err && <div style={{ marginTop: 8, fontSize: 12, color: '#ff8888' }}>{err}</div>}
+    </div>
+  );
+}
+
+/** Control owner — setează/șterge parola de privacy peste pozele/colajele private. */
+function OwnerPasswordControl({
+  generationId,
+  hasPassword,
+  onChanged,
+}: {
+  generationId: string;
+  hasPassword: boolean;
+  onChanged: () => void;
+}) {
+  const [pw, setPw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  async function save(value: string | null) {
+    setBusy(true);
+    setErr(null);
+    setSaved(false);
+    try {
+      await api.setUnlockPassword(generationId, value);
+      setPw('');
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      onChanged();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Nu am putut salva parola.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{
+      marginTop: 14, padding: 16, borderRadius: 12,
+      background: 'rgba(241,200,77,0.06)', border: '1px solid rgba(241,200,77,0.2)',
+    }}>
+      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
+        🔒 Parolă pentru pozele private
+      </div>
+      <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
+        Cine are linkul + parola poate vedea pozele tale custom și colajele.
+        {hasPassword && <b style={{ color: 'var(--gold-2)' }}> Parola e activă.</b>}
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          value={pw}
+          onChange={(e) => { setPw(e.target.value); setErr(null); }}
+          placeholder={hasPassword ? 'Parolă nouă' : 'Setează o parolă'}
+          style={{
+            flex: '1 1 160px', padding: '8px 10px', borderRadius: 8,
+            background: 'rgba(0,0,0,0.3)', border: '1px solid var(--line)',
+            color: 'var(--gold-2)', fontFamily: 'inherit', fontSize: 13,
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => save(pw)}
+          disabled={!pw.trim() || busy}
+          className="btn btn-gold"
+          style={{ padding: '8px 16px', opacity: busy ? 0.7 : 1 }}
+        >
+          {busy ? 'Salvez…' : saved ? '✓ Salvat' : 'Salvează'}
+        </button>
+        {hasPassword && (
+          <button
+            type="button"
+            onClick={() => save(null)}
+            disabled={busy}
+            className="btn btn-ghost"
+            style={{ padding: '8px 16px' }}
+          >
+            Șterge parola
+          </button>
+        )}
+      </div>
+      {err && <div style={{ marginTop: 8, fontSize: 12, color: '#ff8888' }}>{err}</div>}
     </div>
   );
 }
@@ -766,9 +954,13 @@ function ShareSection({ recipientName, imageUrl }: { recipientName: string; imag
  */
 function SocialImageSection({
   generation,
+  isOwner,
+  password,
   onUpdated,
 }: {
   generation: GenerationDto;
+  isOwner: boolean;
+  password?: string;
   // Backend-ul întoarce un obiect PARȚIAL (doar câmpurile schimbate), deci
   // callback-ul primește un Partial<GenerationDto>, iar părintele face merge.
   onUpdated: (fresh: Partial<GenerationDto>) => void;
@@ -781,6 +973,14 @@ function SocialImageSection({
   const [uploaded, setUploaded] = useState<string | null>(generation.socialImageUploaded ?? null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Panel image→video (owner-only).
+  const [iv2Open, setIv2Open] = useState(false);
+
+  // Sincronizează cu prop-ul când conținutul privat devine vizibil (ex. după
+  // deblocare cu parolă, `socialImageUploaded` apare nou din backend).
+  useEffect(() => {
+    if (generation.socialImageUploaded != null) setUploaded(generation.socialImageUploaded);
+  }, [generation.socialImageUploaded]);
 
   async function pick(url: string) {
     const prev = selected;
@@ -880,16 +1080,19 @@ function SocialImageSection({
         style={{ display: 'none' }}
       />
       <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          disabled={busy}
-          className="btn btn-ghost"
-          style={{ flex: '1 1 140px', opacity: busy ? 0.6 : 1 }}
-        >
-          {busy ? 'Se încarcă…' : '⬆ Încarcă poza ta'}
-        </button>
-        {/* Descarcă varianta selectată (PNG) — util pentru postare pe TikTok/Instagram. */}
+        {/* Upload poză proprie — doar owner. */}
+        {isOwner && (
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={busy}
+            className="btn btn-ghost"
+            style={{ flex: '1 1 140px', opacity: busy ? 0.6 : 1 }}
+          >
+            {busy ? 'Se încarcă…' : '⬆ Încarcă poza ta'}
+          </button>
+        )}
+        {/* Descarcă varianta selectată (PNG) — publică, oricine poate. */}
         {selected && (
           <a
             href={resolveMediaUrl(selected)!}
@@ -900,7 +1103,224 @@ function SocialImageSection({
             ⬇ Descarcă poza
           </a>
         )}
+        {/* Image→video — doar owner. */}
+        {isOwner && selected && (
+          <button
+            type="button"
+            onClick={() => setIv2Open((v) => !v)}
+            className="btn btn-gold"
+            style={{ flex: '1 1 140px' }}
+          >
+            🎬 Fă videoclip cu imaginea asta
+          </button>
+        )}
       </div>
+
+      {isOwner && iv2Open && selected && (
+        <ImageVideoPanel
+          generation={generation}
+          imageUrl={selected}
+          password={password}
+        />
+      )}
+
+      {err && <div style={{ marginTop: 8, fontSize: 12, color: '#ff8888' }}>{err}</div>}
+    </div>
+  );
+}
+
+const IV_ASPECTS: { value: CollageAspect; label: string }[] = [
+  { value: '9x16', label: '9:16 · TikTok / Story' },
+  { value: '1x1', label: '1:1 · Postare IG' },
+  { value: '16x9', label: '16:9 · YouTube' },
+];
+
+/**
+ * Image→video: animă o singură imagine (poza selectată — URL-ul ORIGINAL
+ * `/uploads/...`, NU resolved) peste melodia 1/2, în formatul ales. Pornește
+ * jobul și face polling la `listCollages` până la succeeded/failed.
+ */
+function ImageVideoPanel({
+  generation,
+  imageUrl,
+  password,
+}: {
+  generation: GenerationDto;
+  // URL-ul ORIGINAL al imaginii (entry din socialImages / socialImageSelected /
+  // socialImageUploaded). Backend-ul validează apartenența pe acest string exact.
+  imageUrl: string;
+  password?: string;
+}) {
+  const g = generation;
+  const hasBonus = !!(g.bonusAudioUrl || g.videoUrlBonus);
+  const [trackChoice, setTrackChoice] = useState<'main' | 'bonus'>('main');
+  const [aspect, setAspect] = useState<CollageAspect>('9x16');
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [job, setJob] = useState<CollageDto | null>(null);
+  const [polling, setPolling] = useState(false);
+
+  // Polling la ~4s cât jobul e în lucru — selectăm cel mai nou image_video.
+  useEffect(() => {
+    if (!polling) return;
+    const tick = async () => {
+      const list = await api.listCollages(g.id, password);
+      const latest = list.find((c) => (job ? c.id === job.id : c.kind === 'image_video')) ?? list[0] ?? null;
+      if (latest) {
+        setJob(latest);
+        if (latest.status === 'succeeded' || latest.status === 'failed') setPolling(false);
+      }
+    };
+    const id = setInterval(tick, 4000);
+    return () => clearInterval(id);
+  }, [polling, g.id, password, job]);
+
+  async function generate() {
+    setSubmitting(true);
+    setErr(null);
+    try {
+      const r = await api.createImageVideo(g.id, { track: trackChoice, aspect, imageUrl });
+      setJob({ id: r.collageId, status: (r.status as CollageDto['status']) ?? 'pending', kind: 'image_video' });
+      setPolling(true);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Nu am putut porni videoclipul. Încearcă din nou.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const panelStyle: React.CSSProperties = {
+    marginTop: 12, padding: 14, borderRadius: 10,
+    background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(241,200,77,0.25)',
+  };
+
+  // Rezultat gata.
+  if (job?.status === 'succeeded' && job.videoUrl) {
+    const resolved = resolveMediaUrl(job.videoUrl)!;
+    return (
+      <div style={panelStyle}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gold)', marginBottom: 8 }}>🎬 Videoclipul tău</div>
+        <VideoPlayer src={resolved} poster={resolveMediaUrl(imageUrl) ?? undefined} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+          <a href={resolved} download className="btn btn-gold" style={{ flex: '1 1 140px', textAlign: 'center', textDecoration: 'none' }}>
+            ⬇ Descarcă
+          </a>
+          <button type="button" onClick={() => { setJob(null); setPolling(false); }} className="btn btn-ghost" style={{ flex: '1 1 140px' }}>
+            🔁 Fă altul
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // În lucru.
+  if (job && (job.status === 'pending' || job.status === 'processing')) {
+    return (
+      <div style={panelStyle}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 12, padding: '12px 8px' }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: '50%',
+            border: '4px solid rgba(241,200,77,0.18)', borderTopColor: 'var(--gold)',
+            animation: 'spin 0.9s linear infinite',
+          }} />
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--gold-2)' }}>Se generează videoclipul…</div>
+          <div style={{
+            width: '100%', maxWidth: 320, height: 8, borderRadius: 999, overflow: 'hidden',
+            background: 'rgba(241,200,77,0.12)', position: 'relative',
+          }}>
+            <div style={{
+              position: 'absolute', top: 0, bottom: 0, width: '45%', borderRadius: 999,
+              background: 'linear-gradient(90deg, transparent, var(--gold), transparent)',
+              animation: 'collageShimmer 1.4s ease-in-out infinite',
+            }} />
+          </div>
+          <div style={{ fontSize: 12.5, color: 'rgba(255,245,220,0.6)' }}>
+            Durează câteva minute — poți închide pagina.
+          </div>
+        </div>
+        <style>{`@keyframes collageShimmer { 0% { left: -45%; } 100% { left: 100%; } }`}</style>
+      </div>
+    );
+  }
+
+  if (job?.status === 'failed') {
+    return (
+      <div style={panelStyle}>
+        <div style={{ fontSize: 13, color: '#ffb3b3', marginBottom: 10 }}>
+          😕 Videoclipul nu a putut fi generat. Mai încearcă o dată.
+        </div>
+        <button type="button" onClick={() => { setJob(null); setPolling(false); }} className="btn btn-gold" style={{ width: '100%' }}>
+          🔁 Încearcă din nou
+        </button>
+      </div>
+    );
+  }
+
+  // Formular.
+  return (
+    <div style={panelStyle}>
+      {hasBonus && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Pe ce melodie?</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {([
+              { value: 'main', label: 'Melodia 1' },
+              { value: 'bonus', label: 'A 2-a melodie' },
+            ] as const).map((opt) => {
+              const active = trackChoice === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setTrackChoice(opt.value)}
+                  style={{
+                    flex: 1, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                    border: `2px solid ${active ? 'var(--gold)' : 'var(--line)'}`,
+                    background: active ? 'rgba(241,200,77,0.12)' : 'rgba(0,0,0,0.25)',
+                    color: active ? 'var(--gold)' : 'var(--gold-2)',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Format</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {IV_ASPECTS.map((opt) => {
+            const active = aspect === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setAspect(opt.value)}
+                style={{
+                  flex: '1 1 90px', padding: '8px 8px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                  border: `2px solid ${active ? 'var(--gold)' : 'var(--line)'}`,
+                  background: active ? 'rgba(241,200,77,0.12)' : 'rgba(0,0,0,0.25)',
+                  color: active ? 'var(--gold)' : 'var(--gold-2)',
+                }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={generate}
+        disabled={submitting}
+        className="btn btn-gold"
+        style={{ width: '100%', cursor: submitting ? 'wait' : 'pointer', opacity: submitting ? 0.7 : 1 }}
+      >
+        {submitting ? 'Se trimite…' : '🎬 Generează'}
+      </button>
 
       {err && <div style={{ marginTop: 8, fontSize: 12, color: '#ff8888' }}>{err}</div>}
     </div>
@@ -916,41 +1336,48 @@ const MAX_COLLAGE_FILE_BYTES = 10 * 1024 * 1024; // 10MB / fișier
  * După submit facem polling la `getLatestCollage` până la succeeded/failed.
  * Degradare grațioasă: dacă endpoint-urile lipsesc, secțiunea nu crapă pagina.
  */
-function CollageSection({ generation }: { generation: GenerationDto }) {
+function CollageSection({
+  generation,
+  isOwner,
+  password,
+}: {
+  generation: GenerationDto;
+  isOwner: boolean;
+  password?: string;
+}) {
   const g = generation;
   // A 2-a melodie există dacă avem audio/video bonus.
   const hasBonus = !!(g.bonusAudioUrl || g.videoUrlBonus);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [trackChoice, setTrackChoice] = useState<'main' | 'bonus'>('main');
+  const [aspect, setAspect] = useState<CollageAspect>('9x16');
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   // Colajul curent (din mount sau după submit) + flag de polling activ.
-  const [collage, setCollage] = useState<
-    { id: string; status: 'pending' | 'processing' | 'succeeded' | 'failed'; videoUrl?: string | null } | null
-  >(null);
+  const [collage, setCollage] = useState<CollageDto | null>(null);
   const [polling, setPolling] = useState(false);
 
   // La mount: vezi dacă există deja un colaj.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const latest = await api.getLatestCollage(g.id);
+      const latest = await api.getLatestCollage(g.id, password);
       if (!cancelled && latest) {
         setCollage(latest);
         if (latest.status === 'pending' || latest.status === 'processing') setPolling(true);
       }
     })();
     return () => { cancelled = true; };
-  }, [g.id]);
+  }, [g.id, password]);
 
   // Polling la ~4s cât colajul e în lucru.
   useEffect(() => {
     if (!polling) return;
     const tick = async () => {
-      const latest = await api.getLatestCollage(g.id);
+      const latest = await api.getLatestCollage(g.id, password);
       if (latest) {
         setCollage(latest);
         if (latest.status === 'succeeded' || latest.status === 'failed') setPolling(false);
@@ -958,7 +1385,7 @@ function CollageSection({ generation }: { generation: GenerationDto }) {
     };
     const id = setInterval(tick, 4000);
     return () => clearInterval(id);
-  }, [polling, g.id]);
+  }, [polling, g.id, password]);
 
   // Curăță object URL-urile de preview la unmount / re-pick.
   useEffect(() => {
@@ -999,8 +1426,8 @@ function CollageSection({ generation }: { generation: GenerationDto }) {
     setSubmitting(true);
     setErr(null);
     try {
-      const r = await api.createCollage(g.id, trackChoice, files);
-      setCollage({ id: r.collageId, status: (r.status as any) ?? 'pending' });
+      const r = await api.createCollage(g.id, trackChoice, files, aspect);
+      setCollage({ id: r.collageId, status: (r.status as CollageDto['status']) ?? 'pending', kind: 'collage' });
       setPolling(true);
       // Eliberăm fișierele după submit (rămâne starea de polling).
       previews.forEach((u) => URL.revokeObjectURL(u));
@@ -1039,9 +1466,11 @@ function CollageSection({ generation }: { generation: GenerationDto }) {
           <a href={resolved} download className="btn btn-gold" style={{ flex: '1 1 140px', textAlign: 'center', textDecoration: 'none' }}>
             ⬇ Descarcă
           </a>
-          <button type="button" onClick={reset} className="btn btn-ghost" style={{ flex: '1 1 140px' }}>
-            🔁 Fă altul
-          </button>
+          {isOwner && (
+            <button type="button" onClick={reset} className="btn btn-ghost" style={{ flex: '1 1 140px' }}>
+              🔁 Fă altul
+            </button>
+          )}
         </div>
       </div>
     );
@@ -1092,7 +1521,7 @@ function CollageSection({ generation }: { generation: GenerationDto }) {
     );
   }
 
-  // Stare: eșuat — mesaj prietenos + retry.
+  // Stare: eșuat — mesaj prietenos + retry (retry doar owner).
   if (collage?.status === 'failed') {
     return (
       <div style={sectionStyle}>
@@ -1100,14 +1529,19 @@ function CollageSection({ generation }: { generation: GenerationDto }) {
         <div style={{ fontSize: 13, color: '#ffb3b3', marginBottom: 10 }}>
           😕 Ne pare rău, colajul nu a putut fi generat. Mai încearcă o dată.
         </div>
-        <button type="button" onClick={reset} className="btn btn-gold" style={{ width: '100%' }}>
-          🔁 Încearcă din nou
-        </button>
+        {isOwner && (
+          <button type="button" onClick={reset} className="btn btn-gold" style={{ width: '100%' }}>
+            🔁 Încearcă din nou
+          </button>
+        )}
       </div>
     );
   }
 
-  // Stare: formular de upload.
+  // Non-owner deblocat fără niciun colaj existent → nu arătăm formularul de creare.
+  if (!isOwner) return null;
+
+  // Stare: formular de upload (owner-only).
   return (
     <div style={sectionStyle}>
       <div style={headerStyle}>🎞️ Fă-ți un colaj video</div>
@@ -1151,6 +1585,31 @@ function CollageSection({ generation }: { generation: GenerationDto }) {
           </div>
         </div>
       )}
+
+      {/* Format (raport de aspect) — obligatoriu. */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Format</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {IV_ASPECTS.map((opt) => {
+            const active = aspect === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setAspect(opt.value)}
+                style={{
+                  flex: '1 1 90px', padding: '8px 8px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                  border: `2px solid ${active ? 'var(--gold)' : 'var(--line)'}`,
+                  background: active ? 'rgba(241,200,77,0.12)' : 'rgba(0,0,0,0.25)',
+                  color: active ? 'var(--gold)' : 'var(--gold-2)',
+                }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <input
         ref={fileRef}

@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   NotFoundException,
   Param,
@@ -27,6 +28,7 @@ import {
   AuthedRequestUser,
 } from '../../common/decorators';
 import { OptionalJwtAuthGuard } from '../../common/jwt.guard';
+import { verifyUnlock } from '../../common/unlock';
 
 /**
  * Endpoint public pentru pagina /top. Întoarce `{ source, items }`:
@@ -167,6 +169,7 @@ export class GenerationsController {
     @Param('id') id: string,
     @CurrentUser() user: AuthedRequestUser | null,
     @CurrentGuestId() guestId: string | null,
+    @Headers('x-unlock-password') unlockPassword?: string,
   ) {
     // Întâi încercăm ca owner (date complete)
     try {
@@ -177,7 +180,11 @@ export class GenerationsController {
       // SECURITATE: owner-ul neplătit primește DOAR fișierul demo. URL-ul
       // fișierului complet nu apare niciodată în payload pentru un user
       // fără paidUnlocked sau fără type='full'.
-      return sanitizeAudio(g);
+      const sanitized = sanitizeAudio(g) as unknown as Record<string, unknown>;
+      // NU expunem hash-ul parolei către client.
+      const hasUnlockPassword = !!sanitized.unlockPasswordHash;
+      delete sanitized.unlockPasswordHash;
+      return { ...sanitized, isOwner: true, hasUnlockPassword, unlocked: true };
     } catch {
       // Fallback: orice generation succeeded e accesibil public cu URL-ul direct.
       // Pentru demo neplătit → expunem demoAudioUrl. Pentru paidUnlocked sau type='full'
@@ -191,7 +198,12 @@ export class GenerationsController {
       this.svc.incrementViewCount(pub.id).catch(() => {});
       // Vizitatorii anonimi pe link partajat — doar demo, niciodată full.
       const isPaid = pub.type === 'full' || pub.paidUnlocked;
+      // Conținut PRIVAT (poza custom încărcată) — vizibil non-owner DOAR cu parola.
+      const unlocked = verifyUnlock(pub.id, unlockPassword ?? null, pub.unlockPasswordHash);
       return {
+        isOwner: false,
+        hasUnlockPassword: !!pub.unlockPasswordHash,
+        unlocked,
         id: pub.id,
         type: pub.type,
         status: pub.status,
@@ -209,7 +221,8 @@ export class GenerationsController {
         packageTier: pub.packageTier,
         socialImages: pub.socialImages ?? [],
         socialImageSelected: pub.socialImageSelected,
-        socialImageUploaded: pub.socialImageUploaded,
+        // Poza custom ÎNCĂRCATĂ de owner e privată — doar cu parola corectă.
+        socialImageUploaded: unlocked ? pub.socialImageUploaded : null,
         instrumentalUrl: isPaid ? pub.instrumentalUrl : null,
         videoUrl: isPaid ? pub.videoUrl : null,
         videoUrlBonus: isPaid ? pub.videoUrlBonus : null,
@@ -219,6 +232,32 @@ export class GenerationsController {
         // datele sensibile (message, dedication, owner ids, custom lyrics) NU expuse public
       };
     }
+  }
+
+  /** Owner setează/șterge parola de deblocare a conținutului privat al manelei. */
+  @UseGuards(OptionalJwtAuthGuard)
+  @Post(':id/unlock-password')
+  @HttpCode(200)
+  async setUnlockPassword(
+    @Param('id') id: string,
+    @Body() body: { password?: string | null },
+    @CurrentUser() user: AuthedRequestUser | null,
+    @CurrentGuestId() guestId: string | null,
+  ) {
+    return this.svc.setUnlockPassword(
+      id,
+      { userId: user?.id ?? null, guestId: user ? null : guestId },
+      body?.password ?? null,
+    );
+  }
+
+  /** Vizitator non-owner verifică parola de deblocare (link + parolă). */
+  @SkipThrottle({ long: true })
+  @Post(':id/unlock-check')
+  @HttpCode(200)
+  async checkUnlockPassword(@Param('id') id: string, @Body() body: { password?: string }) {
+    const ok = await this.svc.checkUnlock(id, (body?.password ?? '').trim());
+    return { ok };
   }
 
   @UseGuards(OptionalJwtAuthGuard)

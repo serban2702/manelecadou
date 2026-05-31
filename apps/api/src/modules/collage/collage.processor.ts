@@ -15,6 +15,8 @@ import {
   SLIDE_DURATION_SEC,
   TRANSITION_SEC,
   TRANSITIONS,
+  ASPECT_DIMS,
+  normalizeAspect,
 } from './collage.constants';
 import { Generation } from '../generations/generation.entity';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
@@ -25,8 +27,17 @@ import { MailerService } from '../../mailer/mailer.module';
 import { renderBrandedEmail } from '../../mailer/templates/templates';
 import { brandingFromSite } from '../../mailer/branding';
 
-const WIDTH = 1080;
-const HEIGHT = 1920;
+/**
+ * Filtru ffmpeg de tip LETTERBOX: scalează imaginea ca să încapă ÎNTREAGĂ în
+ * canvas-ul w×h (fără crop, păstrează raportul original) și umple restul cu
+ * negru. Înlocuiește vechiul scale+crop (cover) care tăia din imagine.
+ */
+function letterbox(w: number, h: number): string {
+  return (
+    `scale=${w}:${h}:force_original_aspect_ratio=decrease,` +
+    `pad=${w}:${h}:-1:-1:color=black,setsar=1,fps=30,format=yuv420p`
+  );
+}
 
 /**
  * Worker care montează colajul video. concurrency: 1 — ffmpeg cu xfade pe multe
@@ -76,35 +87,48 @@ export class CollageProcessor extends WorkerHost {
       if (!audioExists) throw new Error(`audio file missing: ${audioPath}`);
 
       const dir = this.upload.dirFor(collageId);
-      const images = await this.listImages(dir);
-      if (images.length === 0) throw new Error('no images on disk');
+      const aspect = normalizeAspect(collage.aspect);
+      const { w, h } = ASPECT_DIMS[aspect];
 
       const audioDuration = await this.probeDuration(audioPath);
       if (!audioDuration || audioDuration <= 0) {
         throw new Error('could not probe audio duration');
       }
 
-      // Ordinea de afișare: pasul 1 = toate în ordine; pașii următori = toate în
-      // ordine RANDOM (shuffle nou de fiecare dată). Repetăm până acoperim audio-ul.
-      const sequence = this.buildSequence(images, audioDuration);
-
       const outPath = join(dir, 'collage.mp4');
 
-      // 0) Microserviciul Hetzner (descarcă ffmpeg-ul de pe Ionos). La eșec →
-      //    fallback la randarea LOCALĂ ffmpeg (xfade → simple concat).
-      let renderedRemote = false;
-      if (this.remote.isEnabled()) {
-        renderedRemote = await this.tryRemoteCollage(gen, audioPath, images, outPath, collageId);
-      }
+      // ── image_video: o SINGURĂ imagine statică (poza de share aleasă) pe toată
+      //    durata melodiei, letterbox. Randare locală (cost mic). ───────────────
+      if (collage.kind === 'image_video') {
+        await fs.mkdir(dir, { recursive: true });
+        const imgPath = await this.resolveSourceImage(collage, dir);
+        if (!imgPath) throw new Error('source image missing for image_video');
+        await this.renderStaticImage(imgPath, audioPath, audioDuration, outPath, w, h);
+      } else {
+        // ── collage: slideshow din imaginile uploadate ──────────────────────────
+        const images = await this.listImages(dir);
+        if (images.length === 0) throw new Error('no images on disk');
 
-      if (!renderedRemote) {
-        try {
-          await this.renderXfade(sequence, audioPath, audioDuration, outPath);
-        } catch (xfadeErr) {
-          this.logger.warn(
-            `collage ${collageId.slice(0, 8)} xfade failed (${(xfadeErr as Error).message.slice(0, 200)}); falling back to simple concat`,
-          );
-          await this.renderSimple(sequence, audioPath, audioDuration, outPath);
+        // Ordinea: pasul 1 = toate în ordine; pașii următori = shuffle nou de
+        // fiecare dată. Repetăm până acoperim audio-ul.
+        const sequence = this.buildSequence(images, audioDuration);
+
+        // 0) Microserviciul Hetzner (descarcă ffmpeg-ul de pe Ionos). La eșec →
+        //    fallback la randarea LOCALĂ ffmpeg (xfade → simple concat).
+        let renderedRemote = false;
+        if (this.remote.isEnabled()) {
+          renderedRemote = await this.tryRemoteCollage(gen, audioPath, images, outPath, collageId, aspect);
+        }
+
+        if (!renderedRemote) {
+          try {
+            await this.renderXfade(sequence, audioPath, audioDuration, outPath, w, h);
+          } catch (xfadeErr) {
+            this.logger.warn(
+              `collage ${collageId.slice(0, 8)} xfade failed (${(xfadeErr as Error).message.slice(0, 200)}); falling back to simple concat`,
+            );
+            await this.renderSimple(sequence, audioPath, audioDuration, outPath, w, h);
+          }
         }
       }
 
@@ -119,7 +143,7 @@ export class CollageProcessor extends WorkerHost {
       );
 
       this.logger.log(
-        `collage ${collageId.slice(0, 8)} done: ${sequence.length} slides over ${Math.round(audioDuration)}s`,
+        `collage ${collageId.slice(0, 8)} done: kind=${collage.kind} aspect=${aspect} over ${Math.round(audioDuration)}s`,
       );
     } catch (err) {
       const msg = (err as Error).message ?? String(err);
@@ -152,12 +176,14 @@ export class CollageProcessor extends WorkerHost {
     imagePaths: string[],
     outPath: string,
     collageId: string,
+    aspect: string,
   ): Promise<boolean> {
     try {
       const buffer = await this.remote.renderCollage({
         audioPath,
         imagePaths,
         recipientName: gen.recipientName || undefined,
+        aspect,
       });
       await fs.writeFile(outPath, buffer);
       this.logger.log(`collage ${collageId.slice(0, 8)} rendered remote (Hetzner)`);
@@ -186,6 +212,63 @@ export class CollageProcessor extends WorkerHost {
       .filter((f) => /^img_\d+\.(png|jpe?g|webp|gif)$/i.test(f))
       .sort()
       .map((f) => join(dir, f));
+  }
+
+  /**
+   * Pentru kind='image_video': rezolvă imaginea sursă (poza de share aleasă) de
+   * pe disc. `sourceImageUrl` e un URL `/uploads/...`; îl mapăm la path local.
+   * Fallback: dacă a fost copiată în dir-ul colajului ca img_001, o folosim.
+   */
+  private async resolveSourceImage(collage: VideoCollage, dir: string): Promise<string | null> {
+    const url = collage.sourceImageUrl ?? '';
+    const fromUrl = this.localPathFromUrl(url);
+    if (fromUrl && (await this.fileExists(fromUrl))) return fromUrl;
+    // Fallback: prima imagine copiată în dir-ul colajului.
+    const imgs = await this.listImages(dir).catch(() => [] as string[]);
+    return imgs[0] ?? null;
+  }
+
+  /** URL `/uploads/...` (sau `/app/uploads/...`) → path absolut sub uploadsDir. */
+  private localPathFromUrl(url: string): string | null {
+    if (!url) return null;
+    if (url.startsWith('/uploads/')) return join(this.uploadsDir, url.slice('/uploads/'.length));
+    if (url.startsWith('/app/uploads/')) return join(this.uploadsDir, url.slice('/app/uploads/'.length));
+    return null;
+  }
+
+  /**
+   * Randare image_video: o singură imagine statică, letterbox, pe toată durata
+   * melodiei. Cost mic (o imagine + audio copy) → mereu local, fără Hetzner.
+   */
+  private async renderStaticImage(
+    imagePath: string,
+    audioPath: string,
+    audioDuration: number,
+    outPath: string,
+    w: number,
+    h: number,
+  ): Promise<void> {
+    const args = [
+      '-y',
+      '-loop', '1',
+      '-i', imagePath,
+      '-i', audioPath,
+      '-filter_complex', `[0:v]${letterbox(w, h)}[v]`,
+      '-map', '[v]',
+      '-map', '1:a',
+      '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
+      '-preset', 'veryfast',
+      '-tune', 'stillimage',
+      '-r', '30',
+      '-c:a', 'aac',
+      '-b:a', '192k',
+      '-movflags', '+faststart',
+      '-t', audioDuration.toFixed(3),
+      '-shortest',
+      outPath,
+    ];
+    await this.runFfmpeg(args);
   }
 
   /**
@@ -219,6 +302,8 @@ export class CollageProcessor extends WorkerHost {
     audioPath: string,
     audioDuration: number,
     outPath: string,
+    w: number,
+    h: number,
   ): Promise<void> {
     const n = sequence.length;
     const args: string[] = ['-y'];
@@ -231,13 +316,10 @@ export class CollageProcessor extends WorkerHost {
     args.push('-i', audioPath);
     const audioIdx = n;
 
-    // Scalare + pad fiecare imagine la 1080x1920 (cover, crop centrat), fps 30.
+    // Letterbox fiecare imagine la canvas-ul w×h (păstrează originalul, negru în jur).
     const filters: string[] = [];
     for (let i = 0; i < n; i++) {
-      filters.push(
-        `[${i}:v]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,` +
-          `crop=${WIDTH}:${HEIGHT},setsar=1,fps=30,format=yuv420p[v${i}]`,
-      );
+      filters.push(`[${i}:v]${letterbox(w, h)}[v${i}]`);
     }
 
     // Lanț xfade. Offset cumulativ: fiecare tranziție începe cu TRANSITION_SEC
@@ -297,6 +379,8 @@ export class CollageProcessor extends WorkerHost {
     audioPath: string,
     audioDuration: number,
     outPath: string,
+    w: number,
+    h: number,
   ): Promise<void> {
     const n = sequence.length;
     const args: string[] = ['-y'];
@@ -311,8 +395,7 @@ export class CollageProcessor extends WorkerHost {
     const filters: string[] = [];
     for (let i = 0; i < n; i++) {
       filters.push(
-        `[${i}:v]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,` +
-          `crop=${WIDTH}:${HEIGHT},setsar=1,fps=30,format=yuv420p,` +
+        `[${i}:v]${letterbox(w, h)},` +
           `fade=t=in:st=0:d=${fadeD},fade=t=out:st=${fadeOutStart}:d=${fadeD}[v${i}]`,
       );
     }

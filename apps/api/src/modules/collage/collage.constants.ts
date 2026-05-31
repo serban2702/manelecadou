@@ -22,3 +22,23 @@ export const TRANSITIONS = [
   'circleopen',
   'dissolve',
 ] as const;
+
+/** Formatele (aspect ratio) disponibile pentru colaj + image-video. */
+export type CollageAspect = '9x16' | '1x1' | '16x9';
+
+export const COLLAGE_ASPECTS: CollageAspect[] = ['9x16', '1x1', '16x9'];
+
+/** Dimensiunile canvas-ului (W×H) pentru fiecare format. */
+export const ASPECT_DIMS: Record<CollageAspect, { w: number; h: number }> = {
+  '9x16': { w: 1080, h: 1920 }, // TikTok / Instagram story
+  '1x1': { w: 1080, h: 1080 }, // postare Instagram (pătrat)
+  '16x9': { w: 1920, h: 1080 }, // videoclip YouTube
+};
+
+export function isCollageAspect(v: unknown): v is CollageAspect {
+  return v === '9x16' || v === '1x1' || v === '16x9';
+}
+
+export function normalizeAspect(v: unknown): CollageAspect {
+  return isCollageAspect(v) ? v : '9x16';
+}

@@ -199,6 +199,12 @@ export class Generation {
   @Column({ type: 'jsonb', nullable: true })
   inferenceMeta!: Record<string, { value: unknown; source: 'user_said' | 'inferred' | 'default' }> | null;
 
+  /** Parolă (hash) setată de owner pentru a debloca conținutul PRIVAT al manelei
+   *  (poze custom încărcate + colaje + image-videos) pentru alți vizitatori.
+   *  NULL = niciun conținut privat partajat (doar owner-ul vede private). */
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  unlockPasswordHash!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

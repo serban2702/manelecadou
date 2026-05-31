@@ -8,6 +8,9 @@ import {
 
 export type CollageTrack = 'main' | 'bonus';
 export type CollageStatus = 'pending' | 'processing' | 'succeeded' | 'failed';
+/** 'collage' = slideshow din imagini uploadate; 'image_video' = o singură
+ *  imagine (poza de share aleasă) statică pe toată durata melodiei. */
+export type CollageKind = 'collage' | 'image_video';
 
 /**
  * Un job de „colaj video" creat on-demand de owner-ul unei manele finalizate.
@@ -30,6 +33,18 @@ export class VideoCollage {
   /** Care din cele 2 melodii e folosită ('main' = full.mp3, 'bonus' = bonus.mp3). */
   @Column({ type: 'varchar', length: 8, default: 'main' })
   track!: CollageTrack;
+
+  /** Tipul randării: slideshow (collage) sau o singură imagine statică (image_video). */
+  @Column({ type: 'varchar', length: 16, default: 'collage' })
+  kind!: CollageKind;
+
+  /** Formatul ales: 9x16 / 1x1 / 16x9. Default 9x16 (legacy). */
+  @Column({ type: 'varchar', length: 8, default: '9x16' })
+  aspect!: string;
+
+  /** Pentru kind='image_video': URL-ul imaginii sursă (poza de share aleasă). */
+  @Column({ type: 'varchar', length: 1024, nullable: true })
+  sourceImageUrl!: string | null;
 
   @Column({ type: 'varchar', length: 16, default: 'pending' })
   status!: CollageStatus;
