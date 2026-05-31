@@ -36,7 +36,6 @@ export const PACKAGES: PackageDef[] = [
     recommended: true,
     features: [
       'Tot din pachetul de bază',
-      'Instrumental profesional',
       'Poză pentru TikTok / Facebook / Instagram (4 variante generate + poți încărca a ta)',
     ],
     deliveryLabel: 'Livrare în 10-15 minute',
@@ -49,6 +48,7 @@ export const PACKAGES: PackageDef[] = [
       'Tot din pachetul Plus',
       'Pagină premium pentru ascultare',
       'Durată mai lungă a melodiei',
+      'Videoclip personalizat',
     ],
     deliveryLabel: 'Livrare în 3-5 minute',
   },

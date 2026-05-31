@@ -61,7 +61,7 @@ function ShareGenerationViewInner() {
   useEffect(() => {
     if (!g) return;
     // Continuăm polling-ul cât timp generarea e în lucru SAU melodia e gata dar
-    // livrabilele extra (instrumental/imagini) încă se generează în fundal.
+    // livrabilele extra (imagini/videoclip) încă se generează în fundal.
     const stillEnriching = g.status === 'succeeded' && g.deliverablesReady === false;
     if (!IN_PROGRESS_STATUSES.has(g.status) && !stillEnriching) return;
     const id = setInterval(refresh, 2500);
@@ -127,9 +127,9 @@ function ShareGenerationViewInner() {
 
   const isPaid = g.type === 'full' || g.paidUnlocked;
   const inProgress = IN_PROGRESS_STATUSES.has(g.status);
-  // Pachetele plus/premium au livrabile extra (instrumental + imagini) care se
-  // generează în fundal după ce melodia e gata. Cât `deliverablesReady` e false,
-  // arătăm placeholder-e „se generează" pentru ce încă lipsește.
+  // Pachetele plus/premium au livrabile extra (imagini sociale; + videoclip la
+  // premium) care se generează în fundal după ce melodia e gata. Cât
+  // `deliverablesReady` e false, arătăm placeholder-e „se generează".
   const tierHasExtras = g.packageTier === 'plus' || g.packageTier === 'premium';
   const enriching = isPaid && tierHasExtras && g.deliverablesReady === false;
   // Lookup chain: admin-defined config per site (cu i18n localizare) → seed-data
@@ -239,33 +239,7 @@ function ShareGenerationViewInner() {
         <PaywallSection generationId={g.id} />
       )}
 
-      {g.instrumentalUrl ? (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
-            🎼 Versiune instrumentală
-          </div>
-          <ManeaPlayer audioUrl={resolveMediaUrl(g.instrumentalUrl)!} title="Instrumental" />
-          <a
-            href={resolveMediaUrl(g.instrumentalUrl)!}
-            download
-            className="btn btn-ghost btn-sm"
-            style={{ marginTop: 8, display: 'inline-block', textDecoration: 'none' }}
-          >
-            ⬇ Descarcă instrumentalul
-          </a>
-        </div>
-      ) : enriching ? (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
-            🎼 Versiune instrumentală
-          </div>
-          <div className="ld" style={{ fontSize: 13, opacity: 0.85 }}>
-            ⏳ Se pregătește versiunea instrumentală… (apare automat în câteva minute)
-          </div>
-        </div>
-      ) : null}
-
-      {g.videoUrl && (
+      {g.videoUrl ? (
         <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
             🎬 Videoclip personalizat{g.videoUrlBonus ? ' — versiunea 1' : ''}
@@ -275,7 +249,16 @@ function ShareGenerationViewInner() {
             poster={resolveMediaUrl(g.socialImageUploaded ?? g.socialImageSelected ?? g.coverUrl)}
           />
         </div>
-      )}
+      ) : (enriching && g.packageTier === 'premium') ? (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
+            🎬 Videoclip personalizat
+          </div>
+          <div className="ld" style={{ fontSize: 13, opacity: 0.85 }}>
+            ⏳ Se montează videoclipul… (apare automat în câteva minute)
+          </div>
+        </div>
+      ) : null}
 
       {g.videoUrlBonus && (
         <div style={{ marginTop: 16 }}>
