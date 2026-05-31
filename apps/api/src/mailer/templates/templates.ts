@@ -200,6 +200,8 @@ export interface GenerationReadyVars {
   socialImageUrl?: string | null;
   instrumentalUrl?: string | null;
   videoUrl?: string | null;
+  /** PIN auto pentru deblocarea conținutului privat (poze custom + colaje). */
+  unlockPin?: string | null;
   locale?: string;
   branding?: EmailBranding;
 }
@@ -218,6 +220,14 @@ export function generationReadyTemplate(v: GenerationReadyVars): { subject: stri
     extras.length > 0
       ? `<p style="text-align:center;margin:0 0 18px;font-size:13px;color:rgba(255,245,220,0.7);">${extras.join(' &nbsp;·&nbsp; ')}</p>`
       : '';
+  // Bloc parolă privată (cod de partajare) — doar când există un PIN auto.
+  const pinHtml = v.unlockPin
+    ? `<div style="margin:18px 0;padding:14px 16px;background:rgba(241,200,77,0.08);border:1px solid rgba(241,200,77,0.3);border-radius:10px;text-align:center;">
+         <p style="margin:0 0 6px;font-size:13px;color:${COLORS.goldMid};font-weight:700;">🔒 Parola pentru pozele &amp; colajele tale private</p>
+         <div style="font-size:26px;font-weight:800;letter-spacing:4px;color:${COLORS.cream};">${escape(v.unlockPin)}</div>
+         <p style="margin:6px 0 0;font-size:12px;color:rgba(255,245,220,0.6);line-height:1.5;">Cine are linkul + parola poate vedea pozele tale custom și colajele. O poți schimba oricând din pagina manelei.</p>
+       </div>`
+    : '';
   return {
     subject: d.subject(v.recipientName),
     html: layout({
@@ -232,6 +242,7 @@ export function generationReadyTemplate(v: GenerationReadyVars): { subject: stri
         <div style="text-align:center;margin: 24px 0;">${buttonGold(v.link, d.listenButton)}</div>
         ${v.audioUrl ? `<p style="text-align:center;margin:0 0 18px;font-size:12px;color:rgba(255,245,220,0.5);">${d.download.replace('{link}', `<a href="${escape(v.audioUrl)}" style="color:${COLORS.goldMid};">MP3</a>`)}</p>` : ''}
         ${extrasHtml}
+        ${pinHtml}
         ${v.type === 'demo' ? `
           <div style="margin-top:24px;padding:16px;background:rgba(255,45,126,0.08);border:1px solid rgba(255,45,126,0.3);border-radius:10px;">
             <p style="margin:0 0 8px;font-size:14px;color:${COLORS.goldMid};font-weight:700;">${d.promoTitle}</p>

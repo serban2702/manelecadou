@@ -1,4 +1,9 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
+
+/** Cod de partajare simplu: PIN de 4 cifre (1000–9999). */
+export function generateSharePin(): string {
+  return String(randomInt(1000, 10000));
+}
 
 /**
  * Hash pentru parola de deblocare a conținutului PRIVAT al unei manele

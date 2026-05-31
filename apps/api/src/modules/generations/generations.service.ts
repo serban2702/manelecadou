@@ -148,12 +148,13 @@ export class GenerationsService {
     id: string,
     ctx: { userId: string | null; guestId: string | null },
     password: string | null,
-  ): Promise<{ ok: true; hasPassword: boolean }> {
+  ): Promise<{ ok: true; hasPassword: boolean; pin: string | null }> {
     const g = await this.findOne(id, ctx); // aruncă dacă nu e owner
     const pwd = (password ?? '').trim();
     g.unlockPasswordHash = pwd ? hashUnlock(g.id, pwd) : null;
+    g.unlockPin = pwd ? pwd : null; // păstrăm și în clar pt afișare owner
     await this.repo.save(g);
-    return { ok: true, hasPassword: !!g.unlockPasswordHash };
+    return { ok: true, hasPassword: !!g.unlockPasswordHash, pin: g.unlockPin };
   }
 
   /** Verifică o parolă de deblocare pentru o manea (vizitator non-owner). */

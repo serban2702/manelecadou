@@ -205,6 +205,11 @@ export class Generation {
   @Column({ type: 'varchar', length: 128, nullable: true })
   unlockPasswordHash!: string | null;
 
+  /** Parola în CLAR (cod de partajare 4 cifre, NU credențială) — vizibilă DOAR
+   *  owner-ului în payload, ca s-o poată partaja. Public nu o primește niciodată. */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  unlockPin!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

@@ -196,6 +196,8 @@ export interface GenerationDto {
   hasUnlockPassword?: boolean;
   /** request-ul a furnizat parola corectă (sau e owner) → conținutul privat e vizibil. */
   unlocked?: boolean;
+  /** Parola/PIN în clar — prezent DOAR în payload-ul owner-ului (ca s-o partajeze). */
+  unlockPin?: string | null;
 }
 
 /** Colaj video sau image→video atașat unei generări. */

@@ -20,6 +20,7 @@ import { SitesService } from '../sites/sites.service';
 import { AudioProcessorService } from './audio-processor.service';
 import { GenerationMediaService } from '../media/generation-media.service';
 import { normalizeTier, packageDef } from '../payments/packages';
+import { hashUnlock, generateSharePin } from '../../common/unlock';
 
 // concurrency: 3 — mai multe comenzi avansează în paralel (timpul e dominat de
 // așteptarea pe Suno, I/O-bound), ca a 2-a/3-a comandă să nu aștepte în coadă
@@ -424,6 +425,23 @@ export class GenerationsProcessor extends WorkerHost {
     // care a plătit deja — confuz și greșit. Pentru audio: dacă e paidUnlocked,
     // expunem audioUrl-ul complet în email; altfel doar link-ul demo.
     const effectiveType: 'demo' | 'full' = gen.type === 'full' || gen.paidUnlocked ? 'full' : 'demo';
+
+    // Parolă auto (PIN 4 cifre) pentru conținutul privat — doar la pachetele care
+    // pot avea poze custom / colaje (plus/premium), livrate (full). O setăm o
+    // singură dată (dacă owner-ul n-a pus deja una) și o includem în email.
+    let unlockPin: string | null = null;
+    if (effectiveType === 'full' && (gen.packageTier === 'plus' || gen.packageTier === 'premium')) {
+      if (gen.unlockPasswordHash) {
+        unlockPin = gen.unlockPin ?? null;
+      } else {
+        const pin = generateSharePin();
+        await this.repo
+          .update({ id: gen.id }, { unlockPin: pin, unlockPasswordHash: hashUnlock(gen.id, pin) })
+          .catch(() => {});
+        unlockPin = pin;
+      }
+    }
+
     const tpl = generationReadyTemplate({
       recipientName: gen.recipientName,
       type: effectiveType,
@@ -434,6 +452,7 @@ export class GenerationsProcessor extends WorkerHost {
       socialImageUrl: effectiveType === 'full' ? gen.socialImageSelected : null,
       instrumentalUrl: effectiveType === 'full' ? gen.instrumentalUrl : null,
       videoUrl: effectiveType === 'full' ? gen.videoUrl : null,
+      unlockPin,
       locale: site?.locale ?? gen.locale ?? 'ro',
       branding,
     });

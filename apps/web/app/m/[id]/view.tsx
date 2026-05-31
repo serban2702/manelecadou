@@ -238,10 +238,11 @@ function ShareGenerationViewInner() {
       )}
 
       {/* Privacy: owner setează/șterge parola peste pozele private. */}
-      {isOwner && isPaid && g.status === 'succeeded' && g.packageTier === 'premium' && (
+      {isOwner && isPaid && g.status === 'succeeded' && (g.packageTier === 'plus' || g.packageTier === 'premium') && (
         <OwnerPasswordControl
           generationId={g.id}
           hasPassword={!!g.hasUnlockPassword}
+          currentPin={g.unlockPin ?? null}
           onChanged={() => refresh()}
         />
       )}
@@ -555,10 +556,12 @@ function UnlockPrompt({
 function OwnerPasswordControl({
   generationId,
   hasPassword,
+  currentPin,
   onChanged,
 }: {
   generationId: string;
   hasPassword: boolean;
+  currentPin?: string | null;
   onChanged: () => void;
 }) {
   const [pw, setPw] = useState('');
@@ -593,8 +596,17 @@ function OwnerPasswordControl({
       </div>
       <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
         Cine are linkul + parola poate vedea pozele tale custom și colajele.
-        {hasPassword && <b style={{ color: 'var(--gold-2)' }}> Parola e activă.</b>}
+        {hasPassword && !currentPin && <b style={{ color: 'var(--gold-2)' }}> Parola e activă.</b>}
       </div>
+      {currentPin && (
+        <div style={{
+          marginBottom: 12, padding: '10px 12px', borderRadius: 8, textAlign: 'center',
+          background: 'rgba(0,0,0,0.3)', border: '1px solid var(--line)',
+        }}>
+          <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 2 }}>Parola curentă (o poți partaja)</div>
+          <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: 'var(--gold)' }}>{currentPin}</div>
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <input
           type="text"
@@ -1103,18 +1115,23 @@ function SocialImageSection({
             ⬇ Descarcă poza
           </a>
         )}
-        {/* Image→video — doar owner. */}
-        {isOwner && selected && (
-          <button
-            type="button"
-            onClick={() => setIv2Open((v) => !v)}
-            className="btn btn-gold"
-            style={{ flex: '1 1 140px' }}
-          >
-            🎬 Fă videoclip cu imaginea asta
-          </button>
-        )}
       </div>
+
+      {/* Image→video — doar owner. Pe rând separat + text pe mai multe linii
+          (butonul auriu trunchia textul când era pe același rând cu download). */}
+      {isOwner && selected && (
+        <button
+          type="button"
+          onClick={() => setIv2Open((v) => !v)}
+          className="btn btn-gold"
+          style={{
+            width: '100%', marginTop: 8, whiteSpace: 'normal', height: 'auto',
+            minHeight: 46, lineHeight: 1.25, padding: '11px 14px', textAlign: 'center',
+          }}
+        >
+          🎬 Fă videoclip cu imaginea asta
+        </button>
+      )}
 
       {isOwner && iv2Open && selected && (
         <ImageVideoPanel
@@ -1264,8 +1281,8 @@ function ImageVideoPanel({
           <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Pe ce melodie?</div>
           <div style={{ display: 'flex', gap: 8 }}>
             {([
-              { value: 'main', label: 'Melodia 1' },
-              { value: 'bonus', label: 'A 2-a melodie' },
+              { value: 'main', label: 'Versiunea 1' },
+              { value: 'bonus', label: 'Versiunea 2 🎁' },
             ] as const).map((opt) => {
               const active = trackChoice === opt.value;
               return (
@@ -1555,8 +1572,8 @@ function CollageSection({
           <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Pe ce melodie?</div>
           <div style={{ display: 'flex', gap: 8 }}>
             {([
-              { value: 'main', label: 'Melodia 1' },
-              { value: 'bonus', label: 'Melodia 2' },
+              { value: 'main', label: 'Versiunea 1' },
+              { value: 'bonus', label: 'Versiunea 2 🎁' },
             ] as const).map((opt) => {
               const active = trackChoice === opt.value;
               return (
