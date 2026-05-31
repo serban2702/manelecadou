@@ -288,6 +288,20 @@ function OverviewTab({ data }: { data: OrderDetail }) {
             )
           }
         />
+        <Kv
+          k="Parolă comandă (PIN)"
+          v={
+            g?.unlockPin ? (
+              <code className="rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-sm tracking-widest text-amber-200">
+                {g.unlockPin}
+              </code>
+            ) : g?.hasUnlockPassword ? (
+              <span className="text-muted-foreground">setată (PIN indisponibil)</span>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )
+          }
+        />
         {g?.audioUrl && (
           <Kv
             k="Audio MP3"

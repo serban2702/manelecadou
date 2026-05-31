@@ -455,6 +455,8 @@ export class AdminOrdersController {
             premium: generation.premium,
             paymentId: generation.paymentId,
             paidUnlocked: generation.paidUnlocked,
+            unlockPin: generation.unlockPin,
+            hasUnlockPassword: !!generation.unlockPasswordHash,
             audioUrl: generation.audioUrl,
             bonusAudioUrl: generation.bonusAudioUrl,
             demoAudioUrl: generation.demoAudioUrl,

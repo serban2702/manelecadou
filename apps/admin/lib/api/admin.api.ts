@@ -98,6 +98,10 @@ export interface OrderDetail {
     videoUrl?: string | null;
     paymentId: string | null;
     paidUnlocked: boolean;
+    /** PIN/parola de partajare a conținutului privat (4 cifre, în clar din DB). */
+    unlockPin?: string | null;
+    /** True dacă owner-ul a setat o parolă pentru conținutul privat. */
+    hasUnlockPassword?: boolean;
     audioUrl: string | null;
     bonusAudioUrl: string | null;
     demoAudioUrl: string | null;
