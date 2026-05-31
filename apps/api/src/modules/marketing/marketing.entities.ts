@@ -7,7 +7,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export type CampaignAudience = 'all' | 'payers' | 'nonpayers';
+export type CampaignAudience = 'all' | 'payers' | 'nonpayers' | 'single';
 export type CampaignStatus = 'draft' | 'sending' | 'sent' | 'failed';
 
 /** O campanie de marketing trimisă manual din admin. */

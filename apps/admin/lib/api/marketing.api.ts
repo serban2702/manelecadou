@@ -16,7 +16,7 @@ export interface MarketingTemplateMeta {
   };
 }
 
-export type CampaignAudience = 'all' | 'payers' | 'nonpayers';
+export type CampaignAudience = 'all' | 'payers' | 'nonpayers' | 'single';
 export type CampaignStatus = 'draft' | 'sending' | 'sent' | 'failed';
 
 export interface MarketingCampaign {

@@ -61,6 +61,7 @@ const AUDIENCE_LABEL: Record<CampaignAudience, string> = {
   all: 'Toți',
   payers: 'Au plătit',
   nonpayers: 'Nu au plătit',
+  single: 'Un client',
 };
 
 const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'destructive' | 'secondary'> = {
@@ -211,16 +212,21 @@ function CampaignDialog({
   const [promoCodeId, setPromoCodeId] = useState<string>('none');
   const [headline, setHeadline] = useState('');
   const [bodyHtml, setBodyHtml] = useState('');
+  const [recipientName, setRecipientName] = useState('');
+  const [singleEmail, setSingleEmail] = useState('');
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const tpl = sendable.find((t) => t.id === templateId);
-  const audienceCount = counts ? counts[audience] : undefined;
+  const audienceCount =
+    audience === 'single' ? (singleEmail.includes('@') ? 1 : 0) : counts ? counts[audience] : undefined;
 
   function buildOverrides(): Record<string, unknown> {
     const o: Record<string, unknown> = {};
     if (tpl?.supports.customHeadline && headline) o.headline = headline;
     if (tpl?.supports.customBody && bodyHtml) o.bodyHtml = bodyHtml;
+    if (recipientName.trim()) o.recipientName = recipientName.trim();
+    if (audience === 'single' && singleEmail.trim()) o.singleEmail = singleEmail.trim();
     const promo = (promos ?? []).find((p) => p.id === promoCodeId);
     if (promo) {
       o.discountLabel = promo.discountType === 'percent' ? `${promo.discountValue}%` : `${(promo.discountValue / 100).toFixed(0)} lei`;
@@ -246,6 +252,10 @@ function CampaignDialog({
       toast({ variant: 'destructive', title: 'Completează numele și șablonul' });
       return;
     }
+    if (audience === 'single' && !singleEmail.includes('@')) {
+      toast({ variant: 'destructive', title: 'Introdu emailul clientului' });
+      return;
+    }
     setBusy(true);
     try {
       await MarketingApi.createCampaign({
@@ -267,7 +277,7 @@ function CampaignDialog({
 
   function resetForm() {
     setName(''); setTemplateId(''); setAudience('nonpayers'); setPromoCodeId('none');
-    setHeadline(''); setBodyHtml(''); setPreviewHtml(null);
+    setHeadline(''); setBodyHtml(''); setRecipientName(''); setSingleEmail(''); setPreviewHtml(null);
   }
 
   return (
@@ -299,15 +309,43 @@ function CampaignDialog({
               <Select value={audience} onValueChange={(v) => setAudience(v as CampaignAudience)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="single">Un singur client (email)</SelectItem>
                   <SelectItem value="nonpayers">Nu au plătit{counts ? ` (${counts.nonpayers})` : ''}</SelectItem>
                   <SelectItem value="payers">Au plătit{counts ? ` (${counts.payers})` : ''}</SelectItem>
                   <SelectItem value="all">Toți{counts ? ` (${counts.all})` : ''}</SelectItem>
                 </SelectContent>
               </Select>
-              {audienceCount !== undefined && (
+              {audience !== 'single' && audienceCount !== undefined && (
                 <p className="text-[11px] text-muted-foreground">Se va trimite către ~{audienceCount} destinatari.</p>
               )}
             </div>
+
+            {audience === 'single' && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Email client</Label>
+                <Input
+                  type="email"
+                  value={singleEmail}
+                  onChange={(e) => setSingleEmail(e.target.value)}
+                  placeholder="ex. client@example.com"
+                />
+                <p className="text-[11px] text-muted-foreground">Se trimite un singur email, către această adresă.</p>
+              </div>
+            )}
+
+            {tpl?.supports.recipientName && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Nume în mail (opțional)</Label>
+                <Input
+                  value={recipientName}
+                  onChange={(e) => setRecipientName(e.target.value)}
+                  placeholder={audience === 'single' ? 'ex. Rupert' : 'Gol = numele real al fiecăruia'}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Înlocuiește „Andrei" din mail. {audience === 'single' ? 'Pune numele clientului.' : 'Lasă gol ca să folosească numele real al fiecărui destinatar.'}
+                </p>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label className="text-xs">Cod de reducere (opțional)</Label>
               <Select value={promoCodeId} onValueChange={setPromoCodeId}>

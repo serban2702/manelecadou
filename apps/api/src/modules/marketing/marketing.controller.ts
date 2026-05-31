@@ -28,7 +28,7 @@ class PreviewDto {
 class CreateCampaignDto {
   @IsString() @MaxLength(200) name!: string;
   @IsString() @MaxLength(64) templateId!: string;
-  @IsEnum(['all', 'payers', 'nonpayers']) audience!: CampaignAudience;
+  @IsEnum(['all', 'payers', 'nonpayers', 'single']) audience!: CampaignAudience;
   @IsOptional() @IsString() promoCodeId?: string | null;
   @IsOptional() @IsObject() overrides?: Record<string, unknown> | null;
 }

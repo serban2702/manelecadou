@@ -127,6 +127,36 @@ export class MarketingService {
     return filtered.map(({ paid: _paid, ...r }) => r);
   }
 
+  /** Rezolvă un singur destinatar după email (pentru campania „single").
+   *  Caută numele/locale din user → guest; `nameOverride` are prioritate. */
+  private async resolveSingleRecipient(
+    siteId: string | null,
+    email: string,
+    nameOverride: string | null,
+  ): Promise<AudienceRecipient> {
+    const site = siteId ? await this.sites.findById(siteId) : null;
+    const fallbackLocale = site?.locale ?? 'ro';
+    const where = (siteId ? { siteId, email } : { email }) as object;
+    const user = await this.users.findOne({ where, select: ['id', 'name', 'locale'] });
+    if (user) {
+      return {
+        email,
+        name: (nameOverride && nameOverride.trim()) || user.name || null,
+        locale: user.locale || fallbackLocale,
+        userId: user.id,
+        guestId: null,
+      };
+    }
+    const guest = await this.guests.findOne({ where, select: ['id'] });
+    return {
+      email,
+      name: (nameOverride && nameOverride.trim()) || null,
+      locale: fallbackLocale,
+      userId: null,
+      guestId: guest?.id ?? null,
+    };
+  }
+
   /** Set de emailuri dezabonate pentru un site (lowercased). */
   private async optOutEmails(siteId: string | null): Promise<Set<string>> {
     const where = siteId ? { siteId } : {};
@@ -191,8 +221,23 @@ export class MarketingService {
       promoCodeSnapshot = promo.code;
     }
 
-    const recipients = await this.buildAudience(siteId, input.audience);
-    if (recipients.length === 0) throw new BadRequestException('Niciun destinatar pentru segmentul ales');
+    let recipients: AudienceRecipient[];
+    if (input.audience === 'single') {
+      const email = String(input.overrides?.singleEmail ?? '').trim().toLowerCase();
+      if (!email || !email.includes('@')) {
+        throw new BadRequestException('Introdu un email valid pentru destinatarul unic.');
+      }
+      const optedOut = await this.optOutEmails(siteId);
+      if (optedOut.has(email)) {
+        throw new BadRequestException('Acest email s-a dezabonat de la marketing.');
+      }
+      recipients = [
+        await this.resolveSingleRecipient(siteId, email, (input.overrides?.recipientName as string) ?? null),
+      ];
+    } else {
+      recipients = await this.buildAudience(siteId, input.audience);
+      if (recipients.length === 0) throw new BadRequestException('Niciun destinatar pentru segmentul ales');
+    }
 
     const campaign = await this.campaigns.save(
       this.campaigns.create({
@@ -237,7 +282,7 @@ export class MarketingService {
     let failed = 0;
     for (const r of recipients) {
       const vars: MarketingRenderVars = {
-        recipientName: r.name,
+        recipientName: (overrides?.recipientName as string) || r.name,
         ctaUrl,
         ctaLabel: (overrides?.ctaLabel as string) ?? null,
         promoCode: promoCode,
