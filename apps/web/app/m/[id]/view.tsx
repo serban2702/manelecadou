@@ -279,8 +279,11 @@ function ShareGenerationViewInner() {
         return null;
       })()}
 
-      {/* Colaj video din pozele tale — doar după plată și melodie finalizată. */}
-      {isPaid && g.status === 'succeeded' && <CollageSection generation={g} />}
+      {/* Colaj video din pozele tale — DOAR pachetul premium (cel mai scump),
+          după plată și melodie finalizată. */}
+      {isPaid && g.status === 'succeeded' && g.packageTier === 'premium' && (
+        <CollageSection generation={g} />
+      )}
 
       {g.status === 'succeeded' && !!(g.socialImages && g.socialImages.length) ? (
         <SocialImageSection

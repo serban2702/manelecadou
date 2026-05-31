@@ -73,6 +73,11 @@ export class CollageService {
   }): Promise<{ collageId: string; status: string }> {
     const gen = await this.assertOwnedGeneration(args.generationId, args.ctx);
 
+    // Colajul video e exclusiv pachetului PREMIUM (cea mai scumpă manea).
+    if (gen.packageTier !== 'premium') {
+      throw new ForbiddenException('Colajul video e disponibil doar pentru pachetul Premium');
+    }
+
     // Verificăm că melodia aleasă chiar există pe disc (audioUrl / bonusAudioUrl).
     const hasTrack =
       args.track === 'bonus' ? !!gen.bonusAudioUrl : !!gen.audioUrl;
