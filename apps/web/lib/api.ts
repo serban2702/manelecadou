@@ -477,12 +477,18 @@ export const api = {
     track?: string;
   } | null> => {
     try {
-      return await request<{
-        id: string;
-        status: 'pending' | 'processing' | 'succeeded' | 'failed';
-        videoUrl?: string | null;
-        track?: string;
+      // Backend întoarce { collage: {...} | null } — dezambalăm aici ca să
+      // potrivim tipul plat folosit de CollageSection (altfel status=undefined
+      // și UI-ul de „se generează" dispare instant → revine dropzone-ul).
+      const res = await request<{
+        collage: {
+          id: string;
+          status: 'pending' | 'processing' | 'succeeded' | 'failed';
+          videoUrl?: string | null;
+          track?: string;
+        } | null;
       }>(`/generations/${generationId}/collage/latest`);
+      return res.collage ?? null;
     } catch (e) {
       // 404 = niciun colaj încă; degradare grațioasă pentru orice eroare.
       if (e instanceof ApiError && e.status === 404) return null;
