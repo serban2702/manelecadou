@@ -398,11 +398,10 @@ function PreviewDialog({
 
             <div className="grid grid-cols-2 gap-3">
               <LabeledInput label="Nume / Denumire client *" value={client.name ?? ''} onChange={(v) => patch({ name: v })} />
-              <LabeledInput label="CUI / CNP" value={client.vatCode ?? ''} onChange={(v) => patch({ vatCode: v })} />
+              <LabeledInput label="CUI (opțional, doar firme)" value={client.vatCode ?? ''} onChange={(v) => patch({ vatCode: v })} />
               <LabeledInput label="Adresă" value={client.address ?? ''} onChange={(v) => patch({ address: v })} />
               <LabeledInput label="Oraș" value={client.city ?? ''} onChange={(v) => patch({ city: v })} />
               <LabeledInput label="Județ" value={client.county ?? ''} onChange={(v) => patch({ county: v })} />
-              <LabeledInput label="Email" value={client.email ?? ''} onChange={(v) => patch({ email: v })} />
             </div>
 
             <div className="grid grid-cols-2 gap-3 border-t border-border pt-3">

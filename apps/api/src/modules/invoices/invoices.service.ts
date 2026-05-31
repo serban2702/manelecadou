@@ -242,7 +242,7 @@ export class InvoicesService {
         city: client.city || undefined,
         county: client.county || undefined,
         country: client.country || 'Romania',
-        email: client.email || undefined,
+        // NU trimitem email pe factură (nu folosim email, nu trimitem facturile pe mail).
         isTaxPayer: client.isTaxPayer ?? false,
       },
       products: [

@@ -567,7 +567,7 @@ function SmartbillSection({
             <Field label="Nume / Denumire">
               <Input value={dc.name ?? ''} onChange={(e) => patchClient({ name: e.target.value })} placeholder="Nume Prenume" />
             </Field>
-            <Field label="CUI / CNP">
+            <Field label="CUI (opțional, doar firme)">
               <Input value={dc.vatCode ?? ''} onChange={(e) => patchClient({ vatCode: e.target.value })} />
             </Field>
             <Field label="Adresă">
@@ -578,9 +578,6 @@ function SmartbillSection({
             </Field>
             <Field label="Județ">
               <Input value={dc.county ?? ''} onChange={(e) => patchClient({ county: e.target.value })} />
-            </Field>
-            <Field label="Email">
-              <Input value={dc.email ?? ''} onChange={(e) => patchClient({ email: e.target.value })} />
             </Field>
           </div>
         </div>
