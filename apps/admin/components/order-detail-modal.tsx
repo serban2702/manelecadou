@@ -15,18 +15,24 @@ import { ro } from 'date-fns/locale';
 import {
   AlertCircle,
   ArrowUpToLine,
+  BookOpen,
   CheckCircle2,
   Clock,
   CreditCard,
   Download,
   ExternalLink,
   Film,
+  Info,
+  Layers,
+  Loader2,
   Mail,
   MessageSquare,
+  Mic2,
   Music2,
+  Pencil,
+  Plus,
   RefreshCw,
   Repeat,
-  Scissors,
   Shuffle,
   Sparkles,
   Trash2,
@@ -635,6 +641,7 @@ function StudioTab({ data, refetch }: { data: OrderDetail; refetch: () => Promis
   const [coverStyle, setCoverStyle] = useState('');
   const [extendAt, setExtendAt] = useState('');
   const [acting, setActing] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   async function act(key: string, run: () => Promise<unknown>, okMsg: string) {
     if (acting) return;
@@ -652,12 +659,51 @@ function StudioTab({ data, refetch }: { data: OrderDetail; refetch: () => Promis
 
   const canSunoTools = !!g.providerJobId && g.providerJobId !== 'manual';
   const upd = (patch: Partial<typeof edits>) => setEdits((s) => ({ ...s, ...patch }));
+  const processing = (variations.data ?? []).filter(
+    (v) => v.status !== 'succeeded' && v.status !== 'failed',
+  ).length;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      {/* ===== Hero header ===== */}
+      <div className="relative overflow-hidden rounded-2xl border border-amber-400/20 bg-gradient-to-br from-amber-500/15 via-orange-500/5 to-transparent p-5">
+        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-amber-400/10 blur-3xl" />
+        <div className="relative flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 text-black shadow-lg shadow-amber-500/30">
+              <Wand2 className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight text-white">Studio melodie</h2>
+              <p className="mt-0.5 max-w-xl text-xs leading-relaxed text-amber-100/70">
+                Regenerează, editează versuri și folosește uneltele Suno ca să schimbi melodia
+                clientului — fără să strici comanda originală.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white transition hover:border-amber-400/40 hover:bg-amber-500/10 hover:text-amber-200"
+          >
+            <BookOpen className="h-3.5 w-3.5" /> Ghid
+          </button>
+        </div>
+        <div className="relative mt-4 flex flex-wrap gap-2">
+          <Stat label="Melodia live" value={g.status === 'succeeded' ? 'gata' : g.status} tone={g.status === 'succeeded' ? 'ok' : 'warn'} />
+          <Stat label="Variații" value={String(variations.data?.length ?? 0)} />
+          {processing > 0 && <Stat label="În lucru" value={String(processing)} tone="warn" spin />}
+          <Stat label="Sursă Suno" value={canSunoTools ? 'disponibilă' : 'manual / lipsă'} tone={canSunoTools ? 'ok' : 'muted'} />
+        </div>
+      </div>
+
       {/* ===== Editează & Regenerează ===== */}
-      <Card title="Editează & Regenerează" icon={<Wand2 className="h-4 w-4 text-amber-300" />}>
-        <div className="grid gap-2 sm:grid-cols-2">
+      <Section
+        icon={<Pencil className="h-4 w-4" />}
+        title="Editează & Regenerează"
+        subtitle="Schimbă datele melodiei și pornește o nouă generare completă."
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Destinatar">
             <Inp value={edits.recipientName} onChange={(v) => upd({ recipientName: v })} />
           </Field>
@@ -692,54 +738,71 @@ function StudioTab({ data, refetch }: { data: OrderDetail; refetch: () => Promis
             />
           </Field>
         </div>
-        <Field label="Mesaj">
-          <textarea
-            value={edits.message}
-            onChange={(e) => upd({ message: e.target.value })}
-            rows={2}
-            className="w-full rounded border border-white/10 bg-black/40 p-2 text-xs"
-          />
-        </Field>
+        <div className="mt-3">
+          <Field label="Mesaj">
+            <textarea
+              value={edits.message}
+              onChange={(e) => upd({ message: e.target.value })}
+              rows={2}
+              className={inputCls + ' min-h-[44px] resize-y py-2'}
+            />
+          </Field>
+        </div>
 
-        <div className="mt-2">
-          <p className="mb-1 text-[11px] font-medium text-muted-foreground">Versuri</p>
-          <RadioRow
+        <div className="mt-4">
+          <Label>Versuri</Label>
+          <SegPills
             value={lyricsMode}
             onChange={(v) => setLyricsMode(v as typeof lyricsMode)}
             options={[
-              { value: 'rewrite', label: 'Rescrie (AI din câmpuri)' },
-              { value: 'keep', label: 'Păstrează actualele' },
-              { value: 'custom', label: 'Versuri custom' },
+              { value: 'rewrite', label: 'Rescrie cu AI', hint: 'din câmpurile de mai sus' },
+              { value: 'keep', label: 'Păstrează', hint: 'aceleași versuri' },
+              { value: 'custom', label: 'Custom', hint: 'le scrii tu' },
             ]}
           />
           {lyricsMode === 'custom' && (
             <textarea
               value={customLyrics}
               onChange={(e) => setCustomLyrics(e.target.value)}
-              rows={8}
-              className="mt-1 w-full rounded border border-white/10 bg-black/40 p-2 font-mono text-[11px]"
-              placeholder="[Verse 1]&#10;..."
+              rows={9}
+              className={inputCls + ' mt-2 resize-y font-mono text-[11px] leading-relaxed'}
+              placeholder="[Verse 1]&#10;Versul tău aici…"
             />
           )}
         </div>
 
-        <div className="mt-3">
-          <p className="mb-1 text-[11px] font-medium text-muted-foreground">Unde merge rezultatul</p>
-          <RadioRow
-            value={target}
-            onChange={(v) => setTarget(v as typeof target)}
-            options={[
-              { value: 'new_track', label: '➕ Piesă nouă în comandă (variație)' },
-              { value: 'overwrite', label: '⚠ Suprascrie melodia actuală' },
-              { value: 'new_order', label: '🆕 Comandă nouă separată' },
-            ]}
-          />
+        <div className="mt-4">
+          <Label>Unde merge rezultatul</Label>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <TargetCard
+              active={target === 'new_track'}
+              onClick={() => setTarget('new_track')}
+              icon={<Plus className="h-4 w-4" />}
+              tone="emerald"
+              title="Piesă nouă"
+              desc="Variație în aceeași comandă. Nu atinge melodia live."
+            />
+            <TargetCard
+              active={target === 'overwrite'}
+              onClick={() => setTarget('overwrite')}
+              icon={<RefreshCw className="h-4 w-4" />}
+              tone="rose"
+              title="Suprascrie"
+              desc="Înlocuiește melodia actuală. Cea veche dispare."
+            />
+            <TargetCard
+              active={target === 'new_order'}
+              onClick={() => setTarget('new_order')}
+              icon={<Sparkles className="h-4 w-4" />}
+              tone="sky"
+              title="Comandă nouă"
+              desc="Melodie separată, independentă de comanda asta."
+            />
+          </div>
         </div>
 
-        <Button
-          className="mt-3"
-          variant="default"
-          size="sm"
+        <button
+          type="button"
           disabled={acting === 'regen'}
           onClick={() =>
             act(
@@ -763,109 +826,322 @@ function StudioTab({ data, refetch }: { data: OrderDetail; refetch: () => Promis
               'Regenerare pornită',
             )
           }
+          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-2.5 text-sm font-semibold text-black shadow-lg shadow-amber-500/25 transition hover:from-amber-300 hover:to-orange-400 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
         >
-          <Wand2 className="h-4 w-4" /> {acting === 'regen' ? 'Se trimite…' : 'Regenerează'}
-        </Button>
-      </Card>
+          {acting === 'regen' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+          {acting === 'regen' ? 'Se trimite…' : 'Regenerează melodia'}
+        </button>
+      </Section>
 
       {/* ===== Unelte rapide ===== */}
-      <Card title="Unelte rapide (Suno)" icon={<Sparkles className="h-4 w-4 text-amber-300" />}>
-        <div className="mb-2 flex items-center gap-2 text-[11px]">
-          <span className="text-muted-foreground">Operează pe:</span>
-          <Sel
-            value={slot}
-            onChange={(v) => setSlot(v as 'main' | 'bonus')}
-            options={[
-              { value: 'main', label: 'Piesa principală' },
-              { value: 'bonus', label: 'Piesa bonus' },
-            ]}
-          />
-        </div>
+      <Section
+        icon={<Sparkles className="h-4 w-4" />}
+        title="Unelte rapide"
+        subtitle="Operații pe melodia existentă, fără să rescrii versurile."
+        right={
+          <SlotToggle value={slot} onChange={setSlot} />
+        }
+      >
         {!canSunoTools && (
-          <p className="mb-2 rounded bg-amber-500/10 p-2 text-[11px] text-amber-200">
-            Uneltele Suno (extend, WAV, karaoke, video) nu sunt disponibile — melodia a fost
-            încărcată manual sau nu are un task Suno. Cover și regenerarea funcționează.
-          </p>
+          <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-400/20 bg-amber-500/10 p-2.5 text-[11px] leading-relaxed text-amber-200">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              Uneltele Suno (extend, WAV, karaoke, video) cer o melodie generată prin Suno.
+              Aceasta a fost încărcată manual sau nu are task Suno. <strong>Re-roll, Swap și
+              Cover</strong> funcționează în continuare.
+            </span>
+          </div>
         )}
-        <div className="flex flex-wrap gap-2">
-          <Button size="xs" variant="secondary" disabled={!!acting}
-            onClick={() => act('reroll', () => AdminApi.generationReroll(g.id), 'Re-roll pornit')}>
-            <Repeat className="h-3.5 w-3.5" /> Re-roll
-          </Button>
-          <Button size="xs" variant="secondary" disabled={!!acting || !g.bonusAudioUrl}
-            onClick={() => act('swap', () => AdminApi.generationSwapTracks(g.id), 'Piese interschimbate')}>
-            <Shuffle className="h-3.5 w-3.5" /> Swap principală↔bonus
-          </Button>
-          <Button size="xs" variant="secondary" disabled={!!acting || !canSunoTools}
-            onClick={() => act('extend', () => AdminApi.generationExtend(g.id, { slot, continueAt: extendAt ? Number(extendAt) : undefined }), 'Extend pornit')}>
-            <ArrowUpToLine className="h-3.5 w-3.5" /> Prelungește
-          </Button>
-          <input
-            value={extendAt}
-            onChange={(e) => setExtendAt(e.target.value.replace(/[^\d]/g, ''))}
-            placeholder="de la sec"
-            className="w-20 rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px]"
+        <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+          <ToolTile
+            icon={<Repeat className="h-4 w-4" />} tone="violet"
+            title="Re-roll" desc="Variație nouă, aceleași versuri."
+            busy={acting === 'reroll'} disabled={!!acting}
+            onAction={() => act('reroll', () => AdminApi.generationReroll(g.id), 'Re-roll pornit')}
           />
-          <Button size="xs" variant="secondary" disabled={!!acting}
-            onClick={() => act('cover', () => AdminApi.generationCover(g.id, { slot, style: coverStyle.trim() || undefined }), 'Cover pornit')}>
-            <Wand2 className="h-3.5 w-3.5" /> Cover/restyle
-          </Button>
-          <input
-            value={coverStyle}
-            onChange={(e) => setCoverStyle(e.target.value)}
-            placeholder="stil cover (opțional)"
-            className="w-40 rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px]"
+          <ToolTile
+            icon={<Shuffle className="h-4 w-4" />} tone="violet"
+            title="Swap" desc="Schimbă principala cu bonusul."
+            busy={acting === 'swap'} disabled={!!acting || !g.bonusAudioUrl}
+            disabledHint={!g.bonusAudioUrl ? 'fără piesă bonus' : undefined}
+            onAction={() => act('swap', () => AdminApi.generationSwapTracks(g.id), 'Piese interschimbate')}
+          />
+          <ToolTile
+            icon={<ArrowUpToLine className="h-4 w-4" />} tone="amber"
+            title="Prelungește" desc="Continuă melodia (Suno extend)."
+            busy={acting === 'extend'} disabled={!!acting || !canSunoTools}
+            onAction={() => act('extend', () => AdminApi.generationExtend(g.id, { slot, continueAt: extendAt ? Number(extendAt) : undefined }), 'Extend pornit')}
+          >
+            <input
+              value={extendAt}
+              onChange={(e) => setExtendAt(e.target.value.replace(/[^\d]/g, ''))}
+              placeholder="de la secunda…"
+              className={inputCls + ' h-7 text-[11px]'}
+            />
+          </ToolTile>
+          <ToolTile
+            icon={<Wand2 className="h-4 w-4" />} tone="amber"
+            title="Cover / restyle" desc="Aceeași melodie, alt stil."
+            busy={acting === 'cover'} disabled={!!acting}
+            onAction={() => act('cover', () => AdminApi.generationCover(g.id, { slot, style: coverStyle.trim() || undefined }), 'Cover pornit')}
+          >
+            <input
+              value={coverStyle}
+              onChange={(e) => setCoverStyle(e.target.value)}
+              placeholder="stil cover (opțional)"
+              className={inputCls + ' h-7 text-[11px]'}
+            />
+          </ToolTile>
+          <ToolTile
+            icon={<Download className="h-4 w-4" />} tone="sky"
+            title="WAV studio" desc="Calitate înaltă, necomprimată."
+            busy={acting === 'wav'} disabled={!!acting || !canSunoTools}
+            onAction={() => act('wav', () => AdminApi.generationWav(g.id, slot), 'WAV în lucru')}
+          />
+          <ToolTile
+            icon={<Mic2 className="h-4 w-4" />} tone="sky"
+            title="Voce / Instrumental" desc="Separă vocea de instrumental."
+            busy={acting === 'karaoke'} disabled={!!acting || !canSunoTools}
+            onAction={() => act('karaoke', () => AdminApi.generationSeparateVocals(g.id, slot, 'separate_vocal'), 'Karaoke în lucru')}
+          />
+          <ToolTile
+            icon={<Layers className="h-4 w-4" />} tone="sky"
+            title="Stem-uri (12)" desc="Tobe, bas, voce, chitară…"
+            busy={acting === 'stems'} disabled={!!acting || !canSunoTools}
+            onAction={() => act('stems', () => AdminApi.generationSeparateVocals(g.id, slot, 'split_stem'), 'Stem-uri în lucru')}
+          />
+          <ToolTile
+            icon={<Film className="h-4 w-4" />} tone="sky"
+            title="Videoclip MP4" desc="Clip oficial Suno din melodie."
+            busy={acting === 'video'} disabled={!!acting || !canSunoTools}
+            onAction={() => act('video', () => AdminApi.generationMusicVideo(g.id, slot), 'Videoclip în lucru')}
           />
         </div>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <Button size="xs" variant="outline" disabled={!!acting || !canSunoTools}
-            onClick={() => act('wav', () => AdminApi.generationWav(g.id, slot), 'WAV în lucru')}>
-            <Download className="h-3.5 w-3.5" /> WAV studio
-          </Button>
-          <Button size="xs" variant="outline" disabled={!!acting || !canSunoTools}
-            onClick={() => act('karaoke', () => AdminApi.generationSeparateVocals(g.id, slot, 'separate_vocal'), 'Karaoke în lucru')}>
-            <Scissors className="h-3.5 w-3.5" /> Voce/Instrumental
-          </Button>
-          <Button size="xs" variant="outline" disabled={!!acting || !canSunoTools}
-            onClick={() => act('stems', () => AdminApi.generationSeparateVocals(g.id, slot, 'split_stem'), 'Stem-uri în lucru')}>
-            <Scissors className="h-3.5 w-3.5" /> Stem-uri (12)
-          </Button>
-          <Button size="xs" variant="outline" disabled={!!acting || !canSunoTools}
-            onClick={() => act('video', () => AdminApi.generationMusicVideo(g.id, slot), 'Videoclip în lucru')}>
-            <Film className="h-3.5 w-3.5" /> Videoclip MP4
-          </Button>
-        </div>
-        <p className="mt-2 text-[10px] text-muted-foreground">
-          Operațiile rulează în fundal (Suno + procesare). Variațiile apar mai jos; fișierele
-          derivate (WAV/karaoke/video) apar în secțiunea respectivă după ~1-3 min.
+        <p className="mt-3 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+          <Clock className="h-3 w-3" /> Rulează în fundal (~1-3 min). Variațiile apar mai jos;
+          fișierele derivate în secțiunea „Fișiere derivate".
         </p>
-      </Card>
+      </Section>
 
       {/* ===== Variații ===== */}
-      <Card title={`Variații (${variations.data?.length ?? 0})`} icon={<Music2 className="h-4 w-4" />}>
+      <Section
+        icon={<Music2 className="h-4 w-4" />}
+        title="Variații"
+        subtitle="Versiuni candidate. Ascultă-le și promovează-o pe cea bună."
+        badge={variations.data?.length ? String(variations.data.length) : undefined}
+      >
         {!variations.data || variations.data.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            Nicio variație încă. Folosește „Regenerează" (piesă nouă), „Re-roll", „Prelungește" sau „Cover".
-          </p>
+          <div className="rounded-xl border border-dashed border-white/10 bg-black/20 px-4 py-8 text-center">
+            <Music2 className="mx-auto mb-2 h-6 w-6 text-muted-foreground/50" />
+            <p className="text-xs text-muted-foreground">
+              Nicio variație încă. Folosește <strong>Regenerează → Piesă nouă</strong>, Re-roll,
+              Prelungește sau Cover.
+            </p>
+          </div>
         ) : (
-          <div className="space-y-2">
+          <div className="grid gap-2.5 sm:grid-cols-2">
             {variations.data.map((v) => (
-              <VariationRow key={v.id} v={v} acting={!!acting}
+              <VariationCard
+                key={v.id}
+                v={v}
+                acting={!!acting}
                 onPromote={(s) => act('promote', () => AdminApi.generationPromote(v.id, { slot: s, notify: false }), `Pusă ca ${s === 'main' ? 'principală' : 'bonus'}`)}
                 onDelete={() => act('delvar', () => AdminApi.generationDeleteVariation(v.id), 'Variație ștearsă')}
               />
             ))}
           </div>
         )}
-      </Card>
+      </Section>
 
       {/* ===== Fișiere derivate ===== */}
       <MediaExtrasCard g={g} />
+
+      <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }
 
-function VariationRow({
+const inputCls =
+  'w-full rounded-lg border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-white placeholder:text-muted-foreground/60 transition focus:border-amber-400/50 focus:outline-none focus:ring-1 focus:ring-amber-400/30';
+
+const toneMap = {
+  amber: 'from-amber-400/20 text-amber-300 ring-amber-400/30',
+  violet: 'from-violet-400/20 text-violet-300 ring-violet-400/30',
+  sky: 'from-sky-400/20 text-sky-300 ring-sky-400/30',
+  emerald: 'from-emerald-400/20 text-emerald-300 ring-emerald-400/30',
+  rose: 'from-rose-400/20 text-rose-300 ring-rose-400/30',
+} as const;
+
+function Section({
+  icon,
+  title,
+  subtitle,
+  right,
+  badge,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  right?: React.ReactNode;
+  badge?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.04] to-white/[0.01] p-4 shadow-lg shadow-black/20">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15 text-amber-300 ring-1 ring-amber-400/20">
+            {icon}
+          </div>
+          <div>
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+              {title}
+              {badge && (
+                <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-200">
+                  {badge}
+                </span>
+              )}
+            </h3>
+            {subtitle && <p className="text-[11px] text-muted-foreground">{subtitle}</p>}
+          </div>
+        </div>
+        {right}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  tone = 'default',
+  spin,
+}: {
+  label: string;
+  value: string;
+  tone?: 'default' | 'ok' | 'warn' | 'muted';
+  spin?: boolean;
+}) {
+  const dot =
+    tone === 'ok' ? 'bg-emerald-400' : tone === 'warn' ? 'bg-amber-400' : tone === 'muted' ? 'bg-white/30' : 'bg-sky-400';
+  return (
+    <div className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5">
+      {spin ? (
+        <Loader2 className="h-3 w-3 animate-spin text-amber-300" />
+      ) : (
+        <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+      )}
+      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-xs font-semibold text-white">{value}</span>
+    </div>
+  );
+}
+
+function TargetCard({
+  active,
+  onClick,
+  icon,
+  title,
+  desc,
+  tone,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+  tone: keyof typeof toneMap;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group relative flex flex-col gap-1.5 rounded-xl border p-3 text-left transition ${
+        active
+          ? 'border-amber-400/50 bg-amber-500/10 shadow-md shadow-amber-500/10'
+          : 'border-white/10 bg-black/20 hover:border-white/25 hover:bg-white/5'
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <span className={`flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br to-transparent ring-1 ${toneMap[tone]}`}>
+          {icon}
+        </span>
+        <span className="text-xs font-semibold text-white">{title}</span>
+        {active && <CheckCircle2 className="ml-auto h-4 w-4 text-amber-300" />}
+      </div>
+      <p className="text-[11px] leading-relaxed text-muted-foreground">{desc}</p>
+    </button>
+  );
+}
+
+function ToolTile({
+  icon,
+  title,
+  desc,
+  tone,
+  busy,
+  disabled,
+  disabledHint,
+  onAction,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+  tone: keyof typeof toneMap;
+  busy?: boolean;
+  disabled?: boolean;
+  disabledHint?: string;
+  onAction: () => void;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className={`flex flex-col gap-2 rounded-xl border border-white/10 bg-black/20 p-3 transition ${disabled ? 'opacity-60' : 'hover:border-white/20'}`}>
+      <div className="flex items-center gap-2">
+        <span className={`flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br to-transparent ring-1 ${toneMap[tone]}`}>
+          {icon}
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-xs font-semibold text-white">{title}</p>
+          <p className="truncate text-[10px] text-muted-foreground">{disabledHint ?? desc}</p>
+        </div>
+      </div>
+      {children}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onAction}
+        className="mt-auto inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] font-medium text-white transition hover:border-amber-400/40 hover:bg-amber-500/10 hover:text-amber-200 disabled:cursor-not-allowed disabled:hover:border-white/10 disabled:hover:bg-white/5 disabled:hover:text-white"
+      >
+        {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+        {busy ? 'Se trimite…' : 'Pornește'}
+      </button>
+    </div>
+  );
+}
+
+function SlotToggle({ value, onChange }: { value: 'main' | 'bonus'; onChange: (v: 'main' | 'bonus') => void }) {
+  return (
+    <div className="inline-flex rounded-lg border border-white/10 bg-black/30 p-0.5 text-[11px]">
+      {(['main', 'bonus'] as const).map((s) => (
+        <button
+          key={s}
+          type="button"
+          onClick={() => onChange(s)}
+          className={`rounded-md px-2.5 py-1 font-medium transition ${
+            value === s ? 'bg-amber-500/20 text-amber-200' : 'text-muted-foreground hover:text-white'
+          }`}
+        >
+          {s === 'main' ? 'Principală' : 'Bonus'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function VariationCard({
   v,
   acting,
   onPromote,
@@ -877,28 +1153,46 @@ function VariationRow({
   onDelete: () => void;
 }) {
   const ready = v.status === 'succeeded' && !!v.audioUrl;
+  const processing = v.status !== 'succeeded' && v.status !== 'failed';
   const audio = v.demoAudioUrl ?? v.audioUrl;
   return (
-    <div className="rounded-lg border border-white/5 bg-black/20 p-2">
-      <div className="mb-1 flex items-center gap-2 text-[11px]">
-        <Badge variant="info">{v.variationLabel ?? 'Variație'}</Badge>
-        <StatusBadge status={v.status} />
-        <code className="text-muted-foreground">{v.style}</code>
-        <span className="text-muted-foreground">· {voiceLabel(v.voiceArtist)}</span>
+    <div className={`flex flex-col gap-2 rounded-xl border p-3 transition ${ready ? 'border-emerald-400/20 bg-emerald-500/[0.04]' : v.status === 'failed' ? 'border-rose-400/20 bg-rose-500/[0.04]' : 'border-white/10 bg-black/20'}`}>
+      <div className="flex items-center gap-2">
+        <Badge variant="info" className="shrink-0">{v.variationLabel ?? 'Variație'}</Badge>
+        {processing ? (
+          <span className="inline-flex items-center gap-1 text-[11px] text-amber-300">
+            <Loader2 className="h-3 w-3 animate-spin" /> {v.status}
+          </span>
+        ) : (
+          <StatusBadge status={v.status} />
+        )}
         <span className="ml-auto text-[10px] text-muted-foreground">{fmtDateTime(v.createdAt)}</span>
       </div>
-      {v.error && <p className="mb-1 text-[11px] text-rose-300">{v.error}</p>}
-      {audio && <audio controls src={audio} className="mb-1 h-8 w-full" />}
-      <div className="flex flex-wrap gap-1.5">
-        <Button size="xs" variant="success" disabled={acting || !ready} onClick={() => onPromote('main')}>
-          <ArrowUpToLine className="h-3 w-3" /> Pune ca principală
-        </Button>
-        <Button size="xs" variant="secondary" disabled={acting || !ready} onClick={() => onPromote('bonus')}>
+      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <code className="rounded bg-white/5 px-1.5 py-0.5">{v.style}</code>
+        <span>{voiceLabel(v.voiceArtist)}</span>
+      </div>
+      {v.error && <p className="rounded bg-rose-500/10 px-2 py-1 text-[11px] text-rose-300">{v.error}</p>}
+      {audio && <audio controls src={audio} className="h-8 w-full" />}
+      <div className="mt-auto flex flex-wrap gap-1.5">
+        <button
+          type="button" disabled={acting || !ready} onClick={() => onPromote('main')}
+          className="inline-flex items-center gap-1 rounded-lg border border-emerald-400/30 bg-emerald-500/15 px-2 py-1 text-[11px] font-medium text-emerald-200 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <ArrowUpToLine className="h-3 w-3" /> Ca principală
+        </button>
+        <button
+          type="button" disabled={acting || !ready} onClick={() => onPromote('bonus')}
+          className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-[11px] font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+        >
           <ArrowUpToLine className="h-3 w-3" /> Ca bonus
-        </Button>
-        <Button size="xs" variant="destructive" disabled={acting} onClick={onDelete}>
-          <Trash2 className="h-3 w-3" /> Șterge
-        </Button>
+        </button>
+        <button
+          type="button" disabled={acting} onClick={onDelete}
+          className="ml-auto inline-flex items-center gap-1 rounded-lg border border-rose-400/25 bg-rose-500/10 px-2 py-1 text-[11px] font-medium text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
       </div>
     </div>
   );
@@ -912,37 +1206,49 @@ function MediaExtrasCard({ g }: { g: NonNullable<OrderDetail['generation']> }) {
     (m.wavUrl || m.wavBonusUrl || m.vocalUrl || m.accompanimentUrl || m.musicVideoUrl || m.musicVideoBonusUrl || stems.length);
   if (!hasAny) return null;
   return (
-    <Card title="Fișiere derivate (WAV / karaoke / video)" icon={<Download className="h-4 w-4" />}>
-      <div className="space-y-1 text-xs">
-        {m?.wavUrl && <ExtLink label="WAV principal" url={m.wavUrl} />}
-        {m?.wavBonusUrl && <ExtLink label="WAV bonus" url={m.wavBonusUrl} />}
-        {m?.vocalUrl && <ExtLink label="Voce izolată" url={m.vocalUrl} />}
-        {m?.accompanimentUrl && <ExtLink label="Instrumental (karaoke)" url={m.accompanimentUrl} />}
+    <Section
+      icon={<Download className="h-4 w-4" />}
+      title="Fișiere derivate"
+      subtitle="WAV studio, karaoke și videoclipuri generate. (păstrate ~15 zile)"
+    >
+      <div className="grid gap-2 sm:grid-cols-2">
+        {m?.wavUrl && <ExtLink icon={<Download className="h-3.5 w-3.5" />} label="WAV principal" url={m.wavUrl} />}
+        {m?.wavBonusUrl && <ExtLink icon={<Download className="h-3.5 w-3.5" />} label="WAV bonus" url={m.wavBonusUrl} />}
+        {m?.vocalUrl && <ExtLink icon={<Mic2 className="h-3.5 w-3.5" />} label="Voce izolată" url={m.vocalUrl} />}
+        {m?.accompanimentUrl && <ExtLink icon={<Music2 className="h-3.5 w-3.5" />} label="Instrumental (karaoke)" url={m.accompanimentUrl} />}
         {stems.map(([k, url]) => (
-          <ExtLink key={k} label={`Stem: ${k}`} url={url} />
+          <ExtLink key={k} icon={<Layers className="h-3.5 w-3.5" />} label={`Stem: ${k}`} url={url} />
         ))}
-        {m?.musicVideoUrl && <ExtLink label="Videoclip principal" url={m.musicVideoUrl} />}
-        {m?.musicVideoBonusUrl && <ExtLink label="Videoclip bonus" url={m.musicVideoBonusUrl} />}
+        {m?.musicVideoUrl && <ExtLink icon={<Film className="h-3.5 w-3.5" />} label="Videoclip principal" url={m.musicVideoUrl} />}
+        {m?.musicVideoBonusUrl && <ExtLink icon={<Film className="h-3.5 w-3.5" />} label="Videoclip bonus" url={m.musicVideoBonusUrl} />}
       </div>
-    </Card>
+    </Section>
   );
 }
 
-function ExtLink({ label, url }: { label: string; url: string }) {
+function ExtLink({ icon, label, url }: { icon: React.ReactNode; label: string; url: string }) {
   return (
-    <div className="flex items-center justify-between gap-2 border-b border-white/5 py-1">
-      <span className="text-muted-foreground">{label}</span>
-      <a href={url} target="_blank" rel="noopener" className="inline-flex items-center gap-1 text-primary hover:underline">
-        descarcă <ExternalLink className="h-3 w-3" />
-      </a>
-    </div>
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener"
+      className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-white transition hover:border-amber-400/40 hover:bg-amber-500/10"
+    >
+      <span className="text-amber-300">{icon}</span>
+      <span className="flex-1 truncate">{label}</span>
+      <ExternalLink className="h-3 w-3 text-muted-foreground" />
+    </a>
   );
+}
+
+function Label({ children }: { children: React.ReactNode }) {
+  return <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{children}</p>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-0.5 block text-[11px] text-muted-foreground">{label}</span>
+      <span className="mb-1 block text-[11px] font-medium text-muted-foreground">{label}</span>
       {children}
     </label>
   );
@@ -962,7 +1268,7 @@ function Inp({
       value={value}
       placeholder={placeholder}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded border border-white/10 bg-black/40 px-2 py-1 text-xs"
+      className={inputCls}
     />
   );
 }
@@ -977,11 +1283,7 @@ function Sel({
   options: { value: string; label: string }[];
 }) {
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="rounded border border-white/10 bg-black/40 px-2 py-1 text-xs"
-    >
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={inputCls}>
       {options.map((o) => (
         <option key={o.value} value={o.value} className="bg-[hsl(220_22%_9%)]">
           {o.label}
@@ -991,32 +1293,141 @@ function Sel({
   );
 }
 
-function RadioRow({
+function SegPills({
   value,
   onChange,
   options,
 }: {
   value: string;
   onChange: (v: string) => void;
-  options: { value: string; label: string }[];
+  options: { value: string; label: string; hint?: string }[];
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="grid gap-1.5 sm:grid-cols-3">
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
-          className={`rounded border px-2 py-1 text-[11px] ${
+          className={`rounded-lg border px-3 py-2 text-left transition ${
             value === o.value
-              ? 'border-amber-400/50 bg-amber-500/15 text-amber-200'
-              : 'border-white/10 bg-black/30 text-muted-foreground hover:bg-white/5'
+              ? 'border-amber-400/50 bg-amber-500/15'
+              : 'border-white/10 bg-black/20 hover:bg-white/5'
           }`}
         >
-          {o.label}
+          <span className={`block text-xs font-medium ${value === o.value ? 'text-amber-200' : 'text-white'}`}>
+            {o.label}
+          </span>
+          {o.hint && <span className="text-[10px] text-muted-foreground">{o.hint}</span>}
         </button>
       ))}
     </div>
+  );
+}
+
+// ============== Studio: modal de documentație ==============
+
+function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+        <DialogPrimitive.Content
+          className="fixed inset-x-4 inset-y-8 z-[60] flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[hsl(220_22%_9%)] shadow-2xl md:inset-x-1/4 md:inset-y-10"
+          aria-describedby={undefined}
+        >
+          <header className="flex items-center justify-between gap-3 border-b border-white/5 bg-gradient-to-r from-amber-500/10 to-transparent px-5 py-3.5">
+            <DialogPrimitive.Title className="flex items-center gap-2 text-base font-semibold text-white">
+              <BookOpen className="h-4 w-4 text-amber-300" /> Ghid Studio — cum schimbi melodiile
+            </DialogPrimitive.Title>
+            <DialogPrimitive.Close className="rounded-md p-1.5 text-muted-foreground hover:bg-white/5 hover:text-white" aria-label="Închide">
+              <X className="h-4 w-4" />
+            </DialogPrimitive.Close>
+          </header>
+          <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5 text-sm leading-relaxed">
+            <HelpIntro />
+            <HelpGroup title="1. Editează & Regenerează" icon={<Pencil className="h-4 w-4" />}>
+              <p>Schimbi datele (nume, dedicație, mesaj, stil, ocazie, voce, pachet) și pornești o generare nouă completă (versuri → audio).</p>
+              <HelpDef term="Rescrie cu AI" def="AI-ul scrie versuri noi pe baza câmpurilor editate. Folosește când schimbi mesajul / destinatarul / ocazia." />
+              <HelpDef term="Păstrează versurile" def="Refolosește exact versurile actuale, regenerând doar partea audio (altă interpretare/voce)." />
+              <HelpDef term="Versuri custom" def="Scrii tu versurile în casetă — sunt folosite literal. Poți folosi tag-uri Suno: [Verse 1], [Chorus] etc." />
+              <p className="mt-2 font-medium text-white">Unde merge rezultatul:</p>
+              <HelpDef term="➕ Piesă nouă" def="Creează o VARIAȚIE atașată comenzii. Melodia pe care o vede clientul rămâne neatinsă. O asculți la „Variații” și o promovezi când e bună. (cel mai sigur)" tone="emerald" />
+              <HelpDef term="⚠ Suprascrie" def="Înlocuiește melodia actuală a clientului. Cea veche dispare definitiv. Folosește când ești sigur." tone="rose" />
+              <HelpDef term="🆕 Comandă nouă" def="Creează o melodie complet separată (un cadou în plus), fără legătură cu comanda asta." tone="sky" />
+            </HelpGroup>
+
+            <HelpGroup title="2. Unelte rapide" icon={<Sparkles className="h-4 w-4" />}>
+              <p className="text-muted-foreground">Selectorul „Principală / Bonus" din dreapta alege pe care din cele 2 piese operează unealta.</p>
+              <HelpDef term="Re-roll" def="O variație nouă cu aceleași versuri — când vrei pur și simplu altă interpretare." />
+              <HelpDef term="Swap principală↔bonus" def="Interschimbă melodia principală cu cea bonus (dacă a doua e mai bună). Instant, fără Suno." />
+              <HelpDef term="Prelungește (extend)" def="Continuă melodia ca s-o faci mai lungă. Opțional pui secunda de la care continuă. Rezultatul apare ca variație." />
+              <HelpDef term="Cover / restyle" def="Aceeași melodie reinterpretată în alt stil (scrii stilul în căsuță). Rezultatul apare ca variație." />
+              <HelpDef term="WAV studio" def="Convertește piesa la WAV necomprimat (calitate maximă). Apare la „Fișiere derivate”." />
+              <HelpDef term="Voce / Instrumental" def="Separă vocea de instrumental (karaoke). Primești 2 fișiere: voce izolată + instrumental." />
+              <HelpDef term="Stem-uri (12)" def="Desparte melodia în până la 12 piste individuale (tobe, bas, voce, chitară, claviatură…)." />
+              <HelpDef term="Videoclip MP4" def="Generează un videoclip oficial Suno pornind de la melodie." />
+              <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-400/20 bg-amber-500/10 p-2 text-[12px] text-amber-200">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                Extend, WAV, karaoke, stem-uri și video au nevoie de o melodie generată prin Suno.
+                Pentru melodii încărcate manual sunt dezactivate (dar Re-roll, Swap și Cover merg).
+              </p>
+            </HelpGroup>
+
+            <HelpGroup title="3. Variații" icon={<Music2 className="h-4 w-4" />}>
+              <p>Toate versiunile generate (piesă nouă / re-roll / extend / cover) apar aici cu un player.</p>
+              <HelpDef term="Ca principală" def="Pune variația ca melodie principală pe care o vede și ascultă clientul." tone="emerald" />
+              <HelpDef term="Ca bonus" def="Pune variația ca a doua piesă (bonusul) al comenzii." />
+              <HelpDef term="Șterge" def="Elimină variația (nu afectează melodia livrată)." tone="rose" />
+              <p className="text-muted-foreground">Lista se reîmprospătează automat la 5 secunde cât timp ceva e „în lucru".</p>
+            </HelpGroup>
+
+            <HelpGroup title="Flux recomandat" icon={<CheckCircle2 className="h-4 w-4" />}>
+              <ol className="ml-4 list-decimal space-y-1 text-[13px]">
+                <li>Clientul cere o schimbare → deschizi comanda → tab <strong>Studio</strong>.</li>
+                <li>Editezi ce trebuie și alegi <strong>Piesă nouă</strong> (ca să nu strici live-ul).</li>
+                <li>Aștepți să apară variația în „Variații", o asculți.</li>
+                <li>Dacă e bună → <strong>Ca principală</strong>. Dacă nu → Re-roll sau ajustezi și regenerezi.</li>
+                <li>Opțional: WAV / videoclip / karaoke pentru livrabile extra.</li>
+              </ol>
+            </HelpGroup>
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
+}
+
+function HelpIntro() {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3 text-[13px] text-muted-foreground">
+      Acest tab îți permite să modifici melodia unui client după livrare. Regula de aur:
+      folosește <strong className="text-emerald-300">Piesă nouă</strong> ca să testezi în
+      siguranță, ascultă, și abia apoi promovează versiunea bună. Operațiile cu Suno costă
+      credite și rulează în fundal câteva minute.
+    </div>
+  );
+}
+
+function HelpGroup({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+      <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-white">
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/15 text-amber-300">{icon}</span>
+        {title}
+      </h3>
+      <div className="space-y-1.5 text-[13px] text-muted-foreground">{children}</div>
+    </div>
+  );
+}
+
+function HelpDef({ term, def, tone }: { term: string; def: string; tone?: 'emerald' | 'rose' | 'sky' }) {
+  const c = tone === 'emerald' ? 'text-emerald-300' : tone === 'rose' ? 'text-rose-300' : tone === 'sky' ? 'text-sky-300' : 'text-white';
+  return (
+    <p>
+      <span className={`font-medium ${c}`}>{term}</span>
+      <span className="text-muted-foreground"> — {def}</span>
+    </p>
   );
 }
 
