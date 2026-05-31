@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { api, ApiError, resolveMediaUrl, type GenerationDto } from '@/lib/api';
 import { track } from '@/lib/tracking';
 import { ManeaPlayer } from '@/components/ManeaPlayer';
+import { VideoPlayer } from '@/components/VideoPlayer';
 import { STYLES, VOICES, OCC } from '@/lib/seed-data';
 import { useSite } from '@/lib/site-context';
 import { useSession } from '@/lib/providers';
@@ -252,27 +253,21 @@ function ShareGenerationViewInner() {
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
             🎬 Videoclip personalizat
           </div>
-          <video
-            controls
-            playsInline
+          <VideoPlayer
             src={resolveMediaUrl(g.videoUrl)!}
-            style={{ width: '100%', borderRadius: 12, background: '#000', border: '1px solid rgba(241,200,77,0.25)' }}
+            poster={resolveMediaUrl(g.socialImageUploaded ?? g.socialImageSelected ?? g.coverUrl)}
           />
-          <a
-            href={resolveMediaUrl(g.videoUrl)!}
-            download
-            className="btn btn-ghost btn-sm"
-            style={{ marginTop: 8, display: 'inline-block', textDecoration: 'none' }}
-          >
-            ⬇ Descarcă videoclipul
-          </a>
         </div>
       )}
 
       {g.status === 'succeeded' && !!(g.socialImages && g.socialImages.length) && (
         <SocialImageSection
           generation={g}
-          onUpdated={(fresh) => setG(fresh)}
+          // BUG FIX: endpoint-urile select/upload întorc un obiect PARȚIAL
+          // (ex. `{ ok, socialImageSelected }`). Înlocuirea totală a obiectului
+          // golea pagina (titlu fără nume, „Demo — preview"). Facem MERGE ca să
+          // păstrăm restul câmpurilor (recipientName, type, audioUrl, videoUrl…).
+          onUpdated={(fresh) => setG((prev) => (prev ? { ...prev, ...fresh } : prev))}
         />
       )}
 
@@ -732,7 +727,9 @@ function SocialImageSection({
   onUpdated,
 }: {
   generation: GenerationDto;
-  onUpdated: (fresh: GenerationDto) => void;
+  // Backend-ul întoarce un obiect PARȚIAL (doar câmpurile schimbate), deci
+  // callback-ul primește un Partial<GenerationDto>, iar părintele face merge.
+  onUpdated: (fresh: Partial<GenerationDto>) => void;
 }) {
   const images = generation.socialImages ?? [];
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -765,8 +762,10 @@ function SocialImageSection({
     try {
       const fresh = await api.uploadSocialImage(generation.id, file);
       onUpdated(fresh);
-      setUploaded(fresh.socialImageUploaded ?? null);
-      setSelected(fresh.socialImageSelected ?? fresh.socialImageUploaded ?? selected);
+      // `fresh` poate fi parțial — luăm câmpurile dacă există, altfel păstrăm starea.
+      const freshUploaded = fresh.socialImageUploaded ?? null;
+      setUploaded(freshUploaded);
+      setSelected(fresh.socialImageSelected ?? freshUploaded ?? selected);
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : 'Încărcarea a eșuat.');
     } finally {
@@ -838,15 +837,28 @@ function SocialImageSection({
         onChange={onUpload}
         style={{ display: 'none' }}
       />
-      <button
-        type="button"
-        onClick={() => fileRef.current?.click()}
-        disabled={busy}
-        className="btn btn-ghost"
-        style={{ width: '100%', marginTop: 12, opacity: busy ? 0.6 : 1 }}
-      >
-        {busy ? 'Se încarcă…' : '⬆ Încarcă poza ta'}
-      </button>
+      <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+          className="btn btn-ghost"
+          style={{ flex: '1 1 140px', opacity: busy ? 0.6 : 1 }}
+        >
+          {busy ? 'Se încarcă…' : '⬆ Încarcă poza ta'}
+        </button>
+        {/* Descarcă varianta selectată (PNG) — util pentru postare pe TikTok/Instagram. */}
+        {selected && (
+          <a
+            href={resolveMediaUrl(selected)!}
+            download
+            className="btn btn-ghost"
+            style={{ flex: '1 1 140px', textAlign: 'center', textDecoration: 'none' }}
+          >
+            ⬇ Descarcă poza
+          </a>
+        )}
+      </div>
 
       {err && <div style={{ marginTop: 8, fontSize: 12, color: '#ff8888' }}>{err}</div>}
     </div>

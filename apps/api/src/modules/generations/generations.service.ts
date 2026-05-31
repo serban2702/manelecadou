@@ -196,7 +196,10 @@ export class GenerationsService {
       .where('g.status = :status', { status: 'succeeded' })
       // Galeria publică NU expune demouri neplătite — doar piesele complete sau
       // cele cu paidUnlocked=true (deblocate prin plată sau cod cadou).
-      .andWhere('(g.type = :full OR g.paidUnlocked = true)', { full: 'full' });
+      .andWhere('(g.type = :full OR g.paidUnlocked = true)', { full: 'full' })
+      // Pachetele plus/premium NU apar în galeria/istoricul public al comunității
+      // (intimitate pentru clienții care plătesc nivelurile superioare).
+      .andWhere('(g."packageTier" IS NULL OR g."packageTier" = :basicTier)', { basicTier: 'basic' });
 
     if (opts.siteId) qb.andWhere('g."siteId" = :siteId', { siteId: opts.siteId });
     if (opts.style) qb.andWhere('g.style = :style', { style: opts.style });
@@ -239,7 +242,10 @@ export class GenerationsService {
     const qb = this.repo
       .createQueryBuilder('g')
       .where('g.status = :status', { status: 'succeeded' })
-      .andWhere('(g.type = :full OR g.paidUnlocked = true)', { full: 'full' });
+      .andWhere('(g.type = :full OR g.paidUnlocked = true)', { full: 'full' })
+      // Pachetele plus/premium NU apar în galeria/istoricul public al comunității
+      // (intimitate pentru clienții care plătesc nivelurile superioare).
+      .andWhere('(g."packageTier" IS NULL OR g."packageTier" = :basicTier)', { basicTier: 'basic' });
     if (opts.siteId) qb.andWhere('g."siteId" = :siteId', { siteId: opts.siteId });
     if (opts.period === 'week') {
       qb.andWhere('g."createdAt" >= NOW() - INTERVAL \'7 days\'');
