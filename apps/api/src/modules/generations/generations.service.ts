@@ -55,7 +55,7 @@ export interface AdminRegenerateInput {
 
 /** Payload pentru job-urile 'media-op' procesate de GenerationsProcessor. */
 export interface MediaOpJob {
-  op: 'extend' | 'cover' | 'wav' | 'separate' | 'video';
+  op: 'extend' | 'cover' | 'replace' | 'wav' | 'separate' | 'video';
   /** Generarea-sursă (existentă, succeeded) pe care operăm. */
   generationId: string;
   /** Pentru extend/cover: rândul-copil pre-creat care va primi audio-ul. */
@@ -747,6 +747,55 @@ export class GenerationsService {
         childId: child.id,
         slot: opts.slot ?? 'main',
         params: { style: opts.style, instrumental: !!opts.instrumental },
+      } satisfies MediaOpJob,
+      { removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
+    );
+    return child;
+  }
+
+  /**
+   * Înlocuiește o secțiune (ex. refrenul) cu alt stil → variație nouă.
+   * Dacă `autoChorus` (sau lipsesc start/end), procesorul detectează refrenul
+   * din versurile aliniate temporal Suno.
+   */
+  async adminReplaceSection(
+    generationId: string,
+    opts: {
+      slot?: 'main' | 'bonus';
+      infillStartS?: number;
+      infillEndS?: number;
+      autoChorus?: boolean;
+      style?: string;
+      prompt?: string;
+    },
+  ): Promise<Generation> {
+    const src = await this.requireSunoTrack(generationId, opts.slot ?? 'main');
+    const auto = !!opts.autoChorus || opts.infillStartS == null || opts.infillEndS == null;
+    const label = auto
+      ? 'Refren schimbat'
+      : `Secțiune ${Math.round(opts.infillStartS!)}-${Math.round(opts.infillEndS!)}s`;
+    const child = await this.repo.save(
+      this.repo.create({
+        ...this.buildRegenPayload(src.gen, undefined, src.gen.lyrics ?? null),
+        parentGenerationId: this.rootGenerationId(src.gen),
+        variationLabel: label,
+        status: 'generating_audio',
+      }),
+    );
+    await this.queue.add(
+      'media-op',
+      {
+        op: 'replace',
+        generationId: src.gen.id,
+        childId: child.id,
+        slot: opts.slot ?? 'main',
+        params: {
+          autoChorus: auto,
+          infillStartS: opts.infillStartS,
+          infillEndS: opts.infillEndS,
+          style: opts.style,
+          prompt: opts.prompt,
+        },
       } satisfies MediaOpJob,
       { removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
     );

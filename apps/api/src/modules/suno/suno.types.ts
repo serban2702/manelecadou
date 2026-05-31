@@ -80,6 +80,25 @@ export interface SunoCoverInput {
   siteId?: string | null;
 }
 
+/** Input pentru înlocuirea unei SECȚIUNI dintr-o piesă (POST /api/v1/generate/replace-section).
+ *  Ex: schimbă refrenul (infillStartS..infillEndS) cu alt stil ("pian trist, de jale"). */
+export interface SunoReplaceSectionInput {
+  taskId: string;
+  audioId: string;
+  /** Intervalul (secunde) care se înlocuiește. */
+  infillStartS: number;
+  infillEndS: number;
+  /** Stilul noii secțiuni (ex: "sad piano ballad, slow, emotional"). */
+  tags?: string;
+  /** Versuri pentru secțiune (opțional — gol = păstrează versurile existente). */
+  prompt?: string;
+  title?: string;
+  negativeTags?: string;
+  model?: string;
+  generationId?: string;
+  siteId?: string | null;
+}
+
 /** Rezultatul separării vocii (POST /api/v1/vocal-removal/generate). */
 export interface SunoSeparateResult {
   /** Vocea izolată (separate_vocal). */
@@ -196,6 +215,11 @@ export abstract class SunoProvider {
   /** Cover/restyle al unui audio încărcat (upload-cover). */
   coverMusic(_input: SunoCoverInput): Promise<SunoGenerateResult> {
     return Promise.reject(new Error('cover not supported by this provider'));
+  }
+
+  /** Înlocuiește o secțiune (ex. refrenul) dintr-o piesă cu alt stil. */
+  replaceSection(_input: SunoReplaceSectionInput): Promise<SunoGenerateResult> {
+    return Promise.reject(new Error('replace-section not supported by this provider'));
   }
 
   /** Convertește o piesă la WAV studio. Întoarce URL-ul WAV sau null. */

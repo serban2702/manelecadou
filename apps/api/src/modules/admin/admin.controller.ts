@@ -593,6 +593,24 @@ export class AdminController {
     return { ok: true, id: g.id, status: g.status };
   }
 
+  /** Înlocuiește o secțiune (refren/interval) cu alt stil. */
+  @Post('generations/:id/replace-section')
+  async replaceSection(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      slot?: 'main' | 'bonus';
+      infillStartS?: number;
+      infillEndS?: number;
+      autoChorus?: boolean;
+      style?: string;
+      prompt?: string;
+    },
+  ) {
+    const g = await this.generationsService.adminReplaceSection(id, body);
+    return { ok: true, id: g.id, status: g.status };
+  }
+
   /** WAV studio pentru un slot. */
   @Post('generations/:id/wav')
   async wav(@Param('id') id: string, @Body() body: { slot?: 'main' | 'bonus' }) {

@@ -418,7 +418,7 @@ export class GenerationsProcessor extends WorkerHost {
     const site = src.siteId ? await this.sites.findById(src.siteId) : null;
 
     try {
-      if (data.op === 'extend' || data.op === 'cover') {
+      if (data.op === 'extend' || data.op === 'cover' || data.op === 'replace') {
         const child = data.childId ? await this.repo.findOne({ where: { id: data.childId } }) : null;
         if (!child) {
           this.logger.warn(`media-op ${data.op}: child ${data.childId} not found`);
@@ -431,6 +431,32 @@ export class GenerationsProcessor extends WorkerHost {
             audioId,
             continueAt: data.params?.continueAt as number | undefined,
             style: data.params?.style as string | undefined,
+            generationId: child.id,
+            siteId: child.siteId,
+          });
+        } else if (data.op === 'replace') {
+          if (!audioId || !taskId || taskId === 'manual') {
+            throw new Error('source has no Suno task/audioId for replace-section');
+          }
+          // Determină intervalul: explicit din params, altfel auto-detectează refrenul.
+          let startS = data.params?.infillStartS as number | undefined;
+          let endS = data.params?.infillEndS as number | undefined;
+          if (data.params?.autoChorus || startS == null || endS == null) {
+            const lyrics = await this.suno.getTimestampedLyrics(taskId, audioId);
+            const seg = findChorusSegment(lyrics?.alignedWords);
+            if (!seg) {
+              throw new Error('Nu am putut detecta refrenul automat — specifică intervalul (de la–până la secundă).');
+            }
+            startS = seg.startSec;
+            endS = seg.startSec + seg.durationSec;
+          }
+          result = await this.suno.replaceSection({
+            taskId,
+            audioId,
+            infillStartS: startS,
+            infillEndS: endS,
+            tags: (data.params?.style as string | undefined) || undefined,
+            prompt: (data.params?.prompt as string | undefined) || undefined,
             generationId: child.id,
             siteId: child.siteId,
           });

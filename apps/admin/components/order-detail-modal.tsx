@@ -656,6 +656,10 @@ function StudioTab({ data, refetch }: { data: OrderDetail; refetch: () => Promis
   const [extendAt, setExtendAt] = useState('');
   const [acting, setActing] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [rxStyle, setRxStyle] = useState('');
+  const [rxMode, setRxMode] = useState<'chorus' | 'manual'>('chorus');
+  const [rxStart, setRxStart] = useState('');
+  const [rxEnd, setRxEnd] = useState('');
 
   async function act(key: string, run: () => Promise<unknown>, okMsg: string) {
     if (acting) return;
@@ -937,6 +941,88 @@ function StudioTab({ data, refetch }: { data: OrderDetail; refetch: () => Promis
         </p>
       </Section>
 
+      {/* ===== Remix — schimbă o secțiune (replace-section) ===== */}
+      <Section
+        icon={<Wand2 className="h-4 w-4" />}
+        title="Remix — schimbă o secțiune"
+        subtitle="Înlocuiește refrenul (sau un interval) cu alt stil, pe melodia curentă."
+        right={<SlotToggle value={slot} onChange={setSlot} />}
+      >
+        {!canSunoTools && (
+          <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-400/20 bg-amber-500/10 p-2.5 text-[11px] leading-relaxed text-amber-200">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>Funcționează doar pe melodii generate prin Suno (nu pe upload manual).</span>
+          </div>
+        )}
+        <Field label="Cum să sune secțiunea nouă (stil)">
+          <textarea
+            value={rxStyle}
+            onChange={(e) => setRxStyle(e.target.value)}
+            rows={2}
+            placeholder="ex: refren de jale, pian trist, voce stinsă, tempo lent, fără percuție"
+            className={inputCls + ' min-h-[44px] resize-y py-2'}
+          />
+        </Field>
+        <div className="mt-3">
+          <Label>Ce secțiune</Label>
+          <SegPills
+            value={rxMode}
+            onChange={(v) => setRxMode(v as typeof rxMode)}
+            options={[
+              { value: 'chorus', label: 'Refrenul (auto)', hint: 'detectat automat' },
+              { value: 'manual', label: 'Interval manual', hint: 'de la–până la sec' },
+            ]}
+          />
+          {rxMode === 'manual' && (
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                value={rxStart}
+                onChange={(e) => setRxStart(e.target.value.replace(/[^\d]/g, ''))}
+                placeholder="de la sec"
+                className={inputCls + ' w-28'}
+              />
+              <span className="text-muted-foreground">→</span>
+              <input
+                value={rxEnd}
+                onChange={(e) => setRxEnd(e.target.value.replace(/[^\d]/g, ''))}
+                placeholder="până la sec"
+                className={inputCls + ' w-28'}
+              />
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          disabled={
+            acting === 'replace' ||
+            !canSunoTools ||
+            (rxMode === 'manual' && (!rxStart || !rxEnd || Number(rxEnd) <= Number(rxStart)))
+          }
+          onClick={() =>
+            act(
+              'replace',
+              () =>
+                AdminApi.generationReplaceSection(g.id, {
+                  slot,
+                  autoChorus: rxMode === 'chorus',
+                  infillStartS: rxMode === 'manual' ? Number(rxStart) : undefined,
+                  infillEndS: rxMode === 'manual' ? Number(rxEnd) : undefined,
+                  style: rxStyle.trim() || undefined,
+                }),
+              'Remix pornit — apare în Variații',
+            )
+          }
+          className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 transition hover:from-violet-400 hover:to-fuchsia-400 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {acting === 'replace' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+          {acting === 'replace' ? 'Se trimite…' : 'Schimbă secțiunea'}
+        </button>
+        <p className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+          <Clock className="h-3 w-3" /> Rezultatul (melodia cu secțiunea schimbată) apare ca
+          variație nouă mai jos. Restul melodiei rămâne la fel.
+        </p>
+      </Section>
+
       {/* ===== Variații ===== */}
       <Section
         icon={<Music2 className="h-4 w-4" />}
@@ -1168,7 +1254,8 @@ function VariationCard({
 }) {
   const ready = v.status === 'succeeded' && !!v.audioUrl;
   const processing = v.status !== 'succeeded' && v.status !== 'failed';
-  const audio = v.demoAudioUrl ?? v.audioUrl;
+  // Admin ascultă melodia COMPLETĂ (nu demo-ul de 30s).
+  const audio = v.audioUrl ?? v.demoAudioUrl;
   return (
     <div className={`flex flex-col gap-2 rounded-xl border p-3 transition ${ready ? 'border-emerald-400/20 bg-emerald-500/[0.04]' : v.status === 'failed' ? 'border-rose-400/20 bg-rose-500/[0.04]' : 'border-white/10 bg-black/20'}`}>
       <div className="flex items-center gap-2">
@@ -1377,6 +1464,7 @@ function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
               <HelpDef term="Swap principală↔bonus" def="Interschimbă melodia principală cu cea bonus (dacă a doua e mai bună). Instant, fără Suno." />
               <HelpDef term="Prelungește (extend)" def="Continuă melodia ca s-o faci mai lungă. Opțional pui secunda de la care continuă. Rezultatul apare ca variație." />
               <HelpDef term="Cover / restyle" def="Aceeași melodie reinterpretată în alt stil (scrii stilul în căsuță). Rezultatul apare ca variație." />
+              <HelpDef term="Remix — schimbă o secțiune" def="Înlocuiește DOAR refrenul (auto) sau un interval ales (de la–până la sec) cu alt stil — ex. „refren de jale cu pian”. Restul melodiei rămâne neschimbat. Rezultatul apare ca variație." tone="sky" />
               <HelpDef term="WAV studio" def="Convertește piesa la WAV necomprimat (calitate maximă). Apare la „Fișiere derivate”." />
               <HelpDef term="Voce / Instrumental" def="Separă vocea de instrumental (karaoke). Primești 2 fișiere: voce izolată + instrumental." />
               <HelpDef term="Stem-uri (12)" def="Desparte melodia în până la 12 piste individuale (tobe, bas, voce, chitară, claviatură…)." />

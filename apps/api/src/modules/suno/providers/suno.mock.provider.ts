@@ -6,6 +6,7 @@ import {
   SunoGenerateInput,
   SunoGenerateResult,
   SunoProvider,
+  SunoReplaceSectionInput,
   SunoSeparateResult,
 } from '../suno.types';
 
@@ -53,6 +54,14 @@ export class SunoMockProvider extends SunoProvider {
         { audioUrl: shuffled[0], durationSec: 150, audioId: randomUUID() },
         { audioUrl: shuffled[1], durationSec: 150, audioId: randomUUID() },
       ],
+      providerJobId: `mock_${randomUUID()}`,
+    };
+  }
+
+  async replaceSection(_input: SunoReplaceSectionInput): Promise<SunoGenerateResult> {
+    await new Promise((r) => setTimeout(r, 7000));
+    return {
+      tracks: [{ audioUrl: POOL[1], durationSec: 150, audioId: randomUUID() }],
       providerJobId: `mock_${randomUUID()}`,
     };
   }

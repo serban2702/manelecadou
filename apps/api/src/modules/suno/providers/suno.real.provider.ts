@@ -8,6 +8,7 @@ import {
   SunoGenerateInput,
   SunoGenerateResult,
   SunoProvider,
+  SunoReplaceSectionInput,
   SunoSeparateResult,
   SunoTimestampedLyrics,
 } from '../suno.types';
@@ -405,6 +406,26 @@ export class SunoRealProvider extends SunoProvider {
     if (typeof input.audioWeight === 'number') body.audioWeight = clamp01(input.audioWeight);
 
     return this.submitMusicTask(`${baseUrl}/api/v1/generate/upload-cover`, body, {
+      generationId: input.generationId ?? null,
+      siteId: input.siteId ?? null,
+    });
+  }
+
+  /** Înlocuiește o secțiune (POST /api/v1/generate/replace-section). */
+  async replaceSection(input: SunoReplaceSectionInput): Promise<SunoGenerateResult> {
+    const { baseUrl, callBackUrl } = await this.cfg();
+    const body: Record<string, unknown> = {
+      taskId: input.taskId,
+      audioId: input.audioId,
+      infillStartS: Math.max(0, Math.round(input.infillStartS * 100) / 100),
+      infillEndS: Math.max(0, Math.round(input.infillEndS * 100) / 100),
+      callBackUrl,
+    };
+    if (input.tags?.trim()) body.tags = input.tags.trim();
+    if (input.prompt?.trim()) body.prompt = stripBannedArtistNames(input.prompt.trim());
+    if (input.title?.trim()) body.title = input.title.trim().slice(0, 80);
+    if (input.negativeTags?.trim()) body.negativeTags = input.negativeTags.trim();
+    return this.submitMusicTask(`${baseUrl}/api/v1/generate/replace-section`, body, {
       generationId: input.generationId ?? null,
       siteId: input.siteId ?? null,
     });

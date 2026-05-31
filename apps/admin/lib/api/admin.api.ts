@@ -407,6 +407,19 @@ export class AdminApi {
   ): Promise<{ ok: boolean; id: string; status: string }> {
     return http.post(`/admin/generations/${id}/cover`, body);
   }
+  static generationReplaceSection(
+    id: string,
+    body: {
+      slot?: 'main' | 'bonus';
+      infillStartS?: number;
+      infillEndS?: number;
+      autoChorus?: boolean;
+      style?: string;
+      prompt?: string;
+    },
+  ): Promise<{ ok: boolean; id: string; status: string }> {
+    return http.post(`/admin/generations/${id}/replace-section`, body);
+  }
   static generationWav(id: string, slot: 'main' | 'bonus' = 'main'): Promise<{ ok: true }> {
     return http.post(`/admin/generations/${id}/wav`, { slot });
   }
