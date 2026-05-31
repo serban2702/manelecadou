@@ -19,6 +19,8 @@ import {
   type CampaignAudience,
   type RuleTrigger,
 } from './marketing.entities';
+import { EmailOptOut } from './email-opt-out.entity';
+import { makeUnsubscribeToken } from './unsubscribe-token';
 
 export interface AudienceRecipient {
   email: string;
@@ -40,6 +42,7 @@ export class MarketingService {
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     @InjectRepository(PromoCode) private readonly promoCodes: Repository<PromoCode>,
     @InjectRepository(OutboundEmail) private readonly outbound: Repository<OutboundEmail>,
+    @InjectRepository(EmailOptOut) private readonly optOuts: Repository<EmailOptOut>,
     private readonly promo: PromoService,
     private readonly sites: SitesService,
     private readonly mailer: MailerService,
@@ -115,10 +118,33 @@ export class MarketingService {
       });
     }
 
-    const all = Array.from(byEmail.values());
+    // Exclude emailurile dezabonate de la marketing.
+    const optedOut = await this.optOutEmails(siteId);
+
+    const all = Array.from(byEmail.values()).filter((r) => !optedOut.has(r.email));
     const filtered =
       segment === 'all' ? all : segment === 'payers' ? all.filter((r) => r.paid) : all.filter((r) => !r.paid);
     return filtered.map(({ paid: _paid, ...r }) => r);
+  }
+
+  /** Set de emailuri dezabonate pentru un site (lowercased). */
+  private async optOutEmails(siteId: string | null): Promise<Set<string>> {
+    const where = siteId ? { siteId } : {};
+    const rows = await this.optOuts.find({ where, select: ['email'] });
+    return new Set(rows.map((r) => r.email.toLowerCase()));
+  }
+
+  // ============ Dezabonare (opt-out) ============
+
+  /** Înregistrează un opt-out (idempotent). */
+  async optOut(siteId: string | null, email: string, source = 'link'): Promise<void> {
+    const normalized = email.trim().toLowerCase();
+    if (!normalized) return;
+    const existing = await this.optOuts.findOne({
+      where: (siteId ? { siteId, email: normalized } : { siteId: IsNull(), email: normalized }) as object,
+    });
+    if (existing) return;
+    await this.optOuts.save(this.optOuts.create({ siteId, email: normalized, source }));
   }
 
   async audienceCounts(siteId: string | null): Promise<{ all: number; payers: number; nonpayers: number }> {
@@ -204,6 +230,7 @@ export class MarketingService {
     const site = siteId ? await this.sites.findById(siteId) : null;
     const branding = brandingFromSite(site);
     const ctaUrl = (overrides?.ctaUrl as string) || branding?.siteUrl || 'https://manelecadou.ro';
+    const unsubBase = branding?.siteUrl || 'https://manelecadou.ro';
     const discountLabel = promoCode ? (overrides?.discountLabel as string) ?? null : null;
 
     let sent = 0;
@@ -218,6 +245,7 @@ export class MarketingService {
         validUntil: (overrides?.validUntil as string) ?? null,
         headline: (overrides?.headline as string) ?? null,
         bodyHtml: (overrides?.bodyHtml as string) ?? null,
+        unsubscribeUrl: `${unsubBase}/api/marketing/unsubscribe?token=${makeUnsubscribeToken(siteId, r.email)}`,
         locale: r.locale,
         branding,
       };
@@ -348,6 +376,7 @@ export class MarketingService {
           promoCode: code.code,
           discountLabel,
           validUntil: validUntil.toLocaleDateString(localeToDateLocale(r.locale)),
+          unsubscribeUrl: `${ctaUrl}/api/marketing/unsubscribe?token=${makeUnsubscribeToken(rule.siteId, r.email)}`,
           locale: r.locale,
           branding,
         };

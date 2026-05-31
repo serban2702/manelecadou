@@ -30,6 +30,8 @@ La preview în admin se folosesc valorile din `sample`.
 - `greeting(strings, name)` — „Salut, Andrei! 👋" sau „Salut! 👋".
 - `namePrefix(name)` — „Andrei, " sau „" (pt. începutul unei fraze).
 - `mstr(locale)` — întoarce dicționarul de string-uri pentru locale (fallback EN).
+- `unsubscribeFooter(v.unsubscribeUrl, v.locale)` — linkul de dezabonare. **Pune-l la finalul
+  `bodyHtml`** în orice șablon de marketing (legal necesar). Se ascunde singur dacă nu există URL.
 - `renderBrandedEmail({ subject, preheader, locale, branding, bodyHtml })` — layout complet
   (banner + card + footer cu firma/contact). Returnează string HTML.
 
@@ -45,6 +47,7 @@ export function myOfferTemplate(v: MarketingRenderVars): { subject: string; html
     <p style="margin:0 0 8px;color:${COLORS.cream};line-height:1.6;">Textul ofertei...</p>
     ${v.promoCode ? promoCard(v.promoCode, v.discountLabel, v.validUntil, s.discount) : ''}
     <div style="text-align:center;">${ctaButton(v.ctaUrl, v.ctaLabel || s.discount.cta)}</div>
+    ${unsubscribeFooter(v.unsubscribeUrl, v.locale)}
   `;
   return {
     subject,
@@ -65,6 +68,7 @@ goldFrom #fff5cc · goldMid #ffe28a · goldDeep #b07c1e · cream #fff5dc
 - [ ] `id` unic, snake_case, stabil (nu îl mai schimba după ce a fost folosit într-o campanie/regulă).
 - [ ] Funcția întoarce `subject`, `html` ȘI `text`.
 - [ ] Tot inputul dinamic e trecut prin `escape()`.
+- [ ] Footer de dezabonare inclus (`unsubscribeFooter(v.unsubscribeUrl, v.locale)`) — obligatoriu la marketing.
 - [ ] Înregistrat în `MARKETING_TEMPLATES` cu `supports` + `sample` corecte.
 - [ ] `supports.customHeadline`/`customBody` reflectă ce câmpuri folosește efectiv render-ul.
 - [ ] RO complet; restul limbilor traduse sau fallback EN.

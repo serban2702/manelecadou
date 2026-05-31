@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MarketingCampaign, MarketingRule } from './marketing.entities';
+import { EmailOptOut } from './email-opt-out.entity';
 import { MarketingService } from './marketing.service';
 import { MarketingCronService } from './marketing-cron.service';
-import { AdminMarketingController } from './marketing.controller';
+import { AdminMarketingController, MarketingPublicController } from './marketing.controller';
 import { User } from '../users/user.entity';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { Payment } from '../payments/payment.entity';
@@ -21,6 +22,7 @@ import { AdminGuard } from '../../common/admin.guard';
     TypeOrmModule.forFeature([
       MarketingCampaign,
       MarketingRule,
+      EmailOptOut,
       User,
       GuestSession,
       Payment,
@@ -34,7 +36,7 @@ import { AdminGuard } from '../../common/admin.guard';
     MailerModule,
   ],
   providers: [MarketingService, MarketingCronService, AdminGuard],
-  controllers: [AdminMarketingController],
+  controllers: [AdminMarketingController, MarketingPublicController],
   exports: [MarketingService],
 })
 export class MarketingModule {}

@@ -39,6 +39,8 @@ export interface MarketingRenderVars {
   headline?: string | null;
   /** Corp HTML custom (folosit de template-ul „anunț generic"). */
   bodyHtml?: string | null;
+  /** Link one-click de dezabonare (doar marketing). Gol → nu se afișează footer-ul. */
+  unsubscribeUrl?: string | null;
   locale?: string;
   branding?: EmailBranding;
 }
@@ -299,6 +301,28 @@ function mstr(locale?: string): MarketingStrings {
   return MARKETING_STRINGS[l] ?? EN;
 }
 
+/** Eticheta de dezabonare per locale (cu fallback EN). */
+const UNSUBSCRIBE_LABEL: Record<EmailLocale, { text: string; link: string }> = {
+  ro: { text: 'Nu mai vrei oferte?', link: 'Dezabonează-te' },
+  bg: { text: 'Не искаш повече оферти?', link: 'Отпиши се' },
+  sr: { text: 'Ne želiš više ponude?', link: 'Odjavi se' },
+  tr: { text: 'Artık teklif istemiyor musun?', link: 'Abonelikten çık' },
+  el: { text: 'Δεν θέλεις άλλες προσφορές;', link: 'Διαγραφή' },
+  hr: { text: 'Ne želiš više ponude?', link: 'Odjavi se' },
+  sl: { text: 'Ne želiš več ponudb?', link: 'Odjava' },
+  bs: { text: 'Ne želiš više ponude?', link: 'Odjavi se' },
+};
+
+/** Footer cu link de dezabonare — afișat doar dacă avem `unsubscribeUrl`. */
+function unsubscribeFooter(url: string | null | undefined, locale?: string): string {
+  if (!url) return '';
+  const l = (locale as EmailLocale) ?? 'ro';
+  const lbl = UNSUBSCRIBE_LABEL[l] ?? { text: "Don't want offers?", link: 'Unsubscribe' };
+  return `<p style="margin:22px 0 0;font-size:11px;color:rgba(255,245,220,0.4);text-align:center;line-height:1.5;">
+    ${escape(lbl.text)} <a href="${escape(url)}" style="color:rgba(255,245,220,0.6);text-decoration:underline;">${escape(lbl.link)}</a>
+  </p>`;
+}
+
 /** Salutul, în funcție de existența numelui. */
 function greeting(s: MarketingStrings, name?: string | null): string {
   const n = (name ?? '').trim();
@@ -325,6 +349,7 @@ export function discountOfferTemplate(v: MarketingRenderVars): { subject: string
     ${v.promoCode ? promoCard(v.promoCode, v.discountLabel, v.validUntil, t) : ''}
     <div style="text-align:center;">${ctaButton(v.ctaUrl, v.ctaLabel || t.cta)}</div>
     <p style="margin:14px 0 0;font-size:13px;color:rgba(255,245,220,0.6);text-align:center;">${escape(t.ps)}</p>
+    ${unsubscribeFooter(v.unsubscribeUrl, v.locale)}
   `;
   return {
     subject: t.subject(discount || '🎁'),
@@ -350,6 +375,7 @@ export function winbackTemplate(v: MarketingRenderVars): { subject: string; html
     <p style="margin:0 0 8px;color:${COLORS.cream};line-height:1.6;">${t.intro(namePrefix(v.recipientName))}</p>
     ${v.promoCode ? promoCard(v.promoCode, v.discountLabel, v.validUntil, dt) : ''}
     <div style="text-align:center;">${ctaButton(v.ctaUrl, v.ctaLabel || t.cta)}</div>
+    ${unsubscribeFooter(v.unsubscribeUrl, v.locale)}
   `;
   return {
     subject: v.headline ? `🎶 ${v.headline}` : t.subject,
@@ -376,6 +402,7 @@ export function genericAnnouncementTemplate(v: MarketingRenderVars): { subject: 
     <div style="color:${COLORS.cream};line-height:1.6;font-size:15px;">${bodyInner}</div>
     ${v.promoCode ? promoCard(v.promoCode, v.discountLabel, v.validUntil, s.discount) : ''}
     <div style="text-align:center;">${ctaButton(v.ctaUrl, v.ctaLabel || s.discount.cta)}</div>
+    ${unsubscribeFooter(v.unsubscribeUrl, v.locale)}
   `;
   return {
     subject,

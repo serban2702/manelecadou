@@ -1,4 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { SitesService } from '../sites/sites.service';
+import { verifyUnsubscribeToken } from './unsubscribe-token';
 import {
   IsBoolean,
   IsEnum,
@@ -143,4 +146,59 @@ export class AdminMarketingController {
   runAll() {
     return this.cron.runAllActive();
   }
+}
+
+/**
+ * Endpoint PUBLIC de dezabonare (one-click, fără login). Linkul vine din footer-ul
+ * mailurilor de marketing. NU afectează mailurile tranzacționale.
+ */
+@Controller('marketing')
+export class MarketingPublicController {
+  constructor(
+    private readonly svc: MarketingService,
+    private readonly sites: SitesService,
+  ) {}
+
+  @Throttle({ short: { limit: 10, ttl: 60_000 }, medium: { limit: 60, ttl: 3_600_000 } })
+  @Get('unsubscribe')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  async unsubscribe(@Query('token') token: string): Promise<string> {
+    const parsed = token ? verifyUnsubscribeToken(token) : null;
+    if (!parsed) {
+      return page('Link invalid', 'Linkul de dezabonare nu este valid sau a expirat.', null);
+    }
+    await this.svc.optOut(parsed.siteId, parsed.email, 'link');
+    const site = parsed.siteId ? await this.sites.findById(parsed.siteId) : null;
+    return page(
+      'Te-ai dezabonat',
+      `Adresa <b>${escapeHtml(parsed.email)}</b> nu va mai primi mailuri de marketing. Vei primi în continuare doar confirmările importante (plată, melodie gata).`,
+      site?.name ?? null,
+    );
+  }
+}
+
+function escapeHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Pagină HTML minimală, brandată (dark + gold), pentru confirmarea dezabonării. */
+function page(title: string, body: string, brandName: string | null): string {
+  const name = escapeHtml(brandName || 'Manele Cadou');
+  return `<!DOCTYPE html><html lang="ro"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>${escapeHtml(title)}</title></head>
+<body style="margin:0;background:#0c0707;color:#fff5dc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+  <div style="max-width:520px;margin:0 auto;padding:64px 24px;text-align:center;">
+    <div style="font-size:44px;margin-bottom:16px;">✉️</div>
+    <h1 style="font-size:24px;color:#ffe28a;margin:0 0 14px;font-family:'Times New Roman',serif;">${escapeHtml(title)}</h1>
+    <p style="font-size:15px;line-height:1.6;color:rgba(255,245,220,0.85);margin:0;">${body}</p>
+    <p style="margin-top:32px;font-size:12px;color:rgba(255,245,220,0.4);">${name}</p>
+  </div>
+</body></html>`;
 }
