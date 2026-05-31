@@ -16,10 +16,12 @@ export interface IGenerationMediaService {
   /** Generează un videoclip slideshow MP4 din imaginile sociale + audio.
    *  `opts.audioPath` (disk) și `opts.outName` permit generarea per-track
    *  (ex. track 2 → bonus.mp3 / clip2.mp4). Default: full.mp3 / clip.mp4.
+   *  `opts.startSec` + `opts.durationSec` produc un clip SCURT (stil TikTok)
+   *  trim-uit la acel segment (ex. refrenul).
    *  Întoarce URL-ul public (`/uploads/video/<id>/<outName>`) sau `null` la eșec. */
   generateVideo(
     gen: Generation,
-    opts?: { audioPath?: string; outName?: string },
+    opts?: { audioPath?: string; outName?: string; startSec?: number; durationSec?: number },
   ): Promise<string | null>;
 }
 

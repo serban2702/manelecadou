@@ -123,7 +123,7 @@ export class Generation {
 
   // Tracks: array of { audioUrl, durationSec, isPaid }
   @Column({ type: 'jsonb', nullable: true })
-  tracks!: Array<{ audioUrl: string; durationSec: number; coverUrl?: string }> | null;
+  tracks!: Array<{ audioUrl: string; durationSec: number; coverUrl?: string; audioId?: string }> | null;
 
   /** URL-ul fișierului COMPLET, găzduit local (`/uploads/audio/<id>/full.mp3`).
    *  Expus în payload doar dacă userul are dreptul (paidUnlocked + owner). */

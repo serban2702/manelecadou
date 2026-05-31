@@ -9,7 +9,7 @@ import { Job, Queue } from 'bullmq';
 import { Generation } from './generation.entity';
 import { GENERATIONS_QUEUE } from './generations.constants';
 import { voiceArtistToGender } from '../../common/voice';
-import { SunoProvider } from '../suno/suno.types';
+import { SunoProvider, findChorusSegment } from '../suno/suno.types';
 import { LyricsService } from '../lyrics/lyrics.module';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { User } from '../users/user.entity';
@@ -57,6 +57,68 @@ export class GenerationsProcessor extends WorkerHost {
    *  cu backoff-ul de mai sus. Pentru type='demo' fără paidUnlocked → 3. */
   private maxAutoRetries(gen: Generation): number {
     return gen.paidUnlocked || gen.type === 'full' ? 50 : 3;
+  }
+
+  /**
+   * Generează un clip SCURT (stil TikTok) din refrenul unei piese.
+   *  1. Cere versurile aliniate temporal de la Suno (`getTimestampedLyrics`).
+   *  2. Detectează refrenul (`findChorusSegment`).
+   *  3. Fallback dacă nu există marker de refren: segment de la 35% din durata
+   *     audio (din `gen.tracks[idx].durationSec`), 18s.
+   *  4. `generateVideo` cu segmentul → clip scurt.
+   * Robust: orice eșec → fallback la `generateVideo` fără segment, apoi `null`.
+   */
+  private async generateChorusClip(
+    gen: Generation,
+    opts: { idx: number; audioPath: string; outName: string },
+  ): Promise<string | null> {
+    const { idx, audioPath, outName } = opts;
+    try {
+      const audioId = gen.tracks?.[idx]?.audioId;
+      let startSec: number | undefined;
+      let durationSec: number | undefined;
+
+      if (gen.providerJobId && gen.providerJobId !== 'manual' && audioId) {
+        try {
+          const lyrics = await this.suno.getTimestampedLyrics(gen.providerJobId, audioId);
+          const seg = findChorusSegment(lyrics?.alignedWords);
+          if (seg) {
+            startSec = seg.startSec;
+            durationSec = seg.durationSec;
+          }
+        } catch (err) {
+          this.logger.warn(
+            `chorus lyrics fetch failed for ${gen.id} (track ${idx}): ${(err as Error).message}`,
+          );
+        }
+      }
+
+      // Fallback: 35% din durata audio, 18s.
+      if (startSec === undefined || durationSec === undefined) {
+        const trackDur = gen.tracks?.[idx]?.durationSec ?? 0;
+        startSec = trackDur > 0 ? 0.35 * trackDur : 0;
+        durationSec = 18;
+      }
+
+      return await this.media.generateVideo(gen, {
+        audioPath,
+        outName,
+        startSec,
+        durationSec,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `chorus clip failed for ${gen.id} (track ${idx}), fallback fără segment: ${(err as Error).message}`,
+      );
+      try {
+        return await this.media.generateVideo(gen, { audioPath, outName });
+      } catch (err2) {
+        this.logger.warn(
+          `chorus clip fallback failed for ${gen.id} (track ${idx}): ${(err2 as Error).message}`,
+        );
+        return null;
+      }
+    }
   }
 
   /** Lazy notification către ChatService — apelat după ce generation termină
@@ -274,22 +336,20 @@ export class GenerationsProcessor extends WorkerHost {
           await this.repo.save(gen);
         }
 
-        // ===== VIDEO (dezactivat momentan via def.video=false; păstrat) =====
+        // ===== VIDEO — clip SCURT stil TikTok din REFREN, pentru ambele piese =====
         if (def.video) {
-          try {
-            gen.videoUrl = await this.media.generateVideo(gen);
-          } catch (err) {
-            this.logger.warn(`video generation failed for ${gen.id}: ${(err as Error).message}`);
-          }
+          // Track 1 → clip.mp4 (full.mp3), Track 2 → clip2.mp4 (bonus.mp3).
+          gen.videoUrl = await this.generateChorusClip(gen, {
+            idx: 0,
+            audioPath: `/app/uploads/audio/${gen.id}/full.mp3`,
+            outName: 'clip.mp4',
+          });
           if (gen.bonusAudioUrl) {
-            try {
-              gen.videoUrlBonus = await this.media.generateVideo(gen, {
-                audioPath: `/app/uploads/audio/${gen.id}/bonus.mp3`,
-                outName: 'clip2.mp4',
-              });
-            } catch (err) {
-              this.logger.warn(`bonus video generation failed for ${gen.id}: ${(err as Error).message}`);
-            }
+            gen.videoUrlBonus = await this.generateChorusClip(gen, {
+              idx: 1,
+              audioPath: `/app/uploads/audio/${gen.id}/bonus.mp3`,
+              outName: 'clip2.mp4',
+            });
           }
           await this.repo.save(gen);
         }

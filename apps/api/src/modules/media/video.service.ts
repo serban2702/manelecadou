@@ -16,6 +16,12 @@ export interface GenerateVideoOpts {
   audioPath?: string;
   /** Numele fișierului de output (default: clip.mp4). */
   outName?: string;
+  /** Start (sec) al segmentului de audio de folosit (ex. începutul refrenului).
+   *  Când e dat împreună cu `durationSec`, audio-ul e trim-uit și clipul devine
+   *  scurt (stil TikTok) — slide-uri rapide pe ~20s. */
+  startSec?: number;
+  /** Durata (sec) a segmentului / a clipului scurt. */
+  durationSec?: number;
 }
 
 /** Fonturi candidate pentru drawtext, în ordinea preferinței.
@@ -126,7 +132,18 @@ export class VideoService {
       return null;
     }
 
-    const audioDur = await this.probeDuration(audioPath);
+    // Segment „refren" (clip scurt stil TikTok): trim audio la [startSec, +durationSec]
+    // și forțăm durata clipului la durationSec (slide-uri rapide pe ~20s).
+    const hasSegment =
+      typeof opts?.startSec === 'number' &&
+      typeof opts?.durationSec === 'number' &&
+      opts.durationSec > 0;
+    const segStart = hasSegment ? Math.max(0, opts!.startSec!) : 0;
+    const segDur = hasSegment ? opts!.durationSec! : 0;
+
+    const probedDur = await this.probeDuration(audioPath);
+    // La clip scurt, durata video = durata segmentului; altfel durata audio full.
+    const audioDur = hasSegment ? segDur : probedDur;
 
     try {
       // Expandăm la TARGET_SLIDES (repetăm imagini cu efecte diferite dacă <5).
@@ -137,9 +154,19 @@ export class VideoService {
         try {
           const drawFiles = await this.writeDrawtextFiles(dir, gen, outName);
           tmpFiles.push(...drawFiles.map((d) => d.path));
-          const args = this.buildComplexArgs(slides, audioPath, outPath, drawFiles, font, audioDur);
+          const args = this.buildComplexArgs(
+            slides,
+            audioPath,
+            outPath,
+            drawFiles,
+            font,
+            audioDur,
+            hasSegment ? { startSec: segStart, durationSec: segDur } : undefined,
+          );
           this.logger.log(
-            `generateVideo complex (gen ${gen.id}, ${outName}): ${slides.length} slide-uri, ${audioDur.toFixed(1)}s`,
+            `generateVideo complex (gen ${gen.id}, ${outName}): ${slides.length} slide-uri, ${audioDur.toFixed(1)}s${
+              hasSegment ? ` [refren ${segStart.toFixed(1)}s+${segDur.toFixed(1)}s]` : ''
+            }`,
           );
           await this.runFfmpeg(args);
           return `/uploads/video/${gen.id}/${outName}`;
@@ -154,7 +181,14 @@ export class VideoService {
       try {
         const drawFiles = await this.writeDrawtextFiles(dir, gen, `${outName}.simple`);
         tmpFiles.push(...drawFiles.map((d) => d.path));
-        const args = this.buildSimpleArgs(images[0], audioPath, outPath, drawFiles, font);
+        const args = this.buildSimpleArgs(
+          images[0],
+          audioPath,
+          outPath,
+          drawFiles,
+          font,
+          hasSegment ? { startSec: segStart, durationSec: segDur } : undefined,
+        );
         this.logger.log(`generateVideo simplu (gen ${gen.id}, ${outName})`);
         await this.runFfmpeg(args);
         return `/uploads/video/${gen.id}/${outName}`;
@@ -194,13 +228,19 @@ export class VideoService {
     drawFiles: DrawTextFile[],
     font: string | null,
     audioDur: number,
+    segment?: { startSec: number; durationSec: number },
   ): string[] {
     const n = images.length;
     // slideDur ales astfel încât după înlănțuirea xfade durata totală ≈ audioDur.
     let slideDur = (audioDur + (n - 1) * TRANSITION_DUR) / n;
-    // Clamp în [MIN, MAX] — slide-uri scurte = senzație dinamică, „se tot schimbă".
-    if (slideDur < MIN_SLIDE_DUR) slideDur = MIN_SLIDE_DUR;
-    if (slideDur > MAX_SLIDE_DUR) slideDur = MAX_SLIDE_DUR;
+    // Clamp. Pentru clipul scurt (refren) NU aplicăm clamp-ul MAX/MIN obișnuit —
+    // vrem să umplem fix durata segmentului cu slide-uri rapide (~4s fiecare pe 20s).
+    if (!segment) {
+      if (slideDur < MIN_SLIDE_DUR) slideDur = MIN_SLIDE_DUR;
+      if (slideDur > MAX_SLIDE_DUR) slideDur = MAX_SLIDE_DUR;
+    } else if (slideDur < 1.2) {
+      slideDur = 1.2; // floor pentru a păstra xfade-ul valid
+    }
     const slideFrames = Math.max(1, Math.round(slideDur * FPS));
 
     // Ken Burns: alternăm zoom-in / zoom-out + pan ușor per slide pentru varietate.
@@ -248,6 +288,10 @@ export class VideoService {
     // Inputuri imagini (loop ca să dureze cât slide-ul) + audio.
     for (const img of images) {
       args.push('-loop', '1', '-t', slideDur.toFixed(3), '-i', img);
+    }
+    // Audio: dacă avem segment (refren), trim-uim cu seek pe input (-ss) + durată (-t).
+    if (segment) {
+      args.push('-ss', segment.startSec.toFixed(3), '-t', segment.durationSec.toFixed(3));
     }
     args.push('-i', audioPath);
     const audioIdx = images.length;
@@ -395,6 +439,7 @@ export class VideoService {
     outPath: string,
     drawFiles: DrawTextFile[],
     font: string | null,
+    segment?: { startSec: number; durationSec: number },
   ): string[] {
     const maxFrames = FPS * 60 * 30; // 30 min cap (audio real e mult mai scurt)
     const zoom = `z='min(zoom+0.0008,1.18)'`;
@@ -430,10 +475,12 @@ export class VideoService {
       }
     }
 
-    return [
-      '-y',
-      '-loop', '1',
-      '-i', imagePath,
+    const args = ['-y', '-loop', '1', '-i', imagePath];
+    // Audio: trim la segment (refren) dacă e dat.
+    if (segment) {
+      args.push('-ss', segment.startSec.toFixed(3), '-t', segment.durationSec.toFixed(3));
+    }
+    args.push(
       '-i', audioPath,
       '-vf', filters.join(','),
       '-c:v', 'libx264',
@@ -446,7 +493,8 @@ export class VideoService {
       '-shortest',
       '-movflags', '+faststart',
       outPath,
-    ];
+    );
+    return args;
   }
 
   // ─────────────────────────────────────────────────────────────────────────

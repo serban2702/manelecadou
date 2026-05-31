@@ -43,6 +43,7 @@ import { MetaCapiModule } from './modules/meta-capi/meta-capi.module';
 import { SiteDemosModule } from './modules/site-demos/site-demos.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { MarketingModule } from './modules/marketing/marketing.module';
+import { CollageModule } from './modules/collage/collage.module';
 
 @Module({
   imports: [
@@ -95,6 +96,7 @@ import { MarketingModule } from './modules/marketing/marketing.module';
     SiteDemosModule,
     InvoicesModule,
     MarketingModule,
+    CollageModule,
     SeederModule,
   ],
   providers: [

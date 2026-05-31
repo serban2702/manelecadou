@@ -1,0 +1,30 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bullmq';
+
+import { VideoCollage } from './video-collage.entity';
+import { CollageService } from './collage.service';
+import { CollageController } from './collage.controller';
+import { CollageProcessor } from './collage.processor';
+import { CollageUploadService } from './collage-upload.service';
+import { COLLAGE_QUEUE } from './collage.constants';
+import { Generation } from '../generations/generation.entity';
+import { GuestSession } from '../guest-sessions/guest-session.entity';
+import { User } from '../users/user.entity';
+import { AuthModule } from '../auth/auth.module';
+import { SitesModule } from '../sites/sites.module';
+import { MailerModule } from '../../mailer/mailer.module';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([VideoCollage, Generation, GuestSession, User]),
+    BullModule.registerQueue({ name: COLLAGE_QUEUE }),
+    AuthModule,
+    SitesModule,
+    MailerModule,
+  ],
+  providers: [CollageService, CollageProcessor, CollageUploadService],
+  controllers: [CollageController],
+  exports: [CollageService],
+})
+export class CollageModule {}

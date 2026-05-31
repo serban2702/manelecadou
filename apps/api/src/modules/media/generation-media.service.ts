@@ -24,7 +24,7 @@ export class GenerationMediaService implements IGenerationMediaService {
 
   generateVideo(
     gen: Generation,
-    opts?: { audioPath?: string; outName?: string },
+    opts?: { audioPath?: string; outName?: string; startSec?: number; durationSec?: number },
   ): Promise<string | null> {
     return this.video.generateVideo(gen, opts);
   }

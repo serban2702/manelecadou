@@ -2,9 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SettingsService } from '../../settings/settings.service';
 import {
+  SunoAlignedWord,
   SunoGenerateInput,
   SunoGenerateResult,
   SunoProvider,
+  SunoTimestampedLyrics,
 } from '../suno.types';
 import { SunoLogService } from '../suno-log.service';
 
@@ -264,6 +266,68 @@ export class SunoRealProvider extends SunoProvider {
       errorMessage: `polling timeout after 8 minutes (last status: ${lastStatus || 'none'})`,
     });
     throw new Error(`Suno taskId=${taskId} polling timeout după 8 minute`);
+  }
+
+  /**
+   * Versurile aliniate temporal (timestamped lyrics) pentru o piesă a unui task.
+   * POST /api/v1/generate/get-timestamped-lyrics cu body { taskId, audioId }.
+   * Graceful: întoarce `null` la orice eșec (network, non-200, body invalid).
+   */
+  async getTimestampedLyrics(
+    taskId: string,
+    audioId: string,
+  ): Promise<SunoTimestampedLyrics | null> {
+    if (!taskId || !audioId) return null;
+    try {
+      const baseUrl =
+        (await this.settings.get('SUNO_API_BASE_URL')) || 'https://api.sunoapi.org';
+      const apiKey = await this.settings.get('SUNO_API_KEY');
+      if (!apiKey) {
+        this.logger.warn('getTimestampedLyrics: SUNO_API_KEY lipsește');
+        return null;
+      }
+      const res = await fetch(`${baseUrl}/api/v1/generate/get-timestamped-lyrics`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ taskId, audioId }),
+      });
+      if (!res.ok) {
+        this.logger.warn(
+          `getTimestampedLyrics non-200 (${res.status}) taskId=${taskId} audioId=${audioId}`,
+        );
+        return null;
+      }
+      const json = (await res.json()) as {
+        code?: number;
+        data?: {
+          alignedWords?: Array<{
+            word?: string;
+            success?: boolean;
+            start_s?: number;
+            end_s?: number;
+            startS?: number;
+            endS?: number;
+          }>;
+        };
+      };
+      const raw = json.data?.alignedWords;
+      if (!Array.isArray(raw) || raw.length === 0) return null;
+      const alignedWords: SunoAlignedWord[] = raw.map((w) => ({
+        word: String(w.word ?? ''),
+        success: !!w.success,
+        startS: Number(w.startS ?? w.start_s ?? 0),
+        endS: Number(w.endS ?? w.end_s ?? 0),
+      }));
+      return { alignedWords };
+    } catch (err) {
+      this.logger.warn(
+        `getTimestampedLyrics eșuat (taskId=${taskId}): ${(err as Error).message}`,
+      );
+      return null;
+    }
   }
 
   /**

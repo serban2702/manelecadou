@@ -239,38 +239,48 @@ function ShareGenerationViewInner() {
         <PaywallSection generationId={g.id} />
       )}
 
-      {g.videoUrl ? (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
-            🎬 Videoclip personalizat{g.videoUrlBonus ? ' — versiunea 1' : ''}
-          </div>
-          <VideoPlayer
-            src={resolveMediaUrl(g.videoUrl)!}
-            poster={resolveMediaUrl(g.socialImageUploaded ?? g.socialImageSelected ?? g.coverUrl)}
-          />
-        </div>
-      ) : (enriching && g.packageTier === 'premium') ? (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
-            🎬 Videoclip personalizat
-          </div>
-          <div className="ld" style={{ fontSize: 13, opacity: 0.85 }}>
-            ⏳ Se montează videoclipul… (apare automat în câteva minute)
-          </div>
-        </div>
-      ) : null}
+      {/* Videoclipurile sunt clipuri SCURTE verticale (refren, stil TikTok).
+          Le afișăm UNUL LÂNGĂ ALTUL — 2 coloane, inclusiv pe mobil (verticale
+          înguste). Dacă există doar unul, e afișat singur (flex se descurcă). */}
+      {(() => {
+        const videoPoster = resolveMediaUrl(
+          g.socialImageUploaded ?? g.socialImageSelected ?? g.coverUrl,
+        );
+        const clips = [g.videoUrl, g.videoUrlBonus].filter(Boolean) as string[];
+        if (clips.length > 0) {
+          return (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
+                🎬 Videoclipuri (refren)
+              </div>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                {clips.map((url, i) => (
+                  <div key={url + i} style={{ flex: 1, minWidth: 0 }}>
+                    <VideoPlayer src={resolveMediaUrl(url)!} poster={videoPoster} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        }
+        // Cât livrabilele premium se montează și încă nu există niciun video.
+        if (enriching && g.packageTier === 'premium') {
+          return (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
+                🎬 Videoclipuri (refren)
+              </div>
+              <div className="ld" style={{ fontSize: 13, opacity: 0.85 }}>
+                ⏳ Se montează videoclipul… (apare automat în câteva minute)
+              </div>
+            </div>
+          );
+        }
+        return null;
+      })()}
 
-      {g.videoUrlBonus && (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
-            🎬 Videoclip personalizat — versiunea 2
-          </div>
-          <VideoPlayer
-            src={resolveMediaUrl(g.videoUrlBonus)!}
-            poster={resolveMediaUrl(g.socialImageUploaded ?? g.socialImageSelected ?? g.coverUrl)}
-          />
-        </div>
-      )}
+      {/* Colaj video din pozele tale — doar după plată și melodie finalizată. */}
+      {isPaid && g.status === 'succeeded' && <CollageSection generation={g} />}
 
       {g.status === 'succeeded' && !!(g.socialImages && g.socialImages.length) ? (
         <SocialImageSection
@@ -883,6 +893,257 @@ function SocialImageSection({
           </a>
         )}
       </div>
+
+      {err && <div style={{ marginTop: 8, fontSize: 12, color: '#ff8888' }}>{err}</div>}
+    </div>
+  );
+}
+
+const MAX_COLLAGE_IMAGES = 15;
+const MAX_COLLAGE_FILE_BYTES = 10 * 1024 * 1024; // 10MB / fișier
+
+/**
+ * UI „Fă-ți un colaj video" — userul alege una dintre cele 2 melodii, încarcă
+ * până la 15 imagini (≤10MB fiecare) și backend-ul montează un colaj video.
+ * După submit facem polling la `getLatestCollage` până la succeeded/failed.
+ * Degradare grațioasă: dacă endpoint-urile lipsesc, secțiunea nu crapă pagina.
+ */
+function CollageSection({ generation }: { generation: GenerationDto }) {
+  const g = generation;
+  // A 2-a melodie există dacă avem audio/video bonus.
+  const hasBonus = !!(g.bonusAudioUrl || g.videoUrlBonus);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [trackChoice, setTrackChoice] = useState<'main' | 'bonus'>('main');
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  // Colajul curent (din mount sau după submit) + flag de polling activ.
+  const [collage, setCollage] = useState<
+    { id: string; status: 'pending' | 'processing' | 'succeeded' | 'failed'; videoUrl?: string | null } | null
+  >(null);
+  const [polling, setPolling] = useState(false);
+
+  // La mount: vezi dacă există deja un colaj.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const latest = await api.getLatestCollage(g.id);
+      if (!cancelled && latest) {
+        setCollage(latest);
+        if (latest.status === 'pending' || latest.status === 'processing') setPolling(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [g.id]);
+
+  // Polling la ~4s cât colajul e în lucru.
+  useEffect(() => {
+    if (!polling) return;
+    const tick = async () => {
+      const latest = await api.getLatestCollage(g.id);
+      if (latest) {
+        setCollage(latest);
+        if (latest.status === 'succeeded' || latest.status === 'failed') setPolling(false);
+      }
+    };
+    const id = setInterval(tick, 4000);
+    return () => clearInterval(id);
+  }, [polling, g.id]);
+
+  // Curăță object URL-urile de preview la unmount / re-pick.
+  useEffect(() => {
+    return () => { previews.forEach((u) => URL.revokeObjectURL(u)); };
+  }, [previews]);
+
+  function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []);
+    e.target.value = ''; // permite re-pick aceleași fișiere
+    if (picked.length === 0) return;
+    setErr(null);
+    if (picked.length > MAX_COLLAGE_IMAGES) {
+      setErr(`Poți alege maxim ${MAX_COLLAGE_IMAGES} imagini. Ai selectat ${picked.length}.`);
+      return;
+    }
+    const tooBig = picked.find((f) => f.size > MAX_COLLAGE_FILE_BYTES);
+    if (tooBig) {
+      setErr(`„${tooBig.name}" depășește 10MB. Alege imagini mai mici.`);
+      return;
+    }
+    // Eliberează preview-urile vechi și creează altele noi.
+    previews.forEach((u) => URL.revokeObjectURL(u));
+    setFiles(picked);
+    setPreviews(picked.map((f) => URL.createObjectURL(f)));
+  }
+
+  async function submit() {
+    if (files.length === 0) { setErr('Alege cel puțin o imagine.'); return; }
+    setSubmitting(true);
+    setErr(null);
+    try {
+      const r = await api.createCollage(g.id, trackChoice, files);
+      setCollage({ id: r.collageId, status: (r.status as any) ?? 'pending' });
+      setPolling(true);
+      // Eliberăm fișierele după submit (rămâne starea de polling).
+      previews.forEach((u) => URL.revokeObjectURL(u));
+      setFiles([]);
+      setPreviews([]);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Nu am putut porni generarea colajului. Încearcă din nou.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function reset() {
+    setCollage(null);
+    setPolling(false);
+    setErr(null);
+  }
+
+  const sectionStyle: React.CSSProperties = {
+    marginTop: 20, padding: 16, borderRadius: 12,
+    background: 'rgba(241,200,77,0.06)', border: '1px solid rgba(241,200,77,0.2)',
+  };
+  const headerStyle: React.CSSProperties = {
+    fontSize: 12, fontWeight: 700, letterSpacing: '0.08em',
+    textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8,
+  };
+
+  // Stare: colaj gata.
+  if (collage?.status === 'succeeded' && collage.videoUrl) {
+    const resolved = resolveMediaUrl(collage.videoUrl)!;
+    return (
+      <div style={sectionStyle}>
+        <div style={headerStyle}>🎞️ Colajul tău video</div>
+        <VideoPlayer src={resolved} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+          <a href={resolved} download className="btn btn-gold" style={{ flex: '1 1 140px', textAlign: 'center', textDecoration: 'none' }}>
+            ⬇ Descarcă
+          </a>
+          <button type="button" onClick={reset} className="btn btn-ghost" style={{ flex: '1 1 140px' }}>
+            🔁 Fă altul
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Stare: în lucru (pending/processing).
+  if (collage && (collage.status === 'pending' || collage.status === 'processing')) {
+    return (
+      <div style={sectionStyle}>
+        <div style={headerStyle}>🎞️ Fă-ți un colaj video</div>
+        <div className="ld" style={{ fontSize: 13, opacity: 0.85 }}>
+          ⏳ Se generează colajul video… (durează câteva minute, primești și pe email)
+        </div>
+      </div>
+    );
+  }
+
+  // Stare: eșuat — mesaj prietenos + retry.
+  if (collage?.status === 'failed') {
+    return (
+      <div style={sectionStyle}>
+        <div style={headerStyle}>🎞️ Fă-ți un colaj video</div>
+        <div style={{ fontSize: 13, color: '#ffb3b3', marginBottom: 10 }}>
+          😕 Ne pare rău, colajul nu a putut fi generat. Mai încearcă o dată.
+        </div>
+        <button type="button" onClick={reset} className="btn btn-gold" style={{ width: '100%' }}>
+          🔁 Încearcă din nou
+        </button>
+      </div>
+    );
+  }
+
+  // Stare: formular de upload.
+  return (
+    <div style={sectionStyle}>
+      <div style={headerStyle}>🎞️ Fă-ți un colaj video</div>
+      <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
+        Încarcă-ți pozele și le montăm într-un videoclip pe melodia ta.
+      </div>
+
+      {/* Alegerea melodiei */}
+      {hasBonus && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Pe ce melodie?</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {([
+              { value: 'main', label: 'Melodia 1' },
+              { value: 'bonus', label: 'Melodia 2' },
+            ] as const).map((opt) => {
+              const active = trackChoice === opt.value;
+              return (
+                <label
+                  key={opt.value}
+                  style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    padding: '8px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                    border: `2px solid ${active ? 'var(--gold)' : 'var(--line)'}`,
+                    background: active ? 'rgba(241,200,77,0.12)' : 'rgba(0,0,0,0.25)',
+                    color: active ? 'var(--gold)' : 'var(--gold-2)',
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="collage-track"
+                    value={opt.value}
+                    checked={active}
+                    onChange={() => setTrackChoice(opt.value)}
+                    style={{ accentColor: 'var(--gold)' }}
+                  />
+                  {opt.label}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={onPick}
+        style={{ display: 'none' }}
+      />
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        disabled={submitting}
+        className="btn btn-ghost"
+        style={{ width: '100%', opacity: submitting ? 0.6 : 1 }}
+      >
+        {files.length > 0 ? `📷 ${files.length} imagini selectate (schimbă)` : '⬆ Alege imagini (max 15)'}
+      </button>
+
+      {previews.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, marginTop: 10 }}>
+          {previews.map((src, i) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={src + i}
+              src={src}
+              alt={`Imagine ${i + 1}`}
+              style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: 6, display: 'block', background: '#000' }}
+            />
+          ))}
+        </div>
+      )}
+
+      {files.length > 0 && (
+        <button
+          type="button"
+          onClick={submit}
+          disabled={submitting}
+          className="btn btn-gold"
+          style={{ width: '100%', marginTop: 12, cursor: submitting ? 'wait' : 'pointer', opacity: submitting ? 0.7 : 1 }}
+        >
+          {submitting ? 'Se trimite…' : '🎬 Generează colajul'}
+        </button>
+      )}
 
       {err && <div style={{ marginTop: 8, fontSize: 12, color: '#ff8888' }}>{err}</div>}
     </div>

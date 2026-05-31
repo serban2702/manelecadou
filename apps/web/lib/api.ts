@@ -426,6 +426,70 @@ export const api = {
     return (await res.json()) as GenerationDto;
   },
 
+  /**
+   * Creează un colaj video din imagini încărcate de user, peste una dintre
+   * cele 2 melodii (`main`/`bonus`). Multipart cu câmpul `images` (≤15 fișiere)
+   * + `track` în body. Lăsăm browserul să seteze Content-Type (cu boundary).
+   * Folosește același pattern de auth ca `uploadSocialImage`.
+   */
+  createCollage: async (
+    generationId: string,
+    track: 'main' | 'bonus',
+    files: File[],
+  ): Promise<{ collageId: string; status: string }> => {
+    const headers = new Headers();
+    headers.set('X-Locale', getCurrentLocale());
+    const guestId = getGuestId();
+    if (guestId) headers.set('X-Guest-Id', guestId);
+    const token = getAccessToken();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    if (typeof window !== 'undefined') {
+      const orSid = window.__OR_SESSION_ID__;
+      if (orSid) headers.set('X-OpenReplay-SessionID', orSid);
+    }
+    const form = new FormData();
+    form.append('track', track);
+    for (const f of files) form.append('images', f);
+    const res = await fetch(`${API_URL}/api/generations/${generationId}/collage`, {
+      method: 'POST',
+      headers,
+      body: form,
+    });
+    if (!res.ok) {
+      let body: unknown;
+      try {
+        body = await res.json();
+      } catch {
+        body = await res.text();
+      }
+      throw new ApiError(res.status, body);
+    }
+    return (await res.json()) as { collageId: string; status: string };
+  },
+
+  /** Întoarce ultimul colaj video pentru o generare (sau `null` dacă nu există). */
+  getLatestCollage: async (
+    generationId: string,
+  ): Promise<{
+    id: string;
+    status: 'pending' | 'processing' | 'succeeded' | 'failed';
+    videoUrl?: string | null;
+    track?: string;
+  } | null> => {
+    try {
+      return await request<{
+        id: string;
+        status: 'pending' | 'processing' | 'succeeded' | 'failed';
+        videoUrl?: string | null;
+        track?: string;
+      }>(`/generations/${generationId}/collage/latest`);
+    } catch (e) {
+      // 404 = niciun colaj încă; degradare grațioasă pentru orice eroare.
+      if (e instanceof ApiError && e.status === 404) return null;
+      return null;
+    }
+  },
+
   reportClientError: (input: { message: string; stack?: string; path?: string; level?: 'error' | 'warn' | 'info' }) =>
     request<{ ok: boolean }>('/errors/client', {
       method: 'POST',
