@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { SocialImageService } from './social-image.service';
 import { VideoService } from './video.service';
 import { GenerationMediaService } from './generation-media.service';
+import { RemoteMediaClient } from './remote-media.client';
 import { GENERATION_MEDIA_SERVICE } from './media.types';
 
 /**
@@ -16,11 +17,12 @@ import { GENERATION_MEDIA_SERVICE } from './media.types';
  */
 @Module({
   providers: [
+    RemoteMediaClient,
     SocialImageService,
     VideoService,
     GenerationMediaService,
     { provide: GENERATION_MEDIA_SERVICE, useExisting: GenerationMediaService },
   ],
-  exports: [GenerationMediaService, GENERATION_MEDIA_SERVICE],
+  exports: [GenerationMediaService, GENERATION_MEDIA_SERVICE, RemoteMediaClient],
 })
 export class MediaModule {}

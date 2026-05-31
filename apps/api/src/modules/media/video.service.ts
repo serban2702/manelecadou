@@ -6,6 +6,7 @@ import { constants as FS } from 'node:fs';
 import { join } from 'node:path';
 
 import type { Generation } from '../generations/generation.entity';
+import { RemoteMediaClient } from './remote-media.client';
 
 /** Opțiuni per-track pentru generateVideo. Permite generarea unui clip pentru
  *  versiunea alternativă a melodiei (ex. bonus.mp3 → clip2.mp4) cu aceleași
@@ -85,8 +86,54 @@ export class VideoService {
   private readonly logger = new Logger('VideoService');
   private readonly uploadsDir: string;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly remote: RemoteMediaClient,
+  ) {
     this.uploadsDir = this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
+  }
+
+  /**
+   * Încearcă să randeze clipul pe microserviciul Hetzner. Rezolvă imaginile +
+   * audio de pe disc (aceiași helperi ca randarea locală), apelează
+   * `/render/clip`, salvează mp4-ul la `/uploads/video/<id>/<outName>` și
+   * întoarce URL-ul. La orice eșec întoarce `null` → caller-ul face fallback
+   * la randarea LOCALĂ (ffmpeg). Nu aruncă niciodată.
+   */
+  private async tryRemoteVideo(
+    gen: Generation,
+    opts: GenerateVideoOpts | undefined,
+    outName: string,
+  ): Promise<string | null> {
+    try {
+      const images = await this.resolveImagePaths(gen);
+      if (images.length === 0) return null;
+
+      const audioPath = await this.resolveAudioPath(gen, opts?.audioPath);
+      if (!audioPath) return null;
+
+      const buffer = await this.remote.renderClip({
+        audioPath,
+        imagePaths: images,
+        recipientName: this.cleanText(gen.recipientName),
+        occasion: this.cleanText(gen.occasion),
+        startSec: opts?.startSec,
+        durationSec: opts?.durationSec,
+      });
+
+      const dir = join(this.uploadsDir, 'video', gen.id);
+      await mkdir(dir, { recursive: true });
+      const outPath = join(dir, outName);
+      await writeFile(outPath, buffer);
+
+      this.logger.log(`generateVideo remote (gen ${gen.id}, ${outName})`);
+      return `/uploads/video/${gen.id}/${outName}`;
+    } catch (err) {
+      this.logger.warn(
+        `generateVideo remote eșuat (gen ${gen.id}, ${outName}), cad pe randare locală: ${(err as Error).message}`,
+      );
+      return null;
+    }
   }
 
   /**
@@ -106,6 +153,13 @@ export class VideoService {
     let font: string | null;
 
     const outName = this.sanitizeOutName(opts?.outName) ?? 'clip.mp4';
+
+    // 0) Dacă microserviciul Hetzner e configurat, randăm acolo (descărcăm CPU
+    //    de pe Ionos). La eșec → cad pe randarea LOCALĂ ffmpeg de mai jos.
+    if (this.remote.isEnabled()) {
+      const remoteUrl = await this.tryRemoteVideo(gen, opts, outName);
+      if (remoteUrl) return remoteUrl;
+    }
 
     // Fișiere temporare pentru drawtext (textfile= e mai sigur cu diacritice/apostrof).
     const tmpFiles: string[] = [];

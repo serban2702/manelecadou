@@ -13,6 +13,7 @@ import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { User } from '../users/user.entity';
 import { AuthModule } from '../auth/auth.module';
 import { SitesModule } from '../sites/sites.module';
+import { MediaModule } from '../media/media.module';
 import { MailerModule } from '../../mailer/mailer.module';
 
 @Module({
@@ -21,6 +22,7 @@ import { MailerModule } from '../../mailer/mailer.module';
     BullModule.registerQueue({ name: COLLAGE_QUEUE }),
     AuthModule,
     SitesModule,
+    MediaModule,
     MailerModule,
   ],
   providers: [CollageService, CollageProcessor, CollageUploadService],

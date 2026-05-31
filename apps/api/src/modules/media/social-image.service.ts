@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { Generation } from '../generations/generation.entity';
+import { RemoteMediaClient } from './remote-media.client';
 
 /** O schemă cromatică / layout pentru o variantă de imagine socială. */
 interface Theme {
@@ -66,16 +67,68 @@ export class SocialImageService {
   private readonly logger = new Logger('SocialImage');
   private readonly uploadsDir: string;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly remote: RemoteMediaClient,
+  ) {
     this.uploadsDir = this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
   }
 
   /**
    * Generează 4 variante PNG 1080x1080 „stil Spotify cover" pentru o generation.
+   *
+   * Dacă microserviciul de media (Hetzner) e configurat → randează acolo și
+   * salvează PNG-urile la aceleași căi locale. La orice eșec (sau dacă nu e
+   * configurat) → fallback la randarea LOCALĂ cu `@resvg/resvg-js`.
+   * Căile de output și URL-urile întoarse sunt IDENTICE indiferent de cale.
+   */
+  async generateSocialImages(gen: Generation): Promise<string[]> {
+    if (this.remote.isEnabled()) {
+      try {
+        return await this.generateRemote(gen);
+      } catch (err) {
+        this.logger.warn(
+          `social images remote eșuat (gen ${gen.id}), cad pe randare locală: ${(err as Error).message}`,
+        );
+      }
+    }
+    return this.generateLocal(gen);
+  }
+
+  /**
+   * Apelează microserviciul Hetzner pentru cele 4 imagini și le salvează la
+   * `/uploads/social/<id>/vN.png` (aceleași căi ca randarea locală).
+   */
+  private async generateRemote(gen: Generation): Promise<string[]> {
+    const recipient = this.clean(gen.recipientName) || 'tine';
+    const occasion = this.clean(gen.occasion);
+
+    const images = await this.remote.renderSocialImages({
+      recipientName: recipient,
+      occasion,
+    });
+    if (images.length === 0) throw new Error('microserviciul nu a întors imagini');
+
+    const dir = join(this.uploadsDir, 'social', gen.id);
+    await mkdir(dir, { recursive: true });
+
+    const urls: string[] = [];
+    for (let i = 0; i < images.length; i++) {
+      const idx = i + 1;
+      const filePath = join(dir, `v${idx}.png`);
+      await writeFile(filePath, images[i].buffer);
+      urls.push(`/uploads/social/${gen.id}/v${idx}.png`);
+    }
+    this.logger.log(`social images remote (gen ${gen.id}): ${urls.length} variante`);
+    return urls;
+  }
+
+  /**
+   * Randare LOCALĂ (fallback): 4 variante PNG via `@resvg/resvg-js`.
    * Robust: try/catch per variantă; o variantă care eșuează e omisă. Dacă
    * `@resvg/resvg-js` nu poate fi încărcat deloc → întoarce `[]`.
    */
-  async generateSocialImages(gen: Generation): Promise<string[]> {
+  private async generateLocal(gen: Generation): Promise<string[]> {
     let Resvg: typeof import('@resvg/resvg-js').Resvg;
     try {
       // import dinamic ca să nu cădem la boot dacă pachetul lipsește în dev.

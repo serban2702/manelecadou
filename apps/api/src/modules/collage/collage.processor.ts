@@ -20,6 +20,7 @@ import { Generation } from '../generations/generation.entity';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { User } from '../users/user.entity';
 import { SitesService } from '../sites/sites.service';
+import { RemoteMediaClient } from '../media/remote-media.client';
 import { MailerService } from '../../mailer/mailer.module';
 import { renderBrandedEmail } from '../../mailer/templates/templates';
 import { brandingFromSite } from '../../mailer/branding';
@@ -43,6 +44,7 @@ export class CollageProcessor extends WorkerHost {
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly upload: CollageUploadService,
     private readonly sites: SitesService,
+    private readonly remote: RemoteMediaClient,
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
   ) {
@@ -87,13 +89,23 @@ export class CollageProcessor extends WorkerHost {
       const sequence = this.buildSequence(images, audioDuration);
 
       const outPath = join(dir, 'collage.mp4');
-      try {
-        await this.renderXfade(sequence, audioPath, audioDuration, outPath);
-      } catch (xfadeErr) {
-        this.logger.warn(
-          `collage ${collageId.slice(0, 8)} xfade failed (${(xfadeErr as Error).message.slice(0, 200)}); falling back to simple concat`,
-        );
-        await this.renderSimple(sequence, audioPath, audioDuration, outPath);
+
+      // 0) Microserviciul Hetzner (descarcă ffmpeg-ul de pe Ionos). La eșec →
+      //    fallback la randarea LOCALĂ ffmpeg (xfade → simple concat).
+      let renderedRemote = false;
+      if (this.remote.isEnabled()) {
+        renderedRemote = await this.tryRemoteCollage(gen, audioPath, images, outPath, collageId);
+      }
+
+      if (!renderedRemote) {
+        try {
+          await this.renderXfade(sequence, audioPath, audioDuration, outPath);
+        } catch (xfadeErr) {
+          this.logger.warn(
+            `collage ${collageId.slice(0, 8)} xfade failed (${(xfadeErr as Error).message.slice(0, 200)}); falling back to simple concat`,
+          );
+          await this.renderSimple(sequence, audioPath, audioDuration, outPath);
+        }
       }
 
       const videoUrl = `/uploads/collage/${collageId}/collage.mp4`;
@@ -127,6 +139,35 @@ export class CollageProcessor extends WorkerHost {
   private audioPathFor(gen: Generation, track: CollageTrack): string {
     const name = track === 'bonus' ? 'bonus.mp3' : 'full.mp3';
     return join(this.uploadsDir, 'audio', gen.id, name);
+  }
+
+  /**
+   * Încearcă să randeze colajul pe microserviciul Hetzner (`/render/collage`) și
+   * scrie mp4-ul la `outPath`. Întoarce `true` la succes, `false` la orice eșec
+   * (caller-ul cade pe ffmpeg local). Nu aruncă niciodată.
+   */
+  private async tryRemoteCollage(
+    gen: Generation,
+    audioPath: string,
+    imagePaths: string[],
+    outPath: string,
+    collageId: string,
+  ): Promise<boolean> {
+    try {
+      const buffer = await this.remote.renderCollage({
+        audioPath,
+        imagePaths,
+        recipientName: gen.recipientName || undefined,
+      });
+      await fs.writeFile(outPath, buffer);
+      this.logger.log(`collage ${collageId.slice(0, 8)} rendered remote (Hetzner)`);
+      return true;
+    } catch (err) {
+      this.logger.warn(
+        `collage ${collageId.slice(0, 8)} remote failed (${(err as Error).message.slice(0, 200)}); falling back to local ffmpeg`,
+      );
+      return false;
+    }
   }
 
   private async fileExists(path: string): Promise<boolean> {
