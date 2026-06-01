@@ -30,6 +30,29 @@ export interface AudienceRecipient {
   guestId: string | null;
 }
 
+/**
+ * Cheie canonică pentru deduplicare pe „căsuța poștală reală".
+ * - elimină tag-ul `+...` din local-part (plus-addressing → aceeași căsuță, suportat de Gmail,
+ *   Outlook, Fastmail etc.);
+ * - pentru Gmail/Googlemail ignoră punctele din local-part și tratează `googlemail.com` == `gmail.com`.
+ *
+ * Se folosește DOAR ca cheie de grupare/dedup — niciodată ca adresă de trimitere (păstrăm adresa
+ * originală deliverabilă). Astfel `serban2702+voicetest@gmail.com`, `ser.ban2702@gmail.com` și
+ * `serban2702@gmail.com` colapsează la un singur destinatar.
+ */
+export function canonicalEmail(raw: string | null | undefined): string {
+  const email = (raw ?? '').trim().toLowerCase();
+  const at = email.lastIndexOf('@');
+  if (at <= 0) return email;
+  let local = email.slice(0, at);
+  let domain = email.slice(at + 1);
+  const plus = local.indexOf('+');
+  if (plus >= 0) local = local.slice(0, plus);
+  if (domain === 'googlemail.com') domain = 'gmail.com';
+  if (domain === 'gmail.com') local = local.replace(/\./g, '');
+  return `${local}@${domain}`;
+}
+
 @Injectable()
 export class MarketingService {
   private readonly logger = new Logger('MarketingService');
@@ -85,12 +108,21 @@ export class MarketingService {
     const paidUserIds = new Set(paidPayments.map((p) => p.userId).filter(Boolean) as string[]);
     const paidGuestIds = new Set(paidPayments.map((p) => p.guestId).filter(Boolean) as string[]);
 
+    // Cheia Map-ului = email canonic (colapsează variantele Gmail `+tag`/puncte pe aceeași
+    // căsuță), dar păstrăm adresa originală deliverabilă în `email` (prima văzută câștigă).
     const byEmail = new Map<string, AudienceRecipient & { paid: boolean }>();
 
     for (const u of users) {
       const email = (u.email || '').trim().toLowerCase();
       if (!email) continue;
-      byEmail.set(email, {
+      const key = canonicalEmail(email);
+      const existing = byEmail.get(key);
+      if (existing) {
+        if (paidUserIds.has(u.id)) existing.paid = true;
+        if (!existing.userId) existing.userId = u.id;
+        continue;
+      }
+      byEmail.set(key, {
         email,
         name: u.name ?? null,
         locale: u.locale || fallbackLocale,
@@ -102,13 +134,14 @@ export class MarketingService {
     for (const g of guests) {
       const email = (g.email || '').trim().toLowerCase();
       if (!email) continue;
-      const existing = byEmail.get(email);
+      const key = canonicalEmail(email);
+      const existing = byEmail.get(key);
       if (existing) {
         if (paidGuestIds.has(g.id)) existing.paid = true;
         if (!existing.guestId) existing.guestId = g.id;
         continue;
       }
-      byEmail.set(email, {
+      byEmail.set(key, {
         email,
         name: null,
         locale: fallbackLocale,
@@ -118,10 +151,10 @@ export class MarketingService {
       });
     }
 
-    // Exclude emailurile dezabonate de la marketing.
+    // Exclude emailurile dezabonate de la marketing (comparat canonic).
     const optedOut = await this.optOutEmails(siteId);
 
-    const all = Array.from(byEmail.values()).filter((r) => !optedOut.has(r.email));
+    const all = Array.from(byEmail.values()).filter((r) => !optedOut.has(canonicalEmail(r.email)));
     const filtered =
       segment === 'all' ? all : segment === 'payers' ? all.filter((r) => r.paid) : all.filter((r) => !r.paid);
     return filtered.map(({ paid: _paid, ...r }) => r);
@@ -157,18 +190,18 @@ export class MarketingService {
     };
   }
 
-  /** Set de emailuri dezabonate pentru un site (lowercased). */
+  /** Set de emailuri dezabonate pentru un site (canonice, pt. match pe căsuța reală). */
   private async optOutEmails(siteId: string | null): Promise<Set<string>> {
     const where = siteId ? { siteId } : {};
     const rows = await this.optOuts.find({ where, select: ['email'] });
-    return new Set(rows.map((r) => r.email.toLowerCase()));
+    return new Set(rows.map((r) => canonicalEmail(r.email)));
   }
 
   // ============ Dezabonare (opt-out) ============
 
   /** Înregistrează un opt-out (idempotent). */
   async optOut(siteId: string | null, email: string, source = 'link'): Promise<void> {
-    const normalized = email.trim().toLowerCase();
+    const normalized = canonicalEmail(email);
     if (!normalized) return;
     const existing = await this.optOuts.findOne({
       where: (siteId ? { siteId, email: normalized } : { siteId: IsNull(), email: normalized }) as object,
@@ -228,7 +261,7 @@ export class MarketingService {
         throw new BadRequestException('Introdu un email valid pentru destinatarul unic.');
       }
       const optedOut = await this.optOutEmails(siteId);
-      if (optedOut.has(email)) {
+      if (optedOut.has(canonicalEmail(email))) {
         throw new BadRequestException('Acest email s-a dezabonat de la marketing.');
       }
       recipients = [
@@ -396,7 +429,7 @@ export class MarketingService {
 
     // Dedup: nu retrimite celor cărora regula le-a trimis deja.
     const alreadySent = await this.emailsAlreadySentByRule(ruleId);
-    const todo = eligible.filter((r) => !alreadySent.has(r.email)).slice(0, maxPerRun);
+    const todo = eligible.filter((r) => !alreadySent.has(canonicalEmail(r.email))).slice(0, maxPerRun);
 
     const discountLabel =
       rule.discountType === 'percent' ? `${rule.discountValue}%` : `${(rule.discountValue / 100).toFixed(0)} ${currency}`;
@@ -464,7 +497,7 @@ export class MarketingService {
       .where('e.relatedId = :ruleId', { ruleId })
       .andWhere('e.kind = :kind', { kind: 'marketing_rule' })
       .getRawMany<{ email: string }>();
-    return new Set(rows.map((r) => r.email));
+    return new Set(rows.map((r) => canonicalEmail(r.email)));
   }
 }
 
