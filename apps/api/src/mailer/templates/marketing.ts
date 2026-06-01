@@ -91,10 +91,19 @@ interface WinbackStrings {
   intro: (name: string) => string;
   cta: string;
 }
+interface SummerStrings {
+  subject: string;
+  headline: string;
+  /** corpul emoțional, primește prefixul de nume (ex. „Andrei, ") */
+  intro: (name: string) => string;
+  cta: string;
+  ps: string;
+}
 
 interface MarketingStrings {
   discount: DiscountStrings;
   winback: WinbackStrings;
+  summer: SummerStrings;
   /** salut folosit când avem numele; și varianta fără nume */
   helloNamed: (name: string) => string;
   helloGeneric: string;
@@ -120,6 +129,14 @@ const RO: MarketingStrings = {
       `${n}sperăm că ți-a plăcut surpriza. Avem un cod de reducere pregătit pentru următoarea ta comandă — pentru o aniversare, o nuntă sau pur și simplu ca să faci pe cineva fericit.`,
     cta: 'Comandă din nou cu reducere',
   },
+  summer: {
+    subject: '☀️ A venit vara — fă-i cuiva drag o surpriză pe care n-o uită niciodată',
+    headline: 'Vara trece repede. Amintirile rămân.',
+    intro: (n) =>
+      `${n}vara trece repede. Zilele lungi, oamenii dragi adunați la masă, melodia care pornește și toată lumea știe versurile... Anul ăsta, fii tu cel care creează momentul. O manea personalizată — cu numele lui, cu povestea voastră — e genul de cadou care rămâne. Nu o vitrină, nu încă un obiect uitat într-un sertar. O amintire. Ai mai jos reducerea ta de vară — nu lăsa vara să treacă fără să-i spui cât de mult înseamnă pentru tine.`,
+    cta: 'Creează maneaua acum',
+    ps: 'Reducerea e valabilă doar câteva zile. Cei dragi merită mai mult decât un mesaj pe WhatsApp. 🎶',
+  },
 };
 
 const EN: MarketingStrings = {
@@ -141,6 +158,14 @@ const EN: MarketingStrings = {
     intro: (n) =>
       `${n}we hope you loved the surprise. Here's a discount code for your next order — for a birthday, a wedding, or just to make someone happy.`,
     cta: 'Order again with a discount',
+  },
+  summer: {
+    subject: '☀️ Summer is here — give someone you love a surprise they’ll never forget',
+    headline: 'Summer flies by. Memories stay.',
+    intro: (n) =>
+      `${n}summer flies by. The long days, the people you love gathered around the table, the song that starts and everyone knows the words... This year, be the one who creates the moment. A personalized song — with their name, with your story — is the kind of gift that lasts. Not a trinket forgotten in a drawer. A memory. Here's your summer discount — don't let summer pass without telling them how much they mean to you.`,
+    cta: 'Create the song now',
+    ps: 'The discount is valid for just a few days. The ones you love deserve more than a WhatsApp message. 🎶',
   },
 };
 
@@ -164,6 +189,14 @@ const BG: MarketingStrings = {
       `${n}надяваме се, че изненадата ти хареса. Ето код за отстъпка за следващата поръчка.`,
     cta: 'Поръчай отново с отстъпка',
   },
+  summer: {
+    subject: '☀️ Лятото дойде — изненадай някой скъп с нещо незабравимо',
+    headline: 'Лятото минава бързо. Спомените остават.',
+    intro: (n) =>
+      `${n}лятото минава бързо. Дългите дни, скъпите хора около масата, песента, която започва и всички знаят думите... Тази година бъди ти този, който създава момента. Персонализирана песен — с неговото име, с вашата история — е подарък, който остава. Спомен, а не поредната забравена вещ. Ето твоята лятна отстъпка — не оставяй лятото да отмине, без да му кажеш колко означава за теб.`,
+    cta: 'Създай песента сега',
+    ps: 'Отстъпката е валидна само няколко дни. Скъпите хора заслужават повече от съобщение. 🎶',
+  },
 };
 
 const SR: MarketingStrings = {
@@ -184,6 +217,14 @@ const SR: MarketingStrings = {
     headline: 'Hvala što si izabrao nas!',
     intro: (n) => `${n}nadamo se da ti se iznenađenje dopalo. Evo kod za popust za sledeću porudžbinu.`,
     cta: 'Poruči ponovo uz popust',
+  },
+  summer: {
+    subject: '☀️ Stiglo je leto — iznenadi nekog dragog nečim nezaboravnim',
+    headline: 'Leto brzo prođe. Uspomene ostaju.',
+    intro: (n) =>
+      `${n}leto brzo prođe. Dugi dani, dragi ljudi okupljeni za stolom, pesma koja krene i svi znaju reči... Ove godine budi ti taj koji stvara trenutak. Personalizovana pesma — sa njegovim imenom, sa vašom pričom — poklon je koji ostaje. Uspomena, a ne još jedna zaboravljena sitnica. Evo tvog letnjeg popusta — ne dozvoli da leto prođe a da mu ne kažeš koliko ti znači.`,
+    cta: 'Napravi pesmu sada',
+    ps: 'Popust važi samo nekoliko dana. Dragi ljudi zaslužuju više od poruke. 🎶',
   },
 };
 
@@ -206,6 +247,14 @@ const TR: MarketingStrings = {
     intro: (n) => `${n}umarız sürprizi beğenmişsindir. Bir sonraki siparişin için indirim kodu hazır.`,
     cta: 'İndirimle tekrar sipariş ver',
   },
+  summer: {
+    subject: '☀️ Yaz geldi — sevdiğin birine asla unutamayacağı bir sürpriz yap',
+    headline: 'Yaz çabuk geçer. Anılar kalır.',
+    intro: (n) =>
+      `${n}yaz çabuk geçer. Uzun günler, masanın etrafında toplanan sevdiklerin, başlayan ve herkesin sözlerini bildiği şarkı... Bu yıl o anı yaratan sen ol. Kişiye özel bir şarkı — onun adıyla, sizin hikâyenizle — kalıcı bir hediyedir. Bir çekmecede unutulan eşya değil, bir anı. İşte yaz indirimin — yaz geçip gitmeden ona ne kadar değerli olduğunu söyle.`,
+    cta: 'Şarkıyı şimdi oluştur',
+    ps: 'İndirim sadece birkaç gün geçerli. Sevdiklerin bir mesajdan fazlasını hak ediyor. 🎶',
+  },
 };
 
 const EL: MarketingStrings = {
@@ -226,6 +275,14 @@ const EL: MarketingStrings = {
     headline: 'Ευχαριστούμε που μας επέλεξες!',
     intro: (n) => `${n}ελπίζουμε να σου άρεσε η έκπληξη. Ένας κωδικός έκπτωσης για την επόμενη παραγγελία.`,
     cta: 'Παράγγειλε ξανά με έκπτωση',
+  },
+  summer: {
+    subject: '☀️ Ήρθε το καλοκαίρι — κάνε σε κάποιον αγαπημένο μια αξέχαστη έκπληξη',
+    headline: 'Το καλοκαίρι περνά γρήγορα. Οι αναμνήσεις μένουν.',
+    intro: (n) =>
+      `${n}το καλοκαίρι περνά γρήγορα. Οι μεγάλες μέρες, οι αγαπημένοι μαζεμένοι γύρω από το τραπέζι, το τραγούδι που ξεκινά και όλοι ξέρουν τα λόγια... Φέτος, γίνε εσύ αυτός που δημιουργεί τη στιγμή. Ένα προσωποποιημένο τραγούδι — με το όνομά του, με τη δική σας ιστορία — είναι δώρο που μένει. Μια ανάμνηση, όχι άλλο ένα ξεχασμένο αντικείμενο. Ορίστε η καλοκαιρινή σου έκπτωση — μην αφήσεις το καλοκαίρι να περάσει χωρίς να του πεις πόσο σημαίνει για σένα.`,
+    cta: 'Δημιούργησε το τραγούδι τώρα',
+    ps: 'Η έκπτωση ισχύει μόνο για λίγες μέρες. Οι αγαπημένοι αξίζουν κάτι παραπάνω από ένα μήνυμα. 🎶',
   },
 };
 
@@ -248,6 +305,14 @@ const HR: MarketingStrings = {
     intro: (n) => `${n}nadamo se da ti se iznenađenje svidjelo. Evo kod za popust za sljedeću narudžbu.`,
     cta: 'Naruči ponovno uz popust',
   },
+  summer: {
+    subject: '☀️ Stiglo je ljeto — iznenadi nekog dragog nečim nezaboravnim',
+    headline: 'Ljeto brzo prođe. Uspomene ostaju.',
+    intro: (n) =>
+      `${n}ljeto brzo prođe. Dugi dani, dragi ljudi okupljeni za stolom, pjesma koja krene i svi znaju riječi... Ove godine budi ti taj koji stvara trenutak. Personalizirana pjesma — s njegovim imenom, s vašom pričom — poklon je koji ostaje. Uspomena, a ne još jedna zaboravljena sitnica. Evo tvog ljetnog popusta — ne dopusti da ljeto prođe a da mu ne kažeš koliko ti znači.`,
+    cta: 'Napravi pjesmu sada',
+    ps: 'Popust vrijedi samo nekoliko dana. Dragi ljudi zaslužuju više od poruke. 🎶',
+  },
 };
 
 const SL: MarketingStrings = {
@@ -269,6 +334,14 @@ const SL: MarketingStrings = {
     intro: (n) => `${n}upamo, da ti je bilo presenečenje všeč. Tukaj je koda za popust za naslednje naročilo.`,
     cta: 'Naroči znova s popustom',
   },
+  summer: {
+    subject: '☀️ Poletje je tu — nekomu dragemu pripravi nepozabno presenečenje',
+    headline: 'Poletje hitro mine. Spomini ostanejo.',
+    intro: (n) =>
+      `${n}poletje hitro mine. Dolgi dnevi, dragi ljudje zbrani za mizo, pesem, ki se začne in vsi poznajo besedilo... Letos bodi ti tisti, ki ustvari trenutek. Personalizirana pesem — z njegovim imenom, z vajino zgodbo — je darilo, ki ostane. Spomin, ne še en pozabljen predmet. Tukaj je tvoj poletni popust — ne pusti, da poletje mine, ne da bi mu povedal, koliko ti pomeni.`,
+    cta: 'Ustvari pesem zdaj',
+    ps: 'Popust velja le nekaj dni. Dragi ljudje si zaslužijo več kot sporočilo. 🎶',
+  },
 };
 
 const BS: MarketingStrings = {
@@ -289,6 +362,14 @@ const BS: MarketingStrings = {
     headline: 'Hvala što si izabrao nas!',
     intro: (n) => `${n}nadamo se da ti se iznenađenje dopalo. Evo kod za popust za sljedeću narudžbu.`,
     cta: 'Naruči ponovo uz popust',
+  },
+  summer: {
+    subject: '☀️ Stiglo je ljeto — iznenadi nekog dragog nečim nezaboravnim',
+    headline: 'Ljeto brzo prođe. Uspomene ostaju.',
+    intro: (n) =>
+      `${n}ljeto brzo prođe. Dugi dani, dragi ljudi okupljeni za stolom, pjesma koja krene i svi znaju riječi... Ove godine budi ti taj koji stvara trenutak. Personalizirana pjesma — sa njegovim imenom, sa vašom pričom — poklon je koji ostaje. Uspomena, a ne još jedna zaboravljena sitnica. Evo tvog ljetnog popusta — ne dozvoli da ljeto prođe a da mu ne kažeš koliko ti znači.`,
+    cta: 'Napravi pjesmu sada',
+    ps: 'Popust važi samo nekoliko dana. Dragi ljudi zaslužuju više od poruke. 🎶',
   },
 };
 
@@ -390,6 +471,33 @@ export function winbackTemplate(v: MarketingRenderVars): { subject: string; html
   };
 }
 
+/** Ofertă de vară — copy emoțional/nostalgic + cod de reducere. Campanie sezonieră. */
+export function summerOfferTemplate(v: MarketingRenderVars): { subject: string; html: string; text: string } {
+  const s = mstr(v.locale);
+  const t = s.summer;
+  const subject = v.headline || t.subject;
+  const bodyHtml = `
+    <p style="margin:0 0 14px;font-size:18px;color:${COLORS.goldMid};font-weight:700;">${greeting(s, v.recipientName)}</p>
+    <h2 style="margin:0 0 12px;font-family:'Times New Roman',serif;color:${COLORS.goldMid};font-size:22px;">${escape(v.headline || t.headline)}</h2>
+    <p style="margin:0 0 8px;color:${COLORS.cream};line-height:1.6;">${t.intro(namePrefix(v.recipientName))}</p>
+    ${v.promoCode ? promoCard(v.promoCode, v.discountLabel, v.validUntil, s.discount) : ''}
+    <div style="text-align:center;">${ctaButton(v.ctaUrl, v.ctaLabel || t.cta)}</div>
+    <p style="margin:14px 0 0;font-size:13px;color:rgba(255,245,220,0.6);text-align:center;">${escape(t.ps)}</p>
+    ${unsubscribeFooter(v.unsubscribeUrl, v.locale)}
+  `;
+  return {
+    subject,
+    html: renderBrandedEmail({
+      subject,
+      preheader: v.headline || t.headline,
+      locale: v.locale,
+      branding: v.branding,
+      bodyHtml,
+    }),
+    text: `${greeting(s, v.recipientName)}\n\n${t.intro(namePrefix(v.recipientName))}\n${v.promoCode ? `\n${s.discount.codeLabel}: ${v.promoCode}${v.discountLabel ? ` (−${v.discountLabel})` : ''}${v.validUntil ? `\n${s.discount.validLabel} ${v.validUntil}` : ''}\n` : ''}\n${t.cta}: ${v.ctaUrl}\n\n${t.ps}`,
+  };
+}
+
 /** Anunț generic — corpul îl scrie adminul (subject + headline + bodyHtml).
  *  Bun pentru newsletter / lansări / oferte ad-hoc fără cod. */
 export function genericAnnouncementTemplate(v: MarketingRenderVars): { subject: string; html: string; text: string } {
@@ -462,6 +570,15 @@ export const MARKETING_TEMPLATES: MarketingTemplateMeta[] = [
     supports: { promoCode: true, recipientName: true, customHeadline: true },
     render: winbackTemplate,
     sample: { ...SAMPLE_BASE, promoCode: 'REVINO15', discountLabel: '15%' },
+  },
+  {
+    id: 'summer_offer',
+    name: 'Ofertă de vară',
+    description:
+      'Campanie sezonieră de vară — copy nostalgic/emoțional + cod de reducere. „A venit vara, fă-i cuiva drag o surpriză."',
+    supports: { promoCode: true, recipientName: true, customHeadline: true },
+    render: summerOfferTemplate,
+    sample: { ...SAMPLE_BASE, promoCode: 'VARA20', discountLabel: '20%', validUntil: '05.06.2026' },
   },
   {
     id: 'generic_announcement',
