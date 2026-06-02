@@ -49,6 +49,9 @@ export interface WizardState {
   paymentId?: string | null;
   /** Câte link-uri de plată au fost trimise pe această conv (cap 2 — anti-spam). */
   linkReissueCount?: number;
+  /** De câte ori s-a trimis deja mesajul de cotare a prețului — guard anti-buclă.
+   *  După prima cotare, quote_price_with_offer nu mai retrimite mesajul ci redirecționează AI-ul spre finalize. */
+  priceQuotedCount?: number;
   updatedAt: string; // ISO
 }
 

@@ -1888,6 +1888,23 @@ ${transcript}`;
     const site = await this.sites.findById(ctx.conv.siteId);
     if (!site) return { error: 'site_not_found' };
 
+    // GUARD ANTI-BUCLĂ: dacă prețul a fost deja cotat o dată pe această conv, NU-l
+    // retrimite (userul l-a văzut deja). Re-cotarea când userul a confirmat sau
+    // întreabă „cum plătesc?" a frustrat clienți în prod (conv 875558e0, 2026-06-02)
+    // și a blocat vânzarea. Redirecționăm AI-ul spre colectarea email-ului / finalize.
+    const freshConv = await this.conv.findOne({ where: { id: ctx.conv.id } });
+    const alreadyQuoted = (freshConv?.wizardState?.priceQuotedCount ?? 0) >= 1;
+    if (alreadyQuoted) {
+      const hasEmail = !!(freshConv?.email);
+      return {
+        sent: false,
+        status: 'PRICE_ALREADY_QUOTED',
+        instruction: hasEmail
+          ? 'Prețul a fost deja cotat și userul îl știe. NU-l recota. Userul vrea să cumpere — apelează wizard_finalize ACUM ca să-i trimiți linkul de plată.'
+          : 'Prețul a fost deja cotat și userul îl știe. NU-l recota. Cere DOAR email-ul printr-un send_message scurt („Perfect! Dă-mi adresa ta de email și îți trimit linkul de plată imediat."), apoi wizard_finalize.',
+      };
+    }
+
     // Prețul de intrare anunțat = pachetul basic (29.99). Irina întreabă pachetul
     // concret abia în ultimul pas, înainte de link (vezi system prompt ETAPA 4).
     const basePrice = packageTotalCents('basic', site.packagePricesCents ?? null);
@@ -1953,10 +1970,14 @@ ${transcript}`;
       return { sent: false, status: 'SUGGESTION_PERSISTED', appliedCode: appliedCode?.code ?? null };
     }
 
+    // Persistă priceQuotedCount în wizardState (guard anti-buclă la următoarele calls).
+    const quoteState = this.getOrInitWizardState(freshConv ?? ctx.conv);
+    quoteState.priceQuotedCount = (quoteState.priceQuotedCount ?? 0) + 1;
+    quoteState.updatedAt = new Date().toISOString();
     await this.conv
       .createQueryBuilder()
       .update(Conversation)
-      .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+      .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1', wizardState: quoteState })
       .where('id = :id', { id: ctx.conv.id })
       .execute();
     this.gateway.emitMessage({ message: saved, conversation: ctx.conv });
