@@ -69,7 +69,7 @@ export class Generation {
   @Column({ type: 'varchar', length: 120 })
   recipientName!: string;
 
-  @Column({ type: 'varchar', length: 600 })
+  @Column({ type: 'text' })
   message!: string;
 
   @Column({ type: 'varchar', length: 120, nullable: true })

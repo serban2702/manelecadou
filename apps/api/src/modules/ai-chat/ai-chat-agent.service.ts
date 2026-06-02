@@ -686,7 +686,19 @@ REGULI STRICTE:
     insulte) → la primul mesaj abuziv, răspunde calm și redirecționează la subiect. La
     al doilea mesaj abuziv pe rând → apelează escalate_to_human cu motivul „client abuziv"
     și NU mai răspunde direct. Nu te cobori la nivelul lui și nu te lăsa târât în
-    dispută.`;
+    dispută.
+24. NU RE-COTA PREȚUL DUPĂ CE USERUL A CONFIRMAT (anti-buclă critică). Odată ce userul
+    a spus „da" / „sunt de acord" / „ok" / „accept" la preț, prețul e CONFIRMAT — NU mai
+    apela quote_price_with_offer și NU mai trimite mesajul „Maneaua costa ... Sunteti de
+    acord?". Avansează imediat la pasul următor: dacă lipsește email-ul → cere-l; dacă ai
+    tot → wizard_finalize. NU trimite NICIODATĂ de două ori la rând același mesaj de cotare.
+25. „CUM PLĂTESC?" = INTENȚIE DE CUMPĂRARE, NU întrebare de preț. Dacă userul întreabă
+    „cum pot plăti", „cum plătesc", „unde plătesc", „vreau să plătesc", „cum fac plata" →
+    NU re-cota prețul. Asta înseamnă că userul vrea linkul de plată ACUM. Avansează direct:
+    dacă lipsește email-ul, cere DOAR email-ul scurt („Perfect! Dă-mi adresa ta de email și
+    îți trimit linkul de plată imediat."), apoi wizard_finalize. Dacă ai deja email-ul →
+    wizard_finalize direct. A re-cota prețul când userul cere să plătească e bug observat
+    în prod (conv 875558e0, 2026-06-02) care a frustrat clientul și a blocat vânzarea.`;
 
     return this.appendMemoryAndContacts(basePrompt, memory, site);
   }
@@ -745,7 +757,7 @@ REGULI STRICTE:
           properties: {
             recipientName: { type: 'string', description: 'Numele persoanei care primește manea (1-120 char). OBLIGATORIU.' },
             dedicatorName: { type: 'string', description: 'Numele celui care dedică („De la"). OPTIONAL — doar dacă userul l-a dat.' },
-            message: { type: 'string', description: 'Mesajul/contextul personalizat (max 1000 char). Include detalii autobiografice dacă userul le-a dat (locuri, ani, momente, copii, etc.).' },
+            message: { type: 'string', description: 'Mesajul/contextul personalizat (versuri sau context, până la câteva mii de caractere). Include detalii autobiografice dacă userul le-a dat (locuri, ani, momente, copii, etc.). NU trunchia versurile lipite de user.' },
             email: { type: 'string', description: 'Email-ul user-ului (necesar pentru livrare).' },
             recipientGender: { type: 'string', enum: ['M', 'F'], description: 'Sex destinatar. Folosit pentru inferarea vocii când userul nu o cere explicit.' },
             voiceArtist: { type: 'string', enum: ['male', 'female'], description: 'Vocea maneaua: male (bărbătească) sau female (feminină).' },
@@ -1045,7 +1057,7 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
 
     if (typeof args.recipientName === 'string' && args.recipientName.trim()) updates.recipientName = args.recipientName.trim().slice(0, 120);
     if (typeof args.dedicatorName === 'string' && args.dedicatorName.trim()) updates.dedicatorName = args.dedicatorName.trim().slice(0, 120);
-    if (typeof args.message === 'string' && args.message.trim()) updates.message = args.message.trim().slice(0, 1000);
+    if (typeof args.message === 'string' && args.message.trim()) updates.message = args.message.trim().slice(0, 4000);
     if (typeof args.recipientGender === 'string' && (args.recipientGender === 'M' || args.recipientGender === 'F')) {
       updates.recipientGender = args.recipientGender;
     }
@@ -1700,7 +1712,7 @@ Pe baza conversației user-ului de mai jos și a datelor wizard deja colectate, 
 1. **style** — unul EXACT din: ${STYLES.join(', ')}
 2. **occasion** — una EXACT din: ${OCCASIONS.join(', ')}
 3. **voiceArtist** — EXACT una din: male (voce bărbătească) sau female (voce feminină). Alege după preferința explicită a userului ("voce de femeie" → female, "bărbătească" → male) sau, în lipsa ei, după sexul destinatarului.
-4. **enrichedMessage** — versiunea îmbogățită a mesajului inițial: include detalii autobiografice menționate de user (locuri unde s-au cunoscut, ani, momente importante, copii, profesie, etc.) ÎN MOD NATURAL, nu listate. Păstrează tonul mesajului original. Max 800 char.
+4. **enrichedMessage** — versiunea îmbogățită a mesajului inițial: include detalii autobiografice menționate de user (locuri unde s-au cunoscut, ani, momente importante, copii, profesie, etc.) ÎN MOD NATURAL, nu listate. Păstrează tonul mesajului original. Dacă userul a lipit versuri complete, NU le scurta — păstrează-le integral.
 
 REGULI:
 - Dacă userul a SPUS explicit ceva ("vreau ceva clasic", "voce de femeie") → folosește exact.
@@ -1792,7 +1804,7 @@ ${transcript}`;
     const originalMsg = wizardData.message ?? '';
     const messageResult =
       enrichedMsg.length > originalMsg.length && enrichedMsg.includes(originalMsg.slice(0, 30))
-        ? ({ value: enrichedMsg.slice(0, 1000), source: 'enriched' as const })
+        ? ({ value: enrichedMsg.slice(0, 4000), source: 'enriched' as const })
         : ({ value: originalMsg, source: 'user_said' as const });
 
     return { style: styleResult, occasion: occasionResult, voiceArtist: voiceResult, message: messageResult };
