@@ -70,6 +70,83 @@ function textOverlap(a: string, b: string): number {
   return union === 0 ? 0 : intersect / union;
 }
 
+/** Distanță Levenshtein (edit distance) — pentru fuzzy-match domenii email. */
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const prev = new Array<number>(n + 1);
+  const curr = new Array<number>(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j <= n; j++) prev[j] = curr[j];
+  }
+  return prev[n];
+}
+
+/** Domenii email comune folosite de clienții RO. Sursa de adevăr pt auto-corecție. */
+const COMMON_EMAIL_DOMAINS = [
+  'gmail.com', 'yahoo.com', 'yahoo.ro', 'hotmail.com', 'outlook.com',
+  'icloud.com', 'live.com', 'msn.com', 'aol.com', 'protonmail.com',
+];
+
+/**
+ * Auto-corectează DOAR partea de domeniu (după @) a unui email când e o greșeală
+ * evidentă de scriere a unui provider cunoscut (ex. „gamil.com"→„gmail.com",
+ * „gmil.com"→„gmail.com", „yahoo.con"→„yahoo.com"). NU atinge partea locală
+ * (înainte de @). Întoarce { email, corrected, original }. Dacă domeniul nu poate
+ * fi mapat cu încredere (ex. „@.com" fără nume provider) → lasă neschimbat.
+ */
+function autoCorrectEmail(raw: string): { email: string; corrected: boolean; original: string } {
+  const original = raw.trim();
+  // Elimină spațiile dinăuntru (useri scriu „gmil. com" / „@ gmail.com")
+  const compact = original.replace(/\s+/g, '').toLowerCase();
+  const at = compact.lastIndexOf('@');
+  if (at <= 0 || at === compact.length - 1) return { email: compact, corrected: compact !== original, original };
+  const local = compact.slice(0, at);
+  const domain = compact.slice(at + 1);
+  // Deja un domeniu cunoscut → nimic de făcut (doar compactarea spațiilor)
+  if (COMMON_EMAIL_DOMAINS.includes(domain)) {
+    const email = `${local}@${domain}`;
+    return { email, corrected: email !== original, original };
+  }
+  // Domeniul trebuie să aibă un nume real înainte de „." (nu „.com" gol)
+  const dotIdx = domain.indexOf('.');
+  if (dotIdx <= 0) return { email: compact, corrected: compact !== original, original };
+  // Fuzzy match pe lista de domenii cunoscute. Prag 3 (acoperă „gimel"/„giml"→gmail)
+  // DAR cu gardă pe prima literă identică — altfel domenii reale scurte ca „mail.com"
+  // ar fi „corectate" greșit în „gmail.com". Typo-urile de primă literă sunt rare.
+  let best: string | null = null;
+  let bestD = 99;
+  for (const known of COMMON_EMAIL_DOMAINS) {
+    const d = levenshtein(domain, known);
+    if (d < bestD) {
+      bestD = d;
+      best = known;
+    }
+  }
+  if (best && bestD > 0 && bestD <= 3 && best[0] === domain[0]) {
+    const email = `${local}@${best}`;
+    return { email, corrected: true, original };
+  }
+  const email = `${local}@${domain}`;
+  return { email, corrected: email !== original, original };
+}
+
+/** True dacă textul e o întrebare de confirmare a prețului („… 29.99 … de acord?"). */
+function looksLikePriceConfirmation(text: string): boolean {
+  const t = text.toLowerCase();
+  const hasAgree = /(esti|ești|sunteti|sunteți|e[sș]ti)\s+de\s+acord|de\s+acord\s*\?/.test(t);
+  const hasPrice = /\d{1,3}([.,]\d{2})?\s*(ron|lei|eur|€)|cost[ăa]\s|pre[țt]ul/.test(t);
+  return hasAgree && hasPrice;
+}
+
 @Injectable()
 export class AIChatAgentService {
   private readonly logger = new Logger('AIChatAgent');
@@ -504,8 +581,11 @@ ETAPA 2 — PREȚ + OFERTĂ (CRITIC — NICIODATĂ SKIPPED, MEREU prin TOOL):
     aplicarea automată a reducerii — userul cu cod nu vede oferta și pleacă.
   → BUG observat: AI scria manual prețul în loc să apeleze tool-ul. Useri cu cod
     roată nu vedeau reducerea aplicată. FIX: tool MEREU.
-  → Pattern care iese din tool: „Maneaua costa ${price} la care puteti sa beneficiati
-    de o oferta. Sunteti de acord?" (sau cu cod automat dacă există)
+  → Pattern care iese din tool: „Maneaua costa ${price}. Sunteti de acord?" (sau cu
+    cod automat aplicat dacă userul are reducere la roata norocului).
+  → NU adăuga formulări de tip „la care poți beneficia de o ofertă" / „mai poți primi
+    o reducere" când userul NU are cod real. E filler care sună fals și a fost interzis
+    explicit (2026-06-04). Pomenește oferta DOAR dacă tool-ul îți spune că există cod.
   → BUG observat 2026-05-27 (conv 9926b53b, 88ac3d75): AI a sărit ETAPA 2 când
     userul a dat context în primul mesaj — a întrebat direct mesajul și email-ul.
     Asta strica conversia pentru că userul nu confirmă prețul → mai târziu se
@@ -698,7 +778,14 @@ REGULI STRICTE:
     dacă lipsește email-ul, cere DOAR email-ul scurt („Perfect! Dă-mi adresa ta de email și
     îți trimit linkul de plată imediat."), apoi wizard_finalize. Dacă ai deja email-ul →
     wizard_finalize direct. A re-cota prețul când userul cere să plătească e bug observat
-    în prod (conv 875558e0, 2026-06-02) care a frustrat clientul și a blocat vânzarea.`;
+    în prod (conv 875558e0, 2026-06-02) care a frustrat clientul și a blocat vânzarea.
+26. EMAIL CU GREȘEALĂ DE DOMENIU: dacă userul scrie un email cu o greșeală EVIDENTĂ de
+    provider/extensie (ex. „gamil.com", „gmil.com", „giml.com", „yahoo.con", „gmail.co")
+    → sistemul îl corectează AUTOMAT pe partea de domeniu când apelezi wizard_update.
+    NU-l mai întreba „care e adresa corectă?" — wizard_update îți întoarce
+    emailAutoCorrected; doar confirmă scurt „Am notat: x@gmail.com" și continuă. Corectează
+    DOAR domeniul (după @), niciodată partea dinainte de @. Excepție: dacă domeniul e gol
+    sau imposibil de ghicit („nume@.com", „nume@") — atunci da, cere-i să-l rescrie.`;
 
     return this.appendMemoryAndContacts(basePrompt, memory, site);
   }
@@ -1076,8 +1163,15 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
 
     // Email collection — pentru guest fără email
     let emailUpdated = false;
+    let emailAutoCorrected: { from: string; to: string } | null = null;
     if (typeof args.email === 'string' && args.email.includes('@')) {
-      const email = args.email.trim().toLowerCase();
+      // Auto-corectează greșeli evidente de domeniu (gamil→gmail, yahoo.con→yahoo.com).
+      // NU mai întrebăm userul care e adresa corectă — o reparăm direct pe domeniu.
+      const fix = autoCorrectEmail(args.email);
+      const email = fix.email;
+      if (fix.corrected && fix.original.toLowerCase().replace(/\s+/g, '') !== email) {
+        emailAutoCorrected = { from: args.email.trim(), to: email };
+      }
       if (conv.guestId && this.guests.setEmail) {
         try {
           await this.guests.setEmail(conv.guestId, email);
@@ -1086,6 +1180,10 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
         } catch (e) {
           return { error: `email invalid: ${(e as Error).message}` };
         }
+      } else {
+        // user logat sau fără guestId — salvăm pe conv direct
+        conv.email = email;
+        emailUpdated = true;
       }
     }
 
@@ -1105,16 +1203,20 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
     ctx.conv = conv; // sync ctx
 
     const missing = this.missingWizardFields(state.data);
+    const correctionNote = emailAutoCorrected
+      ? ` Am corectat automat email-ul din „${emailAutoCorrected.from}" în „${emailAutoCorrected.to}" (greșeală evidentă de domeniu). NU întreba userul care e adresa corectă — folosește ${emailAutoCorrected.to}. Poți confirma scurt „Am notat: ${emailAutoCorrected.to}".`
+      : '';
     return {
       updated: Object.keys(updates),
       emailUpdated,
+      emailAutoCorrected,
       data: state.data,
       missingFields: missing,
       readyToFinalize: missing.length === 0 && (emailUpdated || !!conv.email),
       instruction:
-        missing.length === 0
+        (missing.length === 0
           ? 'Toate câmpurile sunt complete. Recapitulează datele în send_message + cere confirmare, apoi wizard_finalize.'
-          : `Mai întreabă: ${missing[0]} (un singur câmp pe mesaj).`,
+          : `Mai întreabă: ${missing[0]} (un singur câmp pe mesaj).`) + correctionNote,
     };
   }
 
@@ -1169,6 +1271,22 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
     if (!conv.siteId) return { error: 'no siteId' };
     const site = await this.sites.findById(conv.siteId);
     if (!site) return { error: 'site not found' };
+
+    // Dedup 3 min: dacă deja există un link identic (aceeași sumă) trimis în ultimele
+    // minute, refolosește-l în loc să creăm un Generation + checkout + card noi.
+    const reuseTier = normalizeTier(state.data.packageTier);
+    const reuseAmount = packageTotalCents(reuseTier, site.packagePricesCents ?? null);
+    const reusable = await this.findReusablePaymentLink(conv.id, reuseAmount, site.currency.toUpperCase());
+    if (reusable) {
+      const rp = reusable.payload as ChatMessagePayload | undefined;
+      return {
+        status: 'PAYMENT_LINK_REUSED',
+        checkoutUrl: rp?.checkoutUrl,
+        generationId: rp?.generationId,
+        instruction:
+          'Există deja un link de plată identic trimis în ultimele minute (cardul de mai sus). NU genera altul. Spune-i userului scurt să dea click pe linkul de plată de mai sus.',
+      };
+    }
 
     // Verifică email (cerut de createPendingForPayment pentru guest)
     if (conv.guestId && !conv.email) {
@@ -1438,6 +1556,28 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
       this.logger.warn(`sterile-loop check failed: ${(e as Error).message}`);
     }
 
+    // GUARD anti-recotare preț prin send_message (text liber). Tool-ul quote_price are
+    // deja priceQuotedCount, dar LLM scrie des prețul INLINE într-un send_message
+    // („Maneaua costă 29.99... Ești de acord?") — acel drum ocolea guard-ul. Bug
+    // observat 1-4 iunie 2026 (10 conv repetau confirmarea de preț de 2-3 ori).
+    if (looksLikePriceConfirmation(normalized)) {
+      const fresh = await this.conv.findOne({ where: { id: ctx.conv.id }, select: ['id', 'wizardState', 'email'] });
+      const alreadyQuoted = (fresh?.wizardState?.priceQuotedCount ?? 0) >= 1;
+      if (alreadyQuoted) {
+        return {
+          sent: false,
+          messageType: 'price_reconfirm_blocked',
+          status: 'PRICE_ALREADY_QUOTED',
+          instruction: fresh?.email
+            ? 'Prețul a fost deja cotat și userul l-a văzut. NU-l recota și NU mai întreba „ești de acord?". Avansează: apelează wizard_finalize ca să trimiți linkul de plată.'
+            : 'Prețul a fost deja cotat. NU-l recota. Cere DOAR email-ul scurt printr-un send_message, apoi wizard_finalize.',
+        };
+      }
+      // Prima cotare prin send_message — marchează priceQuotedCount (sincron cu tool-ul)
+      // ca recotările ulterioare (tool sau inline) să fie blocate.
+      await this.markPriceQuoted(ctx.conv.id);
+    }
+
     if (ctx.mode === 'suggest') {
       const m = this.msg.create({
         conversationId: ctx.conv.id,
@@ -1517,6 +1657,34 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
     }
   }
 
+  /**
+   * Caută un payment_link recent (ultimele 3 min) în aceeași conversație, cu aceeași
+   * sumă + valută. Dacă există, îl refolosim (același checkout Stripe) în loc să
+   * generăm unul nou — evită spam de carduri de plată + sesiuni Stripe inutile +
+   * încărcarea DB cu zeci de link-uri duplicat. Cerut explicit de owner 2026-06-04.
+   */
+  private async findReusablePaymentLink(
+    conversationId: string,
+    amountCents: number,
+    currency: string,
+  ): Promise<ChatMessage | null> {
+    try {
+      return await this.msg
+        .createQueryBuilder('m')
+        .where('m."conversationId" = :cid', { cid: conversationId })
+        .andWhere(`m."messageType" = 'payment_link'`)
+        .andWhere(`m."createdAt" > now() - interval '3 minutes'`)
+        .andWhere(`(m.payload->>'amount') = :amt`, { amt: String(amountCents) })
+        .andWhere(`UPPER(COALESCE(m.payload->>'currency','')) = :cur`, { cur: currency.toUpperCase() })
+        .andWhere(`m.payload->>'checkoutUrl' IS NOT NULL`)
+        .orderBy('m."createdAt"', 'DESC')
+        .getOne();
+    } catch (e) {
+      this.logger.warn(`findReusablePaymentLink failed: ${(e as Error).message}`);
+      return null;
+    }
+  }
+
   private async handleSendPaymentLink(
     ctx: AgentCtx,
     args: Record<string, unknown>,
@@ -1572,6 +1740,23 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
       if (!site) return { sent: false, status: 'SITE_NOT_FOUND' };
       const tier = normalizeTier(args.packageTier);
       const description = String(args.description ?? 'Manea personalizată');
+
+      // Dedup 3 min: dacă există deja un link identic (sumă+valută), refolosește-l.
+      const expectedAmount = typeof args.amount === 'number'
+        ? args.amount
+        : packageTotalCents(tier, site.packagePricesCents ?? null);
+      const expectedCurrency = (typeof args.currency === 'string' ? args.currency : site.currency).toUpperCase();
+      const reusable = await this.findReusablePaymentLink(ctx.conv.id, expectedAmount, expectedCurrency);
+      if (reusable) {
+        ctx.paymentLinkSent = true;
+        return {
+          sent: false,
+          status: 'PAYMENT_LINK_REUSED',
+          checkoutUrl: (reusable.payload as ChatMessagePayload | undefined)?.checkoutUrl,
+          instruction:
+            'Există deja un link de plată identic trimis acum câteva secunde (cardul de mai sus). NU trimite altul. Spune-i userului scurt să dea click pe linkul de plată de mai sus.',
+        };
+      }
 
       const checkout = await this.payments.createCheckoutSession({
         userId: ctx.conv.userId,
@@ -1877,6 +2062,25 @@ ${transcript}`;
     return { ok: true };
   }
 
+  /** Incrementă priceQuotedCount în wizardState (guard comun tool + send_message inline). */
+  private async markPriceQuoted(conversationId: string): Promise<void> {
+    try {
+      const c = await this.conv.findOne({ where: { id: conversationId } });
+      if (!c) return;
+      const st = this.getOrInitWizardState(c);
+      st.priceQuotedCount = (st.priceQuotedCount ?? 0) + 1;
+      st.updatedAt = new Date().toISOString();
+      await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ wizardState: st })
+        .where('id = :id', { id: conversationId })
+        .execute();
+    } catch (e) {
+      this.logger.warn(`markPriceQuoted failed: ${(e as Error).message}`);
+    }
+  }
+
   /** Quote price + verifică dacă userul are deja un cod câștigat la roată. */
   private async handleQuotePrice(ctx: AgentCtx): Promise<unknown> {
     const check = await this.assertNotManual(ctx);
@@ -1948,8 +2152,10 @@ ${transcript}`;
       const finalFormatted = `${(appliedCode.finalPrice / 100).toFixed(2)} ${currency.toLowerCase() === 'ron' ? 'lei' : currency}`;
       msgText = `Maneaua costa ${baseFormatted} dar tu ai deja codul ${appliedCode.code} cu ${appliedCode.pctOff}% reducere — deci ${finalFormatted}. Sunteti de acord?`;
     } else {
-      // Pattern verbatim al Irinei
-      msgText = `Maneaua costa ${baseFormatted} la care puteti sa mai beneficiati de o oferta. Sunteti de acord?`;
+      // Pattern verbatim al Irinei (fără clauza „la care puteti beneficia de o oferta"
+      // — scoasă 2026-06-04 la cererea ownerului: suna ca un robot care promite oferte
+      // pe care nu le dă concret; oferta reală apare doar când userul are cod la roată).
+      msgText = `Maneaua costa ${baseFormatted}. Sunteti de acord?`;
     }
 
     // Trimite mesajul direct (bypass send_message dedupe — e o acțiune distinctă)
@@ -1966,6 +2172,9 @@ ${transcript}`;
     const saved = await this.msg.save(m);
 
     if (ctx.mode === 'suggest') {
+      // Bump priceQuotedCount și în suggest mode — altfel guard-ul anti-recotare
+      // (tool + send_message inline) nu se declanșează pe conv-urile în suggest.
+      await this.markPriceQuoted(ctx.conv.id);
       this.gateway.emitAiSuggestion({ conversation: ctx.conv, message: saved });
       return { sent: false, status: 'SUGGESTION_PERSISTED', appliedCode: appliedCode?.code ?? null };
     }
@@ -2167,8 +2376,9 @@ ${transcript}`;
     const gate = this.assertCanSendMessage(ctx, 'change_email_and_resend');
     if (!gate.ok) return gate.result;
 
-    // Validare format email simplă (RFC 5322 ar fi over-kill aici)
-    const clean = newEmail.trim().toLowerCase();
+    // Auto-corectează greșeli evidente de domeniu înainte de validare
+    // (gamil→gmail etc.) — la fel ca la colectarea inițială.
+    const clean = autoCorrectEmail(newEmail).email;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
       return {
         sent: false,
@@ -2218,9 +2428,11 @@ ${transcript}`;
       };
     }
 
-    // Retrimite mail DACĂ generation există + are status livrabil (paidUnlocked sau succeeded)
+    // Retrimite mailul de comandă finalizată DACĂ melodia e deja gata (succeeded).
+    // Dacă încă se generează, NU retrimitem acum — emailul de la finalizare merge
+    // automat la noua adresă (notifyOwner citește email-ul live din users/guest).
     let resent = false;
-    if (gen && (gen.paidUnlocked || gen.status === 'succeeded') && gen.status === 'succeeded') {
+    if (gen && gen.status === 'succeeded') {
       try {
         // Lazy resolve GenerationsProcessor ca să evităm circular dep
         const procMod = await import('../generations/generations.processor');

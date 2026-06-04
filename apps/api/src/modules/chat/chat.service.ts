@@ -1545,6 +1545,30 @@ export class ChatService implements OnModuleInit {
     const customAmount = typeof opts.amount === 'number' && opts.amount > 0 ? Math.round(opts.amount) : undefined;
     const customCurrency = opts.currency?.toUpperCase();
 
+    // Dedup 3 min: dacă există deja un link identic (aceeași sumă + valută) trimis în
+    // ultimele 3 minute pe această conversație, refolosește-l în loc să generăm un
+    // checkout Stripe + card noi (evită spam de link-uri + sesiuni inutile). 2026-06-04.
+    {
+      const reuseAmount = customAmount ?? packageTotalCents(tier, site.packagePricesCents ?? null);
+      const reuseCurrency = (customCurrency ?? site.currency).toUpperCase();
+      const existing = await this.msg
+        .createQueryBuilder('m')
+        .where('m."conversationId" = :cid', { cid: conv.id })
+        .andWhere(`m."messageType" = 'payment_link'`)
+        .andWhere(`m."createdAt" > now() - interval '3 minutes'`)
+        .andWhere(`(m.payload->>'amount') = :amt`, { amt: String(reuseAmount) })
+        .andWhere(`UPPER(COALESCE(m.payload->>'currency','')) = :cur`, { cur: reuseCurrency })
+        .andWhere(`m.payload->>'checkoutUrl' IS NOT NULL`)
+        .orderBy('m."createdAt"', 'DESC')
+        .getOne();
+      if (existing) {
+        // Link identic deja trimis în ultimele 3 min — îl refolosim (emit din nou
+        // ca să apară instant la admin, dar fără checkout/card nou).
+        this.gateway.emitMessage({ message: existing, conversation: conv });
+        return existing;
+      }
+    }
+
     // Creează Checkout Session prin PaymentsService — propagă override-urile din
     // modal (admin poate alege liber suma/valuta/descrierea, NU se folosește site pricing).
     const checkout = await this.payments.createCheckoutSession({
