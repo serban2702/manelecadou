@@ -532,6 +532,91 @@ export class AnalyticsService {
     }));
   }
 
+  /**
+   * Venit (plăți paid) defalcat pe sursa de achiziție.
+   *
+   * Atribuirea unei plăți la o sursă e grea pentru că `analytics_sessions.guestId`
+   * e aproape mereu null (tracker-ul e anonim — știe doar `visitorId`/`ip`). Așa că
+   * legăm plata de sesiuni prin TREI căi, în ordinea încrederii:
+   *   1. userId (cel mai sigur — user logat)
+   *   2. guestId (când tracker-ul a primit guestId-ul)
+   *   3. ipAddress (puntea pentru vizitatorii anonimi — plata are `ipAddress`,
+   *      sesiunea are `ip`)
+   *
+   * Pentru fiecare plată alegem „last NON-direct touch" (ultima sesiune cu o sursă
+   * reală de campanie înainte de plată) — asta arată ce canal a adus banii, util
+   * pentru decizii de buget. Dacă nu există touch de campanie, cădem pe ultima
+   * sesiune (de obicei `direct`). Sursele Stripe (redirect post-checkout) sunt
+   * excluse ca să nu poluăm atribuirea.
+   */
+  async revenueBySource(range: RangeQuery, siteId: string | null = null) {
+    const params: unknown[] = [range.from.toISOString(), range.to.toISOString()];
+    let siteFilter = '';
+    if (siteId) {
+      params.push(siteId);
+      siteFilter = `AND p."siteId" = $${params.length}::uuid`;
+    }
+    const matches = `(
+      (s."userId" IS NOT NULL AND s."userId" = p."userId")
+      OR (s."guestId" IS NOT NULL AND s."guestId" = p."guestId")
+      OR (p."ipAddress" IS NOT NULL AND s.ip IS NOT NULL AND s.ip = p."ipAddress")
+    )`;
+    const rows: Array<{ source: string; paid_count: string; revenue_cents: string }> =
+      await this.payments.query(
+        `
+        SELECT
+          CASE
+            WHEN src LIKE '%facebook%' OR src = 'fb' OR src = 'meta' THEN 'facebook'
+            WHEN src LIKE '%instagram%' OR src = 'ig' THEN 'instagram'
+            WHEN src LIKE '%tiktok%' THEN 'tiktok'
+            WHEN src LIKE '%google%' THEN 'google'
+            WHEN src LIKE '%youtube%' OR src = 'yt' THEN 'youtube'
+            WHEN src LIKE '%whatsapp%' OR src = 'wa' THEN 'whatsapp'
+            WHEN src LIKE '%telegram%' THEN 'telegram'
+            ELSE src
+          END AS source,
+          COUNT(*)::int AS paid_count,
+          COALESCE(SUM(amount), 0)::bigint AS revenue_cents
+        FROM (
+          SELECT
+            p.id,
+            p.amount AS amount,
+            COALESCE(
+              (SELECT lower(s.source) FROM analytics_sessions s
+                WHERE ${matches}
+                  AND s."siteId" = p."siteId"
+                  AND s."startedAt" <= p."createdAt"
+                  AND s."startedAt" >= p."createdAt" - INTERVAL '60 days'
+                  AND s.source IS NOT NULL
+                  AND s.source NOT ILIKE 'stripe%' AND s.source NOT ILIKE 'checkout.stripe%'
+                  AND s.source NOT ILIKE 'direct' AND s.source <> '(direct)'
+                ORDER BY s."startedAt" DESC LIMIT 1),
+              (SELECT lower(s.source) FROM analytics_sessions s
+                WHERE ${matches}
+                  AND s."siteId" = p."siteId"
+                  AND s."startedAt" <= p."createdAt"
+                  AND s.source IS NOT NULL
+                  AND s.source NOT ILIKE 'stripe%' AND s.source NOT ILIKE 'checkout.stripe%'
+                ORDER BY s."startedAt" DESC LIMIT 1),
+              'direct'
+            ) AS src
+          FROM payments p
+          WHERE p.status = 'paid'
+            AND p."createdAt" BETWEEN $1 AND $2
+            ${siteFilter}
+        ) t
+        GROUP BY 1
+        ORDER BY revenue_cents DESC
+        `,
+        params,
+      );
+    return rows.map((r) => ({
+      source: r.source,
+      paidCount: Number(r.paid_count),
+      revenueCents: Number(r.revenue_cents),
+    }));
+  }
+
   async topPages(range: RangeQuery, siteId: string | null = null) {
     const r = this.fmtRange(range);
     const rows = await this.applySite(

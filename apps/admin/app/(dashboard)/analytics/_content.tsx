@@ -176,6 +176,7 @@ function OverviewTab({ range }: { range: { from: string; to: string } }) {
   const ts = useAsync(() => AnalyticsApi.timeSeries(range), [range]);
   const funnel = useAsync(() => AnalyticsApi.funnel(range), [range]);
   const sources = useAsync(() => AnalyticsApi.sources(range), [range]);
+  const revBySource = useAsync(() => AnalyticsApi.revenueBySource(range), [range]);
   const topPages = useAsync(() => AnalyticsApi.topPages(range), [range]);
   const devices = useAsync(() => AnalyticsApi.devices(range), [range]);
 
@@ -424,8 +425,82 @@ function OverviewTab({ range }: { range: { from: string; to: string } }) {
           )}
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <CircleDollarSign className="h-4 w-4 text-success" />
+            <CardTitle>Venit pe sursă</CardTitle>
+          </div>
+          <CardDescription>
+            Cât s-a încasat (plăți reușite) atribuit fiecărui canal — last non-direct touch, punte pe user/guest/IP. Folosește-l să decizi unde pui buget.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {revBySource.isLoading || !revBySource.data ? (
+            <Skeleton className="h-44 w-full" />
+          ) : revBySource.data.length === 0 ? (
+            <Empty title="Niciun venit în perioadă" />
+          ) : (
+            (() => {
+              const totalRev = revBySource.data.reduce((s, r) => s + r.revenueCents, 0);
+              return (
+                <div className="space-y-3">
+                  {revBySource.data.map((r) => {
+                    const meta = sourceMeta(r.source);
+                    const share = totalRev > 0 ? (r.revenueCents / totalRev) * 100 : 0;
+                    return (
+                      <div key={r.source}>
+                        <div className="flex items-center justify-between text-sm mb-1 gap-2">
+                          <span className="font-medium flex items-center gap-1.5 min-w-0">
+                            <span>{meta.emoji}</span>
+                            <span className="truncate">{meta.label}</span>
+                            <span className="text-xs text-muted-foreground">· {r.paidCount} {r.paidCount === 1 ? 'plată' : 'plăți'}</span>
+                          </span>
+                          <span className="tabular-nums font-semibold whitespace-nowrap">
+                            {RON(r.revenueCents)}
+                            <span className="text-xs text-muted-foreground font-normal ml-1.5">({Math.round(share)}%)</span>
+                          </span>
+                        </div>
+                        <div className="h-2 rounded-full bg-secondary overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-success to-emerald-300 rounded-full"
+                            style={{ width: `${share}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="pt-2 mt-1 border-t border-border flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Total atribuit</span>
+                    <span className="tabular-nums font-semibold">{RON(totalRev)}</span>
+                  </div>
+                </div>
+              );
+            })()
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
+}
+
+/** Emoji + label scurt pentru o sursă normalizată (revenue-by-source). */
+function sourceMeta(source: string): { emoji: string; label: string } {
+  const map: Record<string, { emoji: string; label: string }> = {
+    facebook: { emoji: '📘', label: 'Facebook' },
+    instagram: { emoji: '📷', label: 'Instagram' },
+    tiktok: { emoji: '🎵', label: 'TikTok' },
+    google: { emoji: '🔎', label: 'Google' },
+    youtube: { emoji: '📺', label: 'YouTube' },
+    whatsapp: { emoji: '💬', label: 'WhatsApp' },
+    telegram: { emoji: '✈️', label: 'Telegram' },
+    direct: { emoji: '🔗', label: 'Direct' },
+    '(direct)': { emoji: '🔗', label: 'Direct' },
+    email: { emoji: '✉️', label: 'Email' },
+    newsletter: { emoji: '✉️', label: 'Newsletter' },
+  };
+  return map[source.toLowerCase()] ?? { emoji: '🌐', label: source };
 }
 
 // ============== USERS ==============

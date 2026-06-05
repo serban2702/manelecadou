@@ -305,6 +305,7 @@ export class AdminController {
             WHERE (
               (s."userId" IS NOT NULL AND s."userId" = p."userId")
               OR (s."guestId" IS NOT NULL AND s."guestId" = p."guestId")
+              OR (p."ipAddress" IS NOT NULL AND s.ip IS NOT NULL AND s.ip = p."ipAddress")
             )
               AND s."startedAt" <= p."createdAt"
               AND s.source IS NOT NULL
@@ -326,6 +327,7 @@ export class AdminController {
             WHERE (
               (s."userId" IS NOT NULL AND s."userId" = p."userId")
               OR (s."guestId" IS NOT NULL AND s."guestId" = p."guestId")
+              OR (p."ipAddress" IS NOT NULL AND s.ip IS NOT NULL AND s.ip = p."ipAddress")
             )
               AND s."startedAt" <= p."createdAt"
               AND s.source IS NOT NULL
@@ -382,6 +384,15 @@ export class AdminController {
       { source: string | null; medium: string | null; campaign: string | null; referrer: string | null; landingPath: string | null }
     >();
     if (paymentIdList.length > 0) {
+      // Legăm plata de sesiuni prin userId / guestId / ipAddress. `guestId` pe
+      // analytics_sessions e aproape mereu null (tracker anonim), deci IP-ul e
+      // puntea reală pentru vizitatorii neînregistrați. Preferăm „last non-direct
+      // touch" (ultima sursă de campanie reală), apoi cădem pe ultima sesiune.
+      const matchSql = `(
+        (a."userId" IS NOT NULL AND a."userId" = p."userId")
+        OR (a."guestId" IS NOT NULL AND a."guestId" = p."guestId")
+        OR (p."ipAddress" IS NOT NULL AND a.ip IS NOT NULL AND a.ip = p."ipAddress")
+      )`;
       const rows: Array<{
         payment_id: string;
         source: string | null;
@@ -394,20 +405,21 @@ export class AdminController {
         SELECT p.id AS payment_id, s.source, s.medium, s.campaign, s.referrer, s."landingPath" AS landing_path
         FROM payments p
         LEFT JOIN LATERAL (
-          SELECT source, medium, campaign, referrer, "landingPath"
-          FROM analytics_sessions
-          WHERE (
-            ("userId" IS NOT NULL AND "userId" = p."userId")
-            OR ("guestId" IS NOT NULL AND "guestId" = p."guestId")
-          )
-            AND "startedAt" <= p."createdAt"
-            AND source IS NOT NULL
+          SELECT a.source, a.medium, a.campaign, a.referrer, a."landingPath"
+          FROM analytics_sessions a
+          WHERE ${matchSql}
+            AND a."siteId" = p."siteId"
+            AND a."startedAt" <= p."createdAt"
+            AND a."startedAt" >= p."createdAt" - INTERVAL '60 days'
+            AND a.source IS NOT NULL
             -- Exclude redirect-urile post-checkout — Stripe revine pe site cu
             -- referrer=checkout.stripe.com, ceea ce ar atribui plata altui retry
             -- ulterior. Cazuri reale de „venit prin Stripe" nu există.
-            AND source NOT ILIKE 'stripe%'
-            AND source NOT ILIKE 'checkout.stripe%'
-          ORDER BY "startedAt" DESC
+            AND a.source NOT ILIKE 'stripe%'
+            AND a.source NOT ILIKE 'checkout.stripe%'
+          -- Prioritate: sursele de campanie (non-direct) înaintea celor „direct".
+          ORDER BY (CASE WHEN a.source ILIKE 'direct' OR a.source = '(direct)' THEN 1 ELSE 0 END) ASC,
+                   a."startedAt" DESC
           LIMIT 1
         ) s ON true
         WHERE p.id = ANY($1::uuid[])

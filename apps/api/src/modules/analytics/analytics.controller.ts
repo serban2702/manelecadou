@@ -165,6 +165,11 @@ export class AnalyticsAdminController {
     return this.analytics.sources(rangeFromQuery(q), siteId);
   }
 
+  @Get('revenue-by-source')
+  revenueBySource(@Query() q: { from?: string; to?: string }, @CurrentSiteId() siteId: string | null) {
+    return this.analytics.revenueBySource(rangeFromQuery(q), siteId);
+  }
+
   @Get('top-pages')
   topPages(@Query() q: { from?: string; to?: string }, @CurrentSiteId() siteId: string | null) {
     return this.analytics.topPages(rangeFromQuery(q), siteId);

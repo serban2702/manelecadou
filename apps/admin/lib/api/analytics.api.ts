@@ -25,6 +25,9 @@ export class AnalyticsApi {
   static topPages(range: AnalyticsRange): Promise<Array<{ path: string; views: number; uniqueSessions: number }>> {
     return http.get(`/admin/analytics/top-pages${qs(range)}`);
   }
+  static revenueBySource(range: AnalyticsRange): Promise<Array<{ source: string; paidCount: number; revenueCents: number }>> {
+    return http.get(`/admin/analytics/revenue-by-source${qs(range)}`);
+  }
   static devices(range: AnalyticsRange): Promise<Array<{ device: string; sessions: number }>> {
     return http.get(`/admin/analytics/devices${qs(range)}`);
   }
