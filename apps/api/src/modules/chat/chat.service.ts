@@ -1205,6 +1205,7 @@ export class ChatService implements OnModuleInit {
       overrideCurrency: dto.currency?.toUpperCase(),
       overrideProductName: description,
       unlockGenerationId: generation.id,
+      ipAddress: conv.lastIp ?? undefined,
     });
 
     const currency = (dto.currency ?? site.currency).toUpperCase();
@@ -1580,6 +1581,10 @@ export class ChatService implements OnModuleInit {
       overrideAmount: customAmount,
       overrideCurrency: customCurrency,
       overrideProductName: description,
+      // IP-ul real al cumpărătorului (persistat la WS connect) — permite atribuirea
+      // pe sursă a plăților din chat, care altfel n-au cum să fie legate de o
+      // sesiune analytics (link generat server-side, fără request browser).
+      ipAddress: conv.lastIp ?? undefined,
     });
 
     // Computăm amount/currency efective pentru payload-ul mesajului (ce vede userul în card)

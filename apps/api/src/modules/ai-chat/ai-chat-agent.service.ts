@@ -1376,6 +1376,9 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
         email: conv.email ?? undefined,
         promoCode: activePromoCode ?? undefined,
         site,
+        // IP-ul real al cumpărătorului (din WS connect) — necesar pentru atribuirea
+        // pe sursă a plăților generate automat de AI (fără request browser direct).
+        ipAddress: conv.lastIp ?? undefined,
       });
 
       // 3. Update state — partial UPDATE pe wizardState (anti race condition).
@@ -1782,6 +1785,7 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
         packageTier: tier,
         email: ctx.conv.email ?? undefined,
         site,
+        ipAddress: ctx.conv.lastIp ?? undefined,
       });
 
       const amount = typeof args.amount === 'number'
