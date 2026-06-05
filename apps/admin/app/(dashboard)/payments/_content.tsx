@@ -130,6 +130,33 @@ function SourceBadge({
   );
 }
 
+/**
+ * Coloană „Campanie → Creativ": numele campaniei (utm_campaign, cu ID-uri Meta
+ * deja traduse în nume de backend) urmat de creativul/ad-ul (utm_content, tradus
+ * la ad_spend.adName). „—" când nu există atribuire de campanie.
+ */
+function CampaignCreativeCell({
+  attribution,
+}: {
+  attribution: import('@/lib/types').AdminPayment['attribution'];
+}) {
+  const campaign = attribution?.campaignName?.trim() || null;
+  const creative = attribution?.creative?.trim() || null;
+  if (!campaign && !creative) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+  const tooltip = [campaign ? `Campanie: ${campaign}` : null, creative ? `Creativ: ${creative}` : null]
+    .filter(Boolean)
+    .join('\n');
+  return (
+    <div className="flex items-center gap-1 text-xs max-w-[260px]" title={tooltip}>
+      <span className="truncate font-medium text-foreground">{campaign ?? '—'}</span>
+      <span className="text-muted-foreground shrink-0">→</span>
+      <span className="truncate text-muted-foreground">{creative ?? '—'}</span>
+    </div>
+  );
+}
+
 export default function PaymentsPage() {
   const { isAllSelected } = useSitesMap();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -293,6 +320,7 @@ export default function PaymentsPage() {
               <TableHead className="w-[110px]">Status</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Sursă</TableHead>
+              <TableHead>Campanie → Creativ</TableHead>
               <TableHead>Owner</TableHead>
               <TableHead>Comandă</TableHead>
               <TableHead>ID</TableHead>
@@ -334,6 +362,9 @@ export default function PaymentsPage() {
                 </TableCell>
                 <TableCell>
                   <SourceBadge attribution={p.attribution ?? null} />
+                </TableCell>
+                <TableCell>
+                  <CampaignCreativeCell attribution={p.attribution ?? null} />
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {p.userId

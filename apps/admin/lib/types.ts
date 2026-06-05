@@ -209,6 +209,10 @@ export interface AdminPayment {
     source: string | null;
     medium: string | null;
     campaign: string | null;
+    /** Nume campanie rezolvat (ID Meta → nume real din ad_spend), decodat. */
+    campaignName: string | null;
+    /** Creativul/ad-ul (utm_content) rezolvat la nume real (ad_spend.adName), decodat. */
+    creative: string | null;
     referrer: string | null;
     landingPath: string | null;
   } | null;

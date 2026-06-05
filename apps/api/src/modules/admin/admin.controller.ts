@@ -381,8 +381,26 @@ export class AdminController {
     // Folosim un singur query cu LATERAL JOIN ca să nu facem N+1.
     const attrByPaymentId = new Map<
       string,
-      { source: string | null; medium: string | null; campaign: string | null; referrer: string | null; landingPath: string | null }
+      {
+        source: string | null;
+        medium: string | null;
+        campaign: string | null;
+        campaignName: string | null;
+        creative: string | null;
+        referrer: string | null;
+        landingPath: string | null;
+      }
     >();
+    // utm_campaign / utm_content vin uneori URL-encoded (C3+%E2%80%94+OCAZII) sau
+    // ca ID-uri Meta numerice (deja rezolvate în SQL prin ad_spend). Decodăm aici.
+    const decodeUtm = (v: string | null): string | null => {
+      if (!v) return null;
+      try {
+        return decodeURIComponent(v.replace(/\+/g, ' ')).trim() || null;
+      } catch {
+        return v.replace(/\+/g, ' ').trim() || null;
+      }
+    };
     if (paymentIdList.length > 0) {
       // Legăm plata de sesiuni prin userId / guestId / ipAddress. `guestId` pe
       // analytics_sessions e aproape mereu null (tracker anonim), deci IP-ul e
@@ -398,14 +416,26 @@ export class AdminController {
         source: string | null;
         medium: string | null;
         campaign: string | null;
+        campaign_name: string | null;
+        creative: string | null;
         referrer: string | null;
         landing_path: string | null;
       }> = await this.payments.query(
         `
-        SELECT p.id AS payment_id, s.source, s.medium, s.campaign, s.referrer, s."landingPath" AS landing_path
+        SELECT p.id AS payment_id, s.source, s.medium, s.campaign, s.referrer, s."landingPath" AS landing_path,
+          -- Campania: traduce ID-ul Meta numeric în nume real (ad_spend), altfel păstrează utm_campaign.
+          COALESCE(
+            (SELECT sp."campaignName" FROM ad_spend sp WHERE sp."campaignId" = s.campaign AND sp."campaignName" IS NOT NULL LIMIT 1),
+            s.campaign
+          ) AS campaign_name,
+          -- Creativul (ad-ul): din utm_content; ID-ul ad-ului → nume real (ad_spend.adName).
+          COALESCE(
+            (SELECT sp."adName" FROM ad_spend sp WHERE sp."adId" = s."utmContent" AND sp."adName" IS NOT NULL LIMIT 1),
+            s."utmContent"
+          ) AS creative
         FROM payments p
         LEFT JOIN LATERAL (
-          SELECT a.source, a.medium, a.campaign, a.referrer, a."landingPath"
+          SELECT a.source, a.medium, a.campaign, a.referrer, a."landingPath", a."utmContent"
           FROM analytics_sessions a
           WHERE ${matchSql}
             AND a."siteId" = p."siteId"
@@ -431,6 +461,8 @@ export class AdminController {
           source: r.source,
           medium: r.medium,
           campaign: r.campaign,
+          campaignName: decodeUtm(r.campaign_name),
+          creative: decodeUtm(r.creative),
           referrer: r.referrer,
           landingPath: r.landing_path,
         });
