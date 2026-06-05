@@ -28,6 +28,9 @@ export class AnalyticsApi {
   static revenueBySource(range: AnalyticsRange): Promise<Array<{ source: string; paidCount: number; revenueCents: number }>> {
     return http.get(`/admin/analytics/revenue-by-source${qs(range)}`);
   }
+  static revenueByCampaign(range: AnalyticsRange): Promise<Array<{ source: string; campaign: string; paidCount: number; revenueCents: number }>> {
+    return http.get(`/admin/analytics/revenue-by-campaign${qs(range)}`);
+  }
   static devices(range: AnalyticsRange): Promise<Array<{ device: string; sessions: number }>> {
     return http.get(`/admin/analytics/devices${qs(range)}`);
   }

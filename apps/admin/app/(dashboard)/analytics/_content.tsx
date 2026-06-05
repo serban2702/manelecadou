@@ -177,6 +177,7 @@ function OverviewTab({ range }: { range: { from: string; to: string } }) {
   const funnel = useAsync(() => AnalyticsApi.funnel(range), [range]);
   const sources = useAsync(() => AnalyticsApi.sources(range), [range]);
   const revBySource = useAsync(() => AnalyticsApi.revenueBySource(range), [range]);
+  const revByCampaign = useAsync(() => AnalyticsApi.revenueByCampaign(range), [range]);
   const topPages = useAsync(() => AnalyticsApi.topPages(range), [range]);
   const devices = useAsync(() => AnalyticsApi.devices(range), [range]);
 
@@ -475,6 +476,58 @@ function OverviewTab({ range }: { range: { from: string; to: string } }) {
                     <span className="text-muted-foreground">Total atribuit</span>
                     <span className="tabular-nums font-semibold">{RON(totalRev)}</span>
                   </div>
+                </div>
+              );
+            })()
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Target className="h-4 w-4 text-primary" />
+            <CardTitle>Venit pe campanie</CardTitle>
+          </div>
+          <CardDescription>
+            Venitul atribuit fiecărei campanii (utm_campaign) — vezi exact ce reclamă aduce bani, nu doar canalul.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {revByCampaign.isLoading || !revByCampaign.data ? (
+            <Skeleton className="h-44 w-full" />
+          ) : revByCampaign.data.length === 0 ? (
+            <Empty title="Niciun venit în perioadă" />
+          ) : (
+            (() => {
+              const rowsC = revByCampaign.data.slice(0, 15);
+              const maxRev = Math.max(...rowsC.map((r) => r.revenueCents), 1);
+              return (
+                <div className="space-y-3">
+                  {rowsC.map((r, i) => {
+                    const meta = sourceMeta(r.source);
+                    const widthPct = (r.revenueCents / maxRev) * 100;
+                    return (
+                      <div key={`${r.source}-${r.campaign}-${i}`}>
+                        <div className="flex items-center justify-between text-sm mb-1 gap-2">
+                          <span className="font-medium flex items-center gap-1.5 min-w-0">
+                            <span title={meta.label}>{meta.emoji}</span>
+                            <span className="truncate" title={r.campaign || 'fără campanie'}>
+                              {r.campaign || <span className="text-muted-foreground italic">fără campanie</span>}
+                            </span>
+                            <span className="text-xs text-muted-foreground shrink-0">· {r.paidCount} {r.paidCount === 1 ? 'plată' : 'plăți'}</span>
+                          </span>
+                          <span className="tabular-nums font-semibold whitespace-nowrap">{RON(r.revenueCents)}</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-secondary overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-primary to-amber-300 rounded-full"
+                            style={{ width: `${widthPct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })()

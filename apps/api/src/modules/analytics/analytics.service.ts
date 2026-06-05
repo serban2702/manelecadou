@@ -617,6 +617,92 @@ export class AnalyticsService {
     }));
   }
 
+  /**
+   * Venit defalcat pe CAMPANIE (utm_campaign), nu doar pe sursă. Folosește aceeași
+   * punte de atribuire (user/guest/IP, last non-direct touch), dar reține și
+   * `campaign` din sesiunea care a atribuit plata. Numele de campanie vin uneori
+   * URL-encoded (`C1+%E2%80%94+DIASPORA`) → le decodăm și le re-agregăm în JS ca
+   * să nu se dubleze rândurile.
+   */
+  async revenueByCampaign(range: RangeQuery, siteId: string | null = null) {
+    const params: unknown[] = [range.from.toISOString(), range.to.toISOString()];
+    let siteFilter = '';
+    if (siteId) {
+      params.push(siteId);
+      siteFilter = `AND p."siteId" = $${params.length}::uuid`;
+    }
+    const matches = `(
+      (s."userId" IS NOT NULL AND s."userId" = p."userId")
+      OR (s."guestId" IS NOT NULL AND s."guestId" = p."guestId")
+      OR (p."ipAddress" IS NOT NULL AND s.ip IS NOT NULL AND s.ip = p."ipAddress")
+    )`;
+    const rows: Array<{ source: string | null; campaign: string | null; paid_count: string; revenue_cents: string }> =
+      await this.payments.query(
+        `
+        SELECT a.norm_source AS source, a.campaign AS campaign,
+          COUNT(*)::int AS paid_count, COALESCE(SUM(p.amount), 0)::bigint AS revenue_cents
+        FROM payments p
+        LEFT JOIN LATERAL (
+          SELECT
+            CASE
+              WHEN lower(s.source) LIKE '%facebook%' OR lower(s.source) IN ('fb','meta','an') THEN 'facebook'
+              WHEN lower(s.source) LIKE '%instagram%' OR lower(s.source) = 'ig' THEN 'instagram'
+              WHEN lower(s.source) LIKE '%tiktok%' THEN 'tiktok'
+              WHEN lower(s.source) LIKE '%google%' THEN 'google'
+              WHEN lower(s.source) LIKE '%youtube%' OR lower(s.source) = 'yt' THEN 'youtube'
+              WHEN lower(s.source) LIKE '%whatsapp%' OR lower(s.source) = 'wa' THEN 'whatsapp'
+              ELSE lower(s.source)
+            END AS norm_source,
+            -- Când utm_campaign e un ID Meta numeric, îl traducem în numele real
+            -- din ad_spend (tras din Marketing API). Altfel păstrăm numele brut.
+            COALESCE(
+              (SELECT sp."campaignName" FROM ad_spend sp
+                 WHERE sp."campaignId" = s.campaign AND sp."campaignName" IS NOT NULL
+                 LIMIT 1),
+              s.campaign
+            ) AS campaign
+          FROM analytics_sessions s
+          WHERE ${matches}
+            AND s."siteId" = p."siteId"
+            AND s."startedAt" <= p."createdAt"
+            AND s."startedAt" >= p."createdAt" - INTERVAL '60 days'
+            AND s.source IS NOT NULL
+            AND s.source NOT ILIKE 'stripe%' AND s.source NOT ILIKE 'checkout.stripe%'
+          ORDER BY (CASE WHEN s.source ILIKE 'direct' OR s.source = '(direct)' THEN 1 ELSE 0 END) ASC,
+                   s."startedAt" DESC
+          LIMIT 1
+        ) a ON true
+        WHERE p.status = 'paid'
+          AND p."createdAt" BETWEEN $1 AND $2
+          ${siteFilter}
+        GROUP BY a.norm_source, a.campaign
+        ORDER BY revenue_cents DESC
+        `,
+        params,
+      );
+
+    // Decode + re-agregare în JS: encoded și decoded sunt rânduri SQL diferite.
+    const decodeCampaign = (c: string | null): string => {
+      if (!c) return '';
+      try {
+        return decodeURIComponent(c.replace(/\+/g, ' ')).trim();
+      } catch {
+        return c.replace(/\+/g, ' ').trim();
+      }
+    };
+    const merged = new Map<string, { source: string; campaign: string; paidCount: number; revenueCents: number }>();
+    for (const r of rows) {
+      const source = r.source ?? 'direct';
+      const campaign = decodeCampaign(r.campaign);
+      const key = `${source}|${campaign}`;
+      const prev = merged.get(key) ?? { source, campaign, paidCount: 0, revenueCents: 0 };
+      prev.paidCount += Number(r.paid_count);
+      prev.revenueCents += Number(r.revenue_cents);
+      merged.set(key, prev);
+    }
+    return Array.from(merged.values()).sort((a, b) => b.revenueCents - a.revenueCents);
+  }
+
   async topPages(range: RangeQuery, siteId: string | null = null) {
     const r = this.fmtRange(range);
     const rows = await this.applySite(
