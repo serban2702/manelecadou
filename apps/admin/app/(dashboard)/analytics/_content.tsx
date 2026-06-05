@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useAsync } from "@/lib/hooks/use-async";
 import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 import { ro } from 'date-fns/locale';
@@ -79,11 +79,42 @@ function fmtDuration(sec: number): string {
   return `${m}m ${s}s`;
 }
 
+const RANGE_STORAGE_KEY = 'mc_admin_analytics_range';
+
+/** Restaurăm ultima perioadă selectată (persistată în localStorage). */
+function loadStoredRange(): DateRangeValue | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(RANGE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { from?: string; to?: string };
+    if (!parsed.from || !parsed.to) return null;
+    const from = new Date(parsed.from);
+    const to = new Date(parsed.to);
+    if (isNaN(from.getTime()) || isNaN(to.getTime())) return null;
+    return { from, to };
+  } catch {
+    return null;
+  }
+}
+
 export default function AnalyticsPage() {
-  const [range, setRange] = useState<DateRangeValue>({
-    from: startOfDay(subDays(new Date(), 6)),
-    to: endOfDay(new Date()),
-  });
+  const [range, setRange] = useState<DateRangeValue>(
+    () =>
+      loadStoredRange() ?? {
+        from: startOfDay(subDays(new Date(), 6)),
+        to: endOfDay(new Date()),
+      },
+  );
+  // Reținem perioada aleasă pentru următoarele vizite pe pagina de analytics.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        RANGE_STORAGE_KEY,
+        JSON.stringify({ from: range.from.toISOString(), to: range.to.toISOString() }),
+      );
+    } catch {/* ignore */}
+  }, [range]);
   const rangeISO = useMemo(
     () => ({ from: range.from.toISOString(), to: range.to.toISOString() }),
     [range],
@@ -98,7 +129,7 @@ export default function AnalyticsPage() {
       />
 
       <Tabs defaultValue="overview">
-        <TabsList className="mb-5">
+        <TabsList className="mb-5 flex max-w-full overflow-x-auto justify-start">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="sessions">Sesiuni</TabsTrigger>

@@ -65,6 +65,15 @@ interface DateRangePickerProps {
 export function DateRangePicker({ value, onChange, className }: DateRangePickerProps) {
   const [open, setOpen] = React.useState(false);
   const [draft, setDraft] = React.useState<DateRange | undefined>({ from: value.from, to: value.to });
+  // Pe telefon afișăm o singură lună și punem preset-urile deasupra calendarului.
+  const [isMobile, setIsMobile] = React.useState(false);
+  React.useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
 
   React.useEffect(() => {
     setDraft({ from: value.from, to: value.to });
@@ -94,17 +103,17 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
           </span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="end">
-        <div className="flex">
-          <div className="border-r border-border p-2 flex flex-col gap-1 min-w-[160px]">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground px-2 pt-1 pb-1">
+      <PopoverContent className="w-auto max-w-[calc(100vw-1.5rem)] p-0" align="end">
+        <div className="flex flex-col sm:flex-row">
+          <div className="border-b sm:border-b-0 sm:border-r border-border p-2 flex gap-1 overflow-x-auto sm:flex-col sm:min-w-[160px] sm:overflow-visible">
+            <div className="hidden sm:block text-[10px] uppercase tracking-wider text-muted-foreground px-2 pt-1 pb-1">
               Presets
             </div>
             {PRESETS.map((p) => (
               <button
                 key={p.key}
                 onClick={() => applyPreset(p)}
-                className="text-left text-sm px-2 py-1.5 rounded-md hover:bg-secondary transition"
+                className="text-left text-sm whitespace-nowrap px-2 py-1.5 rounded-md hover:bg-secondary transition shrink-0"
               >
                 {p.label}
               </button>
@@ -113,7 +122,7 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
           <div>
             <Calendar
               mode="range"
-              numberOfMonths={2}
+              numberOfMonths={isMobile ? 1 : 2}
               selected={draft}
               onSelect={setDraft}
               defaultMonth={value.from}

@@ -11,6 +11,7 @@ import {
   Check,
   CheckCheck,
   ChevronDown,
+  ChevronLeft,
   ClipboardCheck,
   CreditCard,
   Crown,
@@ -595,8 +596,14 @@ export default function AdminChatPage() {
         }
       />
 
-      <div className="flex gap-4 h-[calc(100vh-200px)] min-h-[500px]">
-        <aside className="w-72 shrink-0 bg-card border border-border rounded-xl overflow-hidden flex flex-col">
+      <div className="flex gap-3 md:gap-4 h-[calc(100vh-180px)] md:h-[calc(100vh-200px)] min-h-[460px]">
+        <aside
+          className={cn(
+            'w-full md:w-72 md:shrink-0 bg-card border border-border rounded-xl overflow-hidden flex-col',
+            // Pe mobil: lista plină când nu e activă o conversație, ascunsă altfel.
+            active ? 'hidden md:flex' : 'flex',
+          )}
+        >
           <div className="p-3 border-b border-border flex items-center justify-between">
             <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
               {showOnlyFavorites ? 'Favorite' : showArchived ? 'Arhivate' : 'Conversații'}
@@ -799,7 +806,13 @@ export default function AdminChatPage() {
           </div>
         </aside>
 
-        <section className="flex-1 min-w-0 bg-card border border-border rounded-xl flex flex-col overflow-hidden">
+        <section
+          className={cn(
+            'flex-1 min-w-0 bg-card border border-border rounded-xl flex-col overflow-hidden',
+            // Pe mobil: thread-ul plin doar când e o conversație activă.
+            active ? 'flex' : 'hidden md:flex',
+          )}
+        >
           {!active ? (
             <div className="m-auto">
               <Empty
@@ -813,10 +826,18 @@ export default function AdminChatPage() {
             <div className="m-auto text-muted-foreground text-sm">Se încarcă...</div>
           ) : (
             <>
-              <header className="px-4 py-3 border-b border-border">
-                <div className="flex items-start justify-between gap-3">
+              <header className="px-3 md:px-4 py-3 border-b border-border">
+                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between md:gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setActive(null)}
+                        className="md:hidden -ml-1 mr-0.5 h-7 w-7 shrink-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        aria-label="Înapoi la conversații"
+                      >
+                        <ChevronLeft className="h-5 w-5" />
+                      </button>
                       <PresenceDot online={thread.conversation.online} />
                       {conversationLabel(thread.conversation)}
                       <SiteBadge siteId={thread.conversation.siteId} />
@@ -827,7 +848,7 @@ export default function AdminChatPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 md:gap-2 shrink-0 flex-wrap justify-start md:justify-end">
                     <button
                       type="button"
                       onClick={() => setShowEmailModal(true)}
@@ -2420,7 +2441,7 @@ function ChatRightSidebar({
   const [tab, setTab] = useState<'replies' | 'ai'>('replies');
 
   return (
-    <aside className="w-80 border-l border-border bg-card/40 flex flex-col">
+    <aside className="hidden lg:flex w-80 shrink-0 border border-border rounded-xl bg-card/40 flex-col overflow-hidden">
       <div className="grid grid-cols-2 border-b border-border">
         <button
           type="button"

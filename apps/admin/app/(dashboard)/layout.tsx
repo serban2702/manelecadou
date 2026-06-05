@@ -19,6 +19,8 @@ import {
   MessageSquare,
   Music2,
   Mic2,
+  PanelLeftClose,
+  PanelLeftOpen,
   Receipt,
   Send,
   Settings as SettingsIcon,
@@ -51,31 +53,33 @@ type NavItem = {
    *  scope = 'both'     → mereu vizibil (datele se filtrează automat după selector).
    */
   scope: NavScope;
+  /** `mobile: true` → secțiunea apare și pe telefon. Restul sunt ascunse sub `md`. */
+  mobile?: boolean;
 };
 
 const NAV: NavItem[] = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard, scope: 'both' },
-  { href: '/analytics', label: 'Analytics', icon: BarChart3, scope: 'both' },
-  { href: '/chat', label: 'Chat', icon: MessageSquare, scope: 'both' },
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, scope: 'both', mobile: true },
+  { href: '/analytics', label: 'Analytics', icon: BarChart3, scope: 'both', mobile: true },
+  { href: '/chat', label: 'Chat', icon: MessageSquare, scope: 'both', mobile: true },
   { href: '/ai-memory', label: 'AI Memory', icon: BookOpen, scope: 'both' },
   { href: '/ai-monitor', label: 'AI Monitor', icon: Terminal, scope: 'both' },
   { href: '/inbox', label: 'Inbox', icon: Inbox, scope: 'both' },
   { href: '/inbox/knowledge', label: 'Knowledge', icon: BookOpen, scope: 'per-site' },
   { href: '/seo-pages', label: 'SEO articles', icon: FileText, scope: 'per-site' },
   { href: '/site-demos', label: 'Demo-uri ascultă', icon: Music2, scope: 'per-site' },
-  { href: '/generations', label: 'Generations', icon: Music2, scope: 'both' },
+  { href: '/generations', label: 'Generations', icon: Music2, scope: 'both', mobile: true },
   { href: '/suno', label: 'Suno credits', icon: Coins, scope: 'global' },
   { href: '/lyrics', label: 'Lyrics (AI)', icon: Mic2, scope: 'global' },
   { href: '/users', label: 'Users', icon: Users, scope: 'both' },
   { href: '/guests', label: 'Guests', icon: Users2, scope: 'both' },
-  { href: '/payments', label: 'Payments', icon: CreditCard, scope: 'both' },
+  { href: '/payments', label: 'Payments', icon: CreditCard, scope: 'both', mobile: true },
   { href: '/facturare', label: 'Facturare', icon: Receipt, scope: 'both' },
-  { href: '/promo', label: 'Promo', icon: Tag, scope: 'both' },
+  { href: '/promo', label: 'Promo', icon: Tag, scope: 'both', mobile: true },
   { href: '/gift-codes', label: 'Gift codes', icon: Gift, scope: 'per-site' },
   { href: '/marketing', label: 'Marketing', icon: Megaphone, scope: 'both' },
-  { href: '/emails', label: 'Emails trimise', icon: Send, scope: 'both' },
+  { href: '/emails', label: 'Emails trimise', icon: Send, scope: 'both', mobile: true },
   { href: '/errors', label: 'Errors', icon: AlertTriangle, scope: 'both' },
-  { href: '/sites', label: 'Toate site-urile', icon: Globe, scope: 'both' },
+  { href: '/sites', label: 'Toate site-urile', icon: Globe, scope: 'both', mobile: true },
   { href: '/site', label: 'Acest site', icon: Globe, scope: 'per-site' },
   { href: '/database', label: 'Database', icon: Database, scope: 'global' },
   { href: '/settings', label: 'Settings', icon: SettingsIcon, scope: 'global' },
@@ -103,6 +107,25 @@ function DashboardShell({ children }: { children: ReactNode }) {
   // altfel React vede HTML diferit pe server vs client (hydration mismatch).
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [me, setMe] = useState<{ email: string } | null>(null);
+
+  // Sidebar deschis/închis. Pe desktop = rezervă coloana de 60 (persistat în
+  // localStorage). Pe mobil = drawer off-canvas peste conținut (default închis).
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  useEffect(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('mc_admin_sidebar') : null;
+    if (saved !== null) setSidebarOpen(saved === '1');
+    else setSidebarOpen(typeof window !== 'undefined' && window.innerWidth >= 768);
+  }, []);
+  const toggleSidebar = () =>
+    setSidebarOpen((v) => {
+      const next = !v;
+      try { localStorage.setItem('mc_admin_sidebar', next ? '1' : '0'); } catch {/* ignore */}
+      return next;
+    });
+  // Click pe un link de nav pe mobil închide drawer-ul (fără a-l persista pe desktop).
+  const closeSidebarOnMobile = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
+  };
 
   // Resolve auth state DUPĂ hydration (citirea localStorage e client-only).
   useEffect(() => {
@@ -177,17 +200,38 @@ function DashboardShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen flex">
-      <aside className="w-60 shrink-0 border-r border-border bg-card/40 flex flex-col sticky top-0 h-screen">
+    <div className="min-h-screen">
+      {/* Backdrop pentru drawer-ul de mobil */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden
+        />
+      )}
+      <aside
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 w-60 shrink-0 border-r border-border bg-card flex flex-col h-screen transition-transform duration-200 ease-out',
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+        )}
+      >
         <div className="p-5 border-b border-border">
           <div className="flex items-center gap-2">
             <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-primary to-amber-300 flex items-center justify-center text-primary-foreground shadow-lg shadow-primary/20">
               <Crown className="h-5 w-5" />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="text-sm font-semibold truncate">Manele Cadou</div>
               <div className="text-[11px] text-muted-foreground">Panou admin</div>
             </div>
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(false)}
+              className="md:hidden h-8 w-8 -mr-1 shrink-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-secondary hover:text-foreground"
+              aria-label="Închide meniul"
+            >
+              <PanelLeftClose className="h-5 w-5" />
+            </button>
           </div>
         </div>
 
@@ -223,8 +267,11 @@ function DashboardShell({ children }: { children: ReactNode }) {
               <SpaLink
                 key={n.href}
                 href={n.href}
+                onClick={closeSidebarOnMobile}
                 className={cn(
                   'group flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors',
+                  // Secțiunile fără `mobile` nu apar pe telefon (cerere user).
+                  n.mobile ? 'flex' : 'hidden md:flex',
                   active
                     ? 'bg-primary/15 text-primary font-medium'
                     : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
@@ -266,13 +313,27 @@ function DashboardShell({ children }: { children: ReactNode }) {
       </aside>
 
       <main className={cn(
-        'flex-1 min-w-0 overflow-x-auto transition-colors',
+        'min-w-0 overflow-x-hidden transition-[margin,background-color] duration-200',
         // Tint subtil al întregului main când suntem pe „toate site-urile"
         // — întărește vizual că ești în mod cross-tenant.
         selectedSite === ALL_SITES && 'bg-amber-500/[0.015]',
+        // Pe desktop rezervăm coloana sidebar-ului când e deschis; pe mobil drawer-ul plutește deasupra.
+        sidebarOpen ? 'md:ml-60' : 'md:ml-0',
       )}>
-        <ScopeBanner />
-        <div className="px-6 py-6 max-w-[1600px] mx-auto">{children}</div>
+        <ScopeBanner
+          leading={
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              className="h-8 w-8 shrink-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+              title={sidebarOpen ? 'Ascunde meniul' : 'Arată meniul'}
+              aria-label={sidebarOpen ? 'Ascunde meniul' : 'Arată meniul'}
+            >
+              {sidebarOpen ? <PanelLeftClose className="h-5 w-5" /> : <PanelLeftOpen className="h-5 w-5" />}
+            </button>
+          }
+        />
+        <div className="px-4 md:px-6 py-5 md:py-6 max-w-[1600px] mx-auto">{children}</div>
       </main>
     </div>
   );

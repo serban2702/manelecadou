@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Globe, Layers, AlertTriangle } from 'lucide-react';
 import { ALL_SITES, getSelectedSiteId } from '@/lib/api/sites.api';
 import { useSitesMap } from '@/lib/hooks/use-sites-map';
@@ -17,7 +17,7 @@ import { cn } from '@/lib/cn';
  * ca să nu existe confuzie când rulează acțiuni distructive (ex. ștergere
  * promo cod care există pe mai multe site-uri).
  */
-export function ScopeBanner() {
+export function ScopeBanner({ leading }: { leading?: ReactNode }) {
   const { byId, loaded } = useSitesMap();
   const [selectedId, setSelectedId] = useState<string>(ALL_SITES);
 
@@ -28,9 +28,13 @@ export function ScopeBanner() {
     return () => window.removeEventListener('mc:site-changed', onChange);
   }, []);
 
-  // Cât timp lista nu e încărcată, nu randa nimic (evită flash de „all sites" la mount).
+  // Cât timp lista nu e încărcată, păstrăm doar bara cu toggle-ul (evită flash de „all sites" la mount).
   if (!loaded) {
-    return <div className="h-1 bg-border/40" aria-hidden />;
+    return (
+      <div className="sticky top-0 z-30 bg-background/80 border-b border-border/40 backdrop-blur-sm">
+        <div className="px-3 md:px-6 py-2 flex items-center gap-3">{leading}</div>
+      </div>
+    );
   }
 
   const totalSites = byId.size;
@@ -39,7 +43,8 @@ export function ScopeBanner() {
   if (totalSites === 0) {
     return (
       <div className="sticky top-0 z-30 bg-red-500/15 border-b border-red-500/40 backdrop-blur-sm">
-        <div className="px-6 py-2.5 flex items-center gap-3 text-sm">
+        <div className="px-3 md:px-6 py-2.5 flex items-center gap-3 text-sm">
+          {leading}
           <AlertTriangle className="h-4 w-4 text-red-400 shrink-0" />
           <span className="text-red-300 font-medium">
             Niciun site configurat în DB.
@@ -57,7 +62,8 @@ export function ScopeBanner() {
   if (selectedId === ALL_SITES && totalSites > 1) {
     return (
       <div className="sticky top-0 z-30 bg-amber-500/10 border-b-2 border-amber-500/50 backdrop-blur-sm">
-        <div className="px-6 py-2.5 flex items-center gap-3 text-sm">
+        <div className="px-3 md:px-6 py-2.5 flex items-center gap-3 text-sm">
+          {leading}
           <Layers className="h-4 w-4 text-amber-400 shrink-0" />
           <div className="flex-1 min-w-0">
             <span className="text-amber-300 font-semibold">CROSS-TENANT</span>
@@ -90,7 +96,8 @@ export function ScopeBanner() {
 
   return (
     <div className="sticky top-0 z-30 bg-emerald-500/5 border-b border-emerald-500/20 backdrop-blur-sm">
-      <div className="px-6 py-2 flex items-center gap-3 text-sm">
+      <div className="px-3 md:px-6 py-2 flex items-center gap-3 text-sm">
+        {leading}
         <span
           className="h-2.5 w-2.5 rounded-full shrink-0 ring-2 ring-emerald-500/20"
           style={{ background: dot }}
