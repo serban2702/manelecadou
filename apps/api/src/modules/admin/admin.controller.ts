@@ -420,6 +420,7 @@ export class AdminController {
         creative: string | null;
         referrer: string | null;
         landing_path: string | null;
+        has_session: boolean;
       }> = await this.payments.query(
         `
         SELECT p.id AS payment_id, s.source, s.medium, s.campaign, s.referrer, s."landingPath" AS landing_path,
@@ -432,7 +433,23 @@ export class AdminController {
           COALESCE(
             (SELECT sp."adName" FROM ad_spend sp WHERE sp."adId" = s."utmContent" AND sp."adName" IS NOT NULL LIMIT 1),
             s."utmContent"
-          ) AS creative
+          ) AS creative,
+          -- Există VREO sesiune a cumpărătorului (incl. imediat după plată, aceeași zi)?
+          -- Dacă da dar fără touch de campanie → e client „Direct", nu „date lipsă".
+          -- Fereastra +1 zi prinde fluxul chat/AI (plata = când se trimite linkul,
+          -- userul navighează adesea imediat după).
+          EXISTS (
+            SELECT 1 FROM analytics_sessions a2
+            WHERE (
+              (a2."userId" IS NOT NULL AND a2."userId" = p."userId")
+              OR (a2."guestId" IS NOT NULL AND a2."guestId" = p."guestId")
+              OR (p."ipAddress" IS NOT NULL AND a2.ip IS NOT NULL AND a2.ip = p."ipAddress")
+            )
+              AND a2."siteId" = p."siteId"
+              AND a2."startedAt" BETWEEN p."createdAt" - INTERVAL '60 days' AND p."createdAt" + INTERVAL '1 day'
+              AND a2.source IS NOT NULL
+              AND a2.source NOT ILIKE 'stripe%' AND a2.source NOT ILIKE 'checkout.stripe%'
+          ) AS has_session
         FROM payments p
         LEFT JOIN LATERAL (
           SELECT a.source, a.medium, a.campaign, a.referrer, a."landingPath", a."utmContent"
@@ -457,15 +474,30 @@ export class AdminController {
         [paymentIdList],
       );
       for (const r of rows) {
-        attrByPaymentId.set(r.payment_id, {
-          source: r.source,
-          medium: r.medium,
-          campaign: r.campaign,
-          campaignName: decodeUtm(r.campaign_name),
-          creative: decodeUtm(r.creative),
-          referrer: r.referrer,
-          landingPath: r.landing_path,
-        });
+        if (r.source) {
+          // Touch de campanie/sesiune înainte de plată — atribuire completă.
+          attrByPaymentId.set(r.payment_id, {
+            source: r.source,
+            medium: r.medium,
+            campaign: r.campaign,
+            campaignName: decodeUtm(r.campaign_name),
+            creative: decodeUtm(r.creative),
+            referrer: r.referrer,
+            landingPath: r.landing_path,
+          });
+        } else if (r.has_session) {
+          // Cumpărătorul există în analytics dar fără touch de campanie → „Direct".
+          attrByPaymentId.set(r.payment_id, {
+            source: 'direct',
+            medium: null,
+            campaign: null,
+            campaignName: null,
+            creative: null,
+            referrer: null,
+            landingPath: null,
+          });
+        }
+        // Altfel: nicio sesiune → rămâne neatribuit („—").
       }
     }
 
