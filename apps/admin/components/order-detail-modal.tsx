@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Empty } from '@/components/ui/empty';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TabsContent } from '@/components/ui/tabs';
+import { ResponsiveTabs, type ResponsiveTab } from '@/components/ui/responsive-tabs';
 import { useToast } from '@/components/ui/use-toast';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { format, formatDistanceStrict } from 'date-fns';
@@ -114,28 +115,25 @@ function OrderTabs({ data, refetch }: { data: OrderDetail; refetch: () => Promis
   const emailCount = data.outboundEmails.length;
   const eventCount = data.analytics.events.length;
   const toolCount = data.chat?.aiToolCalls.length ?? 0;
+  const [tab, setTab] = useState('overview');
+
+  const tabs: ResponsiveTab[] = [
+    { value: 'overview', label: 'Privire generală' },
+    { value: 'form', label: 'Comandă (formular)' },
+    { value: 'payment', label: 'Plată' },
+    { value: 'audio', label: 'Audio + versuri' },
+    ...(data.generation ? [{ value: 'studio', label: '🎚 Studio' }] : []),
+    { value: 'suno', label: `Suno (${sunoCount})` },
+    { value: 'openai', label: `OpenAI (${lyricsCount})` },
+    { value: 'emails', label: `Email (${emailCount})` },
+    ...(chatCount > 0 ? [{ value: 'chat', label: `Chat (${chatCount})${chatFallback ? '?' : ''}` }] : []),
+    ...(toolCount > 0 ? [{ value: 'ai-tools', label: `AI tools (${toolCount})` }] : []),
+    { value: 'analytics', label: `Sursă (${eventCount})` },
+    { value: 'timeline', label: `Cronologie (${data.timeline.length})` },
+  ];
 
   return (
-    <Tabs defaultValue="overview" className="space-y-4">
-      <TabsList className="flex w-full flex-wrap justify-start gap-1">
-        <TabsTrigger value="overview">Privire generală</TabsTrigger>
-        <TabsTrigger value="form">Comandă (formular)</TabsTrigger>
-        <TabsTrigger value="payment">Plată</TabsTrigger>
-        <TabsTrigger value="audio">Audio + versuri</TabsTrigger>
-        {data.generation && <TabsTrigger value="studio">🎚 Studio</TabsTrigger>}
-        <TabsTrigger value="suno">Suno ({sunoCount})</TabsTrigger>
-        <TabsTrigger value="openai">OpenAI ({lyricsCount})</TabsTrigger>
-        <TabsTrigger value="emails">Email ({emailCount})</TabsTrigger>
-        {chatCount > 0 && (
-          <TabsTrigger value="chat">
-            Chat ({chatCount}){chatFallback ? '?' : ''}
-          </TabsTrigger>
-        )}
-        {toolCount > 0 && <TabsTrigger value="ai-tools">AI tools ({toolCount})</TabsTrigger>}
-        <TabsTrigger value="analytics">Sursă ({eventCount})</TabsTrigger>
-        <TabsTrigger value="timeline">Cronologie ({data.timeline.length})</TabsTrigger>
-      </TabsList>
-
+    <ResponsiveTabs value={tab} onValueChange={setTab} tabs={tabs}>
       <TabsContent value="overview"><OverviewTab data={data} /></TabsContent>
       <TabsContent value="form"><FormTab data={data} /></TabsContent>
       <TabsContent value="payment"><PaymentTab data={data} /></TabsContent>
@@ -150,7 +148,7 @@ function OrderTabs({ data, refetch }: { data: OrderDetail; refetch: () => Promis
       {toolCount > 0 && <TabsContent value="ai-tools"><AiToolsTab data={data} /></TabsContent>}
       <TabsContent value="analytics"><AnalyticsTab data={data} /></TabsContent>
       <TabsContent value="timeline"><TimelineTab data={data} /></TabsContent>
-    </Tabs>
+    </ResponsiveTabs>
   );
 }
 

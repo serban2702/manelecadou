@@ -157,6 +157,81 @@ function CampaignCreativeCell({
   );
 }
 
+/** Card pentru o plată — varianta mobilă a unui rând din tabel. */
+function PaymentCard({
+  p,
+  showSite,
+  onClick,
+}: {
+  p: import('@/lib/types').AdminPayment;
+  showSite: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full text-left rounded-xl border border-border bg-card p-3 active:bg-secondary/40 transition-colors"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-sm font-mono font-semibold tabular-nums">
+            {(p.amount / 100).toFixed(2)} {p.currency}
+          </div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">
+            {format(new Date(p.createdAt), "d MMM yyyy 'la' HH:mm", { locale: ro })}
+          </div>
+        </div>
+        <Badge variant={STATUS_VARIANT[p.status] ?? 'muted'}>{p.status}</Badge>
+      </div>
+
+      <div className="mt-2 text-xs text-muted-foreground truncate">{p.email ?? '— fără email'}</div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {showSite && <SiteBadge siteId={p.siteId} />}
+        <SourceBadge attribution={p.attribution ?? null} />
+        {(p.attribution?.campaignName || p.attribution?.creative) && (
+          <span className="text-[11px] text-muted-foreground">
+            {p.attribution?.campaignName ?? '—'}
+            <span className="mx-1">→</span>
+            {p.attribution?.creative ?? '—'}
+          </span>
+        )}
+      </div>
+
+      {p.generation && (
+        <div className="mt-2 flex items-center gap-1.5 text-xs">
+          <Music2 className="h-3 w-3 text-muted-foreground shrink-0" />
+          <span className="font-medium truncate">{p.generation.recipientName}</span>
+          <Badge
+            variant={
+              p.generation.status === 'succeeded'
+                ? 'success'
+                : p.generation.status === 'failed'
+                  ? 'destructive'
+                  : 'muted'
+            }
+            className="text-[10px]"
+          >
+            {p.generation.status}
+          </Badge>
+        </div>
+      )}
+
+      <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
+        <span>{p.provider}</span>
+        <span>
+          {p.userId
+            ? `user:${p.userId.slice(0, 8)}`
+            : p.guestId
+              ? `guest:${p.guestId.slice(0, 8)}`
+              : '—'}
+        </span>
+      </div>
+    </button>
+  );
+}
+
 export default function PaymentsPage() {
   const { isAllSelected } = useSitesMap();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -310,6 +385,20 @@ export default function PaymentsPage() {
           description={hasFilters ? 'Încearcă să resetezi filtrele.' : undefined}
         />
       ) : (
+        <>
+        {/* Mobil: carduri */}
+        <div className="md:hidden space-y-2.5">
+          {items.map((p) => (
+            <PaymentCard
+              key={p.id}
+              p={p}
+              showSite={isAllSelected}
+              onClick={() => setSelectedId(p.id)}
+            />
+          ))}
+        </div>
+        {/* Desktop: tabel */}
+        <div className="hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -419,6 +508,8 @@ export default function PaymentsPage() {
             ))}
           </TableBody>
         </Table>
+        </div>
+        </>
       )}
 
       {/* Paginare jos — vizibilă chiar și când e o singură pagină ca să fie clar

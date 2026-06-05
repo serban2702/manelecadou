@@ -59,7 +59,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TabsContent } from '@/components/ui/tabs';
+import { ResponsiveTabs } from '@/components/ui/responsive-tabs';
 
 const RON = (cents: number) =>
   `${(cents / 100).toLocaleString('ro-RO', { maximumFractionDigits: 2 })} lei`;
@@ -119,6 +120,7 @@ export default function AnalyticsPage() {
     () => ({ from: range.from.toISOString(), to: range.to.toISOString() }),
     [range],
   );
+  const [tab, setTab] = useState('overview');
 
   return (
     <div>
@@ -128,18 +130,21 @@ export default function AnalyticsPage() {
         actions={<DateRangePicker value={range} onChange={setRange} />}
       />
 
-      <Tabs defaultValue="overview">
-        <TabsList className="mb-5 flex max-w-full overflow-x-auto justify-start">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="users">Users</TabsTrigger>
-          <TabsTrigger value="sessions">Sesiuni</TabsTrigger>
-          <TabsTrigger value="tech">Tech &amp; Geo</TabsTrigger>
-          <TabsTrigger value="bots">Boți</TabsTrigger>
-          <TabsTrigger value="payments">Payments</TabsTrigger>
-          <TabsTrigger value="ads">Ads &amp; ROAS</TabsTrigger>
-          <TabsTrigger value="cross-check">Cross-check</TabsTrigger>
-        </TabsList>
-
+      <ResponsiveTabs
+        value={tab}
+        onValueChange={setTab}
+        listClassName="mb-5 max-w-full overflow-x-auto"
+        tabs={[
+          { value: 'overview', label: 'Overview' },
+          { value: 'users', label: 'Users' },
+          { value: 'sessions', label: 'Sesiuni' },
+          { value: 'tech', label: 'Tech & Geo' },
+          { value: 'bots', label: 'Boți' },
+          { value: 'payments', label: 'Payments' },
+          { value: 'ads', label: 'Ads & ROAS' },
+          { value: 'cross-check', label: 'Cross-check' },
+        ]}
+      >
         <TabsContent value="overview">
           <OverviewTab range={rangeISO} />
         </TabsContent>
@@ -164,7 +169,7 @@ export default function AnalyticsPage() {
         <TabsContent value="cross-check">
           <CrossCheckTab range={rangeISO} />
         </TabsContent>
-      </Tabs>
+      </ResponsiveTabs>
     </div>
   );
 }

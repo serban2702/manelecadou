@@ -160,6 +160,84 @@ export default function GenerationsPage() {
       ) : (data ?? []).length === 0 ? (
         <Empty icon={<Music2 className="h-5 w-5" />} title="Nicio generare încă" />
       ) : (
+        <>
+        {/* Mobil: carduri */}
+        <div className="md:hidden space-y-2.5">
+          {data!.map((g) => {
+            const paid = (g as { paidUnlocked?: boolean }).paidUnlocked;
+            return (
+              <div key={g.id} className="rounded-xl border border-border bg-card p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{g.recipientName}</div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">
+                      {format(new Date(g.createdAt), "d MMM 'la' HH:mm", { locale: ro })}
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <Badge variant={STATUS_VARIANT[g.status] ?? 'muted'}>{g.status}</Badge>
+                    <div className="flex gap-1">
+                      <Badge variant={g.type === 'demo' ? 'info' : 'success'} className="text-[10px]">{g.type}</Badge>
+                      <Badge variant={paid ? 'success' : 'muted'} className="text-[10px]">{paid ? 'paid' : 'demo'}</Badge>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                  {isAllSelected && <SiteBadge siteId={g.siteId} />}
+                  <code>{g.style}</code>
+                  <span className="text-muted-foreground">/</span>
+                  <code>{voiceLabel(g.voiceArtist)}</code>
+                  {g.packageTier && <Badge variant="warning" className="text-[10px]">{packageLabel(g.packageTier)}</Badge>}
+                </div>
+
+                {g.ownerEmail && (
+                  <div className="mt-1.5 text-xs text-muted-foreground truncate" title={g.ownerEmail}>{g.ownerEmail}</div>
+                )}
+
+                <div className="mt-1.5 flex items-center gap-3 text-xs">
+                  {g.payment ? (
+                    <span className="font-mono tabular-nums">
+                      {(g.payment.amount / 100).toFixed(2)} {g.payment.currency}
+                      <Badge variant={g.payment.status === 'paid' ? 'success' : g.payment.status === 'failed' ? 'destructive' : 'muted'} className="ml-1.5 text-[10px]">{g.payment.status}</Badge>
+                    </span>
+                  ) : g.type === 'demo' ? (
+                    <span className="text-muted-foreground">demo gratuit</span>
+                  ) : null}
+                  {g.audioUrl && (
+                    <a href={g.audioUrl} target="_blank" rel="noopener" className="inline-flex items-center gap-1 text-primary hover:underline">
+                      <ExternalLink className="h-3 w-3" />MP3
+                    </a>
+                  )}
+                </div>
+
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                  <Button variant="secondary" size="xs" onClick={() => setViewId(g.id)}>
+                    <Eye />View
+                  </Button>
+                  {g.status !== 'succeeded' && (
+                    <Button variant="warning" size="xs" onClick={() => retry(g.id, g.status)}>
+                      <RefreshCw />Regenerează
+                    </Button>
+                  )}
+                  <Button variant="secondary" size="xs" onClick={() => setUploadFor({ id: g.id, recipient: g.recipientName })}>
+                    <Upload />Upload
+                  </Button>
+                  {!paid && (
+                    <Button variant="success" size="xs" onClick={() => forceUnlock(g.id)}>
+                      <Unlock />Unlock
+                    </Button>
+                  )}
+                  <Button variant="destructive" size="icon-sm" onClick={() => del(g.id)} aria-label="Șterge">
+                    <Trash2 />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {/* Desktop: tabel */}
+        <div className="hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -329,6 +407,8 @@ export default function GenerationsPage() {
             })}
           </TableBody>
         </Table>
+        </div>
+        </>
       )}
 
       {viewId && <OrderDetailModal id={viewId} onClose={() => setViewId(null)} />}

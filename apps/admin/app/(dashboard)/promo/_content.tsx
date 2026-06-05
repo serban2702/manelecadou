@@ -208,6 +208,54 @@ export default function AdminPromoPage() {
           description="Creează primul cod folosind formularul de mai sus."
         />
       ) : (
+        <>
+        {/* Mobil: carduri */}
+        <div className="md:hidden space-y-2.5">
+          {(codes ?? []).map((c) => (
+            <div key={c.id} className="rounded-xl border border-border bg-card p-3">
+              <div className="flex items-start justify-between gap-2">
+                <code className="font-mono font-semibold text-primary text-base">{c.code}</code>
+                <Switch
+                  checked={c.active}
+                  onCheckedChange={(v) => toggle(c.id, v)}
+                  aria-label={`Activează ${c.code}`}
+                />
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                {isAllSelected && <SiteBadge siteId={c.siteId} />}
+                <Badge variant={c.discountType === 'percent' ? 'default' : 'info'}>
+                  {c.discountType === 'percent' ? `${c.discountValue}%` : `${(c.discountValue / 100).toFixed(2)} lei`}
+                </Badge>
+                <span className="text-muted-foreground tabular-nums">
+                  folosit {c.usedCount}{c.maxUses > 0 ? ` / ${c.maxUses}` : ''}
+                </span>
+                {c.validUntil && (
+                  <span className="text-muted-foreground">până {format(new Date(c.validUntil), 'd MMM yyyy', { locale: ro })}</span>
+                )}
+              </div>
+              {c.restrictedToEmail && (
+                <div className="mt-1 text-xs text-muted-foreground truncate">doar: {c.restrictedToEmail}</div>
+              )}
+              {c.note && <div className="mt-1 text-xs text-muted-foreground">{c.note}</div>}
+              <div className="mt-2.5 flex items-center gap-1.5">
+                <Button size="xs" variant="secondary" onClick={() => setEditing(c)}>
+                  <Pencil className="h-3.5 w-3.5" />Editează
+                </Button>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => setDeleting(c)}
+                  disabled={c.usedCount > 0}
+                  title={c.usedCount > 0 ? 'A fost folosit — dezactivează-l în loc să-l ștergi' : 'Șterge'}
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-destructive" />Șterge
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Desktop: tabel */}
+        <div className="hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -288,6 +336,8 @@ export default function AdminPromoPage() {
             ))}
           </TableBody>
         </Table>
+        </div>
+        </>
       )}
 
       <EditPromoModal
