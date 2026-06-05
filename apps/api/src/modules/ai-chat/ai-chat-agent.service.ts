@@ -9,7 +9,7 @@ import { ChatGateway } from '../chat/chat.gateway';
 import { Conversation, WizardData, WizardState } from '../chat/conversation.entity';
 import { ChatMessage, ChatMessagePayload } from '../chat/message.entity';
 import { PaymentsService } from '../payments/payments.service';
-import { normalizeTier, packageLabel, packagesPitchRo, type PackageTier } from '../payments/packages';
+import { normalizeTier, packageLabel, chatPackageUpsellRo, type PackageTier } from '../payments/packages';
 import { packageTotalCents } from '../payments/pricing';
 import { GenerationsService } from '../generations/generations.service';
 import { GuestSessionsService } from '../guest-sessions/guest-sessions.service';
@@ -524,8 +524,11 @@ export class AIChatAgentService {
     const locale = site?.locale ?? 'ro';
     const overrides = site?.packagePricesCents ?? null;
     const basicCents = packageTotalCents('basic', overrides);
-    const price = `${(basicCents / 100).toFixed(2)} ${site?.currency ?? 'RON'}`;
-    const packagesPitch = packagesPitchRo(overrides);
+    const plusCents = packageTotalCents('plus', overrides);
+    const cur = site?.currency ?? 'RON';
+    const price = `${(basicCents / 100).toFixed(2)} ${cur}`;
+    const premiumPrice = `${(plusCents / 100).toFixed(2)} ${cur}`;
+    const packageUpsell = chatPackageUpsellRo(overrides);
 
     // Stil Irina — extras din analiza datelor reale: 146 mesaje "Buna, sunt Irina!👋",
     // colocvial RO fără diacritice obligatoriu, prietenos, max 2-3 fraze, emoji moderat.
@@ -560,8 +563,11 @@ ETA STANDARD (memorat și nealterat):
 - NU folosi NICIODATĂ formulări tip „90 secunde", „1-2 minute", „2 minute" — totul e 5-10 min.
 Preț de intrare: ${price} (pachetul Basic). 50.000+ manele generate, garanție 30 zile.
 
-PACHETE (3 niveluri — le explici DOAR în ultimul pas, vezi ETAPA 4):
-${packagesPitch}
+PACHETE (în chat oferi DOAR 2 variante — le prezinți chiar înainte de linkul de plată,
+vezi ETAPA 5.5):
+- STANDARD = ${price} (pachetul de bază, manea personalizată).
+- PREMIUM = ${premiumPrice} (manea mai lungă și mai calitativă + imagini pentru social media).
+NU pomeni alte pachete/prețuri (ex. 69.99) în chat — doar standard și premium.
 
 ═══════════════════════════════════════════════════════════════════════
 WORKFLOW DE SALES (REPLICĂM EXACT CE FACE IRINA UMANĂ):
@@ -573,6 +579,10 @@ ETAPA 1 — QUALIFY (după ce userul răspunde la salut):
   → NU întreba TU stilul/ocazia — userul îți spune natural când povestește contextul.
 
 ETAPA 2 — PREȚ + OFERTĂ (CRITIC — NICIODATĂ SKIPPED, MEREU prin TOOL):
+  → ⏱️ TIMING: anunță prețul DEVREME — la al 2-lea sau al 3-lea mesaj al tău, imediat
+    după ce userul ți-a zis pentru cine / ce ocazie (sau a zis „fă tu maneaua"). NU
+    aștepta să colectezi nume+mesaj+email; întâi prețul + „sunteti de acord?", abia apoi
+    detaliile. Userul trebuie să confirme ${price} cât mai repede, nu să se sperie la final.
   → ⚠️ OBLIGATORIU: înainte de a cere DETALII (nume, mesaj, email), TREBUIE să
     anunți prețul și să primești confirmare „da/ok/de acord".
   → ⚠️ MEREU prin tool \`quote_price_with_offer\` — NU scrie tu prețul în text liber.
@@ -643,14 +653,18 @@ ETAPA 5 — (CONDITIONAL) ÎNTREBARE VOCE M/F:
   → DACĂ user a trimis ≥ ${MAX_USER_MSGS_BEFORE_DEFAULT_GENDER} mesaje SAU userul nu vrea să răspundă:
     → wizard_update({recipientGender: 'M'}) silent — NU mai întreba, default masculin.
 
-ETAPA 5.5 — ALEGE PACHETUL (OBLIGATORIU înainte de finalize):
-  → Acesta e ULTIMUL pas înainte de linkul de plată. Prezintă SCURT cele 3 pachete
-    cu preț + ce conține fiecare și întreabă userul ce pachet vrea:
-    „Avem 3 variante: ${packagesPitch} Tu ce pachet vrei?"
-  → (Poți scurta dacă userul deja a zis ce vrea — ex. „vreau cu videoclip" → premium.)
-  → Când userul alege → \`wizard_update({packageTier: 'basic'|'plus'|'premium'})\`.
-  → Dacă userul nu alege explicit / spune „cel mai ieftin" / „simplu" → packageTier='basic'.
-  → NU sări peste pasul ăsta — pachetul determină prețul de pe linkul de plată.
+ETAPA 5.5 — UPSELL PACHET (OBLIGATORIU înainte de finalize — NU-l sări):
+  → Acesta e ULTIMUL pas înainte de linkul de plată, când configurarea e aproape gata.
+    Oferă DOAR 2 variante (NU 3), cu acest mesaj exact (adaptat la prețuri):
+    „${packageUpsell}"
+  → Mapare alegere → tier:
+    • „standard" / „cel mai ieftin" / „simplu" / „${price}" → wizard_update({packageTier: 'basic'})
+    • „premium" / „cea lungă" / „mai calitativă" / „${premiumPrice}" → wizard_update({packageTier: 'plus'})
+  → Dacă userul deja a cerut clar ceva (ex. „o vreau premium", „cea mai lungă") poți
+    seta direct tier-ul fără să mai întrebi.
+  → Dacă userul nu alege explicit / ignoră / spune „nu conteaza" → packageTier='basic'.
+  → NU pomeni pachetul de 69.99 / video / pagină premium în chat. Doar standard vs premium.
+  → Pachetul ales determină prețul de pe linkul de plată — NU sări peste pasul ăsta.
 
 ETAPA 6 — FINALIZE:
   → Apelează \`wizard_finalize\`. Acesta:
@@ -771,7 +785,11 @@ REGULI STRICTE:
     a spus „da" / „sunt de acord" / „ok" / „accept" la preț, prețul e CONFIRMAT — NU mai
     apela quote_price_with_offer și NU mai trimite mesajul „Maneaua costa ... Sunteti de
     acord?". Avansează imediat la pasul următor: dacă lipsește email-ul → cere-l; dacă ai
-    tot → wizard_finalize. NU trimite NICIODATĂ de două ori la rând același mesaj de cotare.
+    tot → ETAPA 5.5 (upsell pachet) → wizard_finalize.
+    EXCEPȚIE: upsell-ul de pachet din ETAPA 5.5 („standard ... sau premium ...?") NU e
+    re-cotare — e o alegere de upgrade și E PERMIS chiar dacă prețul a fost deja confirmat.
+    Se face O SINGURĂ dată, înainte de finalize. NU trimite NICIODATĂ de două ori la rând
+    același mesaj de cotare a prețului de bază.
 25. „CUM PLĂTESC?" = INTENȚIE DE CUMPĂRARE, NU întrebare de preț. Dacă userul întreabă
     „cum pot plăti", „cum plătesc", „unde plătesc", „vreau să plătesc", „cum fac plata" →
     NU re-cota prețul. Asta înseamnă că userul vrea linkul de plată ACUM. Avansează direct:
@@ -849,7 +867,7 @@ REGULI STRICTE:
             recipientGender: { type: 'string', enum: ['M', 'F'], description: 'Sex destinatar. Folosit pentru inferarea vocii când userul nu o cere explicit.' },
             voiceArtist: { type: 'string', enum: ['male', 'female'], description: 'Vocea maneaua: male (bărbătească) sau female (feminină).' },
             customLyrics: { type: 'string', description: 'OPTIONAL: versuri custom complete furnizate explicit de user.' },
-            packageTier: { type: 'string', enum: ['basic', 'plus', 'premium'], description: 'Pachetul ales de user: basic (29.99, doar manea), plus (49.99, + imagini social), premium (69.99, + videoclip + pagină premium + colaj). Setează-l când userul alege pachetul (de obicei în ultimul pas, înainte de finalize). Default basic dacă nu alege.' },
+            packageTier: { type: 'string', enum: ['basic', 'plus', 'premium'], description: 'Pachetul ales de user. În CHAT oferi doar 2: basic = STANDARD (preț de intrare, doar manea) și plus = PREMIUM (mai lungă + mai calitativă + imagini social). NU oferi premium (69.99) în chat. Setează-l în ETAPA 5.5, înainte de finalize. Default basic dacă userul nu alege.' },
           },
         },
       },
@@ -2109,8 +2127,8 @@ ${transcript}`;
       };
     }
 
-    // Prețul de intrare anunțat = pachetul basic (29.99). Irina întreabă pachetul
-    // concret abia în ultimul pas, înainte de link (vezi system prompt ETAPA 4).
+    // Prețul de intrare anunțat = pachetul basic (29.99). Irina face upsell-ul de
+    // pachet (standard vs premium) abia în ultimul pas, înainte de link (ETAPA 5.5).
     const basePrice = packageTotalCents('basic', site.packagePricesCents ?? null);
     const currency = site.currency.toUpperCase();
 

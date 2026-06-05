@@ -11,6 +11,7 @@ import {
   Check,
   CheckCheck,
   ChevronDown,
+  ClipboardCheck,
   CreditCard,
   Crown,
   ExternalLink,
@@ -39,8 +40,9 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { ChatApi, SitesApi, AuthApi } from '@/lib/api';
+import { ChatApi, SitesApi, AuthApi, AiChatApi } from '@/lib/api';
 import type { QuickReply, ChatBlacklistEntry, PackageTier } from '@/lib/api/chat.api';
+import type { ConversationReview, ReviewRating, ReviewCategory } from '@/lib/api/ai-chat.api';
 import { useAsync } from '@/lib/hooks/use-async';
 import {
   useAdminChatSocket,
@@ -441,6 +443,8 @@ export default function AdminChatPage() {
   const [showNoteModal, setShowNoteModal] = useState(false);
   /** Modal blocare (blacklist) persoană din conversație. */
   const [showBlockModal, setShowBlockModal] = useState(false);
+  /** Modal review conversație AI (rating + categorie + comentariu). */
+  const [showReviewModal, setShowReviewModal] = useState(false);
   /** Filtru sidebar: arată doar favoritele. */
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
 
@@ -883,6 +887,14 @@ export default function AdminChatPage() {
                     >
                       <Ban className="h-3.5 w-3.5" />
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowReviewModal(true)}
+                      title="Review conversație AI (pentru îmbunătățirea Irinei)"
+                      className="inline-flex items-center justify-center h-8 w-8 rounded-md border bg-secondary/40 border-border text-muted-foreground transition-colors hover:bg-violet-500/15 hover:border-violet-500/30 hover:text-violet-400"
+                    >
+                      <ClipboardCheck className="h-3.5 w-3.5" />
+                    </button>
                     <AssignmentPill
                       assignedAdminId={thread.conversation.assignedAdminId ?? null}
                       assignedAdminEmail={thread.conversation.assignedAdminEmail ?? null}
@@ -1160,6 +1172,14 @@ export default function AdminChatPage() {
             refetchThread();
             refetchConvs();
           }}
+        />
+      )}
+
+      {/* Modal review conversație AI */}
+      {showReviewModal && thread && (
+        <ConversationReviewModal
+          conversationId={thread.conversation.id}
+          onClose={() => setShowReviewModal(false)}
         />
       )}
 
@@ -3022,6 +3042,166 @@ function SetEmailModal({
 }
 
 /** Editează nota privată admin (vizibilă doar în admin UI). */
+const REVIEW_RATINGS: { value: ReviewRating; label: string; cls: string }[] = [
+  { value: 'good', label: '👍 Bună', cls: 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400' },
+  { value: 'needs_work', label: '🛠️ De îmbunătățit', cls: 'bg-amber-500/15 border-amber-500/40 text-amber-400' },
+  { value: 'bad', label: '👎 Proastă', cls: 'bg-red-500/15 border-red-500/40 text-red-400' },
+];
+
+const REVIEW_CATEGORIES: { value: ReviewCategory; label: string }[] = [
+  { value: 'price', label: 'Preț / cotare' },
+  { value: 'package', label: 'Pachete' },
+  { value: 'tone', label: 'Ton' },
+  { value: 'flow', label: 'Flux / ordine pași' },
+  { value: 'accuracy', label: 'Acuratețe (a inventat)' },
+  { value: 'escalation', label: 'Escaladare' },
+  { value: 'other', label: 'Altele' },
+];
+
+function ConversationReviewModal({
+  conversationId,
+  onClose,
+}: {
+  conversationId: string;
+  onClose: () => void;
+}) {
+  const [existing, setExisting] = useState<ConversationReview[]>([]);
+  const [rating, setRating] = useState<ReviewRating>('needs_work');
+  const [category, setCategory] = useState<ReviewCategory>('other');
+  const [comment, setComment] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setExisting(await AiChatApi.reviewList({ conversationId }));
+    } catch {
+      /* ignore */
+    }
+  }, [conversationId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function save() {
+    setBusy(true);
+    try {
+      await AiChatApi.reviewCreate({ conversationId, rating, category, comment: comment.trim() || undefined });
+      setComment('');
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(id: string) {
+    await AiChatApi.reviewDelete(id);
+    await load();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-card border border-border rounded-xl w-full max-w-lg p-5 max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-base font-semibold mb-1">Review conversație AI</h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          Verdictul tău intră în coada skill-ului <code>/improve-ai-chat</code>, care analizează
+          review-urile și îmbunătățește comportamentul Irinei.
+        </p>
+
+        <label className="block text-xs font-medium text-muted-foreground mb-1">Verdict</label>
+        <div className="flex gap-2 mb-3">
+          {REVIEW_RATINGS.map((r) => (
+            <button
+              key={r.value}
+              type="button"
+              onClick={() => setRating(r.value)}
+              className={cn(
+                'flex-1 h-9 rounded-md border text-xs font-medium transition-colors',
+                rating === r.value ? r.cls : 'bg-secondary/40 border-border text-muted-foreground hover:bg-secondary',
+              )}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+
+        <label className="block text-xs font-medium text-muted-foreground mb-1">Categorie</label>
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value as ReviewCategory)}
+          className="w-full h-9 mb-3 rounded-md border border-border bg-secondary/40 px-2 text-sm"
+        >
+          {REVIEW_CATEGORIES.map((c) => (
+            <option key={c.value} value={c.value}>{c.label}</option>
+          ))}
+        </select>
+
+        <label className="block text-xs font-medium text-muted-foreground mb-1">Comentariu</label>
+        <Textarea
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          rows={4}
+          placeholder="ex. A sărit upsell-ul de pachet și a finalizat direct pe basic. Ar fi trebuit să ofere și premium."
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') onClose();
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              void save();
+            }
+          }}
+        />
+        <div className="flex justify-end gap-2 mt-3">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Închide</Button>
+          <Button onClick={save} disabled={busy}>
+            {busy ? <Loader2 className="animate-spin" /> : null}
+            Salvează review (Cmd+Enter)
+          </Button>
+        </div>
+
+        {existing.length > 0 && (
+          <div className="mt-5 border-t border-border pt-3">
+            <div className="text-xs font-medium text-muted-foreground mb-2">
+              Review-uri pe această conversație ({existing.length})
+            </div>
+            <div className="flex flex-col gap-2">
+              {existing.map((r) => {
+                const meta = REVIEW_RATINGS.find((x) => x.value === r.rating);
+                const cat = REVIEW_CATEGORIES.find((x) => x.value === r.category);
+                return (
+                  <div key={r.id} className="rounded-md border border-border bg-secondary/30 p-2 text-xs">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="flex items-center gap-2">
+                        <span className={cn('px-1.5 py-0.5 rounded border', meta?.cls)}>{meta?.label ?? r.rating}</span>
+                        <span className="text-muted-foreground">{cat?.label ?? r.category}</span>
+                        {r.resolved && <span className="text-emerald-500">✓ rezolvat</span>}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => remove(r.id)}
+                        className="text-muted-foreground hover:text-red-400"
+                        title="Șterge review"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    {r.comment && <p className="whitespace-pre-wrap break-words text-foreground/90">{r.comment}</p>}
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      {r.createdByEmail ?? 'admin'} · {format(new Date(r.createdAt), 'd MMM HH:mm', { locale: ro })}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AdminNoteModal({
   current,
   onClose,

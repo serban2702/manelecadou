@@ -10,6 +10,7 @@ export * from './lyrics.api';
 export * from './sites.api';
 export * from './database.api';
 export * from './ai-assistant.api';
+export * from './ai-chat.api';
 export * from './web-push.api';
 export * from './outbound-email.api';
 export * from './site-demos.api';

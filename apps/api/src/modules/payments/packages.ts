@@ -51,7 +51,7 @@ export const PACKAGES: Record<PackageTier, PackageDef> = {
     tier: 'plus',
     label: 'Plus',
     priceCents: 4999,
-    durationSec: 90,
+    durationSec: 150,
     instrumental: false,
     socialImage: true,
     video: false,
@@ -59,6 +59,7 @@ export const PACKAGES: Record<PackageTier, PackageDef> = {
     deliveryLabel: '10-15 min',
     featuresRo: [
       'Tot ce e în Basic',
+      'Manea mai lungă și mai calitativă',
       '4 imagini social-media (TikTok/Instagram/Facebook)',
       'Livrare mai rapidă',
     ],
@@ -122,4 +123,19 @@ export function packagesPitchRo(
     const price = (packagePriceCents(tier, overrides) / 100).toFixed(2);
     return `${d.label} (${price} lei): ${d.featuresRo.join(', ')}.`;
   }).join(' ');
+}
+
+/**
+ * Pitch SIMPLIFICAT pentru chat-ul Irinei — DOAR 2 opțiuni (upsell standard vs premium):
+ *  - standard = basic (preț de intrare)
+ *  - premium  = plus (mai lungă + mai calitativă)
+ * Premium-ul de top (video/pagină premium) NU se oferă în chat — doar în Generator-ul web.
+ * Folosit în ETAPA de alegere a pachetului, înainte de linkul de plată.
+ */
+export function chatPackageUpsellRo(
+  overrides?: Partial<Record<PackageTier, number>> | null,
+): string {
+  const standard = (packagePriceCents('basic', overrides) / 100).toFixed(2);
+  const premium = (packagePriceCents('plus', overrides) / 100).toFixed(2);
+  return `Doriti ca maneaua sa fie din pachetul standard de ${standard} lei sau premium la ${premium} lei? Cea premium este mai lunga si mai calitativa.`;
 }

@@ -6,9 +6,16 @@ import { AdminGuard } from '../../common/admin.guard';
 import { AuthedRequestUser, CurrentSiteId, CurrentUser } from '../../common/decorators';
 import { AiMemory, AiMemoryKind } from './ai-memory.entity';
 import { AiToolCall } from './ai-tool-call.entity';
+import {
+  ConversationReview,
+  ReviewCategory,
+  ReviewRating,
+} from './conversation-review.entity';
 import { AILearnerService } from './ai-learner.service';
 
 const KINDS: AiMemoryKind[] = ['fact', 'faq', 'tone_example', 'edge_case', 'product', 'policy'];
+const RATINGS: ReviewRating[] = ['good', 'bad', 'needs_work'];
+const CATEGORIES: ReviewCategory[] = ['price', 'tone', 'package', 'flow', 'accuracy', 'escalation', 'other'];
 
 class CreateMemoryDto {
   @IsString() @IsIn(KINDS)
@@ -28,12 +35,35 @@ class UpdateMemoryDto {
   approved?: boolean;
 }
 
+class CreateReviewDto {
+  @IsString()
+  conversationId!: string;
+  @IsString() @IsIn(RATINGS)
+  rating!: ReviewRating;
+  @IsOptional() @IsString() @IsIn(CATEGORIES)
+  category?: ReviewCategory;
+  @IsOptional() @IsString() @MaxLength(2000)
+  comment?: string;
+}
+
+class UpdateReviewDto {
+  @IsOptional() @IsString() @IsIn(RATINGS)
+  rating?: ReviewRating;
+  @IsOptional() @IsString() @IsIn(CATEGORIES)
+  category?: ReviewCategory;
+  @IsOptional() @IsString() @MaxLength(2000)
+  comment?: string;
+  @IsOptional() @IsBoolean()
+  resolved?: boolean;
+}
+
 @UseGuards(AdminGuard)
 @Controller('admin/ai-chat')
 export class AiChatAdminController {
   constructor(
     @InjectRepository(AiMemory) private readonly memory: Repository<AiMemory>,
     @InjectRepository(AiToolCall) private readonly audit: Repository<AiToolCall>,
+    @InjectRepository(ConversationReview) private readonly reviews: Repository<ConversationReview>,
     private readonly learner: AILearnerService,
   ) {}
 
@@ -145,5 +175,72 @@ export class AiChatAdminController {
     qb.andWhere(`a."createdAt" >= NOW() - INTERVAL '7 days'`);
     qb.groupBy('a.model');
     return qb.getRawMany();
+  }
+
+  // ============== CONVERSATION REVIEWS ==============
+
+  @Get('reviews')
+  async listReviews(
+    @CurrentSiteId() siteId: string | null,
+    @Query('conversationId') conversationId?: string,
+    @Query('resolved') resolvedStr?: string,
+    @Query('limit') limitStr?: string,
+  ) {
+    const limit = Math.min(Math.max(parseInt(limitStr ?? '200', 10) || 200, 1), 500);
+    const qb = this.reviews.createQueryBuilder('r');
+    if (siteId) qb.where('(r.siteId = :siteId OR r.siteId IS NULL)', { siteId });
+    if (conversationId) qb.andWhere('r."conversationId" = :cid', { cid: conversationId });
+    if (resolvedStr === 'true') qb.andWhere('r.resolved = true');
+    if (resolvedStr === 'false') qb.andWhere('r.resolved = false');
+    return qb.orderBy('r."createdAt"', 'DESC').take(limit).getMany();
+  }
+
+  @Get('reviews/stats')
+  async reviewStats(@CurrentSiteId() siteId: string | null) {
+    const qb = this.reviews.createQueryBuilder('r');
+    if (siteId) qb.where('(r.siteId = :siteId OR r.siteId IS NULL)', { siteId });
+    const [total, pending] = await Promise.all([
+      qb.clone().getCount(),
+      qb.clone().andWhere('r.resolved = false').getCount(),
+    ]);
+    return { total, pending };
+  }
+
+  @Post('reviews')
+  async createReview(
+    @Body() dto: CreateReviewDto,
+    @CurrentSiteId() siteId: string | null,
+    @CurrentUser() user: AuthedRequestUser | null,
+  ) {
+    const row = this.reviews.create({
+      siteId,
+      conversationId: dto.conversationId,
+      rating: dto.rating,
+      category: dto.category ?? 'other',
+      comment: dto.comment?.trim() || null,
+      createdBy: user?.id ?? null,
+      createdByEmail: user?.email ?? null,
+    });
+    return this.reviews.save(row);
+  }
+
+  @Put('reviews/:id')
+  async updateReview(@Param('id') id: string, @Body() dto: UpdateReviewDto) {
+    const row = await this.reviews.findOne({ where: { id } });
+    if (!row) throw new Error('Review not found');
+    if (dto.rating) row.rating = dto.rating;
+    if (dto.category) row.category = dto.category;
+    if (dto.comment !== undefined) row.comment = dto.comment.trim() || null;
+    if (typeof dto.resolved === 'boolean') {
+      row.resolved = dto.resolved;
+      row.resolvedAt = dto.resolved ? new Date() : null;
+    }
+    return this.reviews.save(row);
+  }
+
+  @Delete('reviews/:id')
+  async deleteReview(@Param('id') id: string) {
+    await this.reviews.delete({ id });
+    return { ok: true };
   }
 }

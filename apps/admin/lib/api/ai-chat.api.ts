@@ -47,6 +47,25 @@ export interface CostSummaryRow {
   tokensOut: number;
 }
 
+export type ReviewRating = 'good' | 'bad' | 'needs_work';
+export type ReviewCategory =
+  | 'price' | 'tone' | 'package' | 'flow' | 'accuracy' | 'escalation' | 'other';
+
+export interface ConversationReview {
+  id: string;
+  siteId: string | null;
+  conversationId: string;
+  rating: ReviewRating;
+  category: ReviewCategory;
+  comment: string | null;
+  resolved: boolean;
+  resolvedAt: string | null;
+  createdBy: string | null;
+  createdByEmail: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export class AiChatApi {
   static memoryList(approved?: boolean): Promise<AiMemory[]> {
     const qs = approved === undefined ? '' : `?approved=${approved ? 'true' : 'false'}`;
@@ -77,5 +96,27 @@ export class AiChatApi {
   }
   static costSummary(): Promise<CostSummaryRow[]> {
     return http.get('/admin/ai-chat/audit/cost-summary');
+  }
+
+  // ===== Conversation reviews =====
+  static reviewList(opts: { conversationId?: string; resolved?: boolean; limit?: number } = {}): Promise<ConversationReview[]> {
+    const params = new URLSearchParams();
+    if (opts.conversationId) params.set('conversationId', opts.conversationId);
+    if (opts.resolved !== undefined) params.set('resolved', opts.resolved ? 'true' : 'false');
+    if (opts.limit) params.set('limit', String(opts.limit));
+    const qs = params.toString();
+    return http.get(`/admin/ai-chat/reviews${qs ? `?${qs}` : ''}`);
+  }
+  static reviewStats(): Promise<{ total: number; pending: number }> {
+    return http.get('/admin/ai-chat/reviews/stats');
+  }
+  static reviewCreate(data: { conversationId: string; rating: ReviewRating; category?: ReviewCategory; comment?: string }): Promise<ConversationReview> {
+    return http.post('/admin/ai-chat/reviews', data);
+  }
+  static reviewUpdate(id: string, data: Partial<{ rating: ReviewRating; category: ReviewCategory; comment: string; resolved: boolean }>): Promise<ConversationReview> {
+    return http.put(`/admin/ai-chat/reviews/${id}`, data);
+  }
+  static reviewDelete(id: string): Promise<{ ok: true }> {
+    return http.delete(`/admin/ai-chat/reviews/${id}`);
   }
 }

@@ -10,6 +10,7 @@ import { AILearnerService } from './ai-learner.service';
 import { AiChatAdminController } from './ai-chat-admin.controller';
 import { AiMemory } from './ai-memory.entity';
 import { AiToolCall } from './ai-tool-call.entity';
+import { ConversationReview } from './conversation-review.entity';
 import { OpenAiModule } from '../../openai/openai.module';
 import { SettingsModule } from '../settings/settings.module';
 import { KbModule } from '../kb/kb.module';
@@ -23,7 +24,7 @@ import { AdminGuard } from '../../common/admin.guard';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Conversation, ChatMessage, AiMemory, AiToolCall]),
+    TypeOrmModule.forFeature([Conversation, ChatMessage, AiMemory, AiToolCall, ConversationReview]),
     ScheduleModule.forRoot(),
     OpenAiModule,
     SettingsModule,
