@@ -255,9 +255,10 @@ export interface SampleEntryDto {
 }
 
 /** O intrare curată manual pentru „Topul săptămânii" (topSource='template').
- *  Sursa audio e o mostră existentă (stil/voce) rezolvată după kind+key. */
+ *  Sursa audio e un track existent rezolvat după kind+key:
+ *  'style'/'voice' → mostre suno; 'demo' → melodie din „Ascultă exemple" (site_demos). */
 export interface SiteTopTemplateItem {
-  kind: 'style' | 'voice';
+  kind: 'style' | 'voice' | 'demo';
   key: string;
   title: string;
   artist: string;

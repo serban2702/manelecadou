@@ -236,9 +236,12 @@ export interface SiteSampleEntry {
  * apare, în ce ordine, cu ce titlu/artist și câte vizualizări afișate.
  */
 export interface SiteTopTemplateItem {
-  /** Din ce pool de mostre vine audio: stil sau voce. */
-  kind: 'style' | 'voice';
-  /** Cheia mostrei (id-ul stilului sau al vocii). Rezolvă audioUrl-ul. */
+  /** Din ce pool de audio vine track-ul:
+   *  - 'style' → suno.styleSamples[key]
+   *  - 'voice' → suno.voiceSamples[key]
+   *  - 'demo'  → site_demos.id === key (melodiile din „Ascultă exemple") */
+  kind: 'style' | 'voice' | 'demo';
+  /** Cheia care rezolvă audioUrl-ul: id stil / id voce / id site-demo. */
   key: string;
   /** Titlu afișat (ex. „Manea pentru Costel șeful"). */
   title: string;

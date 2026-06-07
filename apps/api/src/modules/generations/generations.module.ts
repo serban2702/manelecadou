@@ -18,6 +18,7 @@ import { LyricsModule } from '../lyrics/lyrics.module';
 import { GiftCodesModule } from '../gift-codes/gift-codes.module';
 import { SitesModule } from '../sites/sites.module';
 import { MediaModule } from '../media/media.module';
+import { SiteDemosModule } from '../site-demos/site-demos.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { MediaModule } from '../media/media.module';
     GiftCodesModule,
     SitesModule,
     MediaModule,
+    SiteDemosModule,
   ],
   providers: [
     GenerationsService,

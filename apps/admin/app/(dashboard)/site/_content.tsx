@@ -37,6 +37,7 @@ import {
   setSelectedSiteId,
 } from '@/lib/api/sites.api';
 import { InvoicesApi } from '@/lib/api/invoices.api';
+import { SiteDemosApi, type SiteDemo } from '@/lib/api/site-demos.api';
 import { SEED_OCCASIONS, SEED_STYLES, SEED_VOICES } from '@/lib/seed-categories';
 import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
@@ -81,6 +82,7 @@ export default function SiteConfigPage() {
   const [site, setSite] = useState<SiteDto | null>(null);
   const [form, setForm] = useState<SiteDto | null>(null);
   const [samples, setSamples] = useState<SamplesListDto | null>(null);
+  const [siteDemos, setSiteDemos] = useState<SiteDemo[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>('general');
@@ -101,13 +103,17 @@ export default function SiteConfigPage() {
     }
     setLoading(true);
     try {
-      const [s, sm] = await Promise.all([
+      const [s, sm, dm] = await Promise.all([
         SitesApi.get(siteId),
         SitesApi.listSamples(siteId).catch(() => null),
+        SiteDemosApi.list(siteId)
+          .then((r) => r.items)
+          .catch(() => [] as SiteDemo[]),
       ]);
       setSite(s);
       setForm(s);
       setSamples(sm);
+      setSiteDemos(dm);
     } catch (err) {
       toast({ variant: 'destructive', title: 'Eroare', description: (err as Error).message });
     } finally {
@@ -218,7 +224,9 @@ export default function SiteConfigPage() {
       {activeTab === 'brand' && <BrandSeoTab siteId={siteId} form={form} setForm={setForm} />}
       {activeTab === 'suno-stripe' && <SunoStripeTab form={form} setForm={setForm} />}
       {activeTab === 'status' && <StatusTab form={form} setForm={setForm} />}
-      {activeTab === 'top' && <TopWeekTab form={form} setForm={setForm} samples={samples} />}
+      {activeTab === 'top' && (
+        <TopWeekTab form={form} setForm={setForm} samples={samples} demos={siteDemos} />
+      )}
       {activeTab === 'categories' && (
         <CategoriesTab
           siteId={siteId}
@@ -1190,38 +1198,58 @@ function StatusTab({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto) => 
 // TAB: Top săptămână (curatoriere manuală — topSource='template')
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Rezolvă un URL audio relativ (/uploads/...) la absolut folosind API base.
+ *  URL-urile deja absolute (http...) sunt returnate neschimbate. */
+function resolveAudioSrc(url: string): string {
+  if (!url || url.startsWith('http')) return url;
+  const base = process.env.NEXT_PUBLIC_API_URL ?? '';
+  return `${base}${url}`;
+}
+
 function TopWeekTab({
   form,
   setForm,
   samples,
+  demos,
 }: {
   form: SiteDto;
   setForm: (f: SiteDto) => void;
   samples: SamplesListDto | null;
+  demos: SiteDemo[];
 }) {
   const items = form.topTemplate ?? [];
 
   const styleLabel = (key: string) => form.styles?.find((s) => s.id === key)?.nm ?? key;
   const voiceLabel = (key: string) => form.voices?.find((v) => v.id === key)?.nm ?? key;
 
-  // Mostrele disponibile (cu audio generat): pool-ul din care alege adminul.
-  type DemoOption = { kind: 'style' | 'voice'; key: string; label: string; audioUrl: string };
+  // Pool-ul disponibil = toate track-urile audio din aplicație:
+  //  - mostre de stil (🎵) + mostre de voce (🎤) din suno samples
+  //  - melodiile din „Ascultă exemple" (🎶) din site_demos
+  type DemoOption = { kind: 'style' | 'voice' | 'demo'; key: string; label: string; audioUrl: string };
   const demoOptions: DemoOption[] = [
     ...(samples?.styles ?? [])
       .filter((s) => s.entry?.audioUrl)
       .map((s) => ({
         kind: 'style' as const,
         key: s.key,
-        label: `🎵 ${styleLabel(s.key)}`,
-        audioUrl: s.entry!.audioUrl,
+        label: `🎵 Stil: ${styleLabel(s.key)}`,
+        audioUrl: resolveAudioSrc(s.entry!.audioUrl),
       })),
     ...(samples?.voices ?? [])
       .filter((v) => v.entry?.audioUrl)
       .map((v) => ({
         kind: 'voice' as const,
         key: v.key,
-        label: `🎤 ${voiceLabel(v.key)}`,
-        audioUrl: v.entry!.audioUrl,
+        label: `🎤 Voce: ${voiceLabel(v.key)}`,
+        audioUrl: resolveAudioSrc(v.entry!.audioUrl),
+      })),
+    ...demos
+      .filter((d) => d.audioUrl)
+      .map((d) => ({
+        kind: 'demo' as const,
+        key: d.id,
+        label: `🎶 Exemplu: ${d.title}${d.toName ? ` (pt ${d.toName})` : ''}`,
+        audioUrl: resolveAudioSrc(d.audioUrl),
       })),
   ];
   const audioByKey = new Map(demoOptions.map((o) => [`${o.kind}:${o.key}`, o]));
@@ -1277,7 +1305,7 @@ function TopWeekTab({
 
       <SubSection
         title="Top săptămână (manual)"
-        subtitle="Alege manelele afișate la /top din mostrele generate. Ordinea de mai jos = ordinea în top. Redarea pornește de la secunda setată; implicit melodia întreagă (nu doar 30s)."
+        subtitle={'Alege manelele afișate la /top din TOATE track-urile audio: mostre de stil (🎵), de voce (🎤) și melodiile din „Ascultă exemple” (🎶). Ordinea de mai jos = ordinea în top. Redarea pornește de la secunda setată; implicit melodia întreagă (nu doar 30s).'}
         action={
           <Button size="sm" variant="ghost" onClick={add} disabled={demoOptions.length === 0}>
             <Plus className="h-3.5 w-3.5" />
@@ -1288,8 +1316,8 @@ function TopWeekTab({
         {demoOptions.length === 0 ? (
           <Card className="border-dashed">
             <CardContent className="py-8 text-center text-sm text-muted-foreground">
-              Nu există mostre audio generate pe acest site. Generează întâi mostre în
-              tab-ul „Categorii & Mostre", apoi revino aici.
+              Nu există niciun track audio pe acest site. Generează mostre în „Categorii
+              & Mostre" sau încarcă melodii în „Demo-uri ascultă", apoi revino aici.
             </CardContent>
           </Card>
         ) : items.length === 0 ? (
@@ -1333,7 +1361,7 @@ function TopWeekRow({
   idx: number;
   total: number;
   item: SiteTopTemplateItem;
-  demoOptions: Array<{ kind: 'style' | 'voice'; key: string; label: string; audioUrl: string }>;
+  demoOptions: Array<{ kind: 'style' | 'voice' | 'demo'; key: string; label: string; audioUrl: string }>;
   audioUrl?: string;
   onUpdate: (patch: Partial<SiteTopTemplateItem>) => void;
   onRemove: () => void;
@@ -1360,7 +1388,7 @@ function TopWeekRow({
             value={`${item.kind}:${item.key}`}
             onChange={(e) => {
               const [kind, ...rest] = e.target.value.split(':');
-              onUpdate({ kind: kind as 'style' | 'voice', key: rest.join(':') });
+              onUpdate({ kind: kind as 'style' | 'voice' | 'demo', key: rest.join(':') });
             }}
             className="flex-1 bg-background border border-border rounded-md px-3 py-2 text-sm"
           >

@@ -18,6 +18,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { GenerationsService } from './generations.service';
+import { SiteDemosService } from '../site-demos/site-demos.service';
 import { SocialImageUploadService } from './social-image-upload.service';
 import { CreateGenerationDto } from './dto/create-generation.dto';
 import { GiftCodesService } from '../gift-codes/gift-codes.service';
@@ -38,7 +39,10 @@ import { verifyUnlock } from '../../common/unlock';
  */
 @Controller('public/top')
 export class PublicTopController {
-  constructor(private readonly svc: GenerationsService) {}
+  constructor(
+    private readonly svc: GenerationsService,
+    private readonly siteDemos: SiteDemosService,
+  ) {}
 
   @SkipThrottle({ short: true, medium: true, long: true })
   @Get()
@@ -58,24 +62,48 @@ export class PublicTopController {
       return { source, items: null as null };
     }
 
-    // Top curat manual: intrările pointează la mostre existente (stil/voce).
+    // Top curat manual: intrările pointează la audio existent (stil/voce/demo).
     if (source === 'template') {
       const tpl = req.site?.topTemplate ?? [];
       const styleSamples = req.site?.suno?.styleSamples ?? {};
       const voiceSamples = req.site?.suno?.voiceSamples ?? {};
+
+      // Demo-urile („Ascultă exemple") sunt într-un tabel separat — le aducem o
+      // singură dată dacă există măcar o intrare de tip 'demo'.
+      let demoMap: Map<string, { audioUrl: string; startSec: number }> | null = null;
+      if (req.site?.id && tpl.some((it) => it.kind === 'demo')) {
+        const demos = await this.siteDemos.listForSite(req.site.id);
+        demoMap = new Map(
+          demos.map((d) => [
+            d.id,
+            { audioUrl: d.audioUrl, startSec: d.previewStartSec ?? 0 },
+          ]),
+        );
+      }
+
       const items = tpl
         .map((it) => {
-          const sample =
-            it.kind === 'voice' ? voiceSamples[it.key] : styleSamples[it.key];
-          if (!sample?.audioUrl) return null; // mostra a fost ștearsă → sari
+          let audioUrl: string | undefined;
+          let sampleStartSec = 0;
+          if (it.kind === 'demo') {
+            const d = demoMap?.get(it.key);
+            audioUrl = d?.audioUrl;
+            sampleStartSec = d?.startSec ?? 0;
+          } else {
+            const sample =
+              it.kind === 'voice' ? voiceSamples[it.key] : styleSamples[it.key];
+            audioUrl = sample?.audioUrl;
+            sampleStartSec = sample?.startSec ?? 0;
+          }
+          if (!audioUrl) return null; // sursa a fost ștearsă → sari
           return {
             kind: it.kind,
             key: it.key,
             title: it.title ?? '',
             artist: it.artist ?? '',
             views: typeof it.views === 'number' ? it.views : 0,
-            audioUrl: sample.audioUrl,
-            startSec: it.startSec ?? sample.startSec ?? 0,
+            audioUrl,
+            startSec: it.startSec ?? sampleStartSec,
             previewSec: it.previewSec ?? 0,
           };
         })
