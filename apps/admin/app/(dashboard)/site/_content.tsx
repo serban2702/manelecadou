@@ -1370,6 +1370,22 @@ function TopWeekRow({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const previewOn = !!item.previewSec && item.previewSec > 0;
   const missing = !demoOptions.some((o) => o.kind === item.kind && o.key === item.key);
+  const startSec = item.startSec ?? 0;
+
+  function seekToStart() {
+    const el = audioRef.current;
+    if (!el || startSec <= 0) return;
+    if (Number.isFinite(el.duration) && startSec < el.duration) {
+      el.currentTime = startSec;
+    }
+  }
+
+  // Reface seek-ul când se schimbă secunda de start (input sau „Din player"),
+  // ca preview-ul să reflecte imediat punctul nou.
+  useEffect(() => {
+    seekToStart();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startSec, audioUrl]);
 
   function setStartFromPlayer() {
     const el = audioRef.current;
@@ -1421,7 +1437,14 @@ function TopWeekRow({
         </div>
 
         {audioUrl ? (
-          <audio ref={audioRef} controls src={audioUrl} className="w-full h-8" preload="metadata" />
+          <audio
+            ref={audioRef}
+            controls
+            src={audioUrl}
+            className="w-full h-8"
+            preload="metadata"
+            onLoadedMetadata={seekToStart}
+          />
         ) : (
           <div className="text-[11px] text-destructive">
             ⚠️ Mostra selectată nu are audio (a fost ștearsă?). Alege alta din listă.
