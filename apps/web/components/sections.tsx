@@ -248,7 +248,8 @@ const SYNTH_PLAYS = [12_400, 8_900, 7_100, 5_600, 4_300, 3_800, 3_200, 2_700, 2_
 
 export function Leaderboard() {
   const site = useSite();
-  const useLive = site.topSource === 'live';
+  const isLive = site.topSource === 'live';
+  const isTemplate = site.topSource === 'template';
   const [playingId, setPlayingId] = useState<string | null>(null);
 
   // Sursa live: cere 10 generări publice sortate după plays. Avem și audioUrl,
@@ -257,41 +258,70 @@ export function Leaderboard() {
     queryKey: ['leaderboard-live'],
     queryFn: () => api.publicGenerations({ limit: 10, sort: 'popular', period: 'week' }),
     staleTime: 60_000,
-    enabled: useLive,
+    enabled: isLive,
   });
 
-  const liveItems = useLive ? (live?.items ?? []) : [];
+  // Sursa template: top curat manual din mostre (audioUrl + startSec + previewSec
+  // vin rezolvate de backend din suno.styleSamples / voiceSamples).
+  const { data: tpl } = useQuery({
+    queryKey: ['leaderboard-template'],
+    queryFn: () => api.topList('week', 10),
+    staleTime: 60_000,
+    enabled: isTemplate,
+  });
 
-  // Construim rows uniform indiferent de sursă. Pentru live, dacă viewCount=0
-  // peste tot, folosim SYNTH_PLAYS descrescător ca placeholder vizual.
-  const rows: Array<{
+  const liveItems = isLive ? (live?.items ?? []) : [];
+  const tplItems = isTemplate ? (tpl?.items ?? []) : [];
+
+  // Construim rows uniform indiferent de sursă. `linkable` = id real de generare
+  // (doar 'live') → titlul devine link spre /m/[id]; template/seed nu linkează.
+  type Row = {
     rk: number;
     id: string;
     ttl: string;
     by: string;
     pl: string;
     audioUrl: string | null;
-  }> = useLive && liveItems.length > 0
-    ? liveItems.map((it, i) => {
-        const real = it.viewCount ?? 0;
-        const pl = real > 0 ? formatPlays(real) : formatPlays(SYNTH_PLAYS[i] ?? 1_000);
-        return {
-          rk: i + 1,
-          id: it.id,
-          ttl: `🎤 ${it.recipientName}`,
-          by: it.voiceArtist,
-          pl,
-          audioUrl: it.audioUrl,
-        };
-      })
-    : TOP.map((t) => ({
-        rk: t.rk,
-        id: `seed-${t.rk}`,
-        ttl: t.ttl,
-        by: t.by,
-        pl: t.pl,
-        audioUrl: null,
-      }));
+    startSec?: number;
+    previewSec?: number;
+    linkable: boolean;
+  };
+  const rows: Row[] =
+    isLive && liveItems.length > 0
+      ? liveItems.map((it, i) => {
+          const real = it.viewCount ?? 0;
+          const pl = real > 0 ? formatPlays(real) : formatPlays(SYNTH_PLAYS[i] ?? 1_000);
+          return {
+            rk: i + 1,
+            id: it.id,
+            ttl: `🎤 ${it.recipientName}`,
+            by: it.voiceArtist,
+            pl,
+            audioUrl: it.audioUrl,
+            linkable: true,
+          };
+        })
+      : isTemplate && tplItems.length > 0
+        ? tplItems.map((it) => ({
+            rk: it.rk,
+            id: it.id,
+            ttl: it.ttl,
+            by: it.by,
+            pl: it.pl,
+            audioUrl: it.audioUrl ?? null,
+            startSec: it.startSec,
+            previewSec: it.previewSec,
+            linkable: false,
+          }))
+        : TOP.map((t) => ({
+            rk: t.rk,
+            id: `seed-${t.rk}`,
+            ttl: t.ttl,
+            by: t.by,
+            pl: t.pl,
+            audioUrl: null,
+            linkable: false,
+          }));
 
   const mid = Math.ceil(rows.length / 2);
   const cols = [rows.slice(0, mid), rows.slice(mid)];
@@ -303,19 +333,32 @@ export function Leaderboard() {
           {col.map((t) => {
             const isPlaying = playingId === t.id;
             const canPlay = !!t.audioUrl;
+            // previewSec > 0 → limităm la startSec+previewSec; altfel melodia întreagă.
+            const maxDurationSec =
+              t.previewSec && t.previewSec > 0
+                ? (t.startSec ?? 0) + t.previewSec
+                : undefined;
+            const titleInner = (
+              <>
+                <div className="ttl" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.ttl}</div>
+                <div className="by" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.by}</div>
+              </>
+            );
             return (
               <div key={t.id} style={{ display: 'flex', flexDirection: 'column' }}>
                 <div className={`lb-row ${t.rk === 1 ? 'top1' : ''}`}>
                   <div className="rk">{t.rk === 1 ? '👑' : `#${t.rk}`}</div>
                   <div className="info" style={{ minWidth: 0 }}>
-                    <Link
-                      href={canPlay ? `/m/${t.id}` : '#'}
-                      style={{ textDecoration: 'none', color: 'inherit', display: 'block', minWidth: 0 }}
-                      onClick={(e) => { if (!canPlay) e.preventDefault(); }}
-                    >
-                      <div className="ttl" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.ttl}</div>
-                      <div className="by" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.by}</div>
-                    </Link>
+                    {t.linkable ? (
+                      <Link
+                        href={`/m/${t.id}`}
+                        style={{ textDecoration: 'none', color: 'inherit', display: 'block', minWidth: 0 }}
+                      >
+                        {titleInner}
+                      </Link>
+                    ) : (
+                      <div style={{ minWidth: 0 }}>{titleInner}</div>
+                    )}
                   </div>
                   <div className="pl">▶ {t.pl}</div>
                   <button
@@ -330,7 +373,13 @@ export function Leaderboard() {
                 </div>
                 {isPlaying && canPlay && (
                   <div style={{ padding: '6px 10px 10px 44px' }}>
-                    <ManeaPlayer audioUrl={t.audioUrl!} compact />
+                    <ManeaPlayer
+                      audioUrl={t.audioUrl!}
+                      compact
+                      autoPlay
+                      startSec={t.startSec}
+                      maxDurationSec={maxDurationSec}
+                    />
                   </div>
                 )}
               </div>

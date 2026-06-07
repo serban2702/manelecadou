@@ -356,7 +356,7 @@ export const api = {
     request<{ items: SiteDemoDto[] }>('/public/site-demos/featured'),
   topList: (period: 'week' | 'month' | 'all' = 'week', limit = 5) =>
     request<{
-      source: 'seed' | 'live';
+      source: 'seed' | 'live' | 'template';
       items:
         | null
         | Array<{
@@ -369,6 +369,12 @@ export const api = {
             voice: string;
             style: string;
             occasion: string;
+            /** Prezent pentru 'live' și 'template' — permite redare în top. */
+            audioUrl?: string | null;
+            /** Secunda de pornire (template). */
+            startSec?: number;
+            /** Limită preview în secunde de la startSec; 0/absent = melodia întreagă. */
+            previewSec?: number;
           }>;
     }>(`/public/top?period=${period}&limit=${limit}`),
   retryGeneration: (id: string) =>

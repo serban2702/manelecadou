@@ -48,14 +48,63 @@ export class PublicTopController {
     @Query('period') period?: 'week' | 'month' | 'all',
     @Query('limit') limit?: string,
   ) {
-    const source: 'seed' | 'live' = req.site?.topSource === 'live' ? 'live' : 'seed';
+    const topSource = req.site?.topSource;
+    const source: 'seed' | 'live' | 'template' =
+      topSource === 'live' ? 'live' : topSource === 'template' ? 'template' : 'seed';
+
+    const max = limit ? Math.max(1, Math.min(50, Number(limit))) : 5;
+
     if (source === 'seed') {
       return { source, items: null as null };
     }
+
+    // Top curat manual: intrările pointează la mostre existente (stil/voce).
+    if (source === 'template') {
+      const tpl = req.site?.topTemplate ?? [];
+      const styleSamples = req.site?.suno?.styleSamples ?? {};
+      const voiceSamples = req.site?.suno?.voiceSamples ?? {};
+      const items = tpl
+        .map((it) => {
+          const sample =
+            it.kind === 'voice' ? voiceSamples[it.key] : styleSamples[it.key];
+          if (!sample?.audioUrl) return null; // mostra a fost ștearsă → sari
+          return {
+            kind: it.kind,
+            key: it.key,
+            title: it.title ?? '',
+            artist: it.artist ?? '',
+            views: typeof it.views === 'number' ? it.views : 0,
+            audioUrl: sample.audioUrl,
+            startSec: it.startSec ?? sample.startSec ?? 0,
+            previewSec: it.previewSec ?? 0,
+          };
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null)
+        .slice(0, max);
+
+      return {
+        source,
+        items: items.map((it, idx) => ({
+          rk: idx + 1,
+          id: `tpl-${it.kind}-${it.key}-${idx}`,
+          ttl: it.title,
+          by: it.artist,
+          pl: formatPlays(it.views),
+          playsRaw: it.views,
+          voice: it.kind === 'voice' ? it.key : '',
+          style: it.kind === 'style' ? it.key : '',
+          occasion: '',
+          audioUrl: it.audioUrl,
+          startSec: it.startSec,
+          previewSec: it.previewSec,
+        })),
+      };
+    }
+
     const items = await this.svc.listTop({
       siteId,
       period,
-      limit: limit ? Number(limit) : 5,
+      limit: max,
     });
     return {
       source,
@@ -71,6 +120,9 @@ export class PublicTopController {
         voice: g.voiceArtist,
         style: g.style,
         occasion: g.occasion,
+        audioUrl: g.audioUrl ?? null,
+        startSec: 0,
+        previewSec: 0,
       })),
     };
   }

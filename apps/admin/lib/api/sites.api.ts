@@ -148,8 +148,11 @@ export interface SiteDto {
   ipWhitelist: string[];
   /** Toggle: dacă false, plata se face ÎNAINTE de generare (skip demo gratuit 30s). */
   demoEnabled: boolean;
-  /** Sursa datelor pentru pagina /top: 'seed' (date demo) sau 'live' (agregare din generations). */
-  topSource: 'seed' | 'live';
+  /** Sursa datelor pentru pagina /top: 'seed' (date demo), 'live' (agregare din
+   *  generations) sau 'template' (top curat manual din mostre — vezi topTemplate). */
+  topSource: 'seed' | 'live' | 'template';
+  /** Top curat manual (folosit doar când topSource='template'). */
+  topTemplate: SiteTopTemplateItem[];
   /** Categorii / stiluri muzicale per site (carduri /studio). */
   styles: SiteStyleEntry[];
   /** Voci / artiști per site. */
@@ -249,6 +252,20 @@ export interface SampleEntryDto {
   generatedAt: string;
   sunoTaskId?: string;
   startSec?: number;
+}
+
+/** O intrare curată manual pentru „Topul săptămânii" (topSource='template').
+ *  Sursa audio e o mostră existentă (stil/voce) rezolvată după kind+key. */
+export interface SiteTopTemplateItem {
+  kind: 'style' | 'voice';
+  key: string;
+  title: string;
+  artist: string;
+  views: number;
+  /** Secunda de start (skip intro). Default 0. */
+  startSec?: number;
+  /** Limită preview în secunde de la startSec; 0/absent = melodia întreagă. */
+  previewSec?: number;
 }
 
 export interface SampleStatusDto {

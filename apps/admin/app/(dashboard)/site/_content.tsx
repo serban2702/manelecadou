@@ -31,6 +31,7 @@ import {
   type SiteSampleDefaults,
   type SiteStyleEntry,
   type SiteTestimonialEntry,
+  type SiteTopTemplateItem,
   ALL_SITES,
   getSelectedSiteId,
   setSelectedSiteId,
@@ -62,12 +63,13 @@ const LOCALES = ['ro', 'bg', 'sr', 'tr', 'el', 'hr', 'sl', 'bs', 'sq', 'mk', 'hu
 const CURRENCIES = ['RON', 'EUR', 'USD', 'BGN', 'RSD', 'TRY', 'HUF', 'GBP'];
 const I18N_FIELD_LOCALES = ['ro', 'bg', 'sr', 'tr', 'el', 'hr', 'sl', 'bs', 'sq', 'mk', 'hu', 'en'];
 
-type TabId = 'general' | 'brand' | 'categories' | 'suno-stripe' | 'status';
+type TabId = 'general' | 'brand' | 'categories' | 'top' | 'suno-stripe' | 'status';
 
 const TABS: Array<{ id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: 'general', label: 'General', icon: Globe },
   { id: 'brand', label: 'Brand & SEO', icon: Sparkles },
   { id: 'categories', label: 'Categorii & Mostre', icon: Music2 },
+  { id: 'top', label: 'Top săptămână', icon: Star },
   { id: 'suno-stripe', label: 'Suno & Stripe', icon: Wand2 },
   { id: 'status', label: 'Status & Whitelist', icon: AlertTriangle },
 ];
@@ -216,6 +218,7 @@ export default function SiteConfigPage() {
       {activeTab === 'brand' && <BrandSeoTab siteId={siteId} form={form} setForm={setForm} />}
       {activeTab === 'suno-stripe' && <SunoStripeTab form={form} setForm={setForm} />}
       {activeTab === 'status' && <StatusTab form={form} setForm={setForm} />}
+      {activeTab === 'top' && <TopWeekTab form={form} setForm={setForm} samples={samples} />}
       {activeTab === 'categories' && (
         <CategoriesTab
           siteId={siteId}
@@ -1109,14 +1112,18 @@ function StatusTab({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto) => 
         <Field label="Sursă date /top">
           <select
             value={form.topSource ?? 'seed'}
-            onChange={(e) => setForm({ ...form, topSource: e.target.value as 'seed' | 'live' })}
+            onChange={(e) =>
+              setForm({ ...form, topSource: e.target.value as 'seed' | 'live' | 'template' })
+            }
             className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
           >
             <option value="seed">Seed (demo placeholder)</option>
             <option value="live">Live (din generări reale)</option>
+            <option value="template">Template (top curat manual din mostre)</option>
           </select>
           <p className="text-[11px] text-muted-foreground mt-1">
-            Comută pe „Live" după ce ai destule manele generate de useri. „Seed" afișează lista hardcoded din web app.
+            „Seed" = listă hardcoded. „Live" = generări reale ale userilor. „Template" =
+            alegi tu manelele din mostre în tab-ul „Top săptămână".
           </p>
         </Field>
       </Section>
@@ -1176,6 +1183,296 @@ function StatusTab({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto) => 
         </Section>
       )}
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB: Top săptămână (curatoriere manuală — topSource='template')
+// ─────────────────────────────────────────────────────────────────────────────
+
+function TopWeekTab({
+  form,
+  setForm,
+  samples,
+}: {
+  form: SiteDto;
+  setForm: (f: SiteDto) => void;
+  samples: SamplesListDto | null;
+}) {
+  const items = form.topTemplate ?? [];
+
+  const styleLabel = (key: string) => form.styles?.find((s) => s.id === key)?.nm ?? key;
+  const voiceLabel = (key: string) => form.voices?.find((v) => v.id === key)?.nm ?? key;
+
+  // Mostrele disponibile (cu audio generat): pool-ul din care alege adminul.
+  type DemoOption = { kind: 'style' | 'voice'; key: string; label: string; audioUrl: string };
+  const demoOptions: DemoOption[] = [
+    ...(samples?.styles ?? [])
+      .filter((s) => s.entry?.audioUrl)
+      .map((s) => ({
+        kind: 'style' as const,
+        key: s.key,
+        label: `🎵 ${styleLabel(s.key)}`,
+        audioUrl: s.entry!.audioUrl,
+      })),
+    ...(samples?.voices ?? [])
+      .filter((v) => v.entry?.audioUrl)
+      .map((v) => ({
+        kind: 'voice' as const,
+        key: v.key,
+        label: `🎤 ${voiceLabel(v.key)}`,
+        audioUrl: v.entry!.audioUrl,
+      })),
+  ];
+  const audioByKey = new Map(demoOptions.map((o) => [`${o.kind}:${o.key}`, o]));
+
+  function update(idx: number, patch: Partial<SiteTopTemplateItem>) {
+    setForm({
+      ...form,
+      topTemplate: items.map((it, i) => (i === idx ? { ...it, ...patch } : it)),
+    });
+  }
+  function add() {
+    const first = demoOptions[0];
+    const blank: SiteTopTemplateItem = {
+      kind: first?.kind ?? 'style',
+      key: first?.key ?? '',
+      title: '',
+      artist: '',
+      views: 1000,
+      startSec: 0,
+    };
+    setForm({ ...form, topTemplate: [...items, blank] });
+  }
+  function remove(idx: number) {
+    setForm({ ...form, topTemplate: items.filter((_, i) => i !== idx) });
+  }
+  function move(idx: number, dir: -1 | 1) {
+    const j = idx + dir;
+    if (j < 0 || j >= items.length) return;
+    const next = [...items];
+    [next[idx], next[j]] = [next[j], next[idx]];
+    setForm({ ...form, topTemplate: next });
+  }
+
+  return (
+    <div className="space-y-4">
+      {form.topSource !== 'template' && (
+        <Card className="border-amber-500/40 bg-amber-500/5">
+          <CardContent className="p-3 text-xs text-amber-200 flex items-center justify-between gap-3">
+            <span>
+              ⚠️ Sursa /top nu e setată pe „Template" — topul de mai jos nu apare pe site
+              până nu comuți. (Din tab-ul Status sau butonul din dreapta.)
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setForm({ ...form, topSource: 'template' })}
+            >
+              Setează pe Template
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      <SubSection
+        title="Top săptămână (manual)"
+        subtitle="Alege manelele afișate la /top din mostrele generate. Ordinea de mai jos = ordinea în top. Redarea pornește de la secunda setată; implicit melodia întreagă (nu doar 30s)."
+        action={
+          <Button size="sm" variant="ghost" onClick={add} disabled={demoOptions.length === 0}>
+            <Plus className="h-3.5 w-3.5" />
+            Adaugă intrare
+          </Button>
+        }
+      >
+        {demoOptions.length === 0 ? (
+          <Card className="border-dashed">
+            <CardContent className="py-8 text-center text-sm text-muted-foreground">
+              Nu există mostre audio generate pe acest site. Generează întâi mostre în
+              tab-ul „Categorii & Mostre", apoi revino aici.
+            </CardContent>
+          </Card>
+        ) : items.length === 0 ? (
+          <Card className="border-dashed">
+            <CardContent className="py-8 text-center text-sm text-muted-foreground">
+              Niciun element în top. Apasă „Adaugă intrare".
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {items.map((it, idx) => (
+              <TopWeekRow
+                key={idx}
+                idx={idx}
+                total={items.length}
+                item={it}
+                demoOptions={demoOptions}
+                audioUrl={audioByKey.get(`${it.kind}:${it.key}`)?.audioUrl}
+                onUpdate={(patch) => update(idx, patch)}
+                onRemove={() => remove(idx)}
+                onMove={(dir) => move(idx, dir)}
+              />
+            ))}
+          </div>
+        )}
+      </SubSection>
+    </div>
+  );
+}
+
+function TopWeekRow({
+  idx,
+  total,
+  item,
+  demoOptions,
+  audioUrl,
+  onUpdate,
+  onRemove,
+  onMove,
+}: {
+  idx: number;
+  total: number;
+  item: SiteTopTemplateItem;
+  demoOptions: Array<{ kind: 'style' | 'voice'; key: string; label: string; audioUrl: string }>;
+  audioUrl?: string;
+  onUpdate: (patch: Partial<SiteTopTemplateItem>) => void;
+  onRemove: () => void;
+  onMove: (dir: -1 | 1) => void;
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const previewOn = !!item.previewSec && item.previewSec > 0;
+  const missing = !demoOptions.some((o) => o.kind === item.kind && o.key === item.key);
+
+  function setStartFromPlayer() {
+    const el = audioRef.current;
+    if (!el) return;
+    onUpdate({ startSec: Math.floor(el.currentTime) });
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-3 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="text-sm font-semibold w-7 text-center text-muted-foreground">
+            {idx === 0 ? '👑' : `#${idx + 1}`}
+          </div>
+          <select
+            value={`${item.kind}:${item.key}`}
+            onChange={(e) => {
+              const [kind, ...rest] = e.target.value.split(':');
+              onUpdate({ kind: kind as 'style' | 'voice', key: rest.join(':') });
+            }}
+            className="flex-1 bg-background border border-border rounded-md px-3 py-2 text-sm"
+          >
+            {missing && (
+              <option value={`${item.kind}:${item.key}`}>
+                ⚠️ mostră lipsă ({item.kind}:{item.key})
+              </option>
+            )}
+            {demoOptions.map((o) => (
+              <option key={`${o.kind}:${o.key}`} value={`${o.kind}:${o.key}`}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <Button size="icon" variant="ghost" onClick={() => onMove(-1)} disabled={idx === 0} title="Mută sus">
+            <ChevronUp className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => onMove(1)}
+            disabled={idx === total - 1}
+            title="Mută jos"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </Button>
+          <Button size="icon" variant="ghost" onClick={onRemove} title="Șterge">
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        </div>
+
+        {audioUrl ? (
+          <audio ref={audioRef} controls src={audioUrl} className="w-full h-8" preload="metadata" />
+        ) : (
+          <div className="text-[11px] text-destructive">
+            ⚠️ Mostra selectată nu are audio (a fost ștearsă?). Alege alta din listă.
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Titlu afișat">
+            <Input
+              value={item.title}
+              onChange={(e) => onUpdate({ title: e.target.value })}
+              placeholder="Manea pentru Costel șeful"
+            />
+          </Field>
+          <Field label="Artist afișat">
+            <Input
+              value={item.artist}
+              onChange={(e) => onUpdate({ artist: e.target.value })}
+              placeholder="Adi Șampanie"
+            />
+          </Field>
+          <Field label="Vizualizări afișate">
+            <Input
+              type="number"
+              min={0}
+              value={item.views}
+              onChange={(e) => onUpdate({ views: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
+            />
+          </Field>
+          <Field label="Secunda de start (skip intro)">
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={0}
+                value={item.startSec ?? 0}
+                onChange={(e) =>
+                  onUpdate({ startSec: Math.max(0, Math.floor(Number(e.target.value) || 0)) })
+                }
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={setStartFromPlayer}
+                disabled={!audioUrl}
+                title="Pune secunda curentă din player-ul de mai sus"
+              >
+                Din player
+              </Button>
+            </div>
+          </Field>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <Switch
+            checked={previewOn}
+            onCheckedChange={(v) =>
+              onUpdate({ previewSec: v ? (item.previewSec && item.previewSec > 0 ? item.previewSec : 30) : 0 })
+            }
+          />
+          <span className="text-xs text-muted-foreground">
+            Limitează la preview (altfel: melodia întreagă de la secunda de start)
+          </span>
+          {previewOn && (
+            <div className="flex items-center gap-1">
+              <Input
+                type="number"
+                min={1}
+                className="w-20"
+                value={item.previewSec ?? 30}
+                onChange={(e) =>
+                  onUpdate({ previewSec: Math.max(1, Math.floor(Number(e.target.value) || 1)) })
+                }
+              />
+              <span className="text-xs text-muted-foreground">sec</span>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

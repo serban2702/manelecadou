@@ -407,6 +407,7 @@ export class AdminSitesController {
       ipWhitelist: s.ipWhitelist ?? [],
       demoEnabled: s.demoEnabled ?? true,
       topSource: s.topSource ?? 'seed',
+      topTemplate: s.topTemplate ?? [],
       styles: s.styles ?? [],
       voices: s.voices ?? [],
       occasions: s.occasions ?? [],

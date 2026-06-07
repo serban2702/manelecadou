@@ -230,6 +230,30 @@ export interface SiteSampleEntry {
 }
 
 /**
+ * Intrare curată manual pentru „Topul săptămânii" când `topSource='template'`.
+ * Sursa audio e o mostră existentă (stil sau voce) din `suno.styleSamples` /
+ * `suno.voiceSamples`, rezolvată după `kind` + `key`. Adminul alege exact ce
+ * apare, în ce ordine, cu ce titlu/artist și câte vizualizări afișate.
+ */
+export interface SiteTopTemplateItem {
+  /** Din ce pool de mostre vine audio: stil sau voce. */
+  kind: 'style' | 'voice';
+  /** Cheia mostrei (id-ul stilului sau al vocii). Rezolvă audioUrl-ul. */
+  key: string;
+  /** Titlu afișat (ex. „Manea pentru Costel șeful"). */
+  title: string;
+  /** Artist / interpret afișat. */
+  artist: string;
+  /** Vizualizări afișate (placeholder „aspirațional"). */
+  views: number;
+  /** Secunda de la care pornește redarea (skip intro). Default 0. */
+  startSec?: number;
+  /** Dacă setat > 0, redarea se limitează la atâtea secunde de la `startSec`
+   *  (preview scurt). Dacă lipsește / 0 → redă toată melodia de la `startSec`. */
+  previewSec?: number;
+}
+
+/**
  * Default-uri persistate pentru formularul „Personalizează mostra" din admin.
  * Salvate per-entry (stil sau voce) la apăsarea „Salvează modificările" —
  * la reîncărcare, formularul se completează cu ultimele valori folosite.
@@ -544,10 +568,19 @@ export class Site {
    * Sursă pentru pagina /top:
    *  - 'seed' → date hardcoded (manele demo placeholder, până ai destui useri)
    *  - 'live' → agregare din `generations` (cele mai vizualizate manele finalizate)
+   *  - 'template' → top curat manual din mostrele de stil/voce (vezi `topTemplate`)
    * Switch din admin când ai destule generări reale.
    */
-  @Column({ type: 'varchar', length: 8, default: 'seed' })
-  topSource!: 'seed' | 'live';
+  @Column({ type: 'varchar', length: 16, default: 'seed' })
+  topSource!: 'seed' | 'live' | 'template';
+
+  /**
+   * Top curat manual, folosit doar când `topSource='template'`. Fiecare intrare
+   * pointează la o mostră existentă (stil sau voce) și definește titlul, artistul,
+   * vizualizările afișate, secunda de start și (opțional) limita de preview.
+   */
+  @Column({ type: 'jsonb', default: () => `'[]'::jsonb` })
+  topTemplate!: SiteTopTemplateItem[];
 
   /**
    * Stiluri muzicale disponibile pe acest site (carduri din /studio).

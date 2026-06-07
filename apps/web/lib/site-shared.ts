@@ -56,8 +56,9 @@ export interface SiteConfig {
   /** Sursa pentru leaderboard /top + carduri „Ascultă acum" de pe homepage:
    *  - 'seed': liste hardcoded (placeholder demo, util pentru site-uri noi)
    *  - 'live': generări reale din DB, sortate după plays. Comută aici după
-   *    ce site-ul are suficiente manele publice. */
-  topSource?: 'seed' | 'live';
+   *    ce site-ul are suficiente manele publice.
+   *  - 'template': top curat manual din mostrele de stil/voce (configurate în admin). */
+  topSource?: 'seed' | 'live' | 'template';
   maintenanceMessage?: Record<string, string>;
   /** Lista IP-uri scutite de maintenance + hidden mode (exact match sau wildcard "*"). */
   ipWhitelist?: string[];
