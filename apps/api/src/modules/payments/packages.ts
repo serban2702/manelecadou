@@ -59,7 +59,7 @@ export const PACKAGES: Record<PackageTier, PackageDef> = {
     deliveryLabel: '10-15 min',
     featuresRo: [
       'Tot ce e în Basic',
-      'Manea mai lungă și mai calitativă',
+      'Manea mai calitativă, cu instrumental mai bun și puțin mai lungă',
       '4 imagini social-media (TikTok/Instagram/Facebook)',
       'Livrare mai rapidă',
     ],
