@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAsync } from "@/lib/hooks/use-async";
 import { format } from 'date-fns';
 import { ro } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, CreditCard, Music2, Search, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CreditCard, ExternalLink, Music2, Search, X } from 'lucide-react';
 import { AdminApi } from '@/lib/api';
 import { OrderDetailModal } from '@/components/order-detail-modal';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
@@ -218,17 +218,31 @@ function PaymentCard({
         </div>
       )}
 
-      <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
-        <span>{p.provider}</span>
-        <span>
-          {p.userId
-            ? `user:${p.userId.slice(0, 8)}`
-            : p.guestId
-              ? `guest:${p.guestId.slice(0, 8)}`
-              : '—'}
-        </span>
+      <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+        <span className="font-mono truncate">{p.ipAddress ?? '— fără IP'}</span>
+        <OpenReplayCell sessionId={p.openReplaySessionId} />
       </div>
     </button>
+  );
+}
+
+const OPENREPLAY_SESSION_BASE = 'https://openreplay.manelecadou.ro/1/session';
+
+/** Link către replay-ul OpenReplay al sesiunii asociate plății (tab nou). */
+function OpenReplayCell({ sessionId }: { sessionId?: string | null }) {
+  if (!sessionId) return <span className="text-muted-foreground">—</span>;
+  return (
+    <a
+      href={`${OPENREPLAY_SESSION_BASE}/${sessionId}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      className="inline-flex items-center gap-1 font-mono text-xs text-sky-400 hover:underline max-w-[160px]"
+      title={`Vezi replay OpenReplay · sesiune ${sessionId}`}
+    >
+      <ExternalLink className="h-3 w-3 shrink-0" />
+      <span className="truncate">{sessionId}</span>
+    </a>
   );
 }
 
@@ -404,13 +418,13 @@ export default function PaymentsPage() {
             <TableRow>
               <TableHead>Data</TableHead>
               {isAllSelected && <TableHead>Site</TableHead>}
-              <TableHead>Provider</TableHead>
+              <TableHead>IP</TableHead>
               <TableHead className="text-right">Sumă</TableHead>
               <TableHead className="w-[110px]">Status</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Sursă</TableHead>
               <TableHead>Campanie → Creativ</TableHead>
-              <TableHead>Owner</TableHead>
+              <TableHead>OpenReplay</TableHead>
               <TableHead>Comandă</TableHead>
               <TableHead>ID</TableHead>
             </TableRow>
@@ -430,7 +444,9 @@ export default function PaymentsPage() {
                     <SiteBadge siteId={p.siteId} />
                   </TableCell>
                 )}
-                <TableCell className="capitalize">{p.provider}</TableCell>
+                <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                  {p.ipAddress ?? '—'}
+                </TableCell>
                 <TableCell className="text-right font-mono tabular-nums">
                   {(p.amount / 100).toFixed(2)} {p.currency}
                 </TableCell>
@@ -456,11 +472,7 @@ export default function PaymentsPage() {
                   <CampaignCreativeCell attribution={p.attribution ?? null} />
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
-                  {p.userId
-                    ? `user:${p.userId.slice(0, 8)}`
-                    : p.guestId
-                      ? `guest:${p.guestId.slice(0, 8)}`
-                      : '—'}
+                  <OpenReplayCell sessionId={p.openReplaySessionId} />
                 </TableCell>
                 <TableCell className="text-xs">
                   {p.generation ? (

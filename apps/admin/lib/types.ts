@@ -196,6 +196,10 @@ export interface AdminPayment {
   guestId: string | null;
   createdAt: string;
   siteId?: string | null;
+  /** IP-ul cumpărătorului la momentul plății (poate fi IPv4 sau IPv6). */
+  ipAddress?: string | null;
+  /** ID-ul sesiunii OpenReplay asociate plății (pentru replay). */
+  openReplaySessionId?: string | null;
   /** Motiv detaliat când status='failed' (extras din Stripe). */
   failureReason?: string | null;
   /** Cod scurt (decline_code, error code). */
