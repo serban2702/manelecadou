@@ -242,6 +242,11 @@ export class Generation {
   @Column({ type: 'varchar', length: 80, nullable: true })
   variationLabel!: string | null;
 
+  /** Ordinea manuală a variațiilor în admin (Studio). 0 = neordonată (cele
+   *  noi apar primele); reordonarea atribuie 1..N în ordinea dorită. */
+  @Column({ type: 'integer', default: 0 })
+  sortOrder!: number;
+
   /** Fișiere derivate (WAV, karaoke/stems, videoclip) generate cu uneltele Suno. */
   @Column({ type: 'jsonb', nullable: true })
   mediaExtras!: GenerationMediaExtras | null;

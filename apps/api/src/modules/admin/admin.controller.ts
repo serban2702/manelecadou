@@ -649,6 +649,13 @@ export class AdminController {
     return { ok: true };
   }
 
+  /** Rearanjează variațiile comenzii (id = comanda-părinte). */
+  @Post('generations/:id/reorder-variations')
+  async reorderVariations(@Param('id') id: string, @Body() body: { ids?: string[] }) {
+    await this.generationsService.adminReorderVariations(id, body.ids ?? []);
+    return { ok: true };
+  }
+
   /** Prelungește o piesă (Suno extend) → variație nouă mai lungă. */
   @Post('generations/:id/extend')
   async extend(

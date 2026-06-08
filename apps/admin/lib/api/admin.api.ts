@@ -34,6 +34,7 @@ export interface AdminVariation {
   bonusAudioUrl: string | null;
   coverUrl: string | null;
   error: string | null;
+  sortOrder: number;
   createdAt: string;
   completedAt: string | null;
 }
@@ -394,6 +395,12 @@ export class AdminApi {
   }
   static generationDeleteVariation(id: string): Promise<{ ok: boolean }> {
     return http.delete(`/admin/generations/${id}/variation`);
+  }
+  static generationReorderVariations(
+    rootId: string,
+    ids: string[],
+  ): Promise<{ ok: boolean }> {
+    return http.post(`/admin/generations/${rootId}/reorder-variations`, { ids });
   }
   static generationExtend(
     id: string,

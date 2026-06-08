@@ -15,6 +15,8 @@ import { format, formatDistanceStrict } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import {
   AlertCircle,
+  ArrowDown,
+  ArrowUp,
   ArrowUpToLine,
   BookOpen,
   CheckCircle2,
@@ -673,6 +675,15 @@ function StudioTab({ data, refetch }: { data: OrderDetail; refetch: () => Promis
     }
   }
 
+  async function moveVariation(index: number, dir: -1 | 1) {
+    const list = variations.data ?? [];
+    const target = index + dir;
+    if (target < 0 || target >= list.length) return;
+    const ids = list.map((v) => v.id);
+    [ids[index], ids[target]] = [ids[target], ids[index]];
+    await act('reorder', () => AdminApi.generationReorderVariations(rootId, ids), 'Ordine actualizată');
+  }
+
   const canSunoTools = !!g.providerJobId && g.providerJobId !== 'manual';
   const upd = (patch: Partial<typeof edits>) => setEdits((s) => ({ ...s, ...patch }));
   const processing = (variations.data ?? []).filter(
@@ -1021,15 +1032,18 @@ function StudioTab({ data, refetch }: { data: OrderDetail; refetch: () => Promis
         </p>
       </Section>
 
-      {/* ===== Variații ===== */}
+      {/* ===== Toate piesele generate ===== */}
       <Section
         icon={<Music2 className="h-4 w-4" />}
-        title="Variații"
-        subtitle="Versiuni candidate. Ascultă-le și promovează-o pe cea bună."
-        badge={variations.data?.length ? String(variations.data.length) : undefined}
+        title="Toate piesele generate"
+        subtitle="Piesa principală (live) plus toate variațiile. Promovează, rearanjează sau șterge."
+        badge={String((variations.data?.length ?? 0) + 1)}
       >
+        {/* Piesa principală — cea livrată clientului, nu se poate șterge */}
+        <PrincipalCard g={g} />
+
         {!variations.data || variations.data.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-white/10 bg-black/20 px-4 py-8 text-center">
+          <div className="mt-2.5 rounded-xl border border-dashed border-white/10 bg-black/20 px-4 py-6 text-center">
             <Music2 className="mx-auto mb-2 h-6 w-6 text-muted-foreground/50" />
             <p className="text-xs text-muted-foreground">
               Nicio variație încă. Folosește <strong>Regenerează → Piesă nouă</strong>, Re-roll,
@@ -1037,12 +1051,16 @@ function StudioTab({ data, refetch }: { data: OrderDetail; refetch: () => Promis
             </p>
           </div>
         ) : (
-          <div className="grid gap-2.5 sm:grid-cols-2">
-            {variations.data.map((v) => (
+          <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2">
+            {variations.data.map((v, i) => (
               <VariationCard
                 key={v.id}
                 v={v}
                 acting={!!acting}
+                canMoveUp={i > 0}
+                canMoveDown={i < variations.data!.length - 1}
+                onMoveUp={() => moveVariation(i, -1)}
+                onMoveDown={() => moveVariation(i, 1)}
                 onPromote={(s) => act('promote', () => AdminApi.generationPromote(v.id, { slot: s, notify: false }), `Pusă ca ${s === 'main' ? 'principală' : 'bonus'}`)}
                 onDelete={() => act('delvar', () => AdminApi.generationDeleteVariation(v.id), 'Variație ștearsă')}
               />
@@ -1239,14 +1257,54 @@ function SlotToggle({ value, onChange }: { value: 'main' | 'bonus'; onChange: (v
   );
 }
 
+function PrincipalCard({ g }: { g: NonNullable<OrderDetail['generation']> }) {
+  const ready = g.status === 'succeeded' && !!g.audioUrl;
+  const audio = g.audioUrl ?? g.demoAudioUrl;
+  const bonus = g.bonusAudioUrl ?? g.demoBonusAudioUrl;
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-amber-400/30 bg-amber-500/[0.06] p-3">
+      <div className="flex items-center gap-2">
+        <Badge variant="warning" className="shrink-0">
+          <Sparkles className="mr-1 h-3 w-3" /> Principală · live
+        </Badge>
+        {ready ? <StatusBadge status={g.status} /> : (
+          <span className="inline-flex items-center gap-1 text-[11px] text-amber-300">{g.status}</span>
+        )}
+        <span className="ml-auto text-[10px] text-muted-foreground">livrată clientului</span>
+      </div>
+      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <code className="rounded bg-white/5 px-1.5 py-0.5">{g.style}</code>
+        <span>{voiceLabel(g.voiceArtist)}</span>
+      </div>
+      {audio && (
+        <div className="space-y-1">
+          <audio controls src={audio} className="h-8 w-full" />
+          {bonus && <audio controls src={bonus} className="h-8 w-full" />}
+        </div>
+      )}
+      <p className="text-[10px] text-muted-foreground/70">
+        Aceasta e piesa activă. Ca s-o schimbi, promovează o variație de mai jos.
+      </p>
+    </div>
+  );
+}
+
 function VariationCard({
   v,
   acting,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
   onPromote,
   onDelete,
 }: {
   v: AdminVariation;
   acting: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onPromote: (slot: 'main' | 'bonus') => void;
   onDelete: () => void;
 }) {
@@ -1265,7 +1323,21 @@ function VariationCard({
         ) : (
           <StatusBadge status={v.status} />
         )}
-        <span className="ml-auto text-[10px] text-muted-foreground">{fmtDateTime(v.createdAt)}</span>
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            type="button" disabled={acting || !canMoveUp} onClick={onMoveUp} title="Mută mai sus"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/10 bg-white/5 text-muted-foreground transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <ArrowUp className="h-3 w-3" />
+          </button>
+          <button
+            type="button" disabled={acting || !canMoveDown} onClick={onMoveDown} title="Mută mai jos"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/10 bg-white/5 text-muted-foreground transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <ArrowDown className="h-3 w-3" />
+          </button>
+          <span className="text-[10px] text-muted-foreground">{fmtDateTime(v.createdAt)}</span>
+        </div>
       </div>
       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
         <code className="rounded bg-white/5 px-1.5 py-0.5">{v.style}</code>

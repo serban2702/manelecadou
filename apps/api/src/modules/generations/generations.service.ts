@@ -675,13 +675,28 @@ export class GenerationsService {
     return saved;
   }
 
-  /** Lista variațiilor (rânduri-copil) ale unei comenzi, cele mai noi primele. */
+  /** Lista variațiilor (rânduri-copil) ale unei comenzi. Ordonate manual
+   *  (sortOrder) dacă au fost rearanjate, altfel cele mai noi primele. */
   async adminListVariations(parentId: string): Promise<Generation[]> {
     return this.repo.find({
       where: { parentGenerationId: parentId },
-      order: { createdAt: 'DESC' },
+      order: { sortOrder: 'ASC', createdAt: 'DESC' },
       take: 50,
     });
+  }
+
+  /** Rearanjează variațiile unei comenzi în ordinea dată (sortOrder = 1..N). */
+  async adminReorderVariations(parentId: string, orderedIds: string[]): Promise<void> {
+    const variations = await this.repo.find({
+      where: { parentGenerationId: parentId },
+      select: ['id'],
+    });
+    const valid = new Set(variations.map((v) => v.id));
+    let pos = 1;
+    for (const id of orderedIds) {
+      if (!valid.has(id)) continue;
+      await this.repo.update({ id, parentGenerationId: parentId }, { sortOrder: pos++ });
+    }
   }
 
   /** Șterge o variație (doar rânduri-copil, niciodată o comandă reală). */
