@@ -117,19 +117,46 @@ function currencyDisplayName(code?: string): string | undefined {
   return CURRENCY_NAME[upper] ?? upper;
 }
 
-/** Înlocuiește {{variabilă}} cu valoarea din map; valori goale/null → NOT_FILLED. */
+/** Rezolvă o variabilă la valoarea ei string, sau `null` dacă e goală/lipsă. */
+function resolveVar(key: string, v: unknown): string | null {
+  if (v === undefined || v === null) return null;
+  const s = typeof v === 'number' ? String(v) : String(v).trim();
+  if (s === '') return null;
+  // tipAmount = 0 → tratat ca lipsă (păstrăm semantica veche).
+  if (key === 'tipAmount' && (v === 0 || v === '0' || s === '0')) return null;
+  return s;
+}
+
+/**
+ * Înlocuiește {{variabilă}} cu valoarea din map. Dacă o variabilă opțională e
+ * goală/lipsă, NU injectăm niciun placeholder/sentinel — ȘTERGEM linia întreagă
+ * care o conține.
+ *
+ * ⚠️ CRITIC (bug prod 2026-06-08, gen 17317d93 „Din partea necunoscută pentru
+ * Marian"): dacă lăsăm un sentinel în prompt (ex. „De la: __NOT_PROVIDED__"),
+ * OpenAI îl poate INTERPRETA semantic și cânta „din partea necunoscută" — o
+ * parafrază pe care scrubSentinel() nu o prinde (caută doar string-ul literal).
+ * Eliminând linia, modelul pur și simplu nu are ce scrie pentru câmpul lipsă.
+ *
+ * Convenție: template-urile se scriu cu UN câmp pe linie („De la: {{senderName}}"),
+ * fiindcă orice linie cu o variabilă opțională goală e eliminată în întregime.
+ */
 function fillTemplate(template: string, vars: Record<string, unknown>): string {
-  return template.replace(/{{\s*(\w+)\s*}}/g, (_, key: string) => {
-    const v = vars[key];
-    if (v === undefined || v === null) return NOT_FILLED;
-    const s = typeof v === 'number' ? String(v) : String(v).trim();
-    if (s === '' || s === '0') {
-      // tipAmount = 0 → tratat ca lipsă (păstrăm semantica veche).
-      if (key === 'tipAmount' && (v === 0 || v === '0')) return NOT_FILLED;
-      if (s === '') return NOT_FILLED;
-    }
-    return s;
-  });
+  const kept: string[] = [];
+  for (const line of template.split('\n')) {
+    let drop = false;
+    const filled = line.replace(/{{\s*(\w+)\s*}}/g, (_, key: string) => {
+      const resolved = resolveVar(key, vars[key]);
+      if (resolved === null) {
+        drop = true;
+        return '';
+      }
+      return resolved;
+    });
+    if (drop) continue; // linie cu un câmp opțional necompletat → o eliminăm
+    kept.push(filled);
+  }
+  return kept.join('\n');
 }
 
 /**
