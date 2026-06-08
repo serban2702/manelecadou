@@ -573,6 +573,20 @@ NU pomeni alte pachete/prețuri (ex. 69.99) în chat — doar standard și premi
 WORKFLOW DE SALES (REPLICĂM EXACT CE FACE IRINA UMANĂ):
 ═══════════════════════════════════════════════════════════════════════
 
+ETAPA 0 — COMANDĂ EXISTENTĂ (verifică ÎNAINTE de a porni wizard-ul):
+  → Dacă userul se referă la o comandă DEJA făcută/plătită („am comandat o melodie",
+    „am plătit deja", „am făcut o manea pentru X", „melodia pe care am plătit-o",
+    „vreau să modifici melodia mea") → APELEAZĂ \`check_order_status\` ÎNTÂI.
+  → Dacă check_order_status returnează hasOrder=true → NU porni wizard-ul, NU cota prețul,
+    NU cere nume/mesaj/email de la zero. Răspunde pe baza statusului real (gata / se
+    generează / plătit) și a melodiei deja existente. Dacă userul vrea o MODIFICARE pe o
+    melodie deja plătită → escalate_to_human (modificările se fac manual de admin).
+  → Indiciu vizual: dacă vezi în istoric un mesaj song_preview cu „/m/<id>", userul ARE
+    deja o melodie — NU te purta ca și cum ar fi un chat nou.
+  → BUG observat 2026-06-08 (conv c06c6997, dec6adaf): userul zicea „am plătit deja" /
+    „am comandat" iar AI a repornit wizard-ul de la zero (a re-cotat prețul, a cerut iar
+    detalii) ignorând melodia care era CHIAR în chat. NU repeta asta.
+
 ETAPA 1 — QUALIFY (după ce userul răspunde la salut):
   → „Super, doresti sa te ajut sa iti realizezi tu maneaua sau vrei sa o fac eu pentru tine?"
   → Lasă userul să-ți spună singur contextul (pentru cine, ce ocazie, ce situație).
@@ -734,6 +748,10 @@ REGULI STRICTE:
 12. ZERO MARKDOWN. NU folosi nicio formă de: [text](url), **bold**, __italic__, # heading,
     \`code\`, > quote. Trimite linkuri ca text simplu sau pur și simplu spune că „link-ul
     de plată e mai sus în chat" — payment_link e card separat, NU îl retrimite ca text.
+    ⚠️ NU SCRIE NICIODATĂ URL-ul de plată Stripe (https://checkout.stripe.com/...) în text.
+    E un URL gigantic care pe client apare ca text inert (nu buton) și arată oribil. Cardul
+    payment_link de mai sus are deja butonul „Plătește acum" — doar trimite userul la el.
+    BUG observat 2026-06-07 conv 5a77c247: AI a lipit URL-ul Stripe brut ca al doilea „link".
 13. DACĂ PROMIȚI O ACȚIUNE, FĂ-O. Dacă scrii „verific", „mă uit imediat", „să văd statusul"
     → APELEAZĂ check_order_status ÎN ACELAȘI TURN. Altfel minți userul. La fel pentru
     „îți trimit linkul" → wizard_finalize sau quote_price_with_offer în același turn.
@@ -987,12 +1005,15 @@ REGULI STRICTE:
       ? await this.generations.findOnePublic(wizardGenId).catch(() => null)
       : null;
 
-    // Fallback — caută ultima generation a userului/guest-ului din conv
+    // Fallback 1 — ultima generation a userului/guest-ului din conv.
+    // Coloanele reale pe Generation sunt ownerUserId / ownerGuestId (NU userId/guestId).
+    // BUG observat 2026-06-08 conv dec6adaf: query-ul folosea g.userId/g.guestId
+    // (coloane inexistente) → arunca → catch → hasOrder:false chiar cu comenzi reale.
     if (!generation && (conv.userId || conv.guestId)) {
       try {
         const recent = await this.generations['repo']
           .createQueryBuilder('g')
-          .where(conv.userId ? 'g.userId = :u' : 'g.guestId = :g', {
+          .where(conv.userId ? 'g.ownerUserId = :u' : 'g.ownerGuestId = :g', {
             u: conv.userId,
             g: conv.guestId,
           })
@@ -1001,6 +1022,45 @@ REGULI STRICTE:
           .limit(1)
           .getOne();
         generation = recent ?? null;
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // Fallback 2 — melodia e CHIAR în chat ca song_preview (/m/<id>). Cel mai des userul
+    // revine pe alt guest/altă conversație dar melodia plătită apare ca link în istoric.
+    if (!generation) {
+      try {
+        const previews = await this.msg.find({
+          where: { conversationId: conv.id, messageType: 'song_preview' as ChatMessage['messageType'] },
+          order: { createdAt: 'DESC' },
+          take: 10,
+        });
+        for (const p of previews) {
+          const match = /\/m\/([0-9a-fA-F-]{36})/.exec(p.body ?? '');
+          if (!match) continue;
+          const g = await this.generations.findOnePublic(match[1]).catch(() => null);
+          if (g) { generation = g; break; }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // Fallback 3 — alt chat, același IP (acceași persoană revine fără să fie logată).
+    if (!generation && conv.lastIp) {
+      try {
+        const sameIp = await this.conv.find({
+          where: { lastIp: conv.lastIp, siteId: conv.siteId ?? undefined },
+          order: { lastMessageAt: 'DESC' },
+          take: 10,
+        });
+        for (const o of sameIp) {
+          const gid = o.wizardState?.generationId;
+          if (!gid) continue;
+          const g = await this.generations.findOnePublic(gid).catch(() => null);
+          if (g) { generation = g; break; }
+        }
       } catch {
         /* ignore */
       }
@@ -1299,10 +1359,9 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
       const rp = reusable.payload as ChatMessagePayload | undefined;
       return {
         status: 'PAYMENT_LINK_REUSED',
-        checkoutUrl: rp?.checkoutUrl,
         generationId: rp?.generationId,
         instruction:
-          'Există deja un link de plată identic trimis în ultimele minute (cardul de mai sus). NU genera altul. Spune-i userului scurt să dea click pe linkul de plată de mai sus.',
+          'Există deja un link de plată identic trimis în ultimele minute (cardul de mai sus). NU genera altul. Spune-i userului scurt să dea click pe linkul de plată de mai sus. NU scrie URL-ul Stripe în text.',
       };
     }
 
@@ -1458,9 +1517,8 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
         ok: true,
         status: 'PAYMENT_LINK_SENT',
         generationId: generation.id,
-        checkoutUrl: checkout.url,
         instruction:
-          'Comanda finalizată cu succes. Spune userului scurt că linkul de plată e mai sus + că după plată melodia se generează în 5-10 minute și o va primi pe email + apare aici în chat. TERMINĂ TURUL. NU folosi „90 secunde" sau „1-2 minute".',
+          'Comanda finalizată cu succes. Linkul de plată e DEJA trimis ca un card separat cu buton (mai sus). Spune userului scurt că linkul de plată e mai sus + că după plată melodia se generează în 5-10 minute și o va primi pe email + apare aici în chat. NU scrie URL-ul Stripe în text (cardul are deja butonul). TERMINĂ TURUL. NU folosi „90 secunde" sau „1-2 minute".',
       };
     } catch (e) {
       this.logger.warn(`wizard_finalize failed: ${(e as Error).message}`);
@@ -1773,9 +1831,8 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
         return {
           sent: false,
           status: 'PAYMENT_LINK_REUSED',
-          checkoutUrl: (reusable.payload as ChatMessagePayload | undefined)?.checkoutUrl,
           instruction:
-            'Există deja un link de plată identic trimis acum câteva secunde (cardul de mai sus). NU trimite altul. Spune-i userului scurt să dea click pe linkul de plată de mai sus.',
+            'Există deja un link de plată identic trimis acum câteva secunde (cardul de mai sus). NU trimite altul. Spune-i userului scurt să dea click pe linkul de plată de mai sus. NU scrie URL-ul Stripe în text.',
         };
       }
 
@@ -1817,8 +1874,7 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
       return {
         sent: true,
         status: 'PAYMENT_LINK_SENT',
-        checkoutUrl: checkout.url,
-        instruction: 'Link de plată trimis. Spune userului că poate plăti acum. Termină turul.',
+        instruction: 'Link de plată trimis ca un card separat cu buton (mai sus). Spune userului că poate plăti acum apăsând pe card. NU scrie URL-ul Stripe în text. Termină turul.',
       };
     } catch (e) {
       return {
