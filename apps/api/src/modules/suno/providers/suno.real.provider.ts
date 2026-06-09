@@ -84,8 +84,15 @@ export class SunoRealProvider extends SunoProvider {
     ) {
       body.weirdnessConstraint = Math.round(input.weirdnessConstraint * 100) / 100;
     }
-    if (input.negativeTags?.trim()) {
-      body.negativeTags = input.negativeTags.trim();
+    // negativeTags: pe lângă cele configurate per-stil, excludem explicit genul
+    // vocal opus — vocalGender singur e doar un hint și pierde în fața textului
+    // de style dacă acesta conține descriptori de gen contradictorii.
+    const negativeParts: string[] = [];
+    if (input.negativeTags?.trim()) negativeParts.push(input.negativeTags.trim());
+    if (input.vocalGender === 'f') negativeParts.push('male vocals, male voice, man singer');
+    else if (input.vocalGender === 'm') negativeParts.push('female vocals, female voice, woman singer');
+    if (negativeParts.length) {
+      body.negativeTags = negativeParts.join(', ');
     }
 
     // Curățăm prefixele duplicate pe care utilizatorii le tastează în câmpurile
@@ -104,7 +111,7 @@ export class SunoRealProvider extends SunoProvider {
       // (Suno respinge dacă apar în prompt sau style).
       const safeLyrics = stripBannedArtistNames(cleanInput.lyrics ?? '');
       body.prompt = truncate(this.ensureDedicationOpening(safeLyrics, cleanInput), limits.prompt);
-      body.style = truncate(this.buildStyleTag(cleanInput, !!input.vocalGender), limits.style);
+      body.style = truncate(this.buildStyleTag(cleanInput), limits.style);
       const titleBase = cleanDedication
         ? `Pentru ${cleanRecipient}, de la ${cleanDedication}`
         : `Pentru ${cleanRecipient}`;
@@ -656,21 +663,32 @@ export class SunoRealProvider extends SunoProvider {
    *   - site.suno.stylePromptMap[style] — override complet pentru un stil
    *   - site.suno.basePrompt            — înlocuiește CORE-ul default
    */
-  private buildStyleTag(i: SunoGenerateInput, vocalGenderProvided = false): string {
+  private buildStyleTag(i: SunoGenerateInput): string {
+    // Prefix explicit de gen la ÎNCEPUTUL tag-ului (nu la final, ca să nu cadă
+    // la truncate) + aliniem orice mențiune de gen din restul textului.
+    // Sursele (basePrompt per-site din DB, stylePromptMap, styleMap hardcodat)
+    // conțin istoric "male vocal" — nealiniate, contrazic parametrul vocalGender
+    // și Suno generează voce greșită la comenzile cu voce feminină.
+    const genderTag =
+      i.vocalGender === 'f'
+        ? 'female vocals only, woman singer, '
+        : i.vocalGender === 'm'
+          ? 'male vocals only, man singer, '
+          : '';
     const siteSuno = i.site?.suno;
     const styleOverride = siteSuno?.stylePromptMap?.[i.style];
     if (styleOverride) {
       const occasionHint = i.occasion ? `, themed for ${i.occasion}` : '';
-      return `${styleOverride}${occasionHint}`;
+      return genderTag + alignVocalGender(`${styleOverride}${occasionHint}`, i.vocalGender);
     }
     // Bază obligatorie: scări orientale + instrumentație + vocal style autentic manele.
     // IMPORTANT: NU includem nume de artiști reali — Suno respinge tag-urile cu artist names
     // (SENSITIVE_WORD_ERROR: "we don't reference specific artists"). Descriem doar
     // caracteristici sonore.
     //
-    // Când vocalGender e setat explicit (parametru direct Suno), scoatem
-    // "male vocal" hardcoded ca să nu intre în conflict cu cererea (ex. voce feminină).
-    const vocalDescriptor = vocalGenderProvided
+    // Când vocalGender e setat explicit (parametru direct Suno + genderTag), folosim
+    // descriptor neutru ca să nu intre în conflict cu cererea (ex. voce feminină).
+    const vocalDescriptor = i.vocalGender
       ? 'ornamented melismatic vocal with heavy auto-tune, pitch slides and "of/aoleu" interjections'
       : 'ornamented melismatic male vocal with heavy auto-tune, pitch slides and "of/aoleu" interjections';
     const CORE = siteSuno?.basePrompt ??
@@ -721,7 +739,7 @@ export class SunoRealProvider extends SunoProvider {
 
     const styleText = styleMap[i.style] ?? `${i.style} manele subgenre`;
     const occasionHint = i.occasion ? `, themed for ${i.occasion}` : '';
-    return `${CORE}, ${styleText}${occasionHint}`;
+    return genderTag + alignVocalGender(`${CORE}, ${styleText}${occasionHint}`, i.vocalGender);
   }
 
   private buildSimplePrompt(i: SunoGenerateInput): string {
@@ -734,7 +752,9 @@ export class SunoRealProvider extends SunoProvider {
       i.message ? `Personal message to weave in: "${i.message.slice(0, 180)}"` : '',
       `Romanian language. Must sound like real Romanian manele, NOT pop, NOT EDM, NOT rap.`,
     ];
-    return parts.filter(Boolean).join(' ');
+    // Aliniem descriptorul vocal hardcodat ("male vocal") cu genul cerut.
+    // Doar replace in-place, fără prefix — limita simplePrompt e 480 chars.
+    return alignVocalGender(parts.filter(Boolean).join(' '), i.vocalGender);
   }
 
   /**
@@ -825,6 +845,20 @@ function modelLimits(model: string): {
   // V4_5, V4_5PLUS, V5, V5_5 + default
   // Nota: documentatia spune 100 dar API-ul enforceaza 80 in practica → 75 cu marja.
   return { prompt: 4900, style: 950, title: 75, simplePrompt: 480 };
+}
+
+/**
+ * Aliniază mențiunile de gen vocal dintr-un text de style/prompt cu genul
+ * cerut explicit. `\bmale\b` NU se potrivește în "female" (și invers
+ * `\bman\b` nu prinde "woman", nici "Romanian") — word boundary garantează asta.
+ * Versurile (lyrics) NU trec niciodată prin această funcție — sunt cântate literal.
+ */
+function alignVocalGender(text: string, gender?: 'm' | 'f'): string {
+  if (!text || (gender !== 'm' && gender !== 'f')) return text;
+  if (gender === 'f') {
+    return text.replace(/\bmale\b/gi, 'female').replace(/\bman\b/gi, 'woman');
+  }
+  return text.replace(/\bfemale\b/gi, 'male').replace(/\bwoman\b/gi, 'man');
 }
 
 function truncate(s: string, max: number): string {
