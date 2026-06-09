@@ -15,8 +15,13 @@ import { recoveryEmailTemplate } from '../../mailer/templates/recovery';
 
 /** Fereastra în care căutăm evenimente de abandon. */
 const LOOKBACK_DAYS = 14;
-/** Plafonul de emailuri trimise per rulare de cron (anti-burst pe Mailgun). */
-const MAX_SENDS_PER_RUN = 40;
+/** Plafonul de emailuri trimise per rulare de cron (anti-burst pe Mailgun).
+ *  Observat la prima rulare pe prod (2026-06-10): Mailgun a întors 420
+ *  „recipient limit exceeded" după ~29 de mesaje în burst — ținem plafonul jos
+ *  ca recovery-ul să NU consume cota în detrimentul emailurilor tranzacționale
+ *  (magic link, livrare melodie). Backlog-ul se drenează oricum: candidații cu
+ *  eroare sunt reîncercați la fiecare tick de 10 min. */
+const MAX_SENDS_PER_RUN = 12;
 
 /** Lista default de emailuri interne excluse. Override prin setting
  *  `RECOVERY_EXCLUDE_EMAILS` (CSV; intrările care încep cu '@' = match pe sufix). */
