@@ -779,27 +779,38 @@ export class SunoRealProvider extends SunoProvider {
 
     const openingLines = [
       `De la ${dedication}, pentru ${recipient}, cu drag,`,
-      messageHook
-        ? `${messageHook}, frate, ascultă-mă.`
-        : `Astăzi e o zi mare, vine inima cu mine.`,
+      messageHook ? `${messageHook}.` : `Astăzi e o zi mare, vine inima cu mine.`,
     ];
 
-    // Verificăm dacă deschiderea cântată conține deja ambele nume.
-    const verseMatch = lyrics.match(/\[Verse\s*1[^\]]*\]([\s\S]{0,400})/i);
-    if (verseMatch) {
-      const sungOpening = stripBracketContent(verseMatch[1])
+    // Verificăm dacă deschiderea cântată conține deja numele. Ne uităm la primele
+    // rânduri sung din ÎNTREAGA piesă ([Spoken Intro] e și el rostit de voce, nu
+    // doar [Verse 1]) și comparăm normalizat: din dedicație ne interesează doar
+    // numele expeditorului (userii scriu adesea fraze gen "Mama X pentru familia mea"),
+    // iar din destinatar fiecare nume în parte (poate fi listă: "Eva, Sofia și Dani").
+    const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+    const dedicationName = norm(dedication.split(/\s+pentru\s+/i)[0] || dedication);
+    // notă: \b nu funcționează cu diacritice în JS regex, deci "și" se separă prin spații
+    const recipientNames = recipient
+      .split(/[,&]|\s+și\s+|\s+si\s+/i)
+      .map(norm)
+      .filter(Boolean);
+    const sungOpening = norm(
+      stripBracketContent(lyrics)
         .split('\n')
         .map((l) => l.trim())
-        .filter(Boolean)
-        .slice(0, 2)
-        .join(' ')
-        .toLowerCase();
-      if (
-        sungOpening.includes(dedication.toLowerCase()) &&
-        sungOpening.includes(recipient.toLowerCase())
-      ) {
-        return lyrics; // already correct
-      }
+        .filter((l) => l && !/^\(.*\)$/.test(l)) // sărim liniile pur instrumentale "(...)"
+        .slice(0, 4)
+        .join(' '),
+    );
+    if (
+      sungOpening.includes(dedicationName) &&
+      recipientNames.every((n) => sungOpening.includes(n))
+    ) {
+      return lyrics; // deschiderea acoperă deja expeditorul + destinatarii
+    }
+
+    const verseMatch = lyrics.match(/\[Verse\s*1[^\]]*\]([\s\S]{0,400})/i);
+    if (verseMatch) {
       // Înlocuim primele rânduri sung cu deschiderea noastră, păstrăm restul versului.
       return lyrics.replace(
         /(\[Verse\s*1[^\]]*\])([\s\S]*?)(?=\n\s*\[)/i,
@@ -931,7 +942,13 @@ function condenseForOpening(msg: string): string {
   if (firstSentence.length <= 80) return firstSentence;
   const cut = firstSentence.slice(0, 80);
   const lastSpace = cut.lastIndexOf(' ');
-  return (lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trim();
+  let out = (lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trim();
+  // Tăierea poate lăsa prepoziții/conjuncții agățate ("...iubitul meu Dani din") —
+  // le scoatem ca rândul cântat să se termine natural.
+  const dangling =
+    /[\s,]+(din|și|si|cu|de|la|pentru|pe|în|in|că|ca|spre|către|catre|al|ai|ale|a|o|un|cel|cea|mai|să|sa|se)$/i;
+  while (dangling.test(out)) out = out.replace(dangling, '').trim();
+  return out.replace(/[,;:]+$/, '');
 }
 
 function safeParseJson(s: string): unknown {
