@@ -64,6 +64,8 @@ export interface AdminGeneration {
   paymentId?: string | null;
   paidUnlocked?: boolean;
   retryCount?: number;
+  /** Reîncercări automate (Suno căzut / fără credite). Separat de retryCount (manual). */
+  autoRetryCount?: number;
   /** Următoarea reîncercare automată plănuită (ISO). NULL = nu mai retry-uim. */
   nextRetryAt?: string | null;
   lastRetryAt?: string | null;

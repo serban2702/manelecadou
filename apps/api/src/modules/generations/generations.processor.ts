@@ -375,11 +375,15 @@ export class GenerationsProcessor extends WorkerHost {
       // (paidUnlocked sau type='full'), reîncercăm la nesfârșit cu backoff
       // exponențial până când reușește SAU admin încarcă manual fișierul.
       // Pentru demouri necontract-uite, ne oprim după câteva încercări.
+      // IMPORTANT: auto-retry incrementează `autoRetryCount`, NU `retryCount`.
+      // `retryCount` e rezervat butonului manual (limită 3) — dacă auto-retry-ul
+      // ar fi atins același contor, butonul manual s-ar bloca permanent după
+      // câteva eșecuri Suno. Vezi GenerationsService.retry().
       const maxRetries = this.maxAutoRetries(gen);
-      const shouldAutoRetry = (gen.retryCount ?? 0) < maxRetries;
+      const shouldAutoRetry = (gen.autoRetryCount ?? 0) < maxRetries;
       if (shouldAutoRetry) {
-        gen.retryCount = (gen.retryCount ?? 0) + 1;
-        const delayMs = this.nextRetryDelayMs(gen.retryCount - 1);
+        gen.autoRetryCount = (gen.autoRetryCount ?? 0) + 1;
+        const delayMs = this.nextRetryDelayMs(gen.autoRetryCount - 1);
         gen.nextRetryAt = new Date(Date.now() + delayMs);
         await this.repo.save(gen);
         await this.queue.add(
@@ -388,13 +392,13 @@ export class GenerationsProcessor extends WorkerHost {
           { delay: delayMs, removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
         );
         this.logger.warn(
-          `generation ${gen.id} failed (try #${gen.retryCount}/${maxRetries}): ${gen.error}; auto-retry in ${Math.round(delayMs / 60_000)}min`,
+          `generation ${gen.id} failed (auto-try #${gen.autoRetryCount}/${maxRetries}): ${gen.error}; auto-retry in ${Math.round(delayMs / 60_000)}min`,
         );
       } else {
         gen.nextRetryAt = null;
         await this.repo.save(gen);
         this.logger.error(
-          `generation ${gen.id} failed permanently (try ${gen.retryCount}/${maxRetries}): ${gen.error}`,
+          `generation ${gen.id} failed permanently (auto-try ${gen.autoRetryCount}/${maxRetries}): ${gen.error}`,
         );
       }
       void this.notifyChat(gen.id, 'failed');

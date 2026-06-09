@@ -347,6 +347,9 @@ export class GenerationsService {
       throw new ConflictException('already_succeeded');
     }
 
+    // Limita se aplică DOAR reîncercărilor manuale. Auto-retry-urile (Suno
+    // căzut / fără credite) folosesc `autoRetryCount` și NU consumă din asta —
+    // altfel butonul s-ar bloca permanent după câteva eșecuri Suno.
     const max = 3;
     if ((gen.retryCount ?? 0) >= max) {
       throw new ForbiddenException('retry_limit_reached');
@@ -361,6 +364,10 @@ export class GenerationsService {
     gen.providerJobId = null;
     gen.completedAt = null;
     gen.retryCount = (gen.retryCount ?? 0) + 1;
+    // Resetăm contorul auto-retry + marker-ul: după un retry manual, dacă Suno
+    // tot e indisponibil, auto-retry-ul primește din nou tot bugetul de încercări.
+    gen.autoRetryCount = 0;
+    gen.nextRetryAt = null;
     const saved = await this.repo.save(gen);
 
     await this.queue.add(
@@ -466,6 +473,7 @@ export class GenerationsService {
     gen.providerJobId = null;
     gen.completedAt = null;
     gen.retryCount = (gen.retryCount ?? 0) + 1;
+    gen.autoRetryCount = 0;
     gen.nextRetryAt = null;
     gen.lastRetryAt = new Date();
     const saved = await this.repo.save(gen);

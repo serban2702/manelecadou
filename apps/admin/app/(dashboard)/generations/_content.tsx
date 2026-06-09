@@ -276,14 +276,14 @@ export default function GenerationsPage() {
                       {g.status === 'failed' && g.nextRetryAt && (
                         <span
                           className="text-[10px] text-amber-300"
-                          title={`Auto-retry #${(g.retryCount ?? 0) + 1} la ${format(new Date(g.nextRetryAt), "HH:mm:ss")}`}
+                          title={`Auto-retry #${(g.autoRetryCount ?? 0) + 1} la ${format(new Date(g.nextRetryAt), "HH:mm:ss")}`}
                         >
                           ⏱ retry în {formatDistanceToNowStrict(new Date(g.nextRetryAt), { locale: ro })}
                         </span>
                       )}
-                      {(g.retryCount ?? 0) > 0 && !g.nextRetryAt && g.status !== 'succeeded' && (
+                      {((g.autoRetryCount ?? 0) > 0 || (g.retryCount ?? 0) > 0) && !g.nextRetryAt && g.status !== 'succeeded' && (
                         <span className="text-[10px] text-muted-foreground">
-                          {g.retryCount} încercări
+                          {(g.autoRetryCount ?? 0) + (g.retryCount ?? 0)} încercări
                         </span>
                       )}
                       {g.providerJobId === 'manual' && (

@@ -176,8 +176,18 @@ export class Generation {
   @Column({ type: 'text', nullable: true })
   error!: string | null;
 
+  /** Câte reîncercări MANUALE (buton user „Reîncearcă") s-au făcut. Limită 3.
+   *  Separat de `autoRetryCount` ca auto-retry-urile (Suno căzut / fără credite)
+   *  să NU blocheze butonul manual — vezi GenerationsService.retry(). */
   @Column({ type: 'integer', default: 0 })
   retryCount!: number;
+
+  /** Câte reîncercări AUTOMATE (backoff când Suno e căzut / fără credite) s-au
+   *  făcut. Limită ~50. Incrementat de processor, NU de butonul manual. Resetat
+   *  la 0 când userul declanșează un retry manual (îi dă auto-retry-ului o șansă
+   *  nouă după ce s-au reîncărcat creditele). */
+  @Column({ type: 'integer', default: 0 })
+  autoRetryCount!: number;
 
   /** Următoarea reîncercare automată plănuită pentru cazurile în care Suno e
    *  căzut. Setat când job-ul eșuează la o generation plătită (sau type='full').
