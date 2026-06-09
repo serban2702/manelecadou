@@ -44,6 +44,7 @@ import { SiteDemosModule } from './modules/site-demos/site-demos.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { MarketingModule } from './modules/marketing/marketing.module';
 import { CollageModule } from './modules/collage/collage.module';
+import { RecoveryModule } from './modules/recovery/recovery.module';
 
 @Module({
   imports: [
@@ -97,6 +98,7 @@ import { CollageModule } from './modules/collage/collage.module';
     InvoicesModule,
     MarketingModule,
     CollageModule,
+    RecoveryModule,
     SeederModule,
   ],
   providers: [

@@ -387,6 +387,8 @@ export class ChatService implements OnModuleInit {
       .set({
         lastMessageAt: saved.createdAt,
         unreadByAdmin: () => '"unreadByAdmin" + 1',
+        // Userul a scris → fereastra de tăcere s-a închis, follow-up-urile reîncep de la 0.
+        aiFollowupCount: 0,
         ...(wasArchived ? { archivedAt: null } : {}),
       })
       .where('id = :id', { id: conversation.id })
@@ -947,9 +949,74 @@ export class ChatService implements OnModuleInit {
       if (conv.wizardState) {
         conv.wizardState.step = status === 'paid' ? 'paid' : 'collecting';
         conv.wizardState.updatedAt = new Date().toISOString();
+        if (status === 'paid') {
+          // Reset contoare la plată reușită — clientul fidel pornește curat la
+          // următoarea comandă (re-cotare preț permisă, link nou permis).
+          conv.wizardState.priceQuotedCount = 0;
+          conv.wizardState.linkReissueCount = 0;
+        }
+      }
+      if (status === 'paid') {
+        // Fereastra limitei de mesaje AI repornește după fiecare vânzare.
+        conv.aiCapResetAt = new Date();
       }
       await this.conv.save(conv);
       this.gateway.emitMessage({ message: saved, conversation: conv });
+
+      // ── Modificare contra cost plătită → pornește refacerea automat. AI-ul a
+      // stocat pe payment_link payload generația-țintă + schimbările cerute.
+      if (status === 'paid') {
+        for (const m of messages.filter((x) => x.conversationId === convId)) {
+          const p = (m.payload ?? {}) as Record<string, unknown>;
+          const modGenId = typeof p.modificationForGenerationId === 'string' ? p.modificationForGenerationId : null;
+          const modChanges = typeof p.modificationChanges === 'string' ? p.modificationChanges : '';
+          if (!modGenId) continue;
+          try {
+            const { GenerationsService } = await import('../generations/generations.service');
+            const generations = this.moduleRef.get(GenerationsService, { strict: false });
+            const rows: Array<{ message: string }> = await this.conv.manager.query(
+              `SELECT message FROM generations WHERE id = $1`,
+              [modGenId],
+            );
+            const baseMessage = rows[0]?.message ?? '';
+            const regen = await generations.adminRegenerate(modGenId, {
+              target: 'overwrite',
+              lyricsMode: 'rewrite',
+              edits: { message: `${baseMessage}\n\nMODIFICĂRI PLĂTITE DE CLIENT: ${modChanges}` },
+            });
+            if (conv.wizardState) {
+              conv.wizardState.generationId = regen.id;
+              conv.wizardState.step = 'generating';
+              conv.wizardState.modification = null;
+              conv.wizardState.updatedAt = new Date().toISOString();
+              await this.conv.save(conv);
+            }
+            const modMsg = this.msg.create({
+              conversationId: convId,
+              siteId: conv.siteId ?? null,
+              authorRole: 'admin',
+              authorId: null,
+              body: '🎵 Am pornit refacerea melodiei cu modificările tale — e gata în 5-10 minute și o primești pe email și aici.',
+              messageType: 'text',
+              aiGenerated: true,
+              detectedLang: 'ro',
+            });
+            const savedMod = await this.msg.save(modMsg);
+            this.gateway.emitMessage({ message: savedMod, conversation: conv });
+          } catch (e) {
+            // Refacerea automată a eșuat — adminii trebuie să intervină manual.
+            void this.webPush.sendToAll({
+              title: `⚠️ Modificare plătită NEPORNITĂ — ${conv.email ?? 'guest'}`,
+              body: 'Clientul a plătit modificarea dar regenerarea a eșuat. Intervino manual.',
+              tag: `chat-${convId}`,
+              url: `/chat?c=${convId}`,
+              icon: '/icon-512.png',
+              badge: '/icon-512.png',
+              data: { conversationId: convId, paymentId },
+            }).catch(() => {});
+          }
+        }
+      }
 
       // Push notification admin (best-effort)
       void this.webPush.sendToAll({
@@ -1629,7 +1696,14 @@ export class ChatService implements OnModuleInit {
       throw new ForbiddenException('Invalid AI mode');
     }
     const c = await this.getConversation(conversationId);
+    const reactivating = c.aiMode === 'manual' && mode !== 'manual';
     c.aiMode = mode;
+    if (reactivating) {
+      // Adminul re-pornește AI-ul → fereastra limitei de mesaje repornește de la 0
+      // (altfel capul s-ar re-declanșa instant pe conversațiile lungi — bug istoric).
+      c.aiCapResetAt = new Date();
+      c.aiFollowupCount = 0;
+    }
     return this.conv.save(c);
   }
 

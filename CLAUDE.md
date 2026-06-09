@@ -671,6 +671,12 @@ Refactor masiv al chat-ului live (decizie 2026-05-25). Înlocuiește chat-ul sim
 | `VAPID_PUBLIC_KEY` | (gol) | Web Push admin | Generate: `npx web-push generate-vapid-keys` |
 | `VAPID_PRIVATE_KEY` | (gol, encrypted) | Web Push admin | După salvare → admin `Activează notificări` |
 | `VAPID_SUBJECT` | (gol) | Web Push admin | `mailto:serban2702@gmail.com` |
+| `AI_ALERT_EMAILS` | `serban2702@gmail.com,alexandru.tihon70@gmail.com` | Alerte urgente email de la Irina (escalări, generări blocate, cap mesaje) | CSV |
+| `AI_FOLLOWUP_ENABLED` | ON (oprește cu `false`) | Follow-up automat în chat când userul tace 4+ min (max 2/fereastră, reset la mesaj user) | Cron pe minut |
+| `RECOVERY_EMAIL_ENABLED` | ON (oprește cu `false`) | Emailuri recuperare comenzi abandonate: 1h/4h→10%, 24h→20%, 48h/72h/7z→30% | Cron 10 min, max 40/run |
+| `RECOVERY_EXCLUDE_EMAILS` | `@manelecadou.ro` + emailuri interne | Excluderi recovery (CSV; `@domeniu` = sufix) | — |
+
+**Update 2026-06-10 (AI v2 + recovery)**: cap mesaje 35→120 (doar mesaje text user+admin, fereastră resetată la plată/reactivare AI — `conversations.aiCapResetAt`); la cap/escalare/buclă: mesaj vizibil userului + web push + email alertă. Tools noi Irina: `start_new_order` (a 2-a comandă), `resend_payment_link` (reuse <25 min, altfel sesiune Stripe nouă), `generate_lyrics` (versuri în chat → `wizardState.data.customLyrics` → folosite literal la generare, max 3 drafturi), `request_modification` (gratuit 1× dacă e greșeala noastră — `generations.freeRemakeUsedAt`; altfel 14.99/29.99 lei prin payment_link cu `modificationForGenerationId` în payload; refacerea = `adminRegenerate overwrite` pornită automat în `markPaymentLinksAsPaid`), `inspect_customer_data` (diagnostic DB intern — NU se expune în chat), `alert_admins`. Delay uman 2-6s pe toate mesajele auto. Follow-up: `AiFollowupService` (cron 1 min). Recovery: modul `apps/api/src/modules/recovery/` + pagina web `/unsubscribe` (token unic + confirmare prin tastarea emailului; scope doar recovery).
 
 ### 16.4 Fluxul AI agent (production-grade)
 

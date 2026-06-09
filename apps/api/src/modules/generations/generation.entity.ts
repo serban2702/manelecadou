@@ -226,6 +226,11 @@ export class Generation {
   @Column({ type: 'jsonb', nullable: true })
   inferenceMeta!: Record<string, { value: unknown; source: 'user_said' | 'inferred' | 'default' }> | null;
 
+  /** Momentul în care refacerea GRATUITĂ (o singură dată, când greșeala e a noastră)
+   *  a fost consumată pe această comandă. NULL = încă disponibilă. */
+  @Column({ type: 'timestamptz', nullable: true })
+  freeRemakeUsedAt!: Date | null;
+
   /** Parolă (hash) setată de owner pentru a debloca conținutul PRIVAT al manelei
    *  (poze custom încărcate + colaje + image-videos) pentru alți vizitatori.
    *  NULL = niciun conținut privat partajat (doar owner-ul vede private). */

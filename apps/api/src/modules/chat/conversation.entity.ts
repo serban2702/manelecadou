@@ -36,6 +36,8 @@ export interface WizardData {
   recipientGender?: 'M' | 'F';
   dedication?: string;
   customLyrics?: string;
+  /** Indiciu de stil liber („stil Dani Mocanu") — intră în inferarea creativă. */
+  styleHint?: string;
   /** @deprecated înlocuit de packageTier (model 3 pachete). Păstrat pt compat. */
   premium?: boolean;
   /** Pachetul ales de user în chat: basic | plus | premium. Default basic. */
@@ -47,11 +49,23 @@ export interface WizardState {
   data: WizardData;
   generationId?: string | null;
   paymentId?: string | null;
-  /** Câte link-uri de plată au fost trimise pe această conv (cap 2 — anti-spam). */
+  /** Câte RE-emiteri de link de plată au avut loc după primul (cap 1 — anti-spam).
+   *  Emisia inițială NU contează — doar reluările din step='payment_sent'. */
   linkReissueCount?: number;
   /** De câte ori s-a trimis deja mesajul de cotare a prețului — guard anti-buclă.
    *  După prima cotare, quote_price_with_offer nu mai retrimite mesajul ci redirecționează AI-ul spre finalize. */
   priceQuotedCount?: number;
+  /** Câte drafturi de versuri a generat AI-ul în chat (cap 3 — control cost). */
+  lyricsDraftCount?: number;
+  /** Modificare contra cost în așteptarea plății (request_modification). */
+  modification?: {
+    generationId: string;
+    changes: string;
+    scope: 'small' | 'large';
+    paymentId?: string;
+  } | null;
+  /** Generări pentru care s-a trimis deja alertă email către admini (dedupe tech_error). */
+  alertedGenerationIds?: string[];
   updatedAt: string; // ISO
 }
 
@@ -197,4 +211,19 @@ export class Conversation {
    */
   @Column({ type: 'varchar', length: 64, nullable: true })
   lastIp!: string | null;
+
+  /**
+   * Câte mesaje de follow-up („mai ești aici?") a trimis AI-ul de la ultimul
+   * mesaj al userului. Resetat la 0 când userul scrie. Cap 2 per fereastră de tăcere.
+   */
+  @Column({ type: 'integer', default: 0 })
+  aiFollowupCount!: number;
+
+  /**
+   * Contorul limitei de mesaje AI numără doar mesajele de DUPĂ acest moment.
+   * Setat la fiecare plată reușită și la re-activarea AI de către admin — astfel
+   * un client fidel care cumpără a 2-a/a 3-a oară nu moștenește bugetul consumat.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  aiCapResetAt!: Date | null;
 }

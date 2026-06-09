@@ -56,11 +56,12 @@ export class PromoCode {
 
   /**
    * Sursa codului: 'admin' (creat manual din /promo), 'roata' (câștigat la roata norocului),
-   * 'ai_request' (emis de AI Irina la cererea userului, max 20%).
+   * 'ai_request' (emis de AI Irina la cererea userului, max 20%),
+   * 'recovery' (emis automat de programul de recovery emails — abandon plată).
    * NULL pentru date legacy (înainte de tracking).
    */
   @Column({ type: 'varchar', length: 32, nullable: true })
-  source!: 'admin' | 'roata' | 'ai_request' | null;
+  source!: 'admin' | 'roata' | 'ai_request' | 'recovery' | null;
 
   /** Dacă true, codul a fost emis de AI agent (audit pentru a urmări costul reducerilor). */
   @Column({ type: 'boolean', default: false })

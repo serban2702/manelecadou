@@ -1,6 +1,7 @@
 import { Injectable, Logger, forwardRef, Inject } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, IsNull } from 'typeorm';
+import { Repository, In, IsNull, MoreThan } from 'typeorm';
 import { OpenAiClient, type ChatMessage as OAIMsg, type ToolDef, type ToolHandler } from '../../openai/openai.client';
 import { SettingsService } from '../settings/settings.service';
 import { KbService } from '../kb/kb.service';
@@ -46,9 +47,21 @@ const REQUIRED_WIZARD_FIELDS: Array<keyof WizardData> = ['recipientName', 'messa
 /** Pragul peste care nu mai întrebăm de voce (e prea lung conv, nu prelungim). */
 const MAX_USER_MSGS_BEFORE_DEFAULT_GENDER = 8;
 
-/** Hard cap mesaje per conv — peste care AI tace + escalează la admin uman.
- *  Anti-spam bucle sterile (observat: 7+ schimburi user/AI cu același mesaj reformulat). */
-const MAX_MESSAGES_BEFORE_HUMAN = 35;
+/** Hard cap mesaje TEXT (user+AI) per fereastră de conversație — peste care AI
+ *  tace + escalează la admin uman. Numără doar mesajele text de DUPĂ ultima plată /
+ *  re-activare AI (conv.aiCapResetAt), nu toată viața conversației — un client
+ *  fidel care cumpără a 2-a oară nu trebuie amuțit. */
+const MAX_MESSAGES_BEFORE_HUMAN = 120;
+
+/** Câte drafturi de versuri poate genera AI-ul per conversație (control cost). */
+const MAX_LYRICS_DRAFTS = 3;
+
+/** Prețuri modificare melodie plătită (cents, moneda site-ului). */
+const MODIFICATION_PRICE_SMALL_CENTS = 1499;
+const MODIFICATION_PRICE_LARGE_CENTS = 2999;
+
+/** Destinatarii default ai alertelor urgente (override prin setting AI_ALERT_EMAILS). */
+const DEFAULT_ALERT_EMAILS = 'serban2702@gmail.com,alexandru.tihon70@gmail.com';
 
 /** Voci active per gen — folosit la inferarea automată când userul spune doar M/F. */
 const VOICE_DEFAULTS = {
@@ -173,7 +186,19 @@ export class AIChatAgentService {
     @Inject(forwardRef(() => ChatGateway))
     private readonly gateway: ChatGateway,
     private readonly metaCapi: MetaCapiService,
+    private readonly moduleRef: ModuleRef,
   ) {}
+
+  /**
+   * Delay „uman" înainte de a trimite un mesaj în mod auto — 2-6 secunde,
+   * scalat cu lungimea textului (un om tastează, nu răspunde instant).
+   * Cerut explicit de owner 2026-06-10: „să se comporte exact ca un om".
+   */
+  private async humanDelay(text: string, mode: 'manual' | 'suggest' | 'auto'): Promise<void> {
+    if (mode !== 'auto') return; // sugestiile către admin nu au nevoie de teatru
+    const ms = Math.min(6000, Math.max(2000, 1200 + text.length * 35 + Math.random() * 800));
+    await new Promise((r) => setTimeout(r, ms));
+  }
 
   /**
    * Apelat după ce userul trimite un mesaj nou. Non-blocking — apelat cu void.
@@ -211,18 +236,25 @@ export class AIChatAgentService {
       return;
     }
 
-    // Hard cap mesaje per conv. După 35 mesaje (user + admin + AI) AI tace
-    // și escalează la admin uman. Observat 2026-05-27 conv 4f9bc0de cu 7+
-    // schimburi sterile user/AI pe aceeași cerere de reducere — AI repetă
-    // template-uri în loc să escaladeze. Anti-spam definitiv.
+    // Hard cap mesaje per fereastră de conversație. Numără DOAR mesajele text
+    // user+AI (nu greeting/payment_link/song_preview/system/sugestii) de după
+    // ultimul reset (plată reușită sau re-activare AI de admin). La atingere:
+    // AI tace, dar userul PRIMEȘTE un mesaj („te preia un coleg"), adminii
+    // primesc push + email — clientul nu mai e abandonat în tăcere (bug istoric:
+    // 7/10 conversații capate la 35 erau ale clienților PLĂTITORI).
     const totalMsgs = await this.msg.count({
-      where: { conversationId },
+      where: {
+        conversationId,
+        messageType: 'text' as ChatMessage['messageType'],
+        authorRole: In(['user', 'admin']),
+        ...(conv.aiCapResetAt ? { createdAt: MoreThan(conv.aiCapResetAt) } : {}),
+      },
     });
     if (totalMsgs >= MAX_MESSAGES_BEFORE_HUMAN) {
       // Comută conv pe manual + emit notificare admin. La acest punct aiMode e
       // garantat 'suggest' | 'auto' (early return mai sus pentru 'manual').
       this.logger.warn(
-        `conv=${conversationId.slice(0, 8)} reached ${totalMsgs} msgs — switching to manual + escalate`,
+        `conv=${conversationId.slice(0, 8)} reached ${totalMsgs} text msgs — switching to manual + escalate`,
       );
       await this.conv
         .createQueryBuilder()
@@ -243,6 +275,13 @@ export class AIChatAgentService {
       });
       const saved = await this.msg.save(sysMsg);
       this.gateway.emitAiSuggestion({ conversation: conv, message: saved });
+      // Userul NU rămâne în tăcere — mesaj scurt vizibil + handoff.
+      await this.sendServiceMessage(conv, 'Îți răspunde imediat un coleg din echipa noastră 🙏 Mulțumim de răbdare!');
+      this.notifyAdminsPush(conv, `🚨 AI oprit (${totalMsgs} mesaje) — ${conv.email ?? 'guest'}`, 'Clientul așteaptă un om. Deschide conversația.');
+      this.notifyAdminsUrgent(conv, {
+        reason: `Conversație lungă (${totalMsgs} mesaje) — AI dezactivat, clientul așteaptă un om`,
+        details: 'Limita de mesaje per fereastră a fost atinsă. Clientul a fost anunțat că îl preia un coleg.',
+      });
       return;
     }
 
@@ -276,6 +315,183 @@ export class AIChatAgentService {
     const conv = await this.conv.findOne({ where: { id: conversationId } });
     if (!conv) return;
     await this.runAgent(conv, triggerMessageId);
+  }
+
+  /**
+   * Public — apelat de AiFollowupService când userul nu a răspuns de câteva minute
+   * la o întrebare a AI-ului. Rulează agentul cu instrucțiune de follow-up (un singur
+   * mesaj scurt, cald, ne-insistent). Incrementează aiFollowupCount indiferent de
+   * rezultat ca să nu intrăm în buclă.
+   */
+  async runFollowUp(conversationId: string): Promise<void> {
+    if (this.runningRuns.has(conversationId)) return;
+    const conv = await this.conv.findOne({ where: { id: conversationId } });
+    if (!conv || conv.aiMode !== 'auto') return;
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ aiFollowupCount: () => '"aiFollowupCount" + 1' })
+      .where('id = :id', { id: conversationId })
+      .execute();
+    this.runningRuns.add(conversationId);
+    try {
+      await this.runAgent(conv, null, { followUp: true });
+    } catch (e) {
+      this.logger.warn(`followup agent failed conv=${conversationId.slice(0, 8)}: ${(e as Error).message}`);
+    } finally {
+      this.runningRuns.delete(conversationId);
+    }
+  }
+
+  /**
+   * Mesaj scurt de serviciu trimis userului (vizibil), în afara turului AI —
+   * folosit la escalări/cap mesaje ca userul să nu rămână în tăcere totală.
+   */
+  private async sendServiceMessage(conv: Conversation, text: string): Promise<void> {
+    try {
+      const m = this.msg.create({
+        conversationId: conv.id,
+        siteId: conv.siteId ?? null,
+        authorRole: 'admin',
+        authorId: null,
+        body: text,
+        messageType: 'text',
+        aiGenerated: true,
+        detectedLang: 'ro',
+      });
+      const saved = await this.msg.save(m);
+      await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+        .where('id = :id', { id: conv.id })
+        .execute();
+      this.gateway.emitMessage({ message: saved, conversation: conv });
+    } catch (e) {
+      this.logger.warn(`sendServiceMessage failed: ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * Diagnostic intern (read-only) despre clientul conversației: ultimele generări,
+   * plăți, erori Suno. Folosit de tool-ul inspect_customer_data + emailurile de
+   * alertă. NICIODATĂ expus brut în chat-ul cu clientul.
+   */
+  private async gatherDiagnostics(conv: Conversation): Promise<Record<string, unknown>> {
+    const ownerId = conv.userId ?? conv.guestId;
+    const out: Record<string, unknown> = { conversationId: conv.id, email: conv.email, lastIp: conv.lastIp };
+    try {
+      if (ownerId) {
+        out.generations = await this.conv.manager.query(
+          `SELECT id, status, error, "retryCount", "autoRetryCount", "nextRetryAt", "paidUnlocked",
+                  "recipientName", "packageTier", "paymentId", "providerJobId", "freeRemakeUsedAt",
+                  "createdAt", "completedAt"
+           FROM generations
+           WHERE "ownerUserId" = $1 OR "ownerGuestId" = $1
+           ORDER BY "createdAt" DESC LIMIT 4`,
+          [ownerId],
+        );
+        out.payments = await this.conv.manager.query(
+          `SELECT id, status, amount, currency, "failureCode", "failureReason", "createdAt"
+           FROM payments
+           WHERE "userId" = $1 OR "guestId" = $1
+           ORDER BY "createdAt" DESC LIMIT 4`,
+          [ownerId],
+        );
+      }
+      const genIds = ((out.generations as Array<{ id: string }> | undefined) ?? []).map((g) => g.id);
+      if (genIds.length > 0) {
+        out.sunoErrors = await this.conv.manager.query(
+          `SELECT "generationId", outcome, "providerStatus", "errorMessage", "createdAt"
+           FROM suno_logs
+           WHERE "generationId" = ANY($1) AND outcome IN ('failed','http_error','timeout')
+           ORDER BY "createdAt" DESC LIMIT 5`,
+          [genIds],
+        );
+      }
+    } catch (e) {
+      out.diagnosticsError = (e as Error).message;
+    }
+    return out;
+  }
+
+  /**
+   * Alertă urgentă pe email către admini (AI_ALERT_EMAILS, default Șerban + Alexandru)
+   * cu link direct la conversație + diagnostic DB + ultimele mesaje. Best-effort,
+   * non-blocking — apelată cu void la cap mesaje / escalare / erori tehnice.
+   */
+  private notifyAdminsUrgent(
+    conv: Conversation,
+    args: { reason: string; details?: string; diagnostics?: Record<string, unknown> },
+  ): void {
+    void (async () => {
+      try {
+        const recipientsRaw = (await this.settings.get('AI_ALERT_EMAILS')).trim() || DEFAULT_ALERT_EMAILS;
+        const recipients = recipientsRaw.split(',').map((e) => e.trim()).filter((e) => e.includes('@'));
+        if (recipients.length === 0) return;
+        const site = conv.siteId ? await this.sites.findById(conv.siteId).catch(() => null) : null;
+        const diagnostics = args.diagnostics ?? (await this.gatherDiagnostics(conv));
+        const lastMsgs = await this.msg.find({
+          where: { conversationId: conv.id },
+          order: { createdAt: 'DESC' },
+          take: 12,
+        });
+        const transcript = lastMsgs
+          .reverse()
+          .map((m) => `[${m.createdAt.toISOString().slice(11, 16)}] ${m.authorRole}${m.aiGenerated ? '(AI)' : ''}: ${m.body.slice(0, 220)}`)
+          .join('\n');
+        const convUrl = `https://admin.manelecadou.ro/chat?c=${conv.id}`;
+        const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const subject = `🚨 [${site?.name ?? 'Manele Cadou'}] Irina: ${args.reason.slice(0, 120)}`;
+        const html = `
+<div style="font-family:-apple-system,Segoe UI,Arial,sans-serif;max-width:640px;margin:0 auto;color:#222">
+  <h2 style="color:#b00020;margin:16px 0 8px">🚨 Intervenție necesară — chat AI</h2>
+  <p><b>Motiv:</b> ${esc(args.reason)}</p>
+  ${args.details ? `<p><b>Detalii:</b> ${esc(args.details)}</p>` : ''}
+  <p><b>Client:</b> ${esc(conv.email ?? 'fără email')} · IP ${esc(conv.lastIp ?? '?')} · site ${esc(site?.domain ?? '?')}</p>
+  <p><a href="${convUrl}" style="display:inline-block;background:#f1c84d;color:#2a1a04;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:700">Deschide conversația</a></p>
+  <h3 style="margin:18px 0 6px">Ultimele mesaje</h3>
+  <pre style="background:#f6f6f6;border:1px solid #ddd;border-radius:8px;padding:12px;font-size:12px;white-space:pre-wrap">${esc(transcript)}</pre>
+  <h3 style="margin:18px 0 6px">Diagnostic DB (intern)</h3>
+  <pre style="background:#f6f6f6;border:1px solid #ddd;border-radius:8px;padding:12px;font-size:11px;white-space:pre-wrap">${esc(JSON.stringify(diagnostics, null, 2).slice(0, 6000))}</pre>
+</div>`;
+        // MailerService rezolvat lazy ca să nu legăm AiChatModule de MailerModule.
+        const mailerMod = await import('../../mailer/mailer.module');
+        const mailer = this.moduleRef.get(mailerMod.MailerService, { strict: false });
+        for (const to of recipients) {
+          await mailer
+            .send(
+              { to, subject, html, text: `${args.reason}\n\n${convUrl}` },
+              { site: site ?? undefined, kind: 'ai_alert', relatedId: conv.id },
+            )
+            .catch((e: Error) => this.logger.warn(`alert email to ${to} failed: ${e.message}`));
+        }
+        this.logger.warn(`admin alert sent (${recipients.length} dest): ${args.reason}`);
+      } catch (e) {
+        this.logger.warn(`notifyAdminsUrgent failed: ${(e as Error).message}`);
+      }
+    })();
+  }
+
+  /** Web push către toți adminii — rezolvat lazy (serviciul e în alt modul). */
+  private notifyAdminsPush(conv: Conversation, title: string, body: string): void {
+    void (async () => {
+      try {
+        const pushMod = await import('../web-push/web-push.service');
+        const webPush = this.moduleRef.get(pushMod.WebPushService, { strict: false });
+        await webPush.sendToAll({
+          title,
+          body,
+          tag: `chat-${conv.id}`,
+          url: `/chat?c=${conv.id}`,
+          icon: '/icon-512.png',
+          badge: '/icon-512.png',
+          data: { conversationId: conv.id },
+        });
+      } catch (e) {
+        this.logger.warn(`notifyAdminsPush failed: ${(e as Error).message}`);
+      }
+    })();
   }
 
   /**
@@ -367,25 +583,52 @@ export class AIChatAgentService {
     }
   }
 
-  private async runAgent(conv: Conversation, userMessageId: string | null): Promise<void> {
+  private async runAgent(
+    conv: Conversation,
+    userMessageId: string | null,
+    opts: { followUp?: boolean } = {},
+  ): Promise<void> {
     const apiKey = await this.settings.get('OPENAI_API_KEY');
     if (!apiKey) {
       this.logger.warn(`skip AI run — OPENAI_API_KEY missing for conv=${conv.id.slice(0, 8)}`);
       return;
     }
 
-    // Iau ultimele 30 mesaje (DESC + reverse) — `take: 50` cu ASC anterior lua
+    // Iau ultimele 60 mesaje (DESC + reverse) — `take: 50` cu ASC anterior lua
     // mesajele cele mai VECHI, ceea ce pentru convs lungi pierdea contextul recent.
     const recentDesc = await this.msg.find({
       where: { conversationId: conv.id },
       order: { createdAt: 'DESC' },
-      take: 30,
+      take: 60,
     });
     const last20 = recentDesc.reverse();
 
     const site = conv.siteId ? await this.sites.findById(conv.siteId) : null;
     const memoryFacts = await this.loadActiveMemory(conv.siteId);
-    const sysPrompt = await this.buildSystemPrompt(site, memoryFacts);
+    let sysPrompt = await this.buildSystemPrompt(site, memoryFacts);
+
+    // ── STARE CURENTĂ (server-side) — elimină iterații irosite pe wizard_get_state
+    // și o categorie întreagă de halucinații (AI nu mai ghicește ce s-a colectat).
+    const ws = conv.wizardState;
+    const styleSampleIds = Object.keys(site?.suno?.styleSamples ?? {});
+    const voiceSampleIds = Object.keys(site?.suno?.voiceSamples ?? {});
+    sysPrompt += `
+
+══ STARE CURENTĂ (date live de pe server — folosește-le, nu le cita brut) ══
+- Wizard: step=${ws?.step ?? 'idle'}; date colectate=${JSON.stringify(ws?.data ?? {}).slice(0, 800)}
+- Preț cotat deja: ${(ws?.priceQuotedCount ?? 0) > 0 ? 'DA' : 'nu'}; email client: ${conv.email ?? 'NECUNOSCUT — cere-l devreme'}
+- Comandă activă: ${ws?.generationId ? `DA (folosește check_order_status pentru status live)` : 'niciuna în această conversație'}
+- Versuri draft generate în chat: ${ws?.data?.customLyrics ? 'DA — finalize le va folosi exact pe acestea' : 'nu'}
+- Mostre audio disponibile pentru play_sample → stiluri: [${styleSampleIds.join(', ') || 'niciuna'}]; voci: [${voiceSampleIds.join(', ') || 'niciuna'}] (folosește EXACT aceste id-uri)`;
+
+    if (opts.followUp) {
+      sysPrompt += `
+
+⚠️ TRIGGER FOLLOW-UP (nu e mesaj nou de la user): userul nu a mai răspuns de câteva minute la ultimul tău mesaj.
+Trimite UN SINGUR mesaj scurt, cald și ne-insistent care reia ușor ultima întrebare sau oferă ajutor
+(ex. „Mai ești pe aici? 😊 Dacă ai vreo întrebare, zi-mi", sau dacă aștepta linkul de plată: „Ai reușit cu plata? Te ajut dacă s-a blocat ceva 🙏").
+NU repeta identic mesajul precedent, NU trimite mai mult de un mesaj, NU folosi alte tool-uri în afară de send_message (și check_order_status dacă e relevant).`;
+    }
 
     const messages: OAIMsg[] = [
       { role: 'system', content: sysPrompt },
@@ -410,6 +653,7 @@ export class AIChatAgentService {
       // settings flags pentru approval gates
       requireApprovalForPayment:
         (await this.settings.get('AI_CHAT_REQUIRE_APPROVAL_FOR_PAYMENT')).toLowerCase() !== 'false',
+      alertSentThisTurn: false,
     };
 
     const tools = this.toolDefinitions();
@@ -424,8 +668,8 @@ export class AIChatAgentService {
       tools,
       toolHandlers,
       temperature: isFinite(temperature) ? temperature : 0.4,
-      maxIterations: 6,
-      maxTokens: 1000,
+      maxIterations: opts.followUp ? 3 : 8,
+      maxTokens: 1400,
     });
     const durationMs = Date.now() - startedAt;
 
@@ -467,7 +711,7 @@ export class AIChatAgentService {
     // iterations fără răspuns text), forțăm un mesaj de fallback ca să nu
     // lăsăm userul fără răspuns. Verificăm modul curent (anti race condition
     // cu setAiMode('manual') în timpul run-ului).
-    if (conv.aiMode === 'auto' && ctx.sentRealMessages === 0 && !ctx.escalated) {
+    if (conv.aiMode === 'auto' && ctx.sentRealMessages === 0 && !ctx.escalated && !opts.followUp) {
       const fresh = await this.conv.findOne({ where: { id: conv.id }, select: ['id', 'aiMode'] });
       if (fresh?.aiMode === 'auto') {
         const fallback =
@@ -551,8 +795,13 @@ REGULI DE TON (CRITICE — fără astea suni ca un bot):
 Emoji moderat și CONTEXTUAL: 👋 (salut), 🎵 🎶 🎤 (muzică), 💳 (plată), ✨ (entuziasm),
 ❤️ 🙏 (empatie). NU pune emoji după mesaje negative ca să maschezi refuzul.
 
-Limba conversației: ${locale}. NICIODATĂ alta. Răspunsuri SCURTE (1-2 fraze, max 220 caractere).
-NICIODATĂ markdown (** sau __ sau [text](url)). Linkuri ca text simplu.
+Limba conversației: ${locale}. NICIODATĂ alta. Răspunsuri SCURTE (1-3 fraze, max ~400 caractere;
+excepție versurile, care pot fi lungi). NICIODATĂ markdown (** sau __ sau [text](url)). Linkuri ca text simplu.
+
+DIPLOMAȚIE MAXIMĂ (regulă de aur): nu contrazici frontal niciodată. Validezi întâi
+(„ai dreptate să întrebi", „înțeleg perfect"), apoi explici calm. La orice problemă:
+scuze sincere + soluție concretă imediată, fără să te aperi. Clientul supărat tratat
+impecabil devine cel mai loial client.
 
 Context business: Vindem manele AI personalizate generate în ~5-10 minute (depinde
 de încărcarea Suno), livrare email + chat.
@@ -579,8 +828,23 @@ ETAPA 0 — COMANDĂ EXISTENTĂ (verifică ÎNAINTE de a porni wizard-ul):
     „vreau să modifici melodia mea") → APELEAZĂ \`check_order_status\` ÎNTÂI.
   → Dacă check_order_status returnează hasOrder=true → NU porni wizard-ul, NU cota prețul,
     NU cere nume/mesaj/email de la zero. Răspunde pe baza statusului real (gata / se
-    generează / plătit) și a melodiei deja existente. Dacă userul vrea o MODIFICARE pe o
-    melodie deja plătită → escalate_to_human (modificările se fac manual de admin).
+    generează / plătit) și a melodiei deja existente.
+  → ⭐ ÎNCĂ O MELODIE: dacă userul vrea O ALTĂ manea (nouă, pentru altcineva, „mai fac una",
+    „vreau și pentru soția mea") → apelează \`start_new_order\` și reia normal de la ETAPA 1-2.
+    NU raporta statusul comenzii vechi, NU refuza! Clienții care revin sunt cei mai valoroși.
+  → 🔧 MODIFICARE pe melodie plătită → folosește \`request_modification\` (NU escalate):
+    • Dacă greșeala e a NOASTRĂ (nume scris greșit de noi, alt mesaj decât a cerut, „din
+      partea necunoscută") → refacem GRATUIT o singură dată: request_modification cu
+      isOurError=true. Cere-ți scuze sincer, fii cald.
+    • Dacă clientul vrea o schimbare de gust (alt vers, altă strofă, adaugă un nume) →
+      modificare CONTRA COST: mică (nume/o strofă/dedicație) = 14.99 lei, mare (alt mesaj/
+      stil/refacere amplă) = 29.99 lei. Explică DIPLOMAT: „melodia se regenerează de la
+      zero, de-asta e un cost mic". request_modification cu scope='small'|'large'.
+    • Dacă refacerea gratuită a fost deja folosită și e tot greșeala noastră → ton foarte
+      empatic + alert_admins ca un coleg să decidă.
+  → 🔗 LINK DE PLATĂ PIERDUT/EXPIRAT: dacă userul zice „nu am primit linkul", „nu-l găsesc",
+    „a expirat", „dă-mi link-ul" → apelează \`resend_payment_link\` (re-emite cardul de plată).
+    NU-i spune doar „e mai sus în chat" dacă el zice că nu-l vede.
   → Indiciu vizual: dacă vezi în istoric un mesaj song_preview cu „/m/<id>", userul ARE
     deja o melodie — NU te purta ca și cum ar fi un chat nou.
   → BUG observat 2026-06-08 (conv c06c6997, dec6adaf): userul zicea „am plătit deja" /
@@ -643,12 +907,19 @@ ETAPA 2.6 — PREFERINȚE STIL/ARTIST din context:
     „de pahar", „modern", „opulență", „de jale", „trapanele", „tallava") →
     wizard_update({style: "..."}).
 
+ETAPA 2.7 — EMAIL DEVREME (imediat după confirmarea prețului):
+  → După ce userul confirmă prețul, primul lucru pe care îl ceri e EMAIL-ul:
+    „Perfect! Pe ce adresă de email să-ți trimit melodia?" — apoi wizard_update({email}).
+  → Motiv: dacă userul pleacă din chat, îl putem recontacta. NU lăsa email-ul la final.
+  → Dacă userul pune întrebări multe / e indecis / cere mostre — cere-i email-ul natural
+    chiar mai devreme („Lasă-mi un email și-ți trimit acolo detaliile și oferta").
+
 ETAPA 3 — COLECTARE DETALII (UN SINGUR mesaj numerotat, DOAR câmpurile LIPSĂ):
   → „Perfect! Am nevoie de cateva detalii:
      1. Numele persoanei care primește melodia
      2. Numele tău (cine dedică) — optional
-     3. Un mesaj dragut pentru ea/el (ce vrei să-i spui)
-     4. Adresa ta de email pentru livrare"
+     3. Un mesaj dragut pentru ea/el (ce vrei să-i spui)"
+  → (email-ul ar trebui să fie DEJA colectat la ETAPA 2.7 — dacă nu e, adaugă-l în listă)
 
 ETAPA 4 — PARSE RĂSPUNS USER:
   → Userul răspunde de obicei într-un mesaj lung cu toate datele.
@@ -671,6 +942,10 @@ ETAPA 5.5 — UPSELL PACHET (OBLIGATORIU înainte de finalize — NU-l sări):
   → Acesta e ULTIMUL pas înainte de linkul de plată, când configurarea e aproape gata.
     Oferă DOAR 2 variante (NU 3), cu acest mesaj exact (adaptat la prețuri):
     „${packageUpsell}"
+  → 💎 RECOMANDĂ ACTIV varianta PREMIUM (${premiumPrice}) — cu căldură, nu cu presiune:
+    „cei mai mulți aleg varianta premium — e mai lungă, sună mai bine și primești și
+    imaginile pentru TikTok/Instagram". Dacă userul ezită sau zice că e mult, basic e
+    perfect — confirmă fără să insiști a doua oară.
   → Mapare alegere → tier:
     • „standard" / „cel mai ieftin" / „simplu" / „${price}" → wizard_update({packageTier: 'basic'})
     • „premium" / „cea lungă" / „mai calitativă" / „${premiumPrice}" → wizard_update({packageTier: 'plus'})
@@ -679,6 +954,13 @@ ETAPA 5.5 — UPSELL PACHET (OBLIGATORIU înainte de finalize — NU-l sări):
   → Dacă userul nu alege explicit / ignoră / spune „nu conteaza" → packageTier='basic'.
   → NU pomeni pachetul de 69.99 / video / pagină premium în chat. Doar standard vs premium.
   → Pachetul ales determină prețul de pe linkul de plată — NU sări peste pasul ăsta.
+
+ETAPA 5.8 — RECAPITULARE LA NECLARITĂȚI (înainte de finalize):
+  → Dacă mesajele userului au avut greșeli gramaticale/typo-uri sau formulări ambigue și
+    NU ești 100% sigură ce a vrut (nume scris ciudat, mesaj confuz, „pt sotu petre sau
+    petrica") → recapitulează SCURT înainte de link: „Recapitulez să fie perfect: manea
+    pentru Petre, de la Maria, mesajul: «...», pachet standard. E corect?" și așteaptă OK.
+  → Dacă datele au fost clare → NU recapitula, mergi direct la finalize (nu lungi inutil).
 
 ETAPA 6 — FINALIZE:
   → Apelează \`wizard_finalize\`. Acesta:
@@ -719,12 +1001,26 @@ Dacă userul cere reducere / spune că „e scump" / „nu am bani acum":
   3. NU oferi proactiv reducere dacă userul n-a cerut.
 
 ═══════════════════════════════════════════════════════════════════════
-DEMO / MOSTRE AUDIO:
+DEMO / MOSTRE AUDIO / VERSURI:
 ═══════════════════════════════════════════════════════════════════════
-Dacă userul cere mostre („cum suna?", „vreau sa aud o manea", „arata-mi exemple",
+Dacă userul cere mostre/exemple („cum suna?", „vreau sa aud o manea", „arata-mi exemple",
 „vreau sa-mi dau seama cum e vocea"):
-  → Apelează \`play_sample\` cu kind='style' sau 'voice' și un ID (male, female, modern, etc.)
-  → Trimite link-ul ca atare în chat — userul poate da play.
+  → Apelează \`play_sample\` cu kind='style' sau 'voice' și un ID EXACT din lista de mostre
+    disponibile (vezi STAREA CURENTĂ). Acestea sunt DEMO-urile oficiale ale site-ului —
+    NU trimite melodii generate de alți clienți.
+  → Dacă mostra cerută nu există în listă → oferă cea mai apropiată din listă, NU repeta
+    același link de 2 ori dacă userul zice că nu merge — oferă alta sau întreabă ce stil vrea.
+
+Dacă userul cere un DEMO PERSONALIZAT înainte de plată („fă-mi o mostră cu numele lui",
+„vreau să aud melodia mea înainte să plătesc"):
+  → Spune-i cald că un demo audio personalizat nu se poate genera înainte de plată (costul
+    generării e real), DAR îi poți scrie GRATUIT versurile complete chiar acum, ca să vadă
+    exact ce se va cânta → apelează \`generate_lyrics\`.
+  → După ce-i trimiți versurile: întreabă dacă îi plac și ce ar schimba. Dacă cere ajustări
+    → generate_lyrics cu revisionNotes (ce a cerut). Dacă îi plac → continuă fluxul normal
+    (email/pachet/finalize). Melodia finală se va cânta EXACT pe versurile aprobate de el.
+  → Versurile sunt cel mai puternic instrument de vânzare — odată ce omul își vede povestea
+    scrisă, conversia e aproape făcută. Folosește-le și proactiv la clienții indeciși.
 
 ═══════════════════════════════════════════════════════════════════════
 REGULI STRICTE:
@@ -755,13 +1051,16 @@ REGULI STRICTE:
 13. DACĂ PROMIȚI O ACȚIUNE, FĂ-O. Dacă scrii „verific", „mă uit imediat", „să văd statusul"
     → APELEAZĂ check_order_status ÎN ACELAȘI TURN. Altfel minți userul. La fel pentru
     „îți trimit linkul" → wizard_finalize sau quote_price_with_offer în același turn.
-14. Dacă wizard_finalize returnează ORDER_ALREADY_IN_PROGRESS SAU wizard_get_state
-    returnează step='payment_sent'/'paid'/'generating' → NU re-cere detalii, NU re-trimite
-    link, NU re-finaliza. Apelează check_order_status și raportează statusul. Spune-i
-    userului scurt: „link-ul de plată e mai sus, dă click pe el ca să plătești".
-15. NU TRIMITE 2 MESAJE CONTRADICTORII PE ACELAȘI TURN. Tools care trimit mesaje
-    (quote_price, issue_discount, send_message, play_sample, send_empathy) sunt MUTUAL
-    EXCLUSIVE — max UNUL per turn. Rate limit-ul îți va returna ALREADY_SENT — STOP.
+14. Dacă wizard_finalize returnează ORDER_ALREADY_PAID sau step e 'paid'/'generating' →
+    NU re-finaliza; check_order_status și raportează statusul. Dacă step='payment_sent' și
+    userul (a) nu găsește linkul / zice că a expirat → \`resend_payment_link\`; (b) vrea să
+    schimbe pachetul sau datele înainte de plată → wizard_update cu schimbarea + apoi
+    \`resend_payment_link\` (regenerează linkul cu noile date); (c) vrea cu totul ALTĂ
+    melodie → \`start_new_order\`. NU lăsa niciodată un client blocat fără link funcțional.
+15. Max 2 mesaje per turn — și al 2-lea DOAR când e natural (ex. o confirmare scurtă
+    „Super! 🎉" urmată de întrebarea următoare). De regulă UN mesaj. Tools care trimit
+    mesaje (quote_price, issue_discount, play_sample, send_empathy) NU se combină între
+    ele pe același turn. Rate limit-ul îți va returna ALREADY_SENT — STOP atunci.
 16. NU EMITE COD REDUCERE peste un cod existent. Dacă issue_discount_offer returnează
     USER_HAS_ROATA_CODE sau USER_HAS_AI_CODE, apelează în schimb quote_price_with_offer
     ca să-i amintești de codul existent.
@@ -770,7 +1069,8 @@ REGULI STRICTE:
     dat" → ...), NU mai repeta refuzul. Apelează escalate_to_human cu motivul. Userul
     real are nevoie de cineva care îi explică sau găsește o soluție alternativă, nu de
     încă o repetare a refuzului. Acest tipar a fost observat în prod ca buclă sterilă.
-18. Maximum 35 mesaje per conv (cap automat). După 35 AI tace + admin preia.
+18. Conversațiile foarte lungi sunt preluate automat de un coleg uman. NU menționa
+    NICIODATĂ clientului limite de mesaje sau contoare interne.
 19. NU IGNORA contextul vizual: dacă wizard_get_state arată payment_sent + lângă tine au
     apărut mesaje payment_link admin, nu spune userului „nu am link disponibil" — există
     link mai sus. Spune-i să facă scroll up sau să verifice cardurile de plată.
@@ -821,7 +1121,19 @@ REGULI STRICTE:
     NU-l mai întreba „care e adresa corectă?" — wizard_update îți întoarce
     emailAutoCorrected; doar confirmă scurt „Am notat: x@gmail.com" și continuă. Corectează
     DOAR domeniul (după @), niciodată partea dinainte de @. Excepție: dacă domeniul e gol
-    sau imposibil de ghicit („nume@.com", „nume@") — atunci da, cere-i să-l rescrie.`;
+    sau imposibil de ghicit („nume@.com", „nume@") — atunci da, cere-i să-l rescrie.
+27. PROBLEME TEHNICE (melodie negenerată, eroare la plată, link mort, plată dublă):
+    1) apelează \`inspect_customer_data\` ca să înțelegi INTERN ce s-a întâmplat;
+    2) apelează \`alert_admins\` cu un rezumat clar al problemei + ce ai găsit în diagnostic;
+    3) trimite clientului un mesaj DIPLOMAT, fără detalii tehnice: „Verific chiar acum cu
+       echipa, revin imediat — mulțumesc de răbdare 🙏".
+    NU expune NICIODATĂ clientului date din inspect_customer_data: fără ID-uri interne,
+    fără mesaje de eroare brute, fără informații despre alte comenzi/alți clienți.
+    Datele acelea sunt DOAR pentru tine și pentru emailul către echipă.
+28. COD DE REDUCERE DAT DE USER: dacă userul scrie un cod pe care îl are (de la roată,
+    dintr-un email, de la un coleg uman) → NU emite alt cod peste el. Confirmă-i că la
+    finalize codul activ se aplică automat pe linkul de plată. Dacă userul insistă că nu
+    i s-a aplicat → resend_payment_link (regenerează linkul, care re-verifică codul).`;
 
     return this.appendMemoryAndContacts(basePrompt, memory, site);
   }
@@ -883,6 +1195,7 @@ REGULI STRICTE:
             message: { type: 'string', description: 'Mesajul/contextul personalizat (versuri sau context, până la câteva mii de caractere). Include detalii autobiografice dacă userul le-a dat (locuri, ani, momente, copii, etc.). NU trunchia versurile lipite de user.' },
             email: { type: 'string', description: 'Email-ul user-ului (necesar pentru livrare).' },
             recipientGender: { type: 'string', enum: ['M', 'F'], description: 'Sex destinatar. Folosit pentru inferarea vocii când userul nu o cere explicit.' },
+            styleHint: { type: 'string', description: 'OPTIONAL: indiciu liber de stil/artist menționat de user (ex. „stil Dani Mocanu", „ca Salam"). Intră în inferarea creativă la finalize.' },
             voiceArtist: { type: 'string', enum: ['male', 'female'], description: 'Vocea maneaua: male (bărbătească) sau female (feminină).' },
             customLyrics: { type: 'string', description: 'OPTIONAL: versuri custom complete furnizate explicit de user.' },
             packageTier: { type: 'string', enum: ['basic', 'plus', 'premium'], description: 'Pachetul ales de user. În CHAT oferi doar 2: basic = STANDARD (preț de intrare, doar manea) și plus = PREMIUM (mai lungă + mai calitativă + imagini social). NU oferi premium (69.99) în chat. Setează-l în ETAPA 5.5, înainte de finalize. Default basic dacă userul nu alege.' },
@@ -963,11 +1276,68 @@ REGULI STRICTE:
       },
       {
         name: 'escalate_to_human',
-        description: 'Cere intervenția unui operator uman. Folosește dacă userul cere explicit „om real", dacă cere refund, dacă întrebarea e prea complexă sau dacă nu ai informația în KB/memorie.',
+        description: 'Cere intervenția unui operator uman. Folosește dacă userul cere explicit „om real", dacă cere refund, dacă întrebarea e prea complexă sau dacă nu ai informația in KB/memorie.',
         parameters: {
           type: 'object',
           properties: {
             reason: { type: 'string', description: 'De ce escaladezi (max 200 caractere).' },
+          },
+          required: ['reason'],
+        },
+      },
+      {
+        name: 'start_new_order',
+        description: 'Resetează wizard-ul pentru o comandă NOUĂ (încă o melodie). Folosește când userul vrea o ALTĂ manea după una deja comandată/plătită („mai vreau una", „și pentru soția mea"). Păstrează email-ul clientului. După reset reiei normal fluxul (context → preț → detalii → finalize).',
+        parameters: {
+          type: 'object',
+          properties: {
+            reason: { type: 'string', description: 'Pe scurt de ce repornești wizard-ul (audit).' },
+          },
+          required: ['reason'],
+        },
+      },
+      {
+        name: 'resend_payment_link',
+        description: 'Re-trimite linkul de plată al comenzii curente ca un card nou în chat. Folosește când userul nu găsește linkul, zice că a expirat, sau a schimbat pachetul/datele înainte de plată (regenerează sesiunea Stripe cu datele actuale). NU scrie URL-ul în text — tool-ul trimite singur cardul.',
+        parameters: { type: 'object', properties: {} },
+      },
+      {
+        name: 'generate_lyrics',
+        description: 'Scrie versurile complete ale manelei (GRATUIT) și le trimite userului în chat. Folosește când userul cere demo personalizat pre-plată (audio nu se poate — versurile da), când e indecis, sau când cere ajustări la versurile deja trimise (cu revisionNotes). Versurile aprobate se folosesc EXACT la generarea melodiei finale. Necesită recipientName + message colectate.',
+        parameters: {
+          type: 'object',
+          properties: {
+            revisionNotes: { type: 'string', description: 'OPTIONAL: ce a cerut userul să se schimbe față de draftul anterior (ex. „strofa 2 mai veselă, adaugă numele Maria").' },
+          },
+        },
+      },
+      {
+        name: 'request_modification',
+        description: 'Modificare pe o melodie DEJA PLĂTITĂ. isOurError=true (greșeala noastră: nume greșit, alt mesaj decât cel cerut) → refacere GRATUITĂ o singură dată, pornită imediat. Altfel modificare contra cost: scope=small (nume/o strofă/dedicație, 14.99) sau large (alt mesaj/stil/refacere amplă, 29.99) → tool-ul trimite link de plată; după plată refacerea pornește automat.',
+        parameters: {
+          type: 'object',
+          properties: {
+            changes: { type: 'string', description: 'Ce trebuie schimbat, concret și complet (max 1000 caractere).' },
+            scope: { type: 'string', enum: ['small', 'large'], description: 'Amploarea modificării (small=14.99, large=29.99). Obligatoriu dacă isOurError=false.' },
+            isOurError: { type: 'boolean', description: 'true DOAR dacă e clar greșeala noastră (am livrat altceva decât a cerut clientul).' },
+            generationId: { type: 'string', description: 'OPTIONAL: id-ul generării țintă dacă îl știi din check_order_status. Altfel tool-ul găsește singur ultima melodie plătită.' },
+          },
+          required: ['changes', 'isOurError'],
+        },
+      },
+      {
+        name: 'inspect_customer_data',
+        description: 'DIAGNOSTIC INTERN (read-only): ultimele generări/plăți/erori Suno ale acestui client din baza de date. Folosește când clientul raportează o problemă tehnică, ca să înțelegi exact ce s-a întâmplat. STRICT INTERN — nu cita NICIODATĂ datele brute în chat; folosește-le doar pentru a decide următorul pas și în alert_admins.',
+        parameters: { type: 'object', properties: {} },
+      },
+      {
+        name: 'alert_admins',
+        description: 'Trimite EMAIL URGENT echipei (Șerban + Alexandru) cu diagnosticul problemei + link la conversație. Folosește la: generare eșuată/blocată pentru un client plătit, plată dublă, refund cerut, orice situație care cere intervenție umană rapidă. Max 1 per turn.',
+        parameters: {
+          type: 'object',
+          properties: {
+            reason: { type: 'string', description: 'Problema, pe scurt (max 150 caractere).' },
+            details: { type: 'string', description: 'Ce ai aflat / ce a zis clientul / ce ai văzut în diagnostic (max 600 caractere).' },
           },
           required: ['reason'],
         },
@@ -990,6 +1360,19 @@ REGULI STRICTE:
       play_sample: async (args) => this.handlePlaySample(ctx, String(args.kind ?? 'voice'), String(args.id ?? '')),
       send_empathy: async (args) => this.handleSendEmpathy(ctx, String(args.trigger ?? 'altul'), String(args.text ?? '')),
       escalate_to_human: async (args) => this.handleEscalate(ctx, String(args.reason ?? 'unspecified')),
+      start_new_order: async (args) => this.handleStartNewOrder(ctx, String(args.reason ?? '')),
+      resend_payment_link: async () => this.handleResendPaymentLink(ctx),
+      generate_lyrics: async (args) => this.handleGenerateLyrics(ctx, typeof args.revisionNotes === 'string' ? args.revisionNotes : undefined),
+      request_modification: async (args) =>
+        this.handleRequestModification(ctx, {
+          changes: String(args.changes ?? ''),
+          scope: args.scope === 'large' ? 'large' : 'small',
+          isOurError: args.isOurError === true,
+          generationId: typeof args.generationId === 'string' ? args.generationId : undefined,
+        }),
+      inspect_customer_data: async () => this.handleInspectCustomerData(ctx),
+      alert_admins: async (args) =>
+        this.handleAlertAdmins(ctx, String(args.reason ?? 'nespecificat'), typeof args.details === 'string' ? args.details : undefined),
     };
   }
 
@@ -1047,19 +1430,50 @@ REGULI STRICTE:
       }
     }
 
-    // Fallback 3 — alt chat, același IP (acceași persoană revine fără să fie logată).
+    // Fallback 2.6 — același EMAIL, altă conversație/alt device (sigur: emailul e
+    // identitate verificată prin livrare). Acoperă „am comandat de pe telefon, acum
+    // scriu de pe laptop".
+    let identityConfidence: 'same_conversation' | 'same_email' | 'same_ip' = 'same_conversation';
+    if (!generation && conv.email) {
+      try {
+        const rows: Array<{ id: string }> = await this.conv.manager.query(
+          `SELECT g.id FROM generations g
+           LEFT JOIN users u ON u.id = g."ownerUserId"
+           LEFT JOIN guest_sessions gs ON gs.id = g."ownerGuestId"
+           WHERE LOWER(COALESCE(u.email, gs.email)) = LOWER($1)
+             AND ($2::uuid IS NULL OR g."siteId" = $2)
+           ORDER BY g."createdAt" DESC LIMIT 1`,
+          [conv.email, conv.siteId],
+        );
+        if (rows[0]) {
+          const g = await this.generations.findOnePublic(rows[0].id).catch(() => null);
+          if (g) { generation = g; identityConfidence = 'same_email'; }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // Fallback 3 — alt chat, același IP (aceeași persoană revine fără să fie logată,
+    // ex. alt device pe același net). ATENȚIE: pe CGNAT mobil IP-ul e partajat —
+    // restrângem la 7 zile + marcăm confidence ca AI-ul să CONFIRME identitatea
+    // înainte să dea detalii (anti scurgere cross-user).
     if (!generation && conv.lastIp) {
       try {
-        const sameIp = await this.conv.find({
-          where: { lastIp: conv.lastIp, siteId: conv.siteId ?? undefined },
-          order: { lastMessageAt: 'DESC' },
-          take: 10,
-        });
+        const sameIp = await this.conv
+          .createQueryBuilder('c')
+          .where('c."lastIp" = :ip', { ip: conv.lastIp })
+          .andWhere(conv.siteId ? 'c."siteId" = :sid' : '1=1', { sid: conv.siteId })
+          .andWhere('c.id != :self', { self: conv.id })
+          .andWhere(`c."lastMessageAt" > now() - interval '7 days'`)
+          .orderBy('c."lastMessageAt"', 'DESC')
+          .take(10)
+          .getMany();
         for (const o of sameIp) {
           const gid = o.wizardState?.generationId;
           if (!gid) continue;
           const g = await this.generations.findOnePublic(gid).catch(() => null);
-          if (g) { generation = g; break; }
+          if (g) { generation = g; identityConfidence = 'same_ip'; break; }
         }
       } catch {
         /* ignore */
@@ -1137,6 +1551,43 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
       instruction = 'Nu s-a făcut plata încă. Roagă userul să acceseze link-ul de plată trimis anterior. Dacă nu există link → wizard_get_state.';
     }
 
+    // tech_error pe comandă PLĂTITĂ → echipa află automat pe email (o singură dată
+    // per generare per conversație — dedupe prin wizardState.alertedGenerationIds).
+    if (healthCategory === 'tech_error') {
+      try {
+        const fresh = await this.conv.findOne({ where: { id: ctx.conv.id } });
+        if (fresh) {
+          const st = this.getOrInitWizardState(fresh);
+          const alerted = st.alertedGenerationIds ?? [];
+          if (!alerted.includes(generation.id)) {
+            st.alertedGenerationIds = [...alerted, generation.id].slice(-10);
+            st.updatedAt = new Date().toISOString();
+            await this.conv
+              .createQueryBuilder()
+              .update(Conversation)
+              .set({ wizardState: st })
+              .where('id = :id', { id: fresh.id })
+              .execute();
+            this.notifyAdminsPush(fresh, `🔥 Generare blocată — ${fresh.email ?? 'guest'}`, `Comandă PLĂTITĂ blocată/eșuată (${ageMinutes} min).`);
+            this.notifyAdminsUrgent(fresh, {
+              reason: `Generare PLĂTITĂ blocată/eșuată (${humanStatus})`,
+              details: `generationId=${generation.id}, vârstă=${ageMinutes} min, retryCount=${retryCount}. Clientul întreabă în chat.`,
+            });
+          }
+        }
+      } catch (e) {
+        this.logger.warn(`tech_error alert failed: ${(e as Error).message}`);
+      }
+    }
+
+    // Identitate incertă (match doar pe IP) → AI-ul trebuie să confirme înainte de detalii.
+    if (identityConfidence === 'same_ip') {
+      instruction =
+        `⚠️ Comanda a fost găsită DOAR pe baza IP-ului (poate fi altă persoană pe același net mobil). ` +
+        `ÎNTÂI confirmă identitatea: „Văd o comandă recentă pentru ${generation.recipientName} — despre ea e vorba?". ` +
+        `NU da linkul melodiei și NU comunica detalii până nu confirmă. După confirmare: ` + instruction;
+    }
+
     return {
       hasOrder: true,
       generationId: generation.id,
@@ -1149,6 +1600,8 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
       ageSeconds,
       isStuck,
       retryCount,
+      identityConfidence,
+      freeRemakeAvailable: paid && !(generation as { freeRemakeUsedAt?: Date | null }).freeRemakeUsedAt,
       recipientName: generation.recipientName,
       currentEmail: ctx.conv.email ?? null,
       instruction,
@@ -1230,6 +1683,7 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
     if (typeof args.style === 'string' && args.style.trim()) updates.style = this.normalizeStyle(args.style);
     if (typeof args.occasion === 'string' && args.occasion.trim()) updates.occasion = this.normalizeOccasion(args.occasion);
     if (typeof args.voiceArtist === 'string' && args.voiceArtist.trim()) updates.voiceArtist = args.voiceArtist.trim().slice(0, 64);
+    if (typeof args.styleHint === 'string' && args.styleHint.trim()) updates.styleHint = args.styleHint.trim().slice(0, 160);
     if (typeof args.dedication === 'string') updates.dedication = args.dedication.trim().slice(0, 120);
     if (typeof args.customLyrics === 'string' && args.customLyrics.length > 10) updates.customLyrics = args.customLyrics.trim().slice(0, 4000);
     if (typeof args.packageTier === 'string' && ['basic', 'plus', 'premium'].includes(args.packageTier)) {
@@ -1329,11 +1783,11 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
           'Comanda e deja plătită și se generează. NU mai trimite nimic — apelează check_order_status și raportează exact statusul curent al melodiei.',
       };
     }
-    // Pentru state='payment_sent' permitem MAX 1 re-issue (anti-spam: dacă AI
-    // re-cheamă finalize la fiecare mesaj user post-finalize, generăm 5 linkuri
-    // care confuză userul). Observat 2026-05-27 conv stefmonica41: 2 linkuri în
-    // 30 secunde pentru aceeași comandă, deoarece userul a adăugat info
-    // suplimentară („mesajul nostru este...") după primul link.
+    // Pentru state='payment_sent' permitem MAX 1 re-issue prin finalize (anti-spam:
+    // dacă AI re-cheamă finalize la fiecare mesaj user post-finalize, generăm 5 linkuri
+    // care confuză userul). FIX 2026-06-10: emisia INIȚIALĂ nu mai consumă bugetul —
+    // linkReissueCount numără doar RE-emiterile (vechiul cod bloca de la prima reluare,
+    // contrar intenției — 17 blocări LINK_ALREADY_SENT pe prod = ~24% din finalize-uri).
     const reissueCount = (state as { linkReissueCount?: number }).linkReissueCount ?? 0;
     const isResumeFromPaymentSent = state.step === 'payment_sent';
     if (isResumeFromPaymentSent && reissueCount >= 1) {
@@ -1342,7 +1796,7 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
         currentStep: state.step,
         generationId: state.generationId,
         instruction:
-          'Userul are deja link de plată trimis în această conversație. NU mai trimite altul, NU re-finaliza, NU re-cere detalii. Dacă userul îți trimite info suplimentară post-link (ex. „mesajul nostru este..."), NU recreați comanda — răspunde scurt: „Am notat! Te aștept să dai click pe linkul de plată mai sus și apoi melodia se generează". Dacă insistă cu cerere link nou, apelează escalate_to_human.',
+          'Există deja link de plată activ pe această comandă. NU re-finaliza. Dacă userul nu găsește linkul sau zice că a expirat → apelează resend_payment_link. Dacă vrea cu totul ALTĂ melodie → start_new_order. Dacă doar adaugă detalii post-link („mesajul nostru este...") → răspunde scurt: „Am notat! Dă click pe linkul de plată de mai sus și melodia se generează".',
       };
     }
 
@@ -1441,10 +1895,11 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
       });
 
       // 3. Update state — partial UPDATE pe wizardState (anti race condition).
+      // linkReissueCount numără DOAR re-emiterile (prima emisie = 0) — vezi fix-ul de mai sus.
       state.step = 'payment_sent';
       state.generationId = generation.id;
       state.paymentId = checkout.paymentId;
-      state.linkReissueCount = (state.linkReissueCount ?? 0) + 1;
+      state.linkReissueCount = isResumeFromPaymentSent ? (state.linkReissueCount ?? 0) + 1 : 0;
       state.updatedAt = new Date().toISOString();
       conv.wizardState = state;
       await this.conv
@@ -1522,10 +1977,15 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
       };
     } catch (e) {
       this.logger.warn(`wizard_finalize failed: ${(e as Error).message}`);
+      // Echipa află imediat — comandă cu intenție de plată blocată tehnic = bani pierduți.
+      this.notifyAdminsUrgent(ctx.conv, {
+        reason: 'wizard_finalize a EȘUAT — client cu intenție de plată blocat',
+        details: (e as Error).message,
+      });
       return {
         error: 'finalize_failed',
         message: (e as Error).message,
-        instruction: 'A apărut o eroare la creare. Spune userului că ne ocupăm și escalate_to_human.',
+        instruction: 'A apărut o eroare la creare (echipa a fost anunțată automat pe email). Spune userului diplomat că rezolvăm imediat și revii cu linkul.',
       };
     }
   }
@@ -1549,7 +2009,7 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
   }
 
   private async handleSendMessage(ctx: AgentCtx, text: string): Promise<{ sent: boolean; messageType: string; status: string; instruction?: string }> {
-    const trimmed = text.trim().slice(0, 800);
+    const trimmed = text.trim().slice(0, 1200);
     if (!trimmed) return { sent: false, messageType: 'noop', status: 'EMPTY_TEXT_IGNORED' };
 
     // Hard-check live mode — anti race condition cu setAiMode('manual')
@@ -1565,15 +2025,14 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
 
     const isFirst = ctx.sentRealMessages === 0 && !ctx.suggestionMsgId;
 
-    // Hard limit: max UN SINGUR mesaj per run (suggest sau auto). Reduce
-    // dramatic riscul de spam. Dacă AI vrea să spună mai mult, concatenează în
-    // un singur send_message.
-    if (ctx.suggestionMsgId || ctx.sentRealMessages >= 1) {
+    // Hard limit: max 2 mesaje per run (suggest sau auto) — al 2-lea doar pentru
+    // combinații naturale gen confirmare scurtă + întrebare. Anti-spam păstrat.
+    if (ctx.suggestionMsgId || ctx.sentRealMessages >= 2) {
       return {
         sent: false,
         messageType: 'rate_limited',
-        status: 'ALREADY_SENT_ONE_MESSAGE_THIS_TURN',
-        instruction: 'You already sent ONE message this turn. STOP — do not call any other tool. End your turn now.',
+        status: 'MESSAGE_LIMIT_THIS_TURN',
+        instruction: 'You already sent the maximum messages this turn. STOP — do not call any other tool. End your turn now.',
       };
     }
     // Dedupe pe text exact (în caz că AI încearcă să retrimită prin alt nume de tool)
@@ -1623,6 +2082,13 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
         });
         const saved = await this.msg.save(sysMsg);
         this.gateway.emitAiSuggestion({ conversation: ctx.conv, message: saved });
+        // Userul nu rămâne în aer + adminii află imediat (push + email).
+        await this.sendServiceMessage(ctx.conv, 'Te preia imediat un coleg din echipa noastră ca să rezolvăm rapid 🙏');
+        this.notifyAdminsPush(ctx.conv, `🔄 Buclă AI — ${ctx.conv.email ?? 'guest'}`, 'AI repeta același răspuns. Clientul așteaptă un om.');
+        this.notifyAdminsUrgent(ctx.conv, {
+          reason: 'Buclă sterilă detectată — AI dezactivat, clientul așteaptă un om',
+          details: `Ultimul răspuns blocat: ${trimmed.slice(0, 200)}`,
+        });
         return {
           sent: false,
           messageType: 'sterile_loop_blocked',
@@ -1680,7 +2146,9 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
       };
     }
 
-    // mode === 'auto'
+    // mode === 'auto' — delay uman (2-6s) ÎNAINTE de send: un om tastează, nu
+    // răspunde instant. Cerut de owner 2026-06-10.
+    await this.humanDelay(trimmed, ctx.mode);
     const m = this.msg.create({
       conversationId: ctx.conv.id,
       siteId: ctx.conv.siteId ?? null,
@@ -1707,7 +2175,10 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
       sent: isFirst,
       messageType: 'text',
       status: 'MESSAGE_DELIVERED_TO_USER',
-      instruction: 'Message delivered. Your turn is COMPLETE. Do NOT send more messages or call other tools. End now.',
+      instruction:
+        ctx.sentRealMessages >= 2
+          ? 'Message delivered. Limita de mesaje pe tură atinsă — STOP, end your turn now.'
+          : 'Message delivered. De regulă turul tău e COMPLET acum. Mai poți trimite UN al 2-lea mesaj DOAR dacă e natural (ex. întrebarea următoare după o confirmare scurtă).',
     };
   }
 
@@ -1918,7 +2389,14 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
     });
     const saved = await this.msg.save(m);
     this.gateway.emitAiSuggestion({ conversation: ctx.conv, message: saved });
-    return { ok: true, message: 'Escalated. Operator notified.' };
+    // Clientul NU rămâne în tăcere (mesajul system de mai sus e invizibil pentru el)
+    // + adminii află pe push și email chiar dacă nu sunt pe dashboard.
+    if (ctx.mode === 'auto' && ctx.sentRealMessages === 0) {
+      await this.sendServiceMessage(ctx.conv, 'Te preia imediat un coleg din echipa noastră 🙏 Revine în cel mai scurt timp!');
+    }
+    this.notifyAdminsPush(ctx.conv, `🚨 Escalare AI — ${ctx.conv.email ?? 'guest'}`, reason.slice(0, 140));
+    this.notifyAdminsUrgent(ctx.conv, { reason: `Escalare la om: ${reason.slice(0, 160)}` });
+    return { ok: true, message: 'Escalated. Operator notified (push + email). User informed.' };
   }
 
   // ============== INFERARE CREATIVĂ (Faza 6 — Irina virtuală) ==============
@@ -1951,12 +2429,14 @@ NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să in
     const fallbackOccasion = OCCASIONS[0]; // Zi de naștere
     const fallbackVoice = wizardData.recipientGender === 'F' ? VOICE_DEFAULTS.F : VOICE_DEFAULTS.M;
 
-    // Iau ultimele 25 mesaje user pentru context
-    const userMsgs = await this.msg.find({
+    // Iau ULTIMELE 25 mesaje user (DESC + reverse) — cu ASC luam cele mai VECHI,
+    // deci pe conversațiile lungi / a 2-a comandă inferam din contextul comenzii vechi.
+    const userMsgsDesc = await this.msg.find({
       where: { conversationId: conv.id, authorRole: 'user' },
-      order: { createdAt: 'ASC' },
+      order: { createdAt: 'DESC' },
       take: 25,
     });
+    const userMsgs = userMsgsDesc.reverse();
     const transcript = userMsgs.map((m) => m.body).join('\n').slice(0, 4000);
 
     // Single OpenAI call pentru inferare + enrich message
@@ -1990,6 +2470,7 @@ Returnează STRICT JSON: {"style": "...", "occasion": "...", "voiceArtist": "...
 - recipientGender: ${wizardData.recipientGender ?? '?'}
 - message original: ${wizardData.message ?? '?'}
 - style (dacă user a spus): ${wizardData.style ?? 'INFERĂ'}
+- styleHint (indiciu liber de stil/artist): ${wizardData.styleHint ?? '-'}
 - occasion (dacă user a spus): ${wizardData.occasion ?? 'INFERĂ'}
 - voiceArtist (dacă user a spus): ${wizardData.voiceArtist ?? 'INFERĂ'}
 
@@ -2127,13 +2608,15 @@ ${transcript}`;
   private assertCanSendMessage(ctx: AgentCtx, toolName: string):
     | { ok: true }
     | { ok: false; result: { sent: false; status: string; instruction: string } } {
+    // Tool-urile speciale (quote/discount/sample/empathy) rămân la max 1 per turn —
+    // doar send_message are voie la 2 (combinații naturale). Anti-mesaje contradictorii.
     if (ctx.sentRealMessages >= 1 || ctx.suggestionMsgId) {
       return {
         ok: false,
         result: {
           sent: false,
           status: 'ALREADY_SENT_ONE_MESSAGE_THIS_TURN',
-          instruction: `${toolName}: ai trimis deja UN mesaj turul ăsta. STOP — nu trimite altul. Așteaptă răspunsul userului.`,
+          instruction: `${toolName}: ai trimis deja un mesaj turul ăsta. STOP — nu trimite altul. Așteaptă răspunsul userului.`,
         },
       };
     }
@@ -2237,6 +2720,7 @@ ${transcript}`;
     }
 
     // Trimite mesajul direct (bypass send_message dedupe — e o acțiune distinctă)
+    await this.humanDelay(msgText, ctx.mode);
     const m = this.msg.create({
       conversationId: ctx.conv.id,
       siteId: ctx.conv.siteId,
@@ -2368,6 +2852,7 @@ ${transcript}`;
 
     const text = `Te inteleg complet. Iti pot oferi codul ${code} cu ${pct}% reducere — deci ${finalFmt}. Codul e valid 24h${restrictEmail ? ` pe email-ul tau` : ''}. Vrei sa continuam? ✨`;
 
+    await this.humanDelay(text, ctx.mode);
     const m = this.msg.create({
       conversationId: ctx.conv.id,
       siteId: ctx.conv.siteId,
@@ -2408,14 +2893,32 @@ ${transcript}`;
     if (!site) return { error: 'site_not_found' };
 
     const samples = kind === 'style' ? site.suno?.styleSamples : site.suno?.voiceSamples;
-    const entry = samples?.[id];
+    // Fuzzy-match pe id: „de iubire"→iubire, „Modernă"→modern, fără diacritice.
+    // Pe prod modelul a cerut „de iubire"/„female" și a primit sample_not_found
+    // deși mostrele existau sub alt key (2026-06-10).
+    const norm = (s: string) =>
+      s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/^(de|cu)\s+/, '').trim();
+    const wanted = norm(id);
+    const availableKeys = Object.keys(samples ?? {});
+    const resolvedKey =
+      availableKeys.find((k) => norm(k) === wanted) ??
+      availableKeys.find((k) => norm(k).startsWith(wanted) || wanted.startsWith(norm(k))) ??
+      availableKeys.find((k) => norm(k).includes(wanted) || wanted.includes(norm(k)));
+    const entry = resolvedKey ? samples?.[resolvedKey] : undefined;
     if (!entry?.audioUrl) {
-      return { error: 'sample_not_found', kind, id, instruction: 'Sample inexistent. Alege alt id sau spune userului că mostra nu e disponibilă.' };
+      return {
+        error: 'sample_not_found',
+        kind,
+        id,
+        availableIds: availableKeys,
+        instruction: `Mostra „${id}" nu există. Id-uri disponibile pentru ${kind}: ${availableKeys.join(', ') || 'niciunul'}. Alege EXACT unul din listă sau oferă userului stilul cel mai apropiat.`,
+      };
     }
 
     const label = kind === 'style' ? 'stilul' : 'voce';
     const text = `Asculta o mostra de ${label} aici 🎵: ${entry.audioUrl}`;
 
+    await this.humanDelay(text, ctx.mode);
     const m = this.msg.create({
       conversationId: ctx.conv.id,
       siteId: ctx.conv.siteId,
@@ -2573,6 +3076,7 @@ ${transcript}`;
     const cleaned = text.trim().slice(0, 400);
     if (!cleaned) return { sent: false, status: 'EMPTY_TEXT' };
 
+    await this.humanDelay(cleaned, ctx.mode);
     const m = this.msg.create({
       conversationId: ctx.conv.id,
       siteId: ctx.conv.siteId,
@@ -2607,6 +3111,471 @@ ${transcript}`;
     this.gateway.emitMessage({ message: saved, conversation: ctx.conv });
     ctx.sentRealMessages++;
     return { sent: true, status: 'EMPATHY_SENT', trigger, instruction: 'Mesaj empatie trimis. Continuă cu flow-ul normal (preț / detalii / etc.) la următorul mesaj user.' };
+  }
+
+  // ============== HANDLERS NOI 2026-06-10 (comenzi multiple, modificări, versuri, alerte) ==============
+
+  /** Resetează wizard-ul pentru o comandă nouă — clientul fidel poate comanda din nou. */
+  private async handleStartNewOrder(ctx: AgentCtx, reason: string): Promise<unknown> {
+    const check = await this.assertNotManual(ctx);
+    if (check.aborted) return { aborted: true, status: 'ABORTED_MANUAL_MODE' };
+    const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
+    if (!conv) return { error: 'conversation gone' };
+    const old = this.getOrInitWizardState(conv);
+    const fresh: WizardState = {
+      step: 'collecting',
+      data: {},
+      generationId: null,
+      paymentId: null,
+      linkReissueCount: 0,
+      priceQuotedCount: 0,
+      lyricsDraftCount: old.lyricsDraftCount ?? 0,
+      alertedGenerationIds: old.alertedGenerationIds ?? [],
+      updatedAt: new Date().toISOString(),
+    };
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ wizardState: fresh })
+      .where('id = :id', { id: conv.id })
+      .execute();
+    conv.wizardState = fresh;
+    ctx.conv = conv;
+    this.logger.log(`start_new_order conv=${conv.id.slice(0, 8)} reason="${reason.slice(0, 80)}"`);
+    return {
+      ok: true,
+      status: 'WIZARD_RESET_FOR_NEW_ORDER',
+      emailOnFile: conv.email ?? null,
+      instruction: conv.email
+        ? `Wizard resetat pentru o comandă NOUĂ. Reia fluxul: pentru cine e melodia + ce mesaj. Email-ul există deja (${conv.email}) — NU-l mai cere. Cotează prețul cu quote_price_with_offer când ai contextul.`
+        : 'Wizard resetat pentru o comandă NOUĂ. Reia fluxul: pentru cine e melodia + ce mesaj, apoi cere email-ul devreme.',
+    };
+  }
+
+  /** Re-trimite linkul de plată: refolosește sesiunea Stripe dacă e proaspătă (<25 min,
+   *  sesiunile expiră la 30), altfel creează una NOUĂ pe aceeași comandă cu datele actuale. */
+  private async handleResendPaymentLink(ctx: AgentCtx): Promise<unknown> {
+    const check = await this.assertNotManual(ctx);
+    if (check.aborted) return { aborted: true, status: 'ABORTED_MANUAL_MODE' };
+    if (!ctx.conv.siteId) return { error: 'no_site' };
+    const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
+    if (!conv) return { error: 'conversation gone' };
+    const state = this.getOrInitWizardState(conv);
+    if (!state.generationId) {
+      return {
+        status: 'NO_ORDER_TO_RESEND',
+        instruction: 'Nu există o comandă finalizată în această conversație. Dacă userul vrea să comande, continuă wizard-ul normal (wizard_get_state → finalize).',
+      };
+    }
+    if (state.step === 'paid' || state.step === 'generating' || state.step === 'completed') {
+      return {
+        status: 'ORDER_ALREADY_PAID',
+        instruction: 'Comanda e deja plătită — nu mai e nimic de plătit. check_order_status pentru statusul melodiei.',
+      };
+    }
+    const site = await this.sites.findById(ctx.conv.siteId);
+    if (!site) return { error: 'site_not_found' };
+
+    // 1. Link recent încă valid? (sesiunile Stripe create de noi expiră în 30 min)
+    const recent = await this.msg
+      .createQueryBuilder('m')
+      .where('m."conversationId" = :cid', { cid: conv.id })
+      .andWhere(`m."messageType" = 'payment_link'`)
+      .andWhere(`m."createdAt" > now() - interval '25 minutes'`)
+      .andWhere(`m.payload->>'checkoutUrl' IS NOT NULL`)
+      .andWhere(`COALESCE(m.payload->>'status','') != 'paid'`)
+      .orderBy('m."createdAt"', 'DESC')
+      .getOne();
+
+    const tier = normalizeTier(state.data.packageTier);
+    const amount = packageTotalCents(tier, site.packagePricesCents ?? null);
+    const currency = site.currency.toUpperCase();
+    const description = `Manea pentru ${state.data.recipientName ?? 'tine'} — pachet ${packageLabel(tier)}`;
+
+    let checkoutUrl: string;
+    let paymentId: string;
+    let mode: 'reused' | 'fresh';
+    const recentPayload = recent?.payload as ChatMessagePayload | undefined;
+    if (recent && recentPayload?.checkoutUrl && Number(recentPayload.amount ?? 0) === amount) {
+      checkoutUrl = String(recentPayload.checkoutUrl);
+      paymentId = String(recentPayload.paymentId ?? state.paymentId ?? '');
+      mode = 'reused';
+    } else {
+      // Sesiune nouă pe ACEEAȘI generare (sau pachet schimbat) — sincronizăm și tier-ul
+      // pe Generation ca livrarea să respecte ce plătește clientul.
+      try {
+        await this.conv.manager.query(
+          `UPDATE generations SET "packageTier" = $1 WHERE id = $2 AND "paidUnlocked" = false`,
+          [tier, state.generationId],
+        );
+      } catch (e) {
+        this.logger.warn(`resend tier sync failed: ${(e as Error).message}`);
+      }
+      const activePromoCode = await this.findActivePromoCode(conv);
+      const checkout = await this.payments.createCheckoutSession({
+        userId: conv.userId,
+        guestId: conv.guestId,
+        generationId: state.generationId,
+        packageTier: tier,
+        email: conv.email ?? undefined,
+        promoCode: activePromoCode ?? undefined,
+        site,
+        ipAddress: conv.lastIp ?? undefined,
+      });
+      checkoutUrl = checkout.url;
+      paymentId = checkout.paymentId;
+      mode = 'fresh';
+      state.paymentId = paymentId;
+      state.step = 'payment_sent';
+      state.updatedAt = new Date().toISOString();
+      await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ wizardState: state })
+        .where('id = :id', { id: conv.id })
+        .execute();
+    }
+
+    await this.humanDelay('retrimit linkul', ctx.mode);
+    const m = this.msg.create({
+      conversationId: conv.id,
+      siteId: conv.siteId,
+      authorRole: 'admin',
+      authorId: null,
+      body: `💳 Ți-am retrimis linkul de plată: ${description} — ${(amount / 100).toFixed(2)} ${currency}`,
+      messageType: 'payment_link',
+      payload: {
+        amount,
+        currency,
+        description,
+        checkoutUrl,
+        paymentId,
+        generationId: state.generationId,
+        packageTier: tier,
+        packageLabel: packageLabel(tier),
+      },
+      aiGenerated: true,
+      detectedLang: site.locale,
+    });
+    const saved = await this.msg.save(m);
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+      .where('id = :id', { id: conv.id })
+      .execute();
+    this.gateway.emitMessage({ message: saved, conversation: conv });
+    ctx.paymentLinkSent = true;
+    return {
+      ok: true,
+      status: mode === 'reused' ? 'PAYMENT_LINK_RESENT' : 'PAYMENT_LINK_REGENERATED',
+      instruction:
+        'Cardul de plată a fost retrimis (mai jos în chat, cu buton). Spune-i userului scurt că i l-ai retrimis și că după plată melodia se generează în 5-10 minute. NU scrie URL-ul Stripe în text.',
+    };
+  }
+
+  /** Generează versurile manelei în chat (gratuit) și le salvează ca customLyrics —
+   *  la finalize, melodia se cântă EXACT pe ele (pipeline-ul sare peste writer). */
+  private async handleGenerateLyrics(ctx: AgentCtx, revisionNotes?: string): Promise<unknown> {
+    const check = await this.assertNotManual(ctx);
+    if (check.aborted) return { aborted: true, status: 'ABORTED_MANUAL_MODE' };
+    if (!ctx.conv.siteId) return { error: 'no_site' };
+    const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
+    if (!conv) return { error: 'conversation gone' };
+    const state = this.getOrInitWizardState(conv);
+    if (!state.data.recipientName || !state.data.message) {
+      return {
+        status: 'MISSING_FIELDS',
+        missingFields: ['recipientName', 'message'].filter((f) => !state.data[f as keyof WizardData]),
+        instruction: 'Înainte de versuri am nevoie de pentru cine e melodia + mesajul. Întreabă-le întâi (wizard_update), apoi generate_lyrics.',
+      };
+    }
+    if ((state.lyricsDraftCount ?? 0) >= MAX_LYRICS_DRAFTS) {
+      return {
+        status: 'LYRICS_LIMIT_REACHED',
+        instruction: 'Ai generat deja 3 drafturi de versuri pe această conversație. NU mai genera altele — întreabă userul ce anume să schimbe și transmite-i că ajustările finale se fac la generare, sau alert_admins dacă clientul e nemulțumit.',
+      };
+    }
+    const site = await this.sites.findById(ctx.conv.siteId);
+    if (!site) return { error: 'site_not_found' };
+
+    // Inferăm stil/ocazie/voce din transcript (același mecanism ca la finalize) ca
+    // versurile să sune exact ca melodia finală.
+    const inference = await this.inferCreativeFields(conv, state.data, site);
+    const messageForLyrics = revisionNotes
+      ? `${inference.message.value}\n\nAJUSTĂRI CERUTE DE CLIENT LA VERSURI: ${revisionNotes.slice(0, 600)}`
+      : inference.message.value;
+
+    let lyrics: string;
+    try {
+      const lyricsMod = await import('../lyrics/lyrics.module');
+      const lyricsSvc = this.moduleRef.get(lyricsMod.LyricsService, { strict: false });
+      lyrics = await lyricsSvc.writeDraft({
+        style: inference.style.value,
+        occasion: inference.occasion.value,
+        recipientName: state.data.recipientName,
+        message: messageForLyrics,
+        voiceArtist: inference.voiceArtist.value,
+        dedication: state.data.dedicatorName ?? state.data.dedication,
+        currency: site.currency ?? 'RON',
+        locale: site.locale ?? 'ro',
+        siteId: site.id,
+        writerSystemPrompt: site.suno?.writerSystemPrompt,
+        writerUserTemplate: site.suno?.writerUserTemplate,
+      });
+    } catch (e) {
+      this.logger.warn(`generate_lyrics failed: ${(e as Error).message}`);
+      return {
+        error: 'lyrics_failed',
+        instruction: 'Generarea versurilor a eșuat tehnic. Spune-i userului diplomat că revii imediat cu versurile și apelează alert_admins.',
+      };
+    }
+
+    const cleanLyrics = lyrics.trim().slice(0, 3500);
+    state.data.customLyrics = cleanLyrics;
+    state.lyricsDraftCount = (state.lyricsDraftCount ?? 0) + 1;
+    if (state.step === 'idle') state.step = 'collecting';
+    state.updatedAt = new Date().toISOString();
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ wizardState: state })
+      .where('id = :id', { id: conv.id })
+      .execute();
+    ctx.conv = conv;
+
+    const intro = revisionNotes
+      ? `Le-am ajustat cum ai cerut 🎤 Uite varianta nouă:`
+      : `Uite versurile pe care le-am scris pentru ${state.data.recipientName} 🎤`;
+    const text = `${intro}\n\n${cleanLyrics}\n\nÎți plac? Pot schimba orice strofă — zi-mi ce ajustez. Dacă-ți plac, maneaua finală se cântă exact pe ele 🎶`;
+
+    await this.humanDelay(text.slice(0, 150), ctx.mode);
+    const m = this.msg.create({
+      conversationId: conv.id,
+      siteId: conv.siteId,
+      authorRole: ctx.mode === 'suggest' ? 'system' : 'admin',
+      authorId: null,
+      body: text,
+      messageType: ctx.mode === 'suggest' ? 'ai_suggestion' : 'text',
+      aiGenerated: true,
+      detectedLang: site.locale,
+    });
+    const saved = await this.msg.save(m);
+    if (ctx.mode === 'suggest') {
+      this.gateway.emitAiSuggestion({ conversation: conv, message: saved });
+      return { sent: false, status: 'SUGGESTION_PERSISTED', draftNo: state.lyricsDraftCount };
+    }
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+      .where('id = :id', { id: conv.id })
+      .execute();
+    this.gateway.emitMessage({ message: saved, conversation: conv });
+    ctx.sentRealMessages++;
+    return {
+      sent: true,
+      status: 'LYRICS_SENT',
+      draftNo: state.lyricsDraftCount,
+      instruction: 'Versurile au fost trimise în chat. Așteaptă reacția userului. La finalize, melodia se va genera EXACT pe aceste versuri. TERMINĂ TURUL.',
+    };
+  }
+
+  /** Modificare pe melodie plătită: gratuită o dată dacă e greșeala noastră, altfel
+   *  contra cost (small 14.99 / large 29.99) cu link de plată; refacerea pornește
+   *  automat la confirmarea plății (vezi ChatService.markPaymentLinksAsPaid). */
+  private async handleRequestModification(
+    ctx: AgentCtx,
+    args: { changes: string; scope: 'small' | 'large'; isOurError: boolean; generationId?: string },
+  ): Promise<unknown> {
+    const check = await this.assertNotManual(ctx);
+    if (check.aborted) return { aborted: true, status: 'ABORTED_MANUAL_MODE' };
+    if (!ctx.conv.siteId) return { error: 'no_site' };
+    const changes = args.changes.trim().slice(0, 1000);
+    if (!changes) return { error: 'changes_required', instruction: 'Întreabă userul CE anume vrea schimbat, concret.' };
+    const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
+    if (!conv) return { error: 'conversation gone' };
+    const state = this.getOrInitWizardState(conv);
+    const ownerId = conv.userId ?? conv.guestId;
+
+    // Găsește generarea țintă: explicită → wizard → ultima PLĂTITĂ a owner-ului.
+    let genRow: {
+      id: string; paidUnlocked: boolean; status: string; recipientName: string;
+      message: string; freeRemakeUsedAt: Date | null;
+    } | null = null;
+    const candidateIds = [args.generationId, state.generationId].filter(Boolean) as string[];
+    for (const gid of candidateIds) {
+      const rows = await this.conv.manager.query(
+        `SELECT id, "paidUnlocked", status, "recipientName", message, "freeRemakeUsedAt"
+         FROM generations WHERE id = $1 LIMIT 1`,
+        [gid],
+      );
+      if (rows[0]) { genRow = rows[0]; break; }
+    }
+    if ((!genRow || !genRow.paidUnlocked) && ownerId) {
+      const rows = await this.conv.manager.query(
+        `SELECT id, "paidUnlocked", status, "recipientName", message, "freeRemakeUsedAt"
+         FROM generations
+         WHERE ("ownerUserId" = $1 OR "ownerGuestId" = $1) AND "paidUnlocked" = true
+         ORDER BY "createdAt" DESC LIMIT 1`,
+        [ownerId],
+      );
+      if (rows[0]) genRow = rows[0];
+    }
+    if (!genRow) {
+      return {
+        status: 'NO_PAID_ORDER_FOUND',
+        instruction: 'Nu am găsit nicio melodie PLĂTITĂ a clientului. Dacă comanda curentă nu e plătită încă, modificările se fac direct cu wizard_update (gratuit, înainte de plată). Dacă clientul susține că a plătit — inspect_customer_data + alert_admins.',
+      };
+    }
+    if (!genRow.paidUnlocked) {
+      return {
+        status: 'ORDER_NOT_PAID',
+        instruction: 'Melodia găsită nu e plătită. Modificările pre-plată se fac gratuit cu wizard_update. Pentru link de plată: resend_payment_link.',
+      };
+    }
+
+    // CAZ 1: greșeala noastră → refacere gratuită, o singură dată, pornită PE LOC.
+    if (args.isOurError) {
+      if (genRow.freeRemakeUsedAt) {
+        return {
+          status: 'FREE_REMAKE_ALREADY_USED',
+          instruction: 'Refacerea gratuită a fost deja folosită pe această comandă. Fii foarte empatic; dacă pare tot greșeala noastră, alert_admins ca un coleg să decidă o excepție. Altfel oferă modificarea contra cost (small 14.99) cu mult tact.',
+        };
+      }
+      try {
+        const newMessage = `${genRow.message}\n\nCORECTURĂ (refacere gratuită — greșeala noastră): ${changes}`;
+        const regen = await this.generations.adminRegenerate(genRow.id, {
+          target: 'overwrite',
+          lyricsMode: 'rewrite',
+          edits: { message: newMessage },
+        });
+        await this.conv.manager.query(
+          `UPDATE generations SET "freeRemakeUsedAt" = NOW() WHERE id = $1`,
+          [genRow.id],
+        );
+        state.generationId = regen.id;
+        state.step = 'generating';
+        state.updatedAt = new Date().toISOString();
+        await this.conv
+          .createQueryBuilder()
+          .update(Conversation)
+          .set({ wizardState: state })
+          .where('id = :id', { id: conv.id })
+          .execute();
+        this.notifyAdminsUrgent(conv, {
+          reason: 'Refacere GRATUITĂ pornită de AI (greșeala noastră)',
+          details: `Generation ${genRow.id} — modificări: ${changes}`,
+        });
+        return {
+          ok: true,
+          status: 'FREE_REMAKE_STARTED',
+          generationId: regen.id,
+          instruction: 'Refacerea gratuită a pornit chiar acum. Cere-ți scuze sincer și spune-i clientului că varianta corectată e gata în 5-10 minute — o primește pe email și aici în chat. Fii cald, fără scuze robotice.',
+        };
+      } catch (e) {
+        this.logger.warn(`free remake failed: ${(e as Error).message}`);
+        this.notifyAdminsUrgent(conv, { reason: 'Refacere gratuită EȘUATĂ tehnic', details: (e as Error).message });
+        return {
+          error: 'remake_failed',
+          instruction: 'Refacerea a eșuat tehnic (echipa a fost anunțată automat). Spune-i clientului diplomat că un coleg reface manual în cel mai scurt timp.',
+        };
+      }
+    }
+
+    // CAZ 2: modificare contra cost → link de plată; refacerea pornește la webhook.
+    const amount = args.scope === 'large' ? MODIFICATION_PRICE_LARGE_CENTS : MODIFICATION_PRICE_SMALL_CENTS;
+    const site = await this.sites.findById(ctx.conv.siteId);
+    if (!site) return { error: 'site_not_found' };
+    try {
+      const checkout = await this.payments.createCheckoutSession({
+        userId: conv.userId,
+        guestId: conv.guestId,
+        overrideAmount: amount,
+        email: conv.email ?? undefined,
+        site,
+        ipAddress: conv.lastIp ?? undefined,
+      });
+      const currency = site.currency.toUpperCase();
+      const description = `Modificare manea pentru ${genRow.recipientName} (${args.scope === 'large' ? 'amplă' : 'mică'})`;
+      state.modification = { generationId: genRow.id, changes, scope: args.scope, paymentId: checkout.paymentId };
+      state.updatedAt = new Date().toISOString();
+      await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ wizardState: state })
+        .where('id = :id', { id: conv.id })
+        .execute();
+
+      await this.humanDelay('link modificare', ctx.mode);
+      const m = this.msg.create({
+        conversationId: conv.id,
+        siteId: conv.siteId,
+        authorRole: 'admin',
+        authorId: null,
+        body: `💳 Link de plată modificare: ${description} — ${(amount / 100).toFixed(2)} ${currency}`,
+        messageType: 'payment_link',
+        payload: {
+          amount,
+          currency,
+          description,
+          checkoutUrl: checkout.url,
+          paymentId: checkout.paymentId,
+          modificationForGenerationId: genRow.id,
+          modificationChanges: changes,
+        },
+        aiGenerated: true,
+        detectedLang: site.locale,
+      });
+      const saved = await this.msg.save(m);
+      await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+        .where('id = :id', { id: conv.id })
+        .execute();
+      this.gateway.emitMessage({ message: saved, conversation: conv });
+      ctx.paymentLinkSent = true;
+      return {
+        ok: true,
+        status: 'MODIFICATION_LINK_SENT',
+        amountCents: amount,
+        instruction: `Linkul de plată pentru modificare (${(amount / 100).toFixed(2)} ${currency}) e trimis ca un card mai sus. Explică-i diplomat clientului că melodia se regenerează integral cu modificările cerute, de-asta există costul, și că după plată varianta nouă e gata în 5-10 minute. NU scrie URL-ul în text.`,
+      };
+    } catch (e) {
+      this.logger.warn(`modification link failed: ${(e as Error).message}`);
+      return { error: 'modification_link_failed', instruction: 'Crearea linkului a eșuat. alert_admins + mesaj diplomat.' };
+    }
+  }
+
+  /** Diagnostic intern read-only — vezi gatherDiagnostics. Marcat INTERNAL_ONLY. */
+  private async handleInspectCustomerData(ctx: AgentCtx): Promise<unknown> {
+    const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
+    if (!conv) return { error: 'conversation gone' };
+    const data = await this.gatherDiagnostics(conv);
+    return {
+      INTERNAL_ONLY: true,
+      instruction:
+        'Date INTERNE de diagnostic. NU le cita brut clientului (fără ID-uri, erori tehnice, sume sau comenzi ale altora). Folosește-le ca să înțelegi situația; pentru intervenție umană apelează alert_admins cu un rezumat.',
+      data,
+    };
+  }
+
+  /** Tool: alertă urgentă pe email către echipă. Max 1 per turn. */
+  private async handleAlertAdmins(ctx: AgentCtx, reason: string, details?: string): Promise<unknown> {
+    if (ctx.alertSentThisTurn) {
+      return { status: 'ALERT_ALREADY_SENT_THIS_TURN', instruction: 'Ai alertat deja echipa pe acest turn. Continuă conversația cu clientul.' };
+    }
+    ctx.alertSentThisTurn = true;
+    const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
+    if (!conv) return { error: 'conversation gone' };
+    this.notifyAdminsPush(conv, `🚨 Irina cere ajutor — ${conv.email ?? 'guest'}`, reason.slice(0, 120));
+    this.notifyAdminsUrgent(conv, { reason: reason.slice(0, 200), details: details?.slice(0, 800) });
+    return {
+      ok: true,
+      status: 'ADMINS_ALERTED',
+      instruction: 'Echipa a fost anunțată pe email + push. Spune-i clientului diplomat că un coleg verifică deja și revine în scurt timp. NU dezvălui detalii tehnice.',
+    };
   }
 
   // ============== AUDIT ==============
@@ -2659,4 +3628,6 @@ interface AgentCtx {
   escalated: boolean;
   paymentLinkSent: boolean;
   requireApprovalForPayment: boolean;
+  /** Max 1 alert email per turn (anti-spam către admini). */
+  alertSentThisTurn: boolean;
 }

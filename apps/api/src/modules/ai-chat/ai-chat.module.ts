@@ -7,6 +7,7 @@ import { Conversation } from '../chat/conversation.entity';
 import { ChatMessage } from '../chat/message.entity';
 import { AIChatAgentService } from './ai-chat-agent.service';
 import { AILearnerService } from './ai-learner.service';
+import { AiFollowupService } from './ai-followup.service';
 import { AiChatAdminController } from './ai-chat-admin.controller';
 import { AiMemory } from './ai-memory.entity';
 import { AiToolCall } from './ai-tool-call.entity';
@@ -42,7 +43,7 @@ import { AdminGuard } from '../../common/admin.guard';
       }),
     }),
   ],
-  providers: [AIChatAgentService, AILearnerService, AdminGuard],
+  providers: [AIChatAgentService, AILearnerService, AiFollowupService, AdminGuard],
   controllers: [AiChatAdminController],
   exports: [AIChatAgentService],
 })
