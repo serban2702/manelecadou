@@ -31,13 +31,28 @@ export interface PaymentLinkOpts {
   packageTier?: PackageTier;
 }
 
+export interface ConversationListPage {
+  items: AdminChatConversation[];
+  total: number;
+  hasMore: boolean;
+}
+
 export class ChatApi {
-  static list(opts: { q?: string; archived?: boolean } = {}): Promise<AdminChatConversation[]> {
+  /** Listă paginată (2026-06-10): prima pagină conține și conversațiile online. */
+  static list(
+    opts: { q?: string; archived?: boolean; limit?: number; offset?: number } = {},
+  ): Promise<ConversationListPage> {
     const params = new URLSearchParams();
     if (opts.q) params.set('q', opts.q);
     if (opts.archived) params.set('archived', 'true');
+    if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+    if (opts.offset !== undefined) params.set('offset', String(opts.offset));
     const qs = params.toString();
     return http.get(`/admin/chat/conversations${qs ? `?${qs}` : ''}`);
+  }
+  /** Badge sidebar: total necitite — query ieftin, polling-safe. */
+  static unreadTotal(): Promise<{ unread: number }> {
+    return http.get('/admin/chat/unread-total');
   }
   static archive(id: string, archived: boolean): Promise<{ ok: true; archivedAt: string | null }> {
     return http.patch(`/admin/chat/conversations/${id}/archive`, { archived });

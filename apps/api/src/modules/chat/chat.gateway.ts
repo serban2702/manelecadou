@@ -421,6 +421,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return false;
   }
 
+  /** Snapshot al identităților online ACUM (≥1 socket viu). Folosit de paginarea
+   *  listei de conversații din admin: prima pagină include mereu conversațiile online,
+   *  chiar dacă lastMessageAt al lor e vechi. */
+  onlineIds(): { userIds: string[]; guestIds: string[] } {
+    const alive = (map: Map<string, Set<string>>) =>
+      Array.from(map.entries())
+        .filter(([, sockets]) => sockets.size > 0)
+        .map(([id]) => id);
+    return { userIds: alive(this.presenceUsers), guestIds: alive(this.presenceGuests) };
+  }
+
   /** Enriched presence pentru o conversație (admin sidebar). */
   getEnriched(target: { userId: string | null; guestId: string | null }): EnrichedPresence | null {
     const key = presenceKey(target);

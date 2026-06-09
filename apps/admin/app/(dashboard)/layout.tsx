@@ -159,12 +159,13 @@ function DashboardShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('mc:site-changed', onChange);
   }, []);
   // Chat & Inbox sunt acum cross-tenant — badge-urile se actualizează în orice scope.
-  const { data: chatList } = useAsync(
-    () => ChatApi.list(),
+  // 2026-06-10: endpoint dedicat (un SUM) în loc de toată lista augmentată la 5s.
+  const { data: chatUnread } = useAsync(
+    () => ChatApi.unreadTotal(),
     [authed, selectedSite],
     { enabled: authed === true, refetchInterval: 5000 },
   );
-  const unreadTotal = (chatList ?? []).reduce((s, c) => s + (c.unreadByAdmin || 0), 0);
+  const unreadTotal = chatUnread?.unread ?? 0;
 
   const { data: errStats } = useAsync(
     () => ErrorsApi.stats(),

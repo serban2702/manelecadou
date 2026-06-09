@@ -177,15 +177,28 @@ export class ChatController {
 export class AdminChatController {
   constructor(private readonly svc: ChatService) {}
 
+  /** Badge sidebar: totalul mesajelor necitite de admin — query ieftin (SUM),
+   *  înlocuiește polling-ul întregii liste la 5s din layout (2026-06-10). */
+  @Get('unread-total')
+  unreadTotal(@CurrentSiteId() siteId: string | null) {
+    return this.svc.unreadTotalForAdmin(siteId);
+  }
+
   @Get('conversations')
   list(
     @CurrentSiteId() siteId: string | null,
     @Query('q') q?: string,
     @Query('archived') archivedStr?: string,
+    @Query('limit') limitStr?: string,
+    @Query('offset') offsetStr?: string,
   ) {
+    const limit = limitStr ? parseInt(limitStr, 10) : undefined;
+    const offset = offsetStr ? parseInt(offsetStr, 10) : undefined;
     return this.svc.listAllConversations(siteId, {
       q,
       archived: archivedStr === 'true',
+      limit: Number.isFinite(limit) ? limit : undefined,
+      offset: Number.isFinite(offset) ? offset : undefined,
     });
   }
 

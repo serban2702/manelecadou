@@ -51,7 +51,7 @@ import {
   type PresenceEvent,
   type TypingEvent,
 } from '@/lib/chat-socket';
-import type { AdminChatMessage, AiChatMode, EnrichedPresence } from '@/lib/types';
+import type { AdminChatConversation, AdminChatMessage, AiChatMode, EnrichedPresence } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/ui/empty';
@@ -184,20 +184,80 @@ export default function AdminChatPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const { data: convs, refetch: refetchConvs } = useAsync(
+  // ── Listă PAGINATĂ (2026-06-10): la 2700+ conversații, fetch-ul „totul deodată"
+  // bloca UI-ul. Prima pagină (cu online-ii injectați de server) se reîmprospătează
+  // la 30s; paginile vechi se acumulează la scroll (infinite scroll) și se resetează
+  // când se schimbă filtrele.
+  const CONV_PAGE_SIZE = 40;
+  const { data: convPage, refetch: refetchConvs } = useAsync(
     () => ChatApi.list({
       q: searchQuery || undefined,
       archived: showArchived || undefined,
+      limit: CONV_PAGE_SIZE,
+      offset: 0,
     }),
     [searchQuery, showArchived],
     { refetchInterval: searchQuery ? undefined : 30_000 },
   );
+  const [olderConvs, setOlderConvs] = useState<AdminChatConversation[]>([]);
+  const olderOffsetRef = useRef(CONV_PAGE_SIZE);
+  const [loadingMore, setLoadingMore] = useState(false);
+  useEffect(() => {
+    // Reset acumulatorul când se schimbă filtrele (search / arhivate).
+    setOlderConvs([]);
+    olderOffsetRef.current = CONV_PAGE_SIZE;
+  }, [searchQuery, showArchived]);
+
+  const convs = useMemo(() => {
+    const first = convPage?.items ?? [];
+    const seen = new Set(first.map((c) => c.id));
+    return [...first, ...olderConvs.filter((c) => !seen.has(c.id))];
+  }, [convPage, olderConvs]);
+  const convTotal = convPage?.total ?? 0;
+  const hasMoreConvs = !searchQuery && !!convPage && convs.length < convTotal;
+
+  const loadMoreConvs = useCallback(async () => {
+    if (loadingMore || searchQuery || !convPage) return;
+    setLoadingMore(true);
+    try {
+      const page = await ChatApi.list({
+        archived: showArchived || undefined,
+        limit: CONV_PAGE_SIZE,
+        offset: olderOffsetRef.current,
+      });
+      olderOffsetRef.current += CONV_PAGE_SIZE;
+      setOlderConvs((prev) => {
+        const seen = new Set(prev.map((c) => c.id));
+        return [...prev, ...page.items.filter((c) => !seen.has(c.id))];
+      });
+    } catch {
+      /* silent — următorul intersect reîncearcă */
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, searchQuery, showArchived, convPage]);
+
+  // Sentinel de infinite scroll — când intră în viewport, încarcă pagina următoare.
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = loadMoreSentinelRef.current;
+    if (!el || !hasMoreConvs) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) void loadMoreConvs();
+      },
+      { rootMargin: '400px' },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasMoreConvs, loadMoreConvs]);
 
   // Acțiuni context menu
   async function archiveConv(id: string, archived: boolean) {
     try {
       await ChatApi.archive(id, archived);
       if (active === id) setActive(null);
+      setOlderConvs((prev) => prev.filter((c) => c.id !== id));
       refetchConvs();
     } catch (e) {
       alert(`Eroare: ${(e as Error).message}`);
@@ -218,6 +278,7 @@ export default function AdminChatPage() {
       await ChatApi.deleteConversation(id);
       if (active === id) setActive(null);
       setDeleteTarget(null);
+      setOlderConvs((prev) => prev.filter((c) => c.id !== id));
       refetchConvs();
     } catch (e) {
       alert(`Eroare: ${(e as Error).message}`);
@@ -641,7 +702,7 @@ export default function AdminChatPage() {
               >
                 {showArchived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
               </button>
-              <Badge variant="muted">{list.length}</Badge>
+              <Badge variant="muted">{searchQuery ? list.length : `${list.length}/${convTotal || list.length}`}</Badge>
             </div>
           </div>
           <div className="p-2 border-b border-border">
@@ -802,6 +863,19 @@ export default function AdminChatPage() {
                   </button>
                 );
               })
+            )}
+            {/* Sentinel infinite scroll — încarcă următoarea pagină când devine vizibil. */}
+            {hasMoreConvs && (
+              <div ref={loadMoreSentinelRef} className="p-3 text-center">
+                <button
+                  type="button"
+                  onClick={() => void loadMoreConvs()}
+                  disabled={loadingMore}
+                  className="text-xs text-muted-foreground hover:text-foreground transition"
+                >
+                  {loadingMore ? 'Se încarcă…' : `Încarcă mai multe (${convTotal - list.length} rămase)`}
+                </button>
+              </div>
             )}
           </div>
         </aside>

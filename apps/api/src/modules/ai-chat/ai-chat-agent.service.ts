@@ -833,15 +833,27 @@ ETAPA 0 — COMANDĂ EXISTENTĂ (verifică ÎNAINTE de a porni wizard-ul):
     „vreau și pentru soția mea") → apelează \`start_new_order\` și reia normal de la ETAPA 1-2.
     NU raporta statusul comenzii vechi, NU refuza! Clienții care revin sunt cei mai valoroși.
   → 🔧 MODIFICARE pe melodie plătită → folosește \`request_modification\` (NU escalate):
-    • Dacă greșeala e a NOASTRĂ (nume scris greșit de noi, alt mesaj decât a cerut, „din
-      partea necunoscută") → refacem GRATUIT o singură dată: request_modification cu
-      isOurError=true. Cere-ți scuze sincer, fii cald.
-    • Dacă clientul vrea o schimbare de gust (alt vers, altă strofă, adaugă un nume) →
-      modificare CONTRA COST: mică (nume/o strofă/dedicație) = 14.99 lei, mare (alt mesaj/
-      stil/refacere amplă) = 29.99 lei. Explică DIPLOMAT: „melodia se regenerează de la
-      zero, de-asta e un cost mic". request_modification cu scope='small'|'large'.
-    • Dacă refacerea gratuită a fost deja folosită și e tot greșeala noastră → ton foarte
-      empatic + alert_admins ca un coleg să decidă.
+    • REGULA DEFAULT: modificările se PLĂTESC — mică (nume/o strofă/dedicație) = 14.99 lei,
+      mare (alt mesaj/stil/refacere amplă) = 29.99 lei. Explică DIPLOMAT: „melodia se
+      regenerează de la zero, de-asta e un cost mic". request_modification cu scope.
+    • EXCEPȚIA 1 — greșeala NOASTRĂ (nume scris greșit de noi, alt mesaj decât a cerut,
+      „din partea necunoscută") → refacem GRATUIT o singură dată: isOurError=true.
+      Cere-ți scuze sincer, fii cald.
+    • EXCEPȚIA 2 — RETENȚIE (gest comercial, NU politică generală): dacă clientul e
+      nemulțumit, pe punctul să renunțe sau cere banii înapoi, poți oferi O SINGURĂ
+      refacere gratuită ca să-l salvezi: isRetentionOffer=true. NU o oferi din prima,
+      NU o pomeni ca opțiune standard — e ultima carte, doar când simți că altfel pierzi
+      clientul.
+    • ÎNAINTE de ORICE refacere gratuită (ambele excepții), OBLIGATORIU:
+      1) adună TOT contextul: ce anume nu i-a plăcut, ce vrea schimbat EXACT (versuri?
+         stil? voce? nume? mesaj?), orice detaliu nou;
+      2) recapitulează schimbările și cere confirmarea clientului („Deci refac cu: ...
+         — corect?");
+      3) spune-i CLAR că e un gest unic: „refacerea asta e din partea noastră, o singură
+         dată — următoarele modificări sunt contra cost".
+      Tool-ul REFUZĂ refacerea gratuită dacă changes e vag — descrie complet și concret.
+    • Dacă refacerea gratuită a fost deja folosită → DOAR contra cost, indiferent de motiv;
+      dacă pare tot greșeala noastră flagrantă → alert_admins ca un coleg să decidă.
   → 🔗 LINK DE PLATĂ PIERDUT/EXPIRAT: dacă userul zice „nu am primit linkul", „nu-l găsesc",
     „a expirat", „dă-mi link-ul" → apelează \`resend_payment_link\` (re-emite cardul de plată).
     NU-i spune doar „e mai sus în chat" dacă el zice că nu-l vede.
@@ -1133,7 +1145,14 @@ REGULI STRICTE:
 28. COD DE REDUCERE DAT DE USER: dacă userul scrie un cod pe care îl are (de la roată,
     dintr-un email, de la un coleg uman) → NU emite alt cod peste el. Confirmă-i că la
     finalize codul activ se aplică automat pe linkul de plată. Dacă userul insistă că nu
-    i s-a aplicat → resend_payment_link (regenerează linkul, care re-verifică codul).`;
+    i s-a aplicat → resend_payment_link (regenerează linkul, care re-verifică codul).
+29. ⛔ REFUND / BANII ÎNAPOI — INTERZIS să promiți. NU spune NICIODATĂ „primești banii
+    înapoi", „îți returnăm banii", „refund garantat" — sub nicio formă, în niciun context.
+    Refundurile le decide EXCLUSIV un coleg uman. Dacă clientul cere banii înapoi:
+    1) maxim ce POȚI oferi tu e refacerea gratuită unică (vezi politica de modificări,
+       isRetentionOffer) — încearcă întâi să salvezi clientul cu ea;
+    2) dacă insistă pe refund → escalate_to_human + alert_admins, mesaj diplomat
+       („Un coleg din echipă preia cererea ta chiar acum și revine repede").`;
 
     return this.appendMemoryAndContacts(basePrompt, memory, site);
   }
@@ -1313,13 +1332,14 @@ REGULI STRICTE:
       },
       {
         name: 'request_modification',
-        description: 'Modificare pe o melodie DEJA PLĂTITĂ. isOurError=true (greșeala noastră: nume greșit, alt mesaj decât cel cerut) → refacere GRATUITĂ o singură dată, pornită imediat. Altfel modificare contra cost: scope=small (nume/o strofă/dedicație, 14.99) sau large (alt mesaj/stil/refacere amplă, 29.99) → tool-ul trimite link de plată; după plată refacerea pornește automat.',
+        description: 'Modificare pe o melodie DEJA PLĂTITĂ. DEFAULT = contra cost: scope=small (nume/o strofă/dedicație, 14.99) sau large (alt mesaj/stil/refacere amplă, 29.99) → tool-ul trimite link de plată; după plată refacerea pornește automat. GRATUIT (o singură dată per melodie) DOAR în 2 cazuri: isOurError=true (am livrat altceva decât a cerut clientul) sau isRetentionOffer=true (gest comercial unic ca să salvezi un client pe punctul să renunțe/care cere refund — NU politică generală). Pentru gratuit: changes trebuie să fie COMPLET și CONFIRMAT de client în prealabil (ce schimbăm exact: versuri/stil/voce/nume/mesaj) — tool-ul refuză descrieri vagi.',
         parameters: {
           type: 'object',
           properties: {
-            changes: { type: 'string', description: 'Ce trebuie schimbat, concret și complet (max 1000 caractere).' },
-            scope: { type: 'string', enum: ['small', 'large'], description: 'Amploarea modificării (small=14.99, large=29.99). Obligatoriu dacă isOurError=false.' },
+            changes: { type: 'string', description: 'Ce trebuie schimbat, concret și complet (max 1000 caractere). Pentru refacere gratuită: TOATE detaliile, confirmate de client (recapitulate înainte).' },
+            scope: { type: 'string', enum: ['small', 'large'], description: 'Amploarea modificării (small=14.99, large=29.99). Obligatoriu pentru modificările plătite.' },
             isOurError: { type: 'boolean', description: 'true DOAR dacă e clar greșeala noastră (am livrat altceva decât a cerut clientul).' },
+            isRetentionOffer: { type: 'boolean', description: 'true DOAR ca gest comercial unic pentru a salva un client nemulțumit/pe punctul să plece. Nu se oferă proactiv ca opțiune standard.' },
             generationId: { type: 'string', description: 'OPTIONAL: id-ul generării țintă dacă îl știi din check_order_status. Altfel tool-ul găsește singur ultima melodie plătită.' },
           },
           required: ['changes', 'isOurError'],
@@ -1368,6 +1388,7 @@ REGULI STRICTE:
           changes: String(args.changes ?? ''),
           scope: args.scope === 'large' ? 'large' : 'small',
           isOurError: args.isOurError === true,
+          isRetentionOffer: args.isRetentionOffer === true,
           generationId: typeof args.generationId === 'string' ? args.generationId : undefined,
         }),
       inspect_customer_data: async () => this.handleInspectCustomerData(ctx),
@@ -1543,8 +1564,8 @@ Trimite linkul live ${linkToSong} unde vede progresul. NICIODATĂ „90 secunde"
 NU promite mai puțin. Trimite linkul ${linkToSong} ca să verifice live.`;
     } else if (healthCategory === 'tech_error') {
       instruction = `EROARE TEHNICĂ. Suno e jos / generarea a eșuat / blocat peste 10 min (retry=${retryCount}${nextRetryAt ? ', reîncercare automată planificată' : ''}, age=${ageMinutes} min). Răspunde EMPATIC și ONEST:
-„Am o problemă tehnică la generare cu serviciul Suno - se întâmplă uneori. Verific acum exact și revin în câteva minute, jur ❤️. Dacă durează mai mult, primești toți banii înapoi."
-NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să intervină.`;
+„Am o problemă tehnică la generare - se întâmplă rar. Echipa a fost anunțată și rezolvăm chiar acum, revin imediat ce e gata ❤️"
+⛔ NU promite NICIODATĂ returnarea banilor / refund — refundurile le decide DOAR un coleg uman. NU promite ETA scurt. La a doua întrebare → escalate_to_human ca admin să intervină.`;
     } else if (healthCategory === 'failed') {
       instruction = `Generation eșuat înainte de plată. Spune-i scurt că s-a întâmplat o eroare și că poate încerca o comandă nouă — apoi wizard_get_state.`;
     } else {
@@ -3381,12 +3402,22 @@ ${transcript}`;
     };
   }
 
-  /** Modificare pe melodie plătită: gratuită o dată dacă e greșeala noastră, altfel
-   *  contra cost (small 14.99 / large 29.99) cu link de plată; refacerea pornește
-   *  automat la confirmarea plății (vezi ChatService.markPaymentLinksAsPaid). */
+  /** Modificare pe melodie plătită: DEFAULT contra cost (small 14.99 / large 29.99)
+   *  cu link de plată — refacerea pornește automat la confirmarea plății (vezi
+   *  ChatService.markPaymentLinksAsPaid). GRATUIT o singură dată per melodie, doar:
+   *  (a) greșeala noastră (isOurError) sau (b) gest de retenție pentru un client pe
+   *  punctul să plece (isRetentionOffer). Refuzăm gratuitul pe descrieri vagi —
+   *  AI-ul trebuie să fi adunat și confirmat TOT contextul (politică owner 2026-06-10:
+   *  „altă dată nu i-o mai regenerăm decât pe bani"). */
   private async handleRequestModification(
     ctx: AgentCtx,
-    args: { changes: string; scope: 'small' | 'large'; isOurError: boolean; generationId?: string },
+    args: {
+      changes: string;
+      scope: 'small' | 'large';
+      isOurError: boolean;
+      isRetentionOffer?: boolean;
+      generationId?: string;
+    },
   ): Promise<unknown> {
     const check = await this.assertNotManual(ctx);
     if (check.aborted) return { aborted: true, status: 'ABORTED_MANUAL_MODE' };
@@ -3435,16 +3466,31 @@ ${transcript}`;
       };
     }
 
-    // CAZ 1: greșeala noastră → refacere gratuită, o singură dată, pornită PE LOC.
-    if (args.isOurError) {
+    // CAZ 1: refacere GRATUITĂ — doar greșeala noastră SAU gest de retenție.
+    // O singură dată per melodie, indiferent de motiv (freeRemakeUsedAt).
+    const wantsFree = args.isOurError || args.isRetentionOffer === true;
+    if (wantsFree) {
       if (genRow.freeRemakeUsedAt) {
         return {
           status: 'FREE_REMAKE_ALREADY_USED',
-          instruction: 'Refacerea gratuită a fost deja folosită pe această comandă. Fii foarte empatic; dacă pare tot greșeala noastră, alert_admins ca un coleg să decidă o excepție. Altfel oferă modificarea contra cost (small 14.99) cu mult tact.',
+          instruction: 'Refacerea gratuită a fost DEJA folosită pe această comandă — următoarele modificări sunt DOAR contra cost (small 14.99 / large 29.99), indiferent de motiv. Comunică asta cu mult tact. Dacă pare o greșeală flagrantă a noastră, alert_admins ca un coleg să decidă o excepție — tu NU mai poți reface gratuit.',
+        };
+      }
+      // Guard context complet: gratuitul e unic, deci refacerea TREBUIE să acopere tot
+      // ce vrea clientul. Refuzăm descrieri vagi — AI-ul adună întâi toate detaliile
+      // și confirmă cu clientul (politică owner: a doua oară doar pe bani).
+      if (changes.length < 40) {
+        return {
+          status: 'NEED_FULL_CONTEXT',
+          instruction:
+            'Refacerea gratuită e UNICĂ — înainte să o pornești, adună TOT contextul de la client: ce anume nu i-a plăcut și ce schimbăm EXACT (versuri? stil? voce? nume? mesaj? ce rămâne la fel?). Recapitulează lista de schimbări, cere confirmarea lui („Deci refac cu: ... — corect?") și spune-i clar că e un gest unic, următoarele modificări fiind contra cost. Abia apoi apelează din nou request_modification cu changes COMPLET (toate detaliile confirmate).',
         };
       }
       try {
-        const newMessage = `${genRow.message}\n\nCORECTURĂ (refacere gratuită — greșeala noastră): ${changes}`;
+        const remakeLabel = args.isOurError
+          ? 'CORECTURĂ (refacere gratuită — greșeala noastră)'
+          : 'REFACERE GRATUITĂ UNICĂ (gest comercial — clientul nemulțumit)';
+        const newMessage = `${genRow.message}\n\n${remakeLabel}: ${changes}`;
         const regen = await this.generations.adminRegenerate(genRow.id, {
           target: 'overwrite',
           lyricsMode: 'rewrite',
@@ -3464,21 +3510,25 @@ ${transcript}`;
           .where('id = :id', { id: conv.id })
           .execute();
         this.notifyAdminsUrgent(conv, {
-          reason: 'Refacere GRATUITĂ pornită de AI (greșeala noastră)',
+          reason: args.isOurError
+            ? 'Refacere GRATUITĂ pornită de AI (greșeala noastră)'
+            : 'Refacere GRATUITĂ de RETENȚIE pornită de AI (client nemulțumit, gest unic)',
           details: `Generation ${genRow.id} — modificări: ${changes}`,
         });
         return {
           ok: true,
           status: 'FREE_REMAKE_STARTED',
           generationId: regen.id,
-          instruction: 'Refacerea gratuită a pornit chiar acum. Cere-ți scuze sincer și spune-i clientului că varianta corectată e gata în 5-10 minute — o primește pe email și aici în chat. Fii cald, fără scuze robotice.',
+          instruction: args.isOurError
+            ? 'Refacerea gratuită a pornit chiar acum. Cere-ți scuze sincer și spune-i clientului că varianta corectată e gata în 5-10 minute — o primește pe email și aici în chat. Fii cald, fără scuze robotice. Menționează BLÂND că refacerea gratuită e un gest unic — eventualele modificări viitoare sunt contra cost.'
+            : 'Refacerea a pornit chiar acum, ca gest din partea noastră. Spune-i clientului cald că facem o excepție pentru el O SINGURĂ DATĂ — varianta nouă e gata în 5-10 minute, iar eventualele modificări viitoare sunt contra cost (14.99/29.99 lei). NU promite refunduri.',
         };
       } catch (e) {
         this.logger.warn(`free remake failed: ${(e as Error).message}`);
         this.notifyAdminsUrgent(conv, { reason: 'Refacere gratuită EȘUATĂ tehnic', details: (e as Error).message });
         return {
           error: 'remake_failed',
-          instruction: 'Refacerea a eșuat tehnic (echipa a fost anunțată automat). Spune-i clientului diplomat că un coleg reface manual în cel mai scurt timp.',
+          instruction: 'Refacerea a eșuat tehnic (echipa a fost anunțată automat). Spune-i clientului diplomat că un coleg reface manual în cel mai scurt timp. NU promite refund.',
         };
       }
     }

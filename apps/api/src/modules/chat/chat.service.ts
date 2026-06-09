@@ -471,16 +471,34 @@ export class ChatService implements OnModuleInit {
    *  3. Offline + cu mesaje
    *  4. Offline fără mesaje
    */
+  /** Total mesaje necitite de admin (badge sidebar) — un singur SUM, fără augmentare. */
+  async unreadTotalForAdmin(siteId: string | null): Promise<{ unread: number }> {
+    const qb = this.conv
+      .createQueryBuilder('c')
+      .select('COALESCE(SUM(c."unreadByAdmin"), 0)', 'unread')
+      .where('c."archivedAt" IS NULL');
+    if (siteId) qb.andWhere('c."siteId" = :siteId', { siteId });
+    const row = await qb.getRawOne<{ unread: string }>();
+    return { unread: Number(row?.unread ?? 0) };
+  }
+
   /**
-   * Listare conversații pentru admin. Cross-tenant „all" e prea zgomotos pentru
-   * inbox — forțăm un site activ. Adminul comută între site-uri prin selector.
+   * Listare conversații pentru admin, PAGINATĂ (2026-06-10 — la 2700+ conversații,
+   * varianta „totul deodată" augmenta și serializa mii de rânduri la fiecare 30s și
+   * bloca UI-ul). Contract:
+   *  - default: pagina cerută (limit/offset) ordonată după lastMessageAt DESC;
+   *    PRIMA pagină (offset=0) include în plus TOATE conversațiile online acum
+   *    (snapshot WS), sortate primele — comportamentul vechi păstrat.
+   *  - search (q): max 100 rezultate, fără paginare (hasMore=false).
    */
   async listAllConversations(
     siteId: string | null,
-    opts: { q?: string; archived?: boolean } = {},
-  ): Promise<ConversationWithPresence[]> {
+    opts: { q?: string; archived?: boolean; limit?: number; offset?: number } = {},
+  ): Promise<{ items: Array<ConversationWithPresence & { lastMessageRole: 'user' | 'admin' | null }>; total: number; hasMore: boolean }> {
     const q = opts.q?.trim();
     const includeArchived = opts.archived === true;
+    const limit = Math.min(200, Math.max(1, Math.trunc(opts.limit ?? 50)));
+    const offset = Math.max(0, Math.trunc(opts.offset ?? 0));
     // Listing-ul e cross-tenant când nu ai un site activ — UI-ul afișează badge-ul
     // siteId per conversație ca să distingi vizual. Acțiunile write rămân scoped la conversație
     // (ex: reply ia siteId din entitate, nu din header).
@@ -529,16 +547,53 @@ export class ChatService implements OnModuleInit {
         .addOrderBy('c."updatedAt"', 'DESC')
         .take(100);
     } else {
-      // DEFAULT: TOATE conversațiile cu cel puțin un mesaj (cerere user 2026-05-27).
-      // FĂRĂ limită — sortarea finală pe online/offline se face în JS după augmenter,
-      // dar DB-ul nu mai trunchiază la 200 ca să excludă conv online cu mesaje vechi.
-      // Safety cap la 5000 ca să nu explodeze RAM dacă apare un volum patologic.
+      // DEFAULT (paginat): conversațiile cu cel puțin un mesaj, pagina cerută.
       qb.andWhere('c."lastMessageAt" IS NOT NULL');
       qb.orderBy('c."lastMessageAt"', 'DESC', 'NULLS LAST')
         .addOrderBy('c."updatedAt"', 'DESC')
-        .take(5000);
+        .skip(offset)
+        .take(limit);
     }
-    const all = await qb.getMany();
+
+    // Total pentru paginare (doar în default mode; search întoarce tot ce găsește).
+    let total = 0;
+    if (!q) {
+      const countQb = this.conv.createQueryBuilder('c');
+      if (siteId) countQb.where('c.siteId = :siteId', { siteId });
+      countQb.andWhere(includeArchived ? 'c."archivedAt" IS NOT NULL' : 'c."archivedAt" IS NULL');
+      countQb.andWhere('c."lastMessageAt" IS NOT NULL');
+      total = await countQb.getCount();
+    }
+
+    let all = await qb.getMany();
+    if (q) total = all.length;
+
+    // Prima pagină include și conversațiile ONLINE acum (chiar cu lastMessageAt vechi),
+    // ca să păstrăm comportamentul „online primii" fără să încărcăm toate paginile.
+    if (!q && offset === 0) {
+      const online = this.gateway.onlineIds();
+      if (online.userIds.length > 0 || online.guestIds.length > 0) {
+        const onlineQb = this.conv.createQueryBuilder('c');
+        if (siteId) onlineQb.where('c.siteId = :siteId', { siteId });
+        onlineQb.andWhere(includeArchived ? 'c."archivedAt" IS NOT NULL' : 'c."archivedAt" IS NULL');
+        onlineQb.andWhere('c."lastMessageAt" IS NOT NULL');
+        const onlineClauses: string[] = [];
+        const onlineParams: Record<string, unknown> = {};
+        if (online.userIds.length > 0) {
+          onlineClauses.push('c."userId" IN (:...onlineUserIds)');
+          onlineParams.onlineUserIds = online.userIds;
+        }
+        if (online.guestIds.length > 0) {
+          onlineClauses.push('c."guestId" IN (:...onlineGuestIds)');
+          onlineParams.onlineGuestIds = online.guestIds;
+        }
+        onlineQb.andWhere(`(${onlineClauses.join(' OR ')})`, onlineParams);
+        onlineQb.take(200);
+        const onlineConvs = await onlineQb.getMany();
+        const seen = new Set(all.map((c) => c.id));
+        all = [...all, ...onlineConvs.filter((c) => !seen.has(c.id))];
+      }
+    }
 
     const userIds = all.map((c) => c.userId).filter((v): v is string => !!v);
     const guestIds = all.map((c) => c.guestId).filter((v): v is string => !!v);
@@ -585,18 +640,25 @@ export class ChatService implements OnModuleInit {
      * Sortare simplă (cerere user 2026-05-27):
      *  1. Online — DESC by lastMessageAt
      *  2. Offline — DESC by lastMessageAt
-     * Fără sub-bucket-uri pe rolul ultimului mesaj — adminul vede direct cine-i activ
-     * cu ultimul schimb proaspăt sus.
+     * Aplicată DOAR pe prima pagină (acolo sunt injectate conversațiile online);
+     * paginile următoare păstrează ordinea DB (lastMessageAt DESC) ca să nu sară
+     * elementele între pagini la infinite scroll.
      */
-    augmented.sort((a, b) => {
-      if (a.online !== b.online) return a.online ? -1 : 1;
-      const at = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
-      const bt = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
-      if (at !== bt) return bt - at;
-      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-    });
+    if (q || offset === 0) {
+      augmented.sort((a, b) => {
+        if (a.online !== b.online) return a.online ? -1 : 1;
+        const at = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+        const bt = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+        if (at !== bt) return bt - at;
+        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      });
+    }
 
-    return augmented;
+    return {
+      items: augmented,
+      total,
+      hasMore: q ? false : offset + limit < total,
+    };
   }
 
   /** Caută în analytics_sessions toate user/guest IDs care au cel puțin o sesiune
