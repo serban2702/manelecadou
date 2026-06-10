@@ -160,6 +160,38 @@ services:
       api:
         condition: service_healthy
 
+  # Terminal de operare cu Claude Code (CLAUDE.md §17). Expus DOAR prin Caddy
+  # la admin.manelecadou.ro/ops/ — ttyd face Basic Auth cu OPS_TERMINAL_CREDENTIAL.
+  # IMPORTANT: fără ANTHROPIC_API_KEY aici — Claude Code rulează pe abonamentul
+  # Max (login interactiv persistat pe volumul ops_home), nu pe API plătit.
+  ops:
+    build:
+      context: ./ops
+    restart: unless-stopped
+    environment:
+      OPS_TERMINAL_CREDENTIAL: ${OPS_TERMINAL_CREDENTIAL:?OPS_TERMINAL_CREDENTIAL lipsește din .env}
+      DISABLE_AUTOUPDATER: "1"
+      TZ: Europe/Bucharest
+      # Postgres prin rolul dedicat claude_ops (DML pe public, fără DDL).
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB}
+      PGUSER: claude_ops
+      PGPASSWORD: ${OPS_DB_PASSWORD:?OPS_DB_PASSWORD lipsește din .env}
+      # API intern + semnare JWT de serviciu (ops-admin-token / api-admin).
+      API_INTERNAL_URL: http://api:3000
+      JWT_SECRET: ${JWT_SECRET}
+      OPS_ADMIN_USER_ID: ${OPS_ADMIN_USER_ID:-}
+    volumes:
+      # Repo-ul de pe VPS (root-owned ⇒ efectiv read-only pentru userul claude).
+      # Codul se modifică LOCAL + make deploy; aici doar citire/diagnoză.
+      - /home/manele:/workspace
+      # Home persistent: credențiale Claude (abonament Max), istoric, settings.
+      - ops_home:/home/claude
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -184,3 +216,4 @@ volumes:
   api_backups:
   api_mail_attach:
   api_logs:
+  ops_home:

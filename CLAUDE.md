@@ -770,3 +770,68 @@ Server → Admin:
   chat:ai_suggestion    { conversationId, message }  ← nu emis la user
   chat:message:ack      (idem)
 ```
+
+---
+
+## 17. Terminal ops — Claude Code în producție (admin /terminal)
+
+Decizie 2026-06-10: container `ops` în stack-ul prod cu **Claude Code pe abonamentul
+Max al lui Șerban** (NU API key — zero cost suplimentar), accesibil ca terminal web
+din admin la `https://admin.manelecadou.ro/terminal` (sau direct `/ops/`).
+
+### 17.1 Arhitectură
+
+```
+admin.manelecadou.ro/terminal (pagină admin, iframe)
+        └─► Caddy handle /ops/* ──► ops:7681 (ttyd, Basic Auth propriu)
+                                       └─ tmux session „ops" (persistentă)
+                                            └─ claude (login Max, persistat pe volum)
+```
+
+- **`ops/Dockerfile`** — node:22-slim + @anthropic-ai/claude-code + ttyd + tmux +
+  postgresql-client + git + ripgrep. User non-root `claude`.
+- **Volume**: `/home/manele:/workspace` (repo VPS, root-owned ⇒ read-only efectiv) +
+  `ops_home:/home/claude` (credențiale Claude persistente — login-ul supraviețuiește
+  rebuild-urilor).
+- **Auth terminal**: ttyd Basic Auth cu `OPS_TERMINAL_CREDENTIAL` (user:parolă, în
+  `/home/manele/.env`). Caddy doar proxy-ează (inclusiv WebSocket).
+- **Auth Claude**: login interactiv O DATĂ în terminal (`claude` → `/login` → device
+  code flow — deschizi URL-ul pe telefon/laptop, lipești codul). Credențialele stau
+  în `ops_home` cu refresh automat. **NU pune ANTHROPIC_API_KEY în env-ul ops** —
+  ar avea precedență peste abonament și ar genera costuri API.
+- **DB**: rol dedicat `claude_ops` (SELECT/INSERT/UPDATE/DELETE pe public, fără DDL;
+  parola în `OPS_DB_PASSWORD`). psql preconfigurat din env (PGHOST/PGUSER/...).
+- **API admin**: `ops-admin-token` (semnează JWT HS256 cu JWT_SECRET, role=admin —
+  AdminGuard nu face lookup în DB) + `api-admin GET|POST /api/... [body]` (curl
+  wrapper, `x-site-id: all`). `OPS_ADMIN_USER_ID` (opțional) = uuid de admin real
+  pentru audit-uri.
+- **Sesiuni**: tmux `new -A -s ops` — închizi browserul, taskul merge mai departe;
+  redeschizi, te reatașezi exact unde ai rămas (de pe orice device).
+
+### 17.2 Skills ops (în repo, ajung pe VPS la deploy)
+
+`.claude/skills/ops-*` — funcționează și din containerul ops (psql/api-admin direct)
+și de pe Mac (prin `ssh VPSIonos docker exec ...`): `ops-client` (dosar 360°),
+`ops-payment` (investigare plăți), `ops-regen` (regenerare/modificare piese),
+`ops-errors` (triaj erori + OpenReplay), `ops-db` (reguli query/mutate cu confirmare).
+
+### 17.3 Env vars noi (în /home/manele/.env)
+
+| Var | Ce e |
+|---|---|
+| `OPS_TERMINAL_CREDENTIAL` | `user:parolă` pentru Basic Auth ttyd (terminalul web) |
+| `OPS_DB_PASSWORD` | parola rolului Postgres `claude_ops` |
+| `OPS_ADMIN_USER_ID` | (opțional) uuid admin real pentru `sub` în JWT-ul de serviciu |
+
+### 17.4 Gotchas ops
+
+1. **Limita Max e partajată** — sesiunile din terminal consumă din aceeași găleată
+   (5h rolling + weekly) ca sesiunile de pe Mac. Nu lăsa bucle infinite.
+2. **Cont personal** — login-ul e pe contul lui Șerban; nu-l folosește altcineva și
+   nu se leagă de fluxuri către clienți (Irina rămâne pe OpenAI API).
+3. **Codul din /workspace e read-only by design** (root-owned pe host) și oricum
+   suprascris de `git reset --hard` la deploy. Fix-uri de cod = local + `make deploy`.
+4. **deploy.sh are target `ops`** (`./deploy.sh ops`) și `make deploy-ops` local.
+   Update Claude Code = rebuild imagine (auto-updater oprit, non-root).
+5. **Rebuild-ul NU șterge login-ul** (volumul `ops_home` rămâne). `docker volume rm
+   manele_ops_home` = re-login necesar.

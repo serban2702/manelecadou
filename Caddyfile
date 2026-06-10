@@ -76,6 +76,14 @@ admin.manelecadou.ro {
     import security_headers
     import api_routes
 
+    # Terminal ops (Claude Code) — ttyd în containerul `ops`. Autentificarea o
+    # face ttyd însuși (Basic Auth, OPS_TERMINAL_CREDENTIAL din .env); Caddy doar
+    # proxy-ează, inclusiv WebSocket-ul. Vezi CLAUDE.md §17.
+    @ops path /ops /ops/*
+    handle @ops {
+        reverse_proxy ops:7681
+    }
+
     handle {
         reverse_proxy admin:1505 {
             header_up Host {host}

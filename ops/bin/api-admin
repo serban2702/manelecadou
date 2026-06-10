@@ -1,0 +1,28 @@
+#!/bin/bash
+# Apel autenticat (rol admin, cross-tenant) către API-ul intern.
+#
+# Folosire:
+#   api-admin GET  /api/admin/generations?limit=5
+#   api-admin POST /api/admin/generations/<id>/regenerate '{"target":"new_track","lyricsMode":"keep"}'
+#   api-admin GET  /api/admin/sites
+#
+# Header x-site-id: all → vedere cross-tenant (SiteContextMiddleware). Pentru un
+# singur site: API_SITE_ID=<uuid> api-admin GET /api/...
+set -euo pipefail
+
+METHOD="${1:?Folosire: api-admin GET|POST|PUT|DELETE /api/... [json_body]}"
+REQ_PATH="${2:?Lipsește path-ul (ex. /api/admin/sites)}"
+BODY="${3:-}"
+
+TOKEN="$(ops-admin-token)"
+BASE="${API_INTERNAL_URL:-http://api:3000}"
+
+ARGS=(-sS -X "$METHOD" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "x-site-id: ${API_SITE_ID:-all}")
+if [[ -n "$BODY" ]]; then
+  ARGS+=(-H 'Content-Type: application/json' -d "$BODY")
+fi
+
+curl "${ARGS[@]}" "${BASE}${REQ_PATH}"
+echo

@@ -1,7 +1,7 @@
 VPS=VPSIonos
 REMOTE=/home/manele
 
-.PHONY: deploy deploy-api deploy-web deploy-admin ssh logs logs-api logs-web logs-admin logs-caddy logs-file logs-429 backup rollback restart status
+.PHONY: deploy deploy-api deploy-web deploy-admin deploy-ops ssh logs logs-api logs-web logs-admin logs-caddy logs-ops logs-file logs-429 backup rollback restart status
 
 deploy:
 	@echo "→ git push + remote deploy (full)"
@@ -20,6 +20,10 @@ deploy-admin:
 	@git push origin main
 	@ssh $(VPS) "cd $(REMOTE) && ./deploy.sh admin"
 
+deploy-ops:
+	@git push origin main
+	@ssh $(VPS) "cd $(REMOTE) && ./deploy.sh ops"
+
 ssh:
 	@ssh $(VPS)
 
@@ -37,6 +41,9 @@ logs-admin:
 
 logs-caddy:
 	@ssh $(VPS) "cd $(REMOTE) && docker compose -f docker-compose.prod.yml logs -f --tail=50 caddy"
+
+logs-ops:
+	@ssh $(VPS) "cd $(REMOTE) && docker compose -f docker-compose.prod.yml logs -f --tail=50 ops"
 
 # Tail live al access-log-ului pino (toate request-urile, JSON lines).
 logs-file:

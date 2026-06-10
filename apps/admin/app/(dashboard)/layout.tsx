@@ -24,6 +24,7 @@ import {
   Receipt,
   Send,
   Settings as SettingsIcon,
+  SquareTerminal,
   Tag,
   Terminal,
   UserCircle2,
@@ -82,6 +83,7 @@ const NAV: NavItem[] = [
   { href: '/sites', label: 'Toate site-urile', icon: Globe, scope: 'both', mobile: true },
   { href: '/site', label: 'Acest site', icon: Globe, scope: 'per-site' },
   { href: '/database', label: 'Database', icon: Database, scope: 'global' },
+  { href: '/terminal', label: 'Claude Ops', icon: SquareTerminal, scope: 'both', mobile: true },
   { href: '/settings', label: 'Settings', icon: SettingsIcon, scope: 'global' },
 ];
 

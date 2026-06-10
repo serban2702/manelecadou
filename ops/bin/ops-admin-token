@@ -1,0 +1,35 @@
+#!/usr/bin/env node
+// Emite un JWT de serviciu cu rol admin pentru API-ul intern (http://api:3000).
+// Semnat HS256 cu JWT_SECRET — AdminGuard validează semnătura + role==='admin'
+// fără lookup în DB, deci token-ul sintetic e suficient pentru rutele /api/admin/*.
+//
+// Folosire: ops-admin-token [ttl_secunde]   (default 3600 = 1h)
+//
+// OPS_ADMIN_USER_ID (env, opțional) = id-ul unui admin real din tabela users —
+// folosit ca `sub` ca audit-urile (ex. aiApprovedBy) să pointeze la un rând real.
+const crypto = require('crypto');
+
+const secret = process.env.JWT_SECRET;
+if (!secret) {
+  console.error('JWT_SECRET lipsește din env — nu pot semna token.');
+  process.exit(1);
+}
+
+const ttl = Math.max(60, parseInt(process.argv[2] || '3600', 10) || 3600);
+const now = Math.floor(Date.now() / 1000);
+const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+
+const header = b64({ alg: 'HS256', typ: 'JWT' });
+const payload = b64({
+  sub: process.env.OPS_ADMIN_USER_ID || '00000000-0000-4000-8000-0000000000ca',
+  email: 'ops-terminal@manelecadou.ro',
+  role: 'admin',
+  iat: now,
+  exp: now + ttl,
+});
+const sig = crypto
+  .createHmac('sha256', secret)
+  .update(`${header}.${payload}`)
+  .digest('base64url');
+
+process.stdout.write(`${header}.${payload}.${sig}`);

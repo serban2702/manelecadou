@@ -53,6 +53,7 @@ const AiMonitor       = dynamic(() => import('../ai-monitor/_content'),      { s
 const Emails          = dynamic(() => import('../emails/_content'),          { ssr: false, loading: Loading });
 const Marketing       = dynamic(() => import('../marketing/_content'),       { ssr: false, loading: Loading });
 const SiteDemos       = dynamic(() => import('../site-demos/_content'),      { ssr: false, loading: Loading });
+const OpsTerminal     = dynamic(() => import('../terminal/_content'),        { ssr: false, loading: Loading });
 
 const ROUTES: Record<string, ComponentType> = {
   '/':                   Dashboard,
@@ -80,6 +81,7 @@ const ROUTES: Record<string, ComponentType> = {
   '/emails':             Emails,
   '/marketing':          Marketing,
   '/site-demos':         SiteDemos,
+  '/terminal':           OpsTerminal,
 };
 
 export default function CatchAll() {
