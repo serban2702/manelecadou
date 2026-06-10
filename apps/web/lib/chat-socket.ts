@@ -100,6 +100,9 @@ export function useChatSocket({ enabled = true, onMessage, onMessageUpdated, onM
   const socketRef = useRef<Socket | null>(null);
   const lastPathRef = useRef<string | null>(null);
   const chatOpenRef = useRef<boolean>(false);
+  // Ultimul snapshot al formularului Generator (eveniment global `mc:generator_state`).
+  // Retrimis în fiecare heartbeat ca serverul să aibă starea și după reconnect/restart.
+  const formStateRef = useRef<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
@@ -122,8 +125,22 @@ export function useChatSocket({ enabled = true, onMessage, onMessageUpdated, onM
         viewport: { w: window.innerWidth, h: window.innerHeight },
         chatOpen: chatOpenRef.current,
         device: detectDevice(),
+        ...(formStateRef.current ? { formState: formStateRef.current } : {}),
       });
     };
+
+    // Generator.tsx dispatch-uiește starea formularului (pas + câmpuri completate).
+    // O trimitem instant — Irina o vede în system prompt la următorul run.
+    const onGeneratorState = (e: Event) => {
+      const detail = (e as CustomEvent).detail as Record<string, unknown> | undefined;
+      if (!detail || typeof detail.step !== 'number') return;
+      formStateRef.current = detail;
+      socket.emit('presence:form_state', {
+        ...detail,
+        path: window.location.pathname + window.location.search,
+      });
+    };
+    window.addEventListener('mc:generator_state', onGeneratorState);
 
     socket.on('connect', () => {
       setConnected(true);
@@ -169,6 +186,7 @@ export function useChatSocket({ enabled = true, onMessage, onMessageUpdated, onM
       window.clearInterval(hbInterval);
       window.clearInterval(pathInterval);
       window.removeEventListener('popstate', checkPath);
+      window.removeEventListener('mc:generator_state', onGeneratorState);
       document.removeEventListener('visibilitychange', onVisibility);
       socket.disconnect();
       socketRef.current = null;

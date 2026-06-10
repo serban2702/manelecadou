@@ -621,6 +621,12 @@ export class AIChatAgentService {
 - Versuri draft generate în chat: ${ws?.data?.customLyrics ? 'DA — finalize le va folosi exact pe acestea' : 'nu'}
 - Mostre audio disponibile pentru play_sample → stiluri: [${styleSampleIds.join(', ') || 'niciuna'}]; voci: [${voiceSampleIds.join(', ') || 'niciuna'}] (folosește EXACT aceste id-uri)`;
 
+    // ── POZIȚIE PE SITE (presence live din gateway, fallback DB) — Irina vede
+    // pagina curentă + pasul din formularul PUBLIC de comandă (Generator). Dacă
+    // userul e activ în formular, o instruim să-l ghideze să-l termine PE SITE
+    // în loc să tragă comanda în wizard-ul de chat.
+    sysPrompt += this.buildSitePositionPrompt(conv);
+
     if (opts.followUp) {
       sysPrompt += `
 
@@ -742,6 +748,52 @@ NU repeta identic mesajul precedent, NU trimite mai mult de un mesaj, NU folosi 
         this.gateway.emitMessage({ message: saved, conversation: conv });
       }
     }
+  }
+
+  /**
+   * Secțiunea „poziție pe site" pentru system prompt: pagina curentă (presence
+   * live din gateway, fallback DB) + starea formularului Generator de pe site.
+   * Dacă formularul e activ (modificat în ultimele 30 min), adaugă regula:
+   * ghidează userul să-l termine PE SITE, nu prelua comanda în wizard-ul de chat.
+   */
+  private buildSitePositionPrompt(conv: Conversation): string {
+    const presence = this.gateway.getEnriched({ userId: conv.userId, guestId: conv.guestId });
+    const pagePath = presence?.currentPath ?? conv.lastClientPath ?? null;
+    const fs = presence?.formState ?? conv.lastFormState ?? null;
+
+    let out = `
+- Poziție pe site: ${
+      presence?.online
+        ? `ONLINE acum${pagePath ? ` pe pagina ${pagePath}` : ''}${presence.chatOpen ? ' (are chat-ul deschis)' : ''}`
+        : `pare offline/inactiv${pagePath ? ` (ultima pagină văzută: ${pagePath})` : ' (nicio informație de pagină)'}`
+    }`;
+
+    if (!fs) return out;
+
+    const fsTs = new Date(fs.updatedAt).getTime();
+    const ageMin = Number.isFinite(fsTs) ? Math.max(0, Math.round((Date.now() - fsTs) / 60_000)) : 9999;
+    const filled = Object.entries(fs.data ?? {})
+      .filter(([, v]) => v !== '' && v != null && v !== false)
+      .map(([k, v]) => `${k}=${String(v).slice(0, 80)}`)
+      .join(', ')
+      .slice(0, 400);
+    const stepHuman = `pasul ${fs.step + 1}${fs.totalSteps ? `/${fs.totalSteps}` : ''}${fs.stepName ? ` („${fs.stepName}")` : ''}`;
+
+    if (ageMin <= 30) {
+      out += `
+- Formular de comandă de pe site: e la ${stepHuman}, actualizat acum ${ageMin <= 1 ? 'câteva secunde' : `${ageMin} min`}${filled ? `; a completat deja: ${filled}` : '; n-a completat nimic încă'}${fs.generationId ? '; a trimis deja formularul (există o generare pornită din el)' : ''}
+⚠️ FORMULAR ACTIV PE SITE: clientul își face singur comanda în formularul de pe pagină.
+NU prelua comanda în chat: NU porni colectarea pas-cu-pas, NU folosi wizard_update /
+wizard_finalize / start_new_order din proprie inițiativă. Rolul tău acum: răspunde-i la
+întrebări și ghidează-l să termine formularul ACOLO — spune-i concret unde se află
+(folosește numele pasului așa cum îl vede el) și ce are de făcut ca să ajungă la plată.
+NU-i cere prin chat datele pe care le vezi deja completate în formular. Treci pe comanda
+prin chat DOAR dacă clientul cere explicit asta sau zice că nu se descurcă cu formularul.`;
+    } else {
+      out += `
+- Formular de comandă de pe site: începuse unul (ultima activitate acum ~${ageMin} min, la ${stepHuman}${filled ? `; completase: ${filled}` : ''}) dar pare abandonat — poți să-l întrebi natural dacă mai vrea să-l termine sau preferi să-l ajuți direct în chat.`;
+    }
+    return out;
   }
 
   /** Top memory facts approved, sortat după utilitate (usageCount). */

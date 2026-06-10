@@ -385,6 +385,49 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     }
   }, [step, playing, onPlay]);
 
+  // Publică starea formularului către socketul de chat (eveniment global ascultat
+  // în useChatSocket → WS `presence:form_state`). Irina vede pasul curent + ce a
+  // completat userul și îl ghidează să termine comanda PE SITE, nu prin chat.
+  // Emitem doar după prima interacțiune reală — altfel orice vizitator de homepage
+  // (Generator montat la step 0, gol) ar apărea ca „activ în formular" și AI-ul
+  // n-ar mai prelua comenzi în chat.
+  const formStartedRef = useRef(false);
+  useEffect(() => {
+    const started =
+      step > 0 || !!(data.style || data.occ || data.name || data.msg || data.voice || data.customLyrics);
+    if (!started && !formStartedRef.current) return;
+    formStartedRef.current = true;
+    const t = setTimeout(() => {
+      const key = totalSteps === 5 ? 'stepsPayFirst' : 'steps';
+      const stepNamesRaw = tGen.raw(key) as string[] | undefined;
+      const fallback = totalSteps === 5 ? STEP_NAMES_PAYFIRST_FALLBACK : STEP_NAMES_FALLBACK;
+      const stepNames =
+        Array.isArray(stepNamesRaw) && stepNamesRaw.length === totalSteps ? stepNamesRaw : fallback;
+      window.dispatchEvent(
+        new CustomEvent('mc:generator_state', {
+          detail: {
+            step,
+            stepName: stepNames[step],
+            totalSteps,
+            data: {
+              style: data.style || undefined,
+              occ: data.occ || undefined,
+              name: data.name || undefined,
+              msg: data.msg ? data.msg.slice(0, 200) : undefined,
+              voice: data.voice || undefined,
+              dedic: data.dedic || undefined,
+              packageTier: data.packageTier,
+              customLyrics: data.customLyrics ? true : undefined,
+            },
+            generationId,
+            at: Date.now(),
+          },
+        }),
+      );
+    }, 800); // debounce: colapsează tastarea; schimbarea de pas ajunge în <1s
+    return () => clearTimeout(t);
+  }, [step, data, generationId, totalSteps, tGen]);
+
   const stepDone = (i: number): boolean => {
     if (i === 0) return !!data.style;
     if (i === 1) return !!data.occ;

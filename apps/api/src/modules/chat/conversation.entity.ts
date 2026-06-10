@@ -44,6 +44,25 @@ export interface WizardData {
   packageTier?: 'basic' | 'plus' | 'premium';
 }
 
+/**
+ * Snapshot al formularului public de comandă (Generator-ul de pe site) — NU
+ * wizard-ul din chat. Trimis de client prin WS `presence:form_state` la
+ * schimbarea pasului / datelor. Injectat în system prompt-ul Irinei ca să
+ * ghideze userul să finalizeze formularul PE SITE în loc să preia comanda în chat.
+ */
+export interface GeneratorFormState {
+  /** Index 0-based al pasului curent din Generator. */
+  step: number;
+  /** Numele localizat al pasului, exact cum îl vede userul (ex. „Detalii"). */
+  stepName?: string;
+  totalSteps?: number;
+  /** Subset din câmpurile completate (style, occ, name, voice, packageTier...). */
+  data?: Record<string, string | number | boolean>;
+  /** Generation deja creată din formular (după submit demo / pay-first). */
+  generationId?: string | null;
+  updatedAt: string; // ISO — momentul ultimei modificări reale pe client
+}
+
 export interface WizardState {
   step: WizardStep;
   data: WizardData;
@@ -160,6 +179,15 @@ export class Conversation {
    */
   @Column({ type: 'jsonb', nullable: true })
   wizardState!: WizardState | null;
+
+  /**
+   * Ultima stare cunoscută a formularului Generator de pe site (vine prin WS
+   * `presence:form_state`). Fallback DB pentru AI când presence-ul in-memory
+   * din gateway s-a pierdut (restart API / user offline). NULL = userul n-a
+   * început formularul în sesiunea curentă.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  lastFormState!: GeneratorFormState | null;
 
   /**
    * Admin user-ul care s-a auto-atribuit la această conversație (claim).

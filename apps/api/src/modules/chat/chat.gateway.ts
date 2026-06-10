@@ -14,7 +14,7 @@ import { Server, Socket } from 'socket.io';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ChatMessage } from './message.entity';
-import { Conversation } from './conversation.entity';
+import { Conversation, GeneratorFormState } from './conversation.entity';
 import { ChatBlacklistService } from './chat-blacklist.service';
 
 interface SocketIdentity {
@@ -32,7 +32,7 @@ export interface DeviceInfo {
   userAgent?: string;
 }
 
-/** Snapshot enriched de presence — folosit de admin sidebar. */
+/** Snapshot enriched de presence — folosit de admin sidebar + AI agent. */
 export interface EnrichedPresence {
   online: boolean;
   connectedAt: string | null; // ISO
@@ -42,6 +42,8 @@ export interface EnrichedPresence {
   chatOpen: boolean;
   device: DeviceInfo | null;
   ip: string | null;
+  /** Starea formularului Generator de pe site (presence:form_state). */
+  formState?: GeneratorFormState | null;
 }
 
 const ADMIN_ROOM = 'admin:chat';
@@ -239,6 +241,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         chatOpen: existing?.chatOpen ?? false,
         device: existing?.device ?? (ua ? { userAgent: ua, ...this.parseUA(ua) } : null),
         ip: ip ?? existing?.ip ?? null,
+        formState: existing?.formState ?? null,
       });
 
       this.broadcastPresence({
@@ -688,6 +691,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       viewport?: { w: number; h: number };
       chatOpen?: boolean;
       device?: DeviceInfo;
+      formState?: Record<string, unknown>;
     },
     @ConnectedSocket() client: Socket,
   ) {
@@ -697,6 +701,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (!key) return;
 
     const prev = this.enriched.get(key);
+    // formState din heartbeat = re-sync după reconnect/restart API. Clientul
+    // retrimite același snapshot (cu același `at`) → dedup prin JSON compare.
+    const hbFormState = this.normalizeFormState(data?.formState);
     const next: EnrichedPresence = {
       online: true,
       connectedAt: prev?.connectedAt ?? new Date().toISOString(),
@@ -706,14 +713,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       chatOpen: typeof data?.chatOpen === 'boolean' ? data.chatOpen : prev?.chatOpen ?? false,
       device: data?.device ? { ...(prev?.device ?? {}), ...data.device } : prev?.device ?? null,
       ip: prev?.ip ?? null,
+      formState: hbFormState ?? prev?.formState ?? null,
     };
     this.enriched.set(key, next);
+
+    const formChanged = JSON.stringify(prev?.formState ?? null) !== JSON.stringify(next.formState ?? null);
+    if (formChanged) {
+      this.persistPresenceSnapshot(key, ident, { formState: next.formState ?? null, path: next.currentPath });
+    }
 
     // Diff-uri semnificative → broadcast admin. Heartbeat-ul (timestamp only) NU spamează.
     const changed =
       !prev ||
       prev.currentPath !== next.currentPath ||
       prev.chatOpen !== next.chatOpen ||
+      formChanged ||
       JSON.stringify(prev.device) !== JSON.stringify(next.device);
     if (changed) {
       this.broadcastPresence({
@@ -756,8 +770,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       chatOpen: prev?.chatOpen ?? false,
       device: prev?.device ?? null,
       ip: prev?.ip ?? null,
+      formState: prev?.formState ?? null,
     };
     this.enriched.set(key, next);
+    // Persistă lastClientPath (fallback DB pentru AI/greeting după restart API).
+    this.persistPresenceSnapshot(key, ident, { path: data.to });
     this.broadcastPresence({
       userId: ident.userId,
       guestId: ident.guestId,
@@ -785,6 +802,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       chatOpen: !!data?.open,
       device: prev?.device ?? null,
       ip: prev?.ip ?? null,
+      formState: prev?.formState ?? null,
     };
     this.enriched.set(key, next);
     this.broadcastPresence({
@@ -793,6 +811,115 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       online: true,
       enriched: next,
     });
+  }
+
+  /**
+   * Starea formularului Generator (wizard-ul public de pe site). Emis de client
+   * la schimbarea pasului / datelor (debounced) — instant, nu așteaptă heartbeat.
+   * Update enriched map + broadcast admin + persist DB (throttled, best-effort).
+   */
+  @SubscribeMessage('presence:form_state')
+  handleFormState(
+    @MessageBody() data: Record<string, unknown> & { path?: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const ident = client.data as SocketIdentity;
+    if (ident.isAdmin) return;
+    const key = presenceKey(ident);
+    if (!key) return;
+    const formState = this.normalizeFormState(data);
+    if (!formState) return;
+
+    const prev = this.enriched.get(key);
+    const next: EnrichedPresence = {
+      online: true,
+      connectedAt: prev?.connectedAt ?? new Date().toISOString(),
+      lastSeenAt: new Date().toISOString(),
+      currentPath: typeof data.path === 'string' ? data.path.slice(0, 500) : prev?.currentPath ?? null,
+      currentTitle: prev?.currentTitle ?? null,
+      chatOpen: prev?.chatOpen ?? false,
+      device: prev?.device ?? null,
+      ip: prev?.ip ?? null,
+      formState,
+    };
+    this.enriched.set(key, next);
+    this.persistPresenceSnapshot(key, ident, { formState, path: next.currentPath });
+    this.broadcastPresence({
+      userId: ident.userId,
+      guestId: ident.guestId,
+      online: true,
+      enriched: next,
+    });
+  }
+
+  /** Validează + limitează payload-ul de form state venit de pe client. */
+  private normalizeFormState(raw: unknown): GeneratorFormState | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const r = raw as Record<string, unknown>;
+    if (typeof r.step !== 'number' || !isFinite(r.step)) return null;
+    const data: Record<string, string | number | boolean> = {};
+    if (r.data && typeof r.data === 'object') {
+      // Cap pe număr de chei + lungime valori — payload-ul vine de pe client, nu de încredere.
+      for (const [k, v] of Object.entries(r.data as Record<string, unknown>).slice(0, 16)) {
+        if (v == null || v === '') continue;
+        data[k.slice(0, 40)] =
+          typeof v === 'string' ? v.slice(0, 200) : typeof v === 'number' || typeof v === 'boolean' ? v : true;
+      }
+    }
+    const at = typeof r.at === 'number' && isFinite(r.at) ? new Date(r.at) : new Date();
+    return {
+      step: Math.max(0, Math.min(20, Math.floor(r.step))),
+      stepName: typeof r.stepName === 'string' ? r.stepName.slice(0, 60) : undefined,
+      totalSteps: typeof r.totalSteps === 'number' && isFinite(r.totalSteps) ? Math.floor(r.totalSteps) : undefined,
+      data,
+      generationId: typeof r.generationId === 'string' ? r.generationId.slice(0, 64) : null,
+      updatedAt: (isNaN(at.getTime()) ? new Date() : at).toISOString(),
+    };
+  }
+
+  /** Timestamp ultimei persistări DB de presence per key — throttle anti-spam. */
+  private lastPresencePersist = new Map<string, number>();
+
+  /**
+   * Persistă snapshot-ul de presence (lastFormState + lastClientPath) pe cea mai
+   * recentă conversație a userului/guest-ului. Best-effort, async, throttled la
+   * 4s per key — dacă nu există încă o conversație (guest care n-a vorbit cu
+   * nimeni), skip silently: enriched map ține starea live oricum.
+   */
+  private persistPresenceSnapshot(
+    key: string,
+    ident: SocketIdentity,
+    patch: { formState?: GeneratorFormState | null; path?: string | null },
+  ) {
+    const now = Date.now();
+    if (now - (this.lastPresencePersist.get(key) ?? 0) < 4000) return;
+    this.lastPresencePersist.set(key, now);
+    void (async () => {
+      try {
+        const whereClause = ident.userId
+          ? { userId: ident.userId }
+          : ident.guestId ? { guestId: ident.guestId } : null;
+        if (!whereClause) return;
+        const conv = await this.convRepo.findOne({
+          where: whereClause,
+          order: { createdAt: 'DESC' },
+          select: ['id'],
+        });
+        if (!conv) return;
+        const set: Partial<Conversation> = {};
+        if (patch.formState !== undefined) set.lastFormState = patch.formState;
+        if (patch.path) set.lastClientPath = patch.path.slice(0, 500);
+        if (Object.keys(set).length === 0) return;
+        await this.convRepo
+          .createQueryBuilder()
+          .update(Conversation)
+          .set(set)
+          .where('id = :id', { id: conv.id })
+          .execute();
+      } catch {
+        /* best-effort */
+      }
+    })();
   }
 
   @SubscribeMessage('message:ack')
