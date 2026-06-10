@@ -426,6 +426,82 @@ export class ChatService implements OnModuleInit {
     return saved;
   }
 
+  /**
+   * Admin: „du clientul la mesajul ăsta" — deschide widget-ul pe client (dacă e
+   * închis) și îi derulează chat-ul până la mesajul țintă, cu evidențiere.
+   * Returnează online=false dacă clientul nu are nicio conexiune WS activă
+   * (eventul nu are unde să ajungă acum — adminul primește feedback onest).
+   */
+  async spotlightMessage(messageId: string): Promise<{ ok: true; online: boolean }> {
+    const m = await this.msg.findOne({ where: { id: messageId } });
+    if (!m) throw new NotFoundException('Mesajul nu există');
+    if (
+      m.messageType === 'system' ||
+      m.messageType === 'ai_suggestion' ||
+      m.authorRole === 'system' ||
+      m.deletedAt
+    ) {
+      throw new ForbiddenException('Mesajul nu e vizibil pentru client — nu pot derula la el');
+    }
+    const conv = await this.getConversation(m.conversationId);
+    const target = { userId: conv.userId, guestId: conv.guestId };
+    const online = this.gateway.isOnline(target);
+    this.gateway.forceToggleChat(target, true);
+    this.gateway.scrollToMessage(target, { conversationId: conv.id, messageId: m.id });
+    return { ok: true, online };
+  }
+
+  /**
+   * Clientul a apăsat „Plătește acum" pe un card payment_link din chat.
+   * Persistăm momentul pe payload (clickCount / firstClickedAt / lastClickedAt),
+   * re-emitem mesajul pe WS (adminul vede LIVE pe card), iar la PRIMUL click
+   * trimitem push adminilor — e momentul cel mai fierbinte din funnel (clientul
+   * e chiar acum pe pagina Stripe). Best-effort: nu aruncă niciodată spre client.
+   */
+  async markPaymentLinkClicked(ctx: OwnerCtx, messageId: string): Promise<{ ok: true }> {
+    try {
+      const conversation = await this.getOrCreateMine(ctx);
+      const m = await this.msg.findOne({
+        where: { id: messageId, conversationId: conversation.id },
+      });
+      if (!m || m.messageType !== 'payment_link') return { ok: true };
+      const p = (m.payload ?? {}) as ChatMessagePayload;
+      if (p.status === 'paid') return { ok: true }; // deja plătit — nu mai contează click-urile
+      const nowIso = new Date().toISOString();
+      const clickCount = (typeof p.clickCount === 'number' ? p.clickCount : 0) + 1;
+      m.payload = {
+        ...p,
+        clickCount,
+        firstClickedAt: p.firstClickedAt ?? nowIso,
+        lastClickedAt: nowIso,
+      };
+      await this.msg.save(m);
+      this.gateway.emitMessage({ message: m, conversation });
+
+      if (clickCount === 1) {
+        const who =
+          conversation.email ??
+          (conversation.userId
+            ? `user:${conversation.userId.slice(0, 8)}`
+            : `guest:${conversation.guestId?.slice(0, 8) ?? '?'}`);
+        void this.webPush
+          .sendToAll({
+            title: `💳 ${who} a apăsat pe Plătește`,
+            body: `${p.description ?? 'Manea'} — ${(((p.amount as number) ?? 0) / 100).toFixed(2)} ${p.currency ?? 'RON'}. E pe pagina Stripe chiar acum.`,
+            tag: `paylink-${conversation.id}`,
+            url: `/chat?c=${conversation.id}`,
+            icon: '/icon-512.png',
+            badge: '/icon-512.png',
+            data: { conversationId: conversation.id, messageId: m.id },
+          })
+          .catch(() => {});
+      }
+    } catch {
+      // tracking best-effort — niciodată eroare spre client
+    }
+    return { ok: true };
+  }
+
   /** Aplică pipeline-ul multi-agent peste un mesaj de chat și salvează `bodyRo`. */
   private async translateMessageAsync(messageId: string): Promise<void> {
     try {

@@ -23,6 +23,11 @@ export interface ChatMessagePayload {
   description?: string;
   checkoutUrl?: string;
   paymentId?: string;
+  // payment_link — click tracking pe „Plătește acum": adminul vede LIVE dacă/când
+  // clientul a apăsat pe link (cerere owner 2026-06-10).
+  clickCount?: number;
+  firstClickedAt?: string;
+  lastClickedAt?: string;
   // song_form_step
   step?: string;
   question?: string;

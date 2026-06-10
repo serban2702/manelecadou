@@ -35,6 +35,13 @@ class SendMessageDto {
   body!: string;
 }
 
+class PaymentLinkClickDto {
+  @IsString()
+  @MinLength(10)
+  @MaxLength(64)
+  messageId!: string;
+}
+
 class SetAiModeDto {
   @IsString()
   @IsIn(['manual', 'suggest', 'auto'])
@@ -168,6 +175,23 @@ export class ChatController {
     return this.svc.sendAsUser(
       { userId: user?.id ?? null, guestId: user ? null : guestId, siteId },
       body.body,
+    );
+  }
+
+  /** Tracking: clientul a apăsat „Plătește acum" pe un card payment_link din chat.
+   *  Best-effort (nu blochează navigarea spre Stripe) — adminul vede LIVE momentul
+   *  + numărul de click-uri pe card (cerere owner 2026-06-10). */
+  @Throttle({ short: { limit: 10, ttl: 10_000 }, medium: { limit: 60, ttl: 3_600_000 } })
+  @Post('me/payment-link-click')
+  async paymentLinkClick(
+    @Body() body: PaymentLinkClickDto,
+    @CurrentUser() user: AuthedRequestUser | null,
+    @CurrentGuestId() guestId: string | null,
+    @CurrentSiteId() siteId: string | null,
+  ) {
+    return this.svc.markPaymentLinkClicked(
+      { userId: user?.id ?? null, guestId: user ? null : guestId, siteId },
+      body.messageId,
     );
   }
 }
@@ -402,6 +426,13 @@ export class AdminChatController {
   @Patch('messages/:id')
   editMessage(@Param('id') id: string, @Body() body: { body: string }) {
     return this.svc.editMessage(id, body.body);
+  }
+
+  /** „Du clientul la mesaj": deschide widget-ul pe client + scroll cu evidențiere
+   *  până la mesajul țintă. Returnează online=false dacă clientul nu e conectat. */
+  @Post('messages/:id/spotlight')
+  spotlightMessage(@Param('id') id: string) {
+    return this.svc.spotlightMessage(id);
   }
 
   /** Soft-delete mesaj. Dispare instant la admin și user prin WS. */

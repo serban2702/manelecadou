@@ -653,4 +653,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ body }),
     }),
+  /** Tracking best-effort: clientul a apăsat „Plătește acum" pe cardul de plată din chat. */
+  chatPaymentLinkClick: (messageId: string) =>
+    request<{ ok: true }>('/chat/me/payment-link-click', {
+      method: 'POST',
+      body: JSON.stringify({ messageId }),
+    }),
 };

@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ClipboardCheck,
   CreditCard,
+  Crosshair,
   Crown,
   ExternalLink,
   Eye,
@@ -280,6 +281,18 @@ export default function AdminChatPage() {
       setDeleteTarget(null);
       setOlderConvs((prev) => prev.filter((c) => c.id !== id));
       refetchConvs();
+    } catch (e) {
+      alert(`Eroare: ${(e as Error).message}`);
+    }
+  }
+  /** „Du clientul la mesaj": widget-ul lui se deschide + scroll cu highlight la mesaj.
+   *  Feedback doar când clientul NU e online (altfel acțiunea e silențioasă, a mers). */
+  async function spotlightMsg(m: AdminChatMessage) {
+    try {
+      const r = await ChatApi.spotlightMessage(m.id);
+      if (!r.online) {
+        alert('Clientul nu e online acum — nu are chat-ul deschis, deci nu vede derularea live.');
+      }
     } catch (e) {
       alert(`Eroare: ${(e as Error).message}`);
     }
@@ -1080,6 +1093,7 @@ export default function AdminChatPage() {
                     }}
                     onEdit={(msg) => setEditingMessage(msg)}
                     onDelete={(msg) => setDeletingMessage(msg)}
+                    onSpotlight={(msg) => void spotlightMsg(msg)}
                   />
                 ))}
               </div>
@@ -1592,6 +1606,7 @@ function ChatBubble({
   onSuggestionAction,
   onEdit,
   onDelete,
+  onSpotlight,
 }: {
   m: AdminChatMessage;
   ackOverride?: { deliveredAt?: string; readAt?: string };
@@ -1600,6 +1615,8 @@ function ChatBubble({
   onSuggestionAction?: () => void;
   onEdit?: (m: AdminChatMessage) => void;
   onDelete?: (m: AdminChatMessage) => void;
+  /** „Du clientul la mesajul ăsta" — scroll + highlight în widget-ul clientului. */
+  onSpotlight?: (m: AdminChatMessage) => void;
 }) {
   // Render special pentru AI suggestion
   if (m.messageType === 'ai_suggestion') {
@@ -1623,6 +1640,9 @@ function ChatBubble({
   const canEditDelete =
     fromAdmin &&
     (!m.messageType || m.messageType === 'text' || m.messageType === 'payment_link' || m.messageType === 'song_preview');
+  // Spotlight: orice mesaj VIZIBIL clientului (system/ai_suggestion sunt deja filtrate
+  // mai sus prin return-urile speciale) — îl putem derula în widget-ul lui.
+  const canSpotlight = !!onSpotlight;
   return (
     <div
       className={cn(
@@ -1632,10 +1652,20 @@ function ChatBubble({
           : 'self-start bg-secondary border border-border',
       )}
     >
-      {canEditDelete && (
+      {(canEditDelete || canSpotlight) && (
         <div className="absolute -top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 z-10">
+          {canSpotlight && (
+            <button
+              type="button"
+              onClick={() => onSpotlight(m)}
+              title="Du clientul la mesajul ăsta (deschide chat-ul lui + scroll cu evidențiere)"
+              className="h-6 w-6 rounded-full bg-card border border-border hover:bg-amber-500/20 hover:border-amber-500/40 flex items-center justify-center shadow-sm"
+            >
+              <Crosshair className="h-3 w-3" />
+            </button>
+          )}
           {/* Edit doar pe text simplu (payment_link/song_preview au payload structurat) */}
-          {(!m.messageType || m.messageType === 'text') && onEdit && (
+          {canEditDelete && (!m.messageType || m.messageType === 'text') && onEdit && (
             <button
               type="button"
               onClick={() => onEdit(m)}
@@ -1645,7 +1675,7 @@ function ChatBubble({
               <Pencil className="h-3 w-3" />
             </button>
           )}
-          {onDelete && (
+          {canEditDelete && onDelete && (
             <button
               type="button"
               onClick={() => onDelete(m)}
@@ -1987,6 +2017,10 @@ interface PaymentPayload {
   packageLabel?: string;
   status?: 'paid' | 'failed';
   paidAt?: string;
+  /** Click tracking „Plătește acum" (LIVE prin WS — vezi markPaymentLinkClicked). */
+  clickCount?: number;
+  firstClickedAt?: string;
+  lastClickedAt?: string;
 }
 
 function PaymentCard({
@@ -2040,6 +2074,32 @@ function PaymentCard({
               </span>
             )}
           </div>
+          {/* Click tracking „Plătește acum" — LIVE (mesajul e re-emis pe WS la fiecare click).
+              Răspunde la întrebarea „a apăsat sau nu pe link?" fără ghicit. */}
+          {!isPaid && (
+            payload.clickCount ? (
+              <div
+                className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-semibold rounded-md px-2 py-0.5 bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                title={
+                  payload.firstClickedAt
+                    ? `Primul click: ${format(new Date(payload.firstClickedAt), 'd MMM HH:mm:ss', { locale: ro })}`
+                    : undefined
+                }
+              >
+                👆 A apăsat pe Plătește
+                {payload.clickCount > 1 ? ` · ${payload.clickCount}×` : ''}
+                {payload.lastClickedAt && (
+                  <span className="font-normal text-amber-400/80">
+                    · {format(new Date(payload.lastClickedAt), 'HH:mm:ss', { locale: ro })}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="mt-1 inline-flex items-center gap-1 text-[11px] rounded-md px-2 py-0.5 bg-secondary/40 text-muted-foreground border border-border/50">
+                Nu a apăsat încă pe link
+              </div>
+            )
+          )}
         </div>
         {!isPaid && payload.checkoutUrl && (
           <a

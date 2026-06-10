@@ -59,6 +59,8 @@ interface UseChatSocketArgs {
   onMessageDeleted?: (e: { messageId: string; conversationId: string }) => void;
   onForceOpen?: () => void;
   onForceClose?: () => void;
+  /** Adminul cere derulare până la un mesaj anume (widget-ul se deschide + highlight). */
+  onScrollTo?: (e: { conversationId: string; messageId: string; at: number }) => void;
   onAck?: (e: MessageAckEvent) => void;
   onTyping?: (e: TypingEvent) => void;
 }
@@ -93,7 +95,7 @@ function detectDevice(): DeviceInfo {
  * Conexiune WebSocket pentru chat user (sau guest).
  * Trimite presence heartbeat (10s) + reacționează la page changes.
  */
-export function useChatSocket({ enabled = true, onMessage, onMessageUpdated, onMessageDeleted, onForceOpen, onForceClose, onAck, onTyping }: UseChatSocketArgs = {}) {
+export function useChatSocket({ enabled = true, onMessage, onMessageUpdated, onMessageDeleted, onForceOpen, onForceClose, onScrollTo, onAck, onTyping }: UseChatSocketArgs = {}) {
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const lastPathRef = useRef<string | null>(null);
@@ -133,6 +135,7 @@ export function useChatSocket({ enabled = true, onMessage, onMessageUpdated, onM
     if (onMessageDeleted) socket.on('chat:message_deleted', onMessageDeleted);
     if (onForceOpen) socket.on('chat:force_open', onForceOpen);
     if (onForceClose) socket.on('chat:force_close', onForceClose);
+    if (onScrollTo) socket.on('chat:scroll_to', onScrollTo);
     if (onAck) socket.on('chat:message:ack', onAck);
     if (onTyping) socket.on('chat:typing', onTyping);
 

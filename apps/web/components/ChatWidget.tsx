@@ -158,6 +158,18 @@ export function ChatWidget() {
     setOpen(false);
   }, []);
 
+  // ── Spotlight: adminul cere derulare până la un mesaj anume. Deschidem
+  // widget-ul, derulăm la mesaj și îl evidențiem ~3.5s (cerere owner 2026-06-10).
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const scrollTargetRef = useRef<string | null>(null);
+  const handleScrollTo = useCallback((ev: { messageId: string }) => {
+    scrollTargetRef.current = ev.messageId;
+    setHighlightId(ev.messageId);
+    setOpen(true);
+    // Refetch — mesajul țintă poate să nu fie încă în cache-ul local.
+    qc.invalidateQueries({ queryKey: ['chat-me'] });
+  }, [qc]);
+
   /** Admin a editat un mesaj — actualizez local cache imediat. */
   const handleMessageUpdated = useCallback((ev: { message: { id: string; body: string; editedAt?: string | null } }) => {
     qc.setQueryData<{ messages: Array<{ id: string; body: string; editedAt?: string | null }>; conversation: unknown } | undefined>(
@@ -219,6 +231,7 @@ export function ChatWidget() {
     onMessageDeleted: handleMessageDeleted,
     onForceOpen: handleForceOpen,
     onForceClose: handleForceClose,
+    onScrollTo: handleScrollTo,
     onAck: handleAck,
     onTyping: handleTyping,
   });
@@ -295,10 +308,33 @@ export function ChatWidget() {
 
   const scroller = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
+    // Cât timp există o țintă de spotlight, NU mai sărim la fund — altfel
+    // auto-scroll-ul s-ar bate cu derularea către mesajul cerut de admin.
+    if (scrollTargetRef.current) return;
     if (open && scroller.current) {
       scroller.current.scrollTop = scroller.current.scrollHeight;
     }
   }, [messages.length, open]);
+
+  // Execută derularea către mesajul-țintă imediat ce widget-ul e deschis și
+  // mesajul există în listă; highlight-ul se stinge singur după ~3.5s.
+  useEffect(() => {
+    const target = scrollTargetRef.current;
+    if (!open || !target) return;
+    if (!messages.some((m) => m.id === target)) return;
+    const scrollT = setTimeout(() => {
+      const el = scroller.current?.querySelector(`[data-chat-msg="${target}"]`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+    const clearT = setTimeout(() => {
+      scrollTargetRef.current = null;
+      setHighlightId(null);
+    }, 3500);
+    return () => {
+      clearTimeout(scrollT);
+      clearTimeout(clearT);
+    };
+  }, [open, messages, highlightId]);
 
   // ============== Meta Pixel — mirror AddPaymentInfo client-side ==============
   // Când AI trimite un link de plată în chat, server-ul emite AddPaymentInfo CAPI
@@ -523,6 +559,7 @@ export function ChatWidget() {
               return (
                 <div
                   key={m.id}
+                  data-chat-msg={m.id}
                   style={{
                     alignSelf: isMine ? 'flex-end' : 'flex-start',
                     maxWidth: '85%',
@@ -538,6 +575,9 @@ export function ChatWidget() {
                     lineHeight: 1.5,
                     border: isMine ? 'none' : '1px solid var(--line)',
                     whiteSpace: 'pre-wrap',
+                    // Spotlight: glow auriu când adminul a derulat clientul aici.
+                    boxShadow: highlightId === m.id ? '0 0 0 2px #ffe28a, 0 0 18px rgba(241,200,77,0.75)' : undefined,
+                    transition: 'box-shadow 0.4s ease',
                   }}
                 >
                   {m.authorRole === 'admin' && (
@@ -664,6 +704,9 @@ export function ChatWidget() {
                             } catch {
                               /* tracking nu blochează navigation */
                             }
+                            // Adminul vede LIVE momentul click-ului pe card (cerere
+                            // owner 2026-06-10). Fire-and-forget — nu blochează Stripe.
+                            void api.chatPaymentLinkClick(mm.id).catch(() => {});
                           }}
                           style={{
                             ...cardBase,

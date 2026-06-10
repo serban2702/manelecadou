@@ -54,6 +54,10 @@ export class ChatApi {
   static unreadTotal(): Promise<{ unread: number }> {
     return http.get('/admin/chat/unread-total');
   }
+  /** „Du clientul la mesaj": deschide widget-ul pe client + scroll cu highlight. */
+  static spotlightMessage(id: string): Promise<{ ok: true; online: boolean }> {
+    return http.post(`/admin/chat/messages/${id}/spotlight`, {});
+  }
   static archive(id: string, archived: boolean): Promise<{ ok: true; archivedAt: string | null }> {
     return http.patch(`/admin/chat/conversations/${id}/archive`, { archived });
   }

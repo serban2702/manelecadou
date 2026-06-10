@@ -438,6 +438,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return key ? this.enriched.get(key) ?? null : null;
   }
 
+  /** Spotlight: cere widget-ului clientului să deruleze până la un mesaj anume
+   *  (+ deschidere widget dacă e închis — clientul îl vede 100%). Folosit din
+   *  butonul „du-l la mesaj" din admin (cerere owner 2026-06-10). */
+  scrollToMessage(
+    target: { userId: string | null; guestId: string | null },
+    payload: { conversationId: string; messageId: string },
+  ) {
+    const data = { ...payload, at: Date.now() };
+    if (target.userId) this.server.to(userRoom(target.userId)).emit('chat:scroll_to', data);
+    if (target.guestId) this.server.to(guestRoom(target.guestId)).emit('chat:scroll_to', data);
+  }
+
   /** Force open/close chat pe client (admin sau AI). */
   forceToggleChat(target: { userId: string | null; guestId: string | null }, open: boolean) {
     const event = open ? 'chat:force_open' : 'chat:force_close';
