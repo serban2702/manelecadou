@@ -15,7 +15,10 @@
  */
 const http = require('http');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
+const { promisify } = require('util');
+
+const execFileP = promisify(execFile);
 
 const PORT = 7682;
 const SECRET = process.env.JWT_SECRET || '';
@@ -70,6 +73,51 @@ function sse(res, obj) {
   res.write(`data: ${typeof obj === 'string' ? obj : JSON.stringify(obj)}\n\n`);
 }
 
+/* ===== Injectare în sesiunea tmux „ops" (composer-ul din Terminal view) ===== */
+
+// Tastele permise prin /terminal-input {key} — pentru dialogurile interactive
+// (permisiuni Claude Code, meniuri) fără să atingi terminalul propriu-zis.
+const ALLOWED_KEYS = {
+  enter: 'Enter',
+  escape: 'Escape',
+  up: 'Up',
+  down: 'Down',
+  tab: 'Tab',
+  'ctrl-c': 'C-c',
+};
+
+/** Sesiunea există și fără niciun client ttyd atașat (ttyd o creează abia la
+ *  prima conexiune) — o creăm detached ca injectarea să meargă oricând. */
+async function tmuxEnsureSession() {
+  try {
+    await execFileP('tmux', ['has-session', '-t', 'ops']);
+  } catch {
+    await execFileP('tmux', ['-u', 'new-session', '-d', '-s', 'ops']);
+  }
+}
+
+/** Text dintr-o bucată (bracketed paste → multi-line safe în TUI-uri) + Enter. */
+async function tmuxSendText(text) {
+  await tmuxEnsureSession();
+  const clean = text.replace(/\r\n/g, '\n').replace(/\n+$/, '');
+  await new Promise((resolve, reject) => {
+    const p = spawn('tmux', ['load-buffer', '-b', 'opsbridge', '-']);
+    p.on('error', reject);
+    p.on('close', (c) => (c === 0 ? resolve() : reject(new Error(`load-buffer exit ${c}`))));
+    p.stdin.write(clean, 'utf8');
+    p.stdin.end();
+  });
+  await execFileP('tmux', ['paste-buffer', '-p', '-d', '-b', 'opsbridge', '-t', 'ops']);
+  // TUI-urile (Claude Code) au nevoie de un tick să proceseze paste-ul înainte de submit.
+  await new Promise((r) => setTimeout(r, 250));
+  await execFileP('tmux', ['send-keys', '-t', 'ops', 'Enter']);
+}
+
+async function tmuxSendKey(key) {
+  await tmuxEnsureSession();
+  await execFileP('tmux', ['send-keys', '-t', 'ops', ALLOWED_KEYS[key]]);
+}
+
 const server = http.createServer(async (req, res) => {
   // Caddy proxy-ează cu prefixul întreg — acceptăm ambele forme.
   const path = (req.url || '').split('?')[0].replace(/^\/ops-chat/, '') || '/';
@@ -80,7 +128,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method !== 'POST' || path !== '/chat') {
+  if (req.method !== 'POST' || (path !== '/chat' && path !== '/terminal-input')) {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'not found' }));
     return;
@@ -90,6 +138,29 @@ const server = http.createServer(async (req, res) => {
   if (!admin) {
     res.writeHead(401, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'unauthorized' }));
+    return;
+  }
+
+  // ===== POST /terminal-input — composer: text+Enter sau o tastă specială =====
+  if (path === '/terminal-input') {
+    try {
+      const body = JSON.parse((await readBody(req)) || '{}');
+      const key = typeof body.key === 'string' ? body.key : null;
+      const text = typeof body.text === 'string' ? body.text : '';
+      if (key) {
+        if (!ALLOWED_KEYS[key]) throw new Error(`tastă nepermisă: ${key}`);
+        await tmuxSendKey(key);
+      } else if (text.trim()) {
+        await tmuxSendText(text);
+      } else {
+        throw new Error('text sau key obligatoriu');
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: String(err.message || err).slice(0, 500) }));
+    }
     return;
   }
 

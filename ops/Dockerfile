@@ -3,6 +3,11 @@
 # Vezi CLAUDE.md §17.
 FROM node:22-slim
 
+# UTF-8 obligatoriu: fără asta tmux randează diacriticele (ă î ș ț â) ca „_".
+# C.UTF-8 există în Debian out-of-the-box, fără locale-gen.
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
 # Unelte de operare: psql (DB prod prin rolul claude_ops), git (repo read-only),
 # ripgrep (search-ul Claude Code), tmux (sesiuni persistente — taskurile lungi
 # supraviețuiesc închiderii browserului), jq/curl (API intern).

@@ -803,6 +803,15 @@ istoricul stau în localStorage; „Sesiune nouă" le resetează. Un turn = max 
 `history-limit 50000` (rotița derulează istoricul; în TUI-uri tmux traduce
 rotița în săgeți) + `-t scrollback=10000` la ttyd.
 
+**Diacritice**: `ENV LANG=C.UTF-8 LC_ALL=C.UTF-8` în Dockerfile + `tmux -u` —
+fără ele tmux randează ă/î/ș/ț/â ca `_`.
+
+**Composer Terminal view**: input sub iframe → `POST /ops-chat/terminal-input`
+(auth JWT admin) cu `{text}` (tmux `load-buffer` + `paste-buffer -p` bracketed
+paste + Enter — multi-line safe, diacritice OK) sau `{key}` din whitelist
+(enter/escape/up/down/tab/ctrl-c) pentru dialogurile de permisiuni. Bridge-ul
+creează sesiunea `ops` detached dacă nu există încă.
+
 - **`ops/Dockerfile`** — node:22-slim + @anthropic-ai/claude-code + ttyd + tmux +
   postgresql-client + git + ripgrep. User non-root `claude`.
 - **Volume**: `/home/manele:/workspace` (repo VPS, root-owned ⇒ read-only efectiv) +

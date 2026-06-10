@@ -137,21 +137,111 @@ function TerminalToolbar() {
   );
 }
 
+/** Taste speciale trimise prin composer — pentru dialogurile interactive
+ *  (permisiuni Claude Code, meniuri) fără să scrii direct în terminal. */
+const QUICK_KEYS: Array<{ key: string; label: string; title: string }> = [
+  { key: 'enter', label: 'Enter', title: 'Confirmă / trimite' },
+  { key: 'escape', label: 'Esc', title: 'Anulează / înapoi' },
+  { key: 'up', label: '↑', title: 'Opțiunea de sus' },
+  { key: 'down', label: '↓', title: 'Opțiunea de jos' },
+  { key: 'tab', label: 'Tab', title: 'Comută / completează' },
+  { key: 'ctrl-c', label: 'Ctrl+C', title: 'Oprește comanda curentă' },
+];
+
 function TerminalView() {
   const [reloadKey, setReloadKey] = useState(0);
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const draftRef = useRef<HTMLTextAreaElement>(null);
+
   useEffect(() => {
     reloadTerminal = () => setReloadKey((k) => k + 1);
     return () => { reloadTerminal = null; };
   }, []);
 
+  const post = useCallback(async (body: { text?: string; key?: string }) => {
+    setError(null);
+    setSending(true);
+    try {
+      const res = await fetch('/ops-chat/terminal-input', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getAdminToken() ?? ''}`,
+        },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Trimiterea a eșuat.');
+    } finally {
+      setSending(false);
+    }
+  }, []);
+
+  const sendDraft = useCallback(async () => {
+    const text = draft.trim();
+    if (!text || sending) return;
+    setDraft('');
+    await post({ text });
+    draftRef.current?.focus();
+  }, [draft, sending, post]);
+
   return (
-    <iframe
-      key={reloadKey}
-      src="/ops/"
-      title="Claude Ops Terminal"
-      className="flex-1 w-full rounded-lg border border-border bg-black min-h-[420px]"
-      allow="clipboard-read; clipboard-write"
-    />
+    <>
+      <iframe
+        key={reloadKey}
+        src="/ops/"
+        title="Claude Ops Terminal"
+        className="flex-1 w-full rounded-lg border border-border bg-black min-h-[380px]"
+        allow="clipboard-read; clipboard-write"
+      />
+
+      {/* Composer: scrii aici (cu diacritice, autocorrect, multi-line), Enter
+          trimite totul dintr-o bucată în sesiunea tmux + apasă Enter acolo. */}
+      <div className="mt-2 space-y-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[11px] text-muted-foreground mr-1">Taste rapide:</span>
+          {QUICK_KEYS.map((k) => (
+            <button
+              key={k.key}
+              type="button"
+              title={k.title}
+              disabled={sending}
+              onClick={() => void post({ key: k.key })}
+              className="text-[11px] font-mono px-2 py-1 rounded-md border border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors disabled:opacity-50"
+            >
+              {k.label}
+            </button>
+          ))}
+          {error && <span className="text-[11px] text-destructive ml-2">{error}</span>}
+        </div>
+        <div className="flex gap-2 items-end">
+          <Textarea
+            ref={draftRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                void sendDraft();
+              }
+            }}
+            placeholder="Scrie aici și apasă Enter — textul intră în terminal dintr-o bucată (Shift+Enter = rând nou)"
+            rows={2}
+            className="resize-none"
+          />
+          <Button onClick={() => void sendDraft()} disabled={sending || !draft.trim()} className="shrink-0">
+            <Send className="h-4 w-4" />
+            În terminal
+          </Button>
+        </div>
+      </div>
+    </>
   );
 }
 

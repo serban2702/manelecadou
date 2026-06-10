@@ -45,4 +45,4 @@ exec ttyd -p 7681 -b /ops --writable "${AUTH_ARGS[@]}" \
   -t fontSize=14 \
   -t scrollback=10000 \
   -t 'theme={"background":"#0a0606","foreground":"#e8e3d8","cursor":"#d4af37"}' \
-  tmux new -A -s ops
+  tmux -u new -A -s ops
