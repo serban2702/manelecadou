@@ -205,7 +205,16 @@ function TerminalView() {
           trimite totul dintr-o bucată în sesiunea tmux + apasă Enter acolo. */}
       <div className="mt-2 space-y-1.5">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[11px] text-muted-foreground mr-1">Taste rapide:</span>
+          <button
+            type="button"
+            title="Rulează `claude --continue` — deschide aici conversația din Chat, cu tot istoricul"
+            disabled={sending}
+            onClick={() => void post({ text: 'claude --continue' })}
+            className="text-[11px] px-2 py-1 rounded-md border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50"
+          >
+            ▶ Reia conversația din Chat
+          </button>
+          <span className="text-[11px] text-muted-foreground mr-1 ml-2">Taste rapide:</span>
           {QUICK_KEYS.map((k) => (
             <button
               key={k.key}
@@ -276,10 +285,14 @@ function ChatView({ active }: { active: boolean }) {
     if (active) inputRef.current?.focus();
   }, [active]);
 
+  // true = următorul mesaj pornește o conversație NOUĂ (fără --continue).
+  const [freshNext, setFreshNext] = useState(false);
+
   const newSession = () => {
     setMessages([]);
     setSessionId(null);
     setError(null);
+    setFreshNext(true);
     try {
       localStorage.removeItem(LS_SESSION);
       localStorage.removeItem(LS_HISTORY);
@@ -314,7 +327,7 @@ function ChatView({ active }: { active: boolean }) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${getAdminToken() ?? ''}`,
         },
-        body: JSON.stringify({ prompt, sessionId }),
+        body: JSON.stringify({ prompt, fresh: freshNext }),
       });
       if (!res.ok || !res.body) {
         throw new Error(res.status === 401 ? 'Sesiunea admin a expirat — dă refresh și loghează-te.' : `Bridge HTTP ${res.status}`);
@@ -331,6 +344,7 @@ function ChatView({ active }: { active: boolean }) {
       const processEvent = (ev: any) => {
         if (ev.type === 'system' && ev.subtype === 'init' && ev.session_id) {
           setSessionId(ev.session_id);
+          setFreshNext(false); // conversația a pornit — de-acum continuăm
           try { localStorage.setItem(LS_SESSION, ev.session_id); } catch { /* ignore */ }
           return;
         }
@@ -432,7 +446,7 @@ function ChatView({ active }: { active: boolean }) {
       });
       inputRef.current?.focus();
     }
-  }, [input, sessionId, streaming]);
+  }, [input, freshNext, streaming]);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col rounded-lg border border-border bg-card/40">
@@ -440,15 +454,18 @@ function ChatView({ active }: { active: boolean }) {
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
         <Sparkles className="h-4 w-4 text-primary" />
         <span className="text-sm font-medium">Claude</span>
+        <span className="text-[11px] text-muted-foreground hidden md:inline">
+          · aceeași conversație ca în Terminal
+        </span>
         {sessionId && (
           <span className="text-[11px] text-muted-foreground font-mono bg-secondary px-1.5 py-0.5 rounded">
-            sesiune {sessionId.slice(0, 8)}
+            {sessionId.slice(0, 8)}
           </span>
         )}
         <div className="ml-auto">
           <Button variant="ghost" size="sm" onClick={newSession} disabled={streaming}>
             <Plus className="h-4 w-4" />
-            Sesiune nouă
+            Conversație nouă
           </Button>
         </div>
       </div>
@@ -462,7 +479,8 @@ function ChatView({ active }: { active: boolean }) {
             </div>
             <div className="text-sm text-muted-foreground max-w-md">
               Vorbește cu Claude Code direct pe serverul de producție. Are acces la DB
-              (read + write cu confirmare), API-ul admin și skill-urile ops.
+              (read + write cu confirmare), API-ul admin și skill-urile ops. E aceeași
+              conversație ca în Terminal — comuți oricând, cu tot istoricul.
             </div>
             <div className="grid gap-2 w-full max-w-lg mt-2">
               {SUGGESTIONS.map((s) => (
@@ -559,7 +577,8 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
   );
 }
 
-/** Rendering minimal: code fences → <pre>, `inline` → <code>, **bold** → <strong>. */
+/** Rendering minimal: code fences → <pre>, tabele pipe → <table>,
+ *  `inline` → <code>, **bold** → <strong>. */
 function RichText({ text }: { text: string }) {
   const parts = text.split(/```(?:\w+)?\n?/);
   return (
@@ -573,19 +592,91 @@ function RichText({ text }: { text: string }) {
             {part.replace(/\n$/, '')}
           </pre>
         ) : (
-          <InlineText key={i} text={part} />
+          <MdBlocks key={i} text={part} />
         ),
       )}
     </div>
   );
 }
 
+const isTableRow = (l: string) => /^\s*\|.*\|\s*$/.test(l);
+const isTableSep = (l: string) => /^\s*\|[\s\-:|]+\|\s*$/.test(l);
+
+/** Desparte textul în paragrafe și tabele markdown (| a | b | + linia |---|). */
+function MdBlocks({ text }: { text: string }) {
+  const lines = text.split('\n');
+  const blocks: Array<{ t: 'p'; v: string } | { t: 'table'; v: string[] }> = [];
+  let buf: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (isTableRow(lines[i]) && i + 1 < lines.length && isTableSep(lines[i + 1])) {
+      if (buf.length) { blocks.push({ t: 'p', v: buf.join('\n') }); buf = []; }
+      const rows = [lines[i]];
+      i += 2; // sare peste separator
+      while (i < lines.length && isTableRow(lines[i])) rows.push(lines[i++]);
+      blocks.push({ t: 'table', v: rows });
+    } else {
+      buf.push(lines[i++]);
+    }
+  }
+  if (buf.length) blocks.push({ t: 'p', v: buf.join('\n') });
+
+  return (
+    <>
+      {blocks.map((b, k) =>
+        b.t === 'table' ? <MdTable key={k} rows={b.v} /> : <InlineText key={k} text={b.v} />,
+      )}
+    </>
+  );
+}
+
+function MdTable({ rows }: { rows: string[] }) {
+  const parseCells = (l: string) =>
+    l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+  const head = parseCells(rows[0]);
+  const body = rows.slice(1).map(parseCells);
+  return (
+    <div className="overflow-x-auto my-1">
+      <table className="text-xs border-collapse w-full">
+        <thead>
+          <tr>
+            {head.map((c, i) => (
+              <th key={i} className="text-left font-semibold border border-border bg-secondary/60 px-2 py-1.5 whitespace-nowrap">
+                <InlineTokens text={c} />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((r, ri) => (
+            <tr key={ri} className="even:bg-secondary/20">
+              {head.map((_, ci) => (
+                <td key={ci} className="border border-border px-2 py-1 align-top">
+                  <InlineTokens text={r[ci] ?? ''} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function InlineText({ text }: { text: string }) {
   if (!text.trim()) return null;
-  // Tokenizare simplă pe `code` și **bold** — suficient pentru răspunsuri ops.
-  const tokens = text.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/g);
   return (
     <p className="whitespace-pre-wrap break-words">
+      <InlineTokens text={text} />
+    </p>
+  );
+}
+
+/** Tokenizare simplă pe `code` și **bold** — suficient pentru răspunsuri ops. */
+function InlineTokens({ text }: { text: string }) {
+  const tokens = text.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/g);
+  return (
+    <>
       {tokens.map((t, i) => {
         if (t.startsWith('`') && t.endsWith('`')) {
           return (
@@ -599,7 +690,7 @@ function InlineText({ text }: { text: string }) {
         }
         return t;
       })}
-    </p>
+    </>
   );
 }
 

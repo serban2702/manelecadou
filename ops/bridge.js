@@ -15,6 +15,8 @@
  */
 const http = require('http');
 const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
 const { spawn, execFile } = require('child_process');
 const { promisify } = require('util');
 
@@ -25,8 +27,21 @@ const SECRET = process.env.JWT_SECRET || '';
 const MAX_BODY = 1024 * 1024; // 1MB
 const TURN_TIMEOUT_MS = 15 * 60 * 1000; // un turn poate rula tool-uri lungi (regenerări)
 
-/** Sesiunile cu un turn în execuție — refuzăm al doilea mesaj concurent pe aceeași sesiune. */
-const busySessions = new Set();
+/** Un singur turn de chat la un moment dat — Chat și Terminal împart ACEEAȘI
+ *  conversație (cea mai recentă din /workspace), deci nu rulăm în paralel. */
+let chatBusy = false;
+
+/** Conversațiile din /workspace stau în ~/.claude/projects/-workspace/<sid>.jsonl.
+ *  `--continue` fără nicio conversație existentă eșuează — verificăm înainte. */
+function hasAnyConversation() {
+  try {
+    return fs
+      .readdirSync(`${os.homedir()}/.claude/projects/-workspace`)
+      .some((f) => f.endsWith('.jsonl'));
+  } catch {
+    return false;
+  }
+}
 
 function verifyAdminJwt(authHeader) {
   if (!SECRET || typeof authHeader !== 'string') return null;
@@ -165,11 +180,11 @@ const server = http.createServer(async (req, res) => {
   }
 
   let prompt = '';
-  let sessionId = null;
+  let fresh = false;
   try {
     const body = JSON.parse((await readBody(req)) || '{}');
     prompt = String(body.prompt || '').trim();
-    sessionId = typeof body.sessionId === 'string' && body.sessionId ? body.sessionId : null;
+    fresh = body.fresh === true; // true = pornește conversație nouă (fără --continue)
   } catch {
     res.writeHead(400, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'bad json' }));
@@ -180,9 +195,9 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify({ error: 'prompt required' }));
     return;
   }
-  if (sessionId && busySessions.has(sessionId)) {
+  if (chatBusy) {
     res.writeHead(409, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'session busy' }));
+    res.end(JSON.stringify({ error: 'busy — așteaptă turnul curent' }));
     return;
   }
 
@@ -202,7 +217,9 @@ const server = http.createServer(async (req, res) => {
     // în chat mode nu există TTY pentru prompts de permisiune.
     '--dangerously-skip-permissions',
   ];
-  if (sessionId) args.push('--resume', sessionId);
+  // O SINGURĂ conversație, partajată cu terminalul: continuăm mereu cea mai
+  // recentă din /workspace (inclusiv una începută interactiv în tmux).
+  if (!fresh && hasAnyConversation()) args.push('--continue');
 
   const child = spawn('claude', args, {
     cwd: '/workspace',
@@ -212,8 +229,7 @@ const server = http.createServer(async (req, res) => {
   child.stdin.write(prompt);
   child.stdin.end();
 
-  if (sessionId) busySessions.add(sessionId);
-  const lock = sessionId;
+  chatBusy = true;
 
   const timeout = setTimeout(() => {
     sse(res, { type: 'bridge_error', message: 'Timeout (15 min) — procesul a fost oprit.' });
@@ -239,7 +255,7 @@ const server = http.createServer(async (req, res) => {
 
   child.on('close', (code) => {
     clearTimeout(timeout);
-    if (lock) busySessions.delete(lock);
+    chatBusy = false;
     if (code !== 0 && stderrBuf.trim()) {
       sse(res, { type: 'bridge_error', message: stderrBuf.trim().slice(0, 2000) });
     }
