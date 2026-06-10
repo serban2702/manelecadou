@@ -23,6 +23,10 @@ RUN npm install -g @anthropic-ai/claude-code
 COPY bin/ops-admin-token /usr/local/bin/ops-admin-token
 COPY bin/api-admin /usr/local/bin/api-admin
 COPY entrypoint.sh /entrypoint.sh
+# Config tmux global (scroll cu rotița + istoric 50k + temă) — vezi tmux.conf.
+COPY tmux.conf /etc/tmux.conf
+# Bridge-ul SSE pentru „Chat mode" din admin /terminal (rulează pe :7682).
+COPY bridge.js /usr/local/lib/ops-bridge.js
 RUN chmod +x /usr/local/bin/ops-admin-token /usr/local/bin/api-admin /entrypoint.sh
 
 # User non-root. Home-ul (/home/claude) e volum persistent (ops_home) — ține

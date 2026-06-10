@@ -24,13 +24,25 @@ if [[ -n "${OPS_TERMINAL_CREDENTIAL:-}" ]]; then
   AUTH_ARGS=(-c "${OPS_TERMINAL_CREDENTIAL}")
 fi
 
+# Bridge-ul pentru Chat mode (admin /terminal → SSE → claude -p). Auth JWT
+# propriu, deci poate porni independent de ttyd. Dacă pică, îl repornește bucla.
+(
+  while true; do
+    node /usr/local/lib/ops-bridge.js || true
+    echo "[bridge] s-a oprit — restart în 2s" >&2
+    sleep 2
+  done
+) &
+
 # -b /ops     → servit sub admin.manelecadou.ro/ops/ (reverse proxy Caddy)
 # --writable  → input activ (din ttyd 1.7 default-ul e read-only)
 # tmux new -A → atașare la sesiunea existentă sau creare; reconectarea din
 #               browser regăsește EXACT aceeași sesiune (Claude Code cu tot
 #               contextul), iar taskurile lungi rulează și cu browserul închis.
+# Scroll: mouse on în /etc/tmux.conf + scrollback xterm.js ca plasă suplimentară.
 exec ttyd -p 7681 -b /ops --writable "${AUTH_ARGS[@]}" \
   -t titleFixed='Manele Ops — Claude Code' \
   -t fontSize=14 \
+  -t scrollback=10000 \
   -t 'theme={"background":"#0a0606","foreground":"#e8e3d8","cursor":"#d4af37"}' \
   tmux new -A -s ops

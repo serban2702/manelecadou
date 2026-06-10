@@ -84,6 +84,15 @@ admin.manelecadou.ro {
         reverse_proxy ops:7681
     }
 
+    # Chat mode (bridge SSE → claude -p în containerul ops). Auth: JWT admin
+    # verificat de bridge. flush_interval -1 = streaming fără buffering.
+    @opschat path /ops-chat /ops-chat/*
+    handle @opschat {
+        reverse_proxy ops:7682 {
+            flush_interval -1
+        }
+    }
+
     handle {
         reverse_proxy admin:1505 {
             header_up Host {host}

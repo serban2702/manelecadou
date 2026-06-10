@@ -782,11 +782,26 @@ din admin la `https://admin.manelecadou.ro/terminal` (sau direct `/ops/`).
 ### 17.1 Arhitectură
 
 ```
-admin.manelecadou.ro/terminal (pagină admin, iframe)
-        └─► Caddy handle /ops/* ──► ops:7681 (ttyd, Basic Auth propriu)
-                                       └─ tmux session „ops" (persistentă)
-                                            └─ claude (login Max, persistat pe volum)
+admin.manelecadou.ro/terminal — pagină admin cu DOUĂ view-uri (switch persistat):
+  「Terminal」 iframe ─► Caddy /ops/*       ─► ops:7681 (ttyd, Basic Auth propriu)
+                                                └─ tmux „ops" (persistentă, mouse on)
+  「Chat」    fetch SSE ─► Caddy /ops-chat/* ─► ops:7682 (bridge.js, auth JWT admin)
+                                                └─ spawn `claude -p --resume <sid>`
+ambele └─► același login Max (volum ops_home)
 ```
+
+**Chat mode** (`ops/bridge.js`, node pur, restart-loop în entrypoint): primește
+`{prompt, sessionId}` pe `POST /ops-chat/chat` cu `Authorization: Bearer <JWT admin>`
+(exact token-ul dashboard-ului; verificat HS256 + role=admin), rulează
+`claude -p --output-format stream-json --include-partial-messages
+--dangerously-skip-permissions [--resume sid]` cu cwd `/workspace` și streamează
+liniile ca SSE. UI-ul randează text live + tool chips; sesiunea (session_id) +
+istoricul stau în localStorage; „Sesiune nouă" le resetează. Un turn = max 15 min
+(timeout hard). Conversația continuă cross-mesaje prin `--resume`.
+
+**Scroll în terminal**: `ops/tmux.conf` → `/etc/tmux.conf` cu `mouse on` +
+`history-limit 50000` (rotița derulează istoricul; în TUI-uri tmux traduce
+rotița în săgeți) + `-t scrollback=10000` la ttyd.
 
 - **`ops/Dockerfile`** — node:22-slim + @anthropic-ai/claude-code + ttyd + tmux +
   postgresql-client + git + ripgrep. User non-root `claude`.
