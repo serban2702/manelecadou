@@ -207,7 +207,12 @@ export class AdminSitesController {
   }
 
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() body: Partial<Site>) {
+  async update(@Param('id') id: string, @Body() body: Partial<Site> & { packagePrices?: unknown }) {
+    // `packagePrices` e câmp derivat (prețuri efective per tier, calculat din
+    // `packagePricesCents` + default-urile din `PACKAGES`). Adminul UI primește
+    // răspunsul cu ambele în `serializeFull` și-l trimite înapoi întreg la
+    // „Salvează" — TypeORM aruncă pentru că nu e coloană pe entity. Strip aici.
+    if ('packagePrices' in body) delete body.packagePrices;
     // Mostrele audio (suno.styleSamples / suno.voiceSamples) sunt gestionate
     // EXCLUSIV prin /samples/* — orice payload care le-ar suprascrie din PATCH-ul
     // generic e blocat aici. Altfel, dacă userul ținea formularul deschis în
