@@ -72,6 +72,9 @@ export interface SiteConfig {
   clientIp?: string | null;
   /** Dacă false, fluxul cere plată ÎNAINTE de generare (skip demo gratuit 30s). */
   demoEnabled?: boolean;
+  /** Dacă true (default), wizardul include un pas de generare/review versuri înainte de plată
+   *  (cu max 5 regenerări AI + validare + rescriere fonetică pentru Suno). */
+  lyricsReviewEnabled?: boolean;
   /** Configurație stiluri/voci/ocazii per site. Dacă goale, fallback la seed-data. */
   styles?: SiteStyleEntry[];
   voices?: SiteVoiceEntry[];

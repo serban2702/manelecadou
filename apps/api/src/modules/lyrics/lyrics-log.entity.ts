@@ -12,7 +12,7 @@ export type LyricsLogOutcome =
   | 'failed'          // OpenAI a aruncat eroare / non-2xx
   | 'mock_fallback';  // fără OPENAI_API_KEY sau eroare → s-a folosit mock-ul
 
-export type LyricsLogStage = 'writer' | 'critic';
+export type LyricsLogStage = 'writer' | 'critic' | 'moderation' | 'phonetic';
 
 /**
  * Loghează fiecare apel către OpenAI Chat Completions pentru generarea de
@@ -37,7 +37,9 @@ export class LyricsLog {
   @Column({ type: 'uuid', nullable: true })
   generationId!: string | null;
 
-  /** writer = ciornă inițială; critic = rafinare după draft. */
+  /** writer = ciornă inițială; critic = rafinare după draft;
+   *  moderation = validare conținut (nume artiști etc.) înainte de plată;
+   *  phonetic = rescriere „cum se aud" înainte de Suno. */
   @Index()
   @Column({ type: 'varchar', length: 32 })
   stage!: LyricsLogStage;

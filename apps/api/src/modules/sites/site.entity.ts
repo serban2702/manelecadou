@@ -577,6 +577,18 @@ export class Site {
   demoEnabled!: boolean;
 
   /**
+   * Dacă true (default), wizardul de generare include un pas ÎNAINTE de plată în
+   * care se generează versurile cu AI, iar clientul le poate accepta sau cere
+   * modificări (max 5 regenerări AI, apoi doar editare manuală). Versurile
+   * acceptate sunt validate (fără nume de artiști reali) și folosite la generare.
+   * Tot acest flag activează și rescrierea fonetică „cum se aud" înainte de Suno
+   * (versurile afișate/trimise pe email rămân în limba corectă, doar Suno primește
+   * varianta fonetică).
+   */
+  @Column({ type: 'boolean', default: true })
+  lyricsReviewEnabled!: boolean;
+
+  /**
    * Sursă pentru pagina /top:
    *  - 'seed' → date hardcoded (manele demo placeholder, până ai destui useri)
    *  - 'live' → agregare din `generations` (cele mai vizualizate manele finalizate)

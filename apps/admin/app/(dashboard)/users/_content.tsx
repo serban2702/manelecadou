@@ -3,7 +3,7 @@
 import { useAsync } from "@/lib/hooks/use-async";
 import { format } from 'date-fns';
 import { ro } from 'date-fns/locale';
-import { ArrowDownToLine, ArrowUpFromLine, RotateCcw, UserCircle2 } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpFromLine, UserCircle2 } from 'lucide-react';
 import { AdminApi } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -50,18 +50,6 @@ export default function UsersPage() {
     refetch();
   }
 
-  async function resetDemo(id: string, email: string) {
-    const ok = await confirmDialog({
-      title: `Resetezi flag-ul demo pentru ${email}?`,
-      description: 'Userul va putea genera demo gratis din nou.',
-      confirmText: 'Resetează',
-    });
-    if (!ok) return;
-    await AdminApi.userResetDemo(id);
-    toast({ variant: 'success', title: 'Demo resetat' });
-    refetch();
-  }
-
   return (
     <div>
       <PageHeader title="Utilizatori" description="Refresh la 10 secunde" />
@@ -81,7 +69,6 @@ export default function UsersPage() {
               {isAllSelected && <TableHead>Site</TableHead>}
               <TableHead>Email</TableHead>
               <TableHead>Rol</TableHead>
-              <TableHead>Demo</TableHead>
               <TableHead>ID</TableHead>
               <TableHead className="text-right">Acțiuni</TableHead>
             </TableRow>
@@ -102,13 +89,6 @@ export default function UsersPage() {
                   <Badge variant={u.role === 'admin' ? 'default' : 'secondary'}>{u.role}</Badge>
                 </TableCell>
                 <TableCell>
-                  {u.freeDemoUsed ? (
-                    <Badge variant="muted">folosit</Badge>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">neutilizat</span>
-                  )}
-                </TableCell>
-                <TableCell>
                   <code className="text-xs text-muted-foreground">{u.id.slice(0, 8)}</code>
                 </TableCell>
                 <TableCell>
@@ -121,16 +101,6 @@ export default function UsersPage() {
                       {u.role === 'admin' ? <ArrowDownToLine /> : <ArrowUpFromLine />}
                       {u.role === 'admin' ? 'Demote' : 'Promote'}
                     </Button>
-                    {u.freeDemoUsed && (
-                      <Button
-                        variant="outline"
-                        size="xs"
-                        onClick={() => resetDemo(u.id, u.email)}
-                      >
-                        <RotateCcw />
-                        Reset demo
-                      </Button>
-                    )}
                   </div>
                 </TableCell>
               </TableRow>

@@ -2,6 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SettingsService } from '../settings/settings.service';
 import { buildChatParams } from '../../openai/openai-params.helper';
 import { SuggestMessageDto } from './dto/suggest-message.dto';
+import { GenerateLyricsDto } from './dto/generate-lyrics.dto';
+import { ValidateLyricsDto } from './dto/validate-lyrics.dto';
+import {
+  LyricsService,
+  type LyricsInput,
+  type LyricsModerationResult,
+} from '../lyrics/lyrics.module';
+import type { Site } from '../sites/site.entity';
 
 const LOCALE_NAME: Record<string, string> = {
   ro: 'Romanian',
@@ -18,7 +26,58 @@ const LOCALE_NAME: Record<string, string> = {
 export class SuggestionsService {
   private readonly logger = new Logger('SuggestionsService');
 
-  constructor(private readonly settings: SettingsService) {}
+  constructor(
+    private readonly settings: SettingsService,
+    private readonly lyrics: LyricsService,
+  ) {}
+
+  /**
+   * Generează versuri pentru pasul de review din wizard (înainte de plată).
+   * Folosește exact pipeline-ul de producție: writer + critic (2 requesturi,
+   * logate în lyrics_logs), cu prompturile/locale per-site. La regenerare,
+   * `feedback` + `previousLyrics` din DTO sunt incorporate de writer.
+   */
+  async generateLyrics(dto: GenerateLyricsDto, site: Site | null): Promise<{ lyrics: string }> {
+    const input: LyricsInput = {
+      style: dto.style,
+      occasion: dto.occasion,
+      recipientName: dto.recipientName,
+      message: dto.message ?? '',
+      dedication: dto.dedication,
+      voiceArtist: dto.voiceArtist,
+      locale: this.lyricsLocale(site, dto.locale),
+      feedback: dto.feedback,
+      previousDraft: dto.previousLyrics,
+      // Override-uri per-site (vocabular nativ chalga/turbofolk/arabesk etc.).
+      writerSystemPrompt: site?.suno?.writerSystemPrompt,
+      writerUserTemplate: site?.suno?.writerUserTemplate,
+      criticSystemPrompt: site?.suno?.criticSystemPrompt,
+      criticUserTemplate: site?.suno?.criticUserTemplate,
+      currency: site?.currency,
+      siteId: site?.id ?? null,
+      generationId: null,
+    };
+    const draft = await this.lyrics.writeDraft(input);
+    const refined = await this.lyrics.refineDraft(input, draft);
+    return { lyrics: refined };
+  }
+
+  /** Faza de detecție: validează versurile (nume artiști reali etc.) înainte de
+   *  a permite trecerea la pasul următor. Logat (stage='moderation'). */
+  async validateLyrics(dto: ValidateLyricsDto, site: Site | null): Promise<LyricsModerationResult> {
+    return this.lyrics.moderate({
+      lyrics: dto.lyrics,
+      locale: this.lyricsLocale(site, dto.locale),
+      recipientName: dto.recipientName,
+      dedication: dto.dedication,
+      siteId: site?.id ?? null,
+    });
+  }
+
+  /** Limba versurilor: suno.lyricsLocale → site.locale → locale din DTO → 'ro'. */
+  private lyricsLocale(site: Site | null, dtoLocale?: string): string {
+    return site?.suno?.lyricsLocale ?? site?.locale ?? dtoLocale ?? 'ro';
+  }
 
   async generate(dto: SuggestMessageDto): Promise<{ message: string }> {
     const apiKey = await this.settings.get('OPENAI_API_KEY');

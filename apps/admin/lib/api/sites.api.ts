@@ -150,6 +150,9 @@ export interface SiteDto {
   ipWhitelist: string[];
   /** Toggle: dacă false, plata se face ÎNAINTE de generare (skip demo gratuit 30s). */
   demoEnabled: boolean;
+  /** Toggle: dacă true (default), wizardul are un pas de generare/review a versurilor
+   *  înainte de plată (max 5 regenerări AI + validare + rescriere fonetică Suno). */
+  lyricsReviewEnabled: boolean;
   /** Sursa datelor pentru pagina /top: 'seed' (date demo), 'live' (agregare din
    *  generations) sau 'template' (top curat manual din mostre — vezi topTemplate). */
   topSource: 'seed' | 'live' | 'template';

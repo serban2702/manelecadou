@@ -205,6 +205,19 @@ export class GenerationsProcessor extends WorkerHost {
       gen.status = 'generating_audio';
       await this.repo.save(gen);
 
+      // Step 2.5: rescriere fonetică „cum se aud" pentru Suno — DOAR pe site-urile
+      // cu pasul de review al versurilor activ (decizie 2026-06-15). `gen.lyrics`
+      // (afișat în UI + trimis pe email) rămâne varianta corectă; Suno primește
+      // varianta fonetică, ca să pronunțe natural. Logat (stage='phonetic'). Nu
+      // blochează generarea: la eroare toPhonetic întoarce versurile originale.
+      const sunoLyrics = site?.lyricsReviewEnabled
+        ? await this.lyricsSvc.toPhonetic(refined, {
+            locale: lyricsLocale,
+            siteId: gen.siteId ?? null,
+            generationId: gen.id,
+          })
+        : refined;
+
       // Step 3: audio
       // Citim configurațiile per-voce și per-stil din site (gender, persona,
       // styleWeight, weirdnessConstraint, negativeTags) și le pasăm la Suno.
@@ -230,7 +243,7 @@ export class GenerationsProcessor extends WorkerHost {
         message: gen.message,
         dedication: gen.dedication ?? undefined,
         voiceArtist: gen.voiceArtist,
-        lyrics: refined,
+        lyrics: sunoLyrics,
         generationId: gen.id,
         site: site ?? undefined,
         vocalGender,
@@ -302,7 +315,7 @@ export class GenerationsProcessor extends WorkerHost {
               message: gen.message,
               dedication: gen.dedication ?? undefined,
               voiceArtist: gen.voiceArtist,
-              lyrics: refined,
+              lyrics: sunoLyrics,
               generationId: gen.id,
               site: site ?? undefined,
               vocalGender,

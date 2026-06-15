@@ -1067,9 +1067,9 @@ function StatusTab({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto) => 
           onChange={(v) => setForm({ ...form, hiddenMode: v })}
         />
         <Toggle
-          label="Demo gratuit 30s activat"
-          value={form.demoEnabled ?? true}
-          onChange={(v) => setForm({ ...form, demoEnabled: v })}
+          label="Pas review versuri înainte de plată"
+          value={form.lyricsReviewEnabled ?? true}
+          onChange={(v) => setForm({ ...form, lyricsReviewEnabled: v })}
         />
         <Toggle
           label="Meniu selectare limbă (topbar)"
@@ -1175,10 +1175,10 @@ function StatusTab({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto) => 
         </Section>
       )}
 
-      {form.demoEnabled === false && (
+      {form.lyricsReviewEnabled !== false && (
         <Card className="border-amber-500/40 bg-amber-500/5">
           <CardContent className="p-3 text-xs text-amber-200">
-            ℹ️ Demo gratuit dezactivat. Userul completează formularul, plătește, abia apoi se generează maneaua. Nu mai există preview.
+            ℹ️ Pas review versuri activ. Înainte de plată, clientul vede versurile generate cu AI, le poate accepta sau cere modificări (max 5 regenerări AI, apoi editare manuală). Versurile sunt validate (fără nume de artiști reali) și rescrise fonetic pentru Suno.
           </CardContent>
         </Card>
       )}

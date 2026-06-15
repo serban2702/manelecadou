@@ -2,25 +2,16 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { Ic } from './icons';
 import { SiteIcon } from './SiteIcon';
-import { Wave } from './sections';
-import { ManeaPlayer } from './ManeaPlayer';
 import { OCC, STYLES, VOICES, type StyleOption } from '@/lib/seed-data';
 import type { SiteOccasionEntry, SiteStyleEntry, SiteVoiceEntry } from '@/lib/site-shared';
 import { suggestMessage } from '@/lib/message-suggest';
-import {
-  api,
-  ApiError,
-  type GenerationDto,
-  type RecentDto,
-  type PriceQuote,
-} from '@/lib/api';
-import { useGenerationPolling, useSession } from '@/lib/providers';
+import { api, ApiError } from '@/lib/api';
+import { useSession } from '@/lib/providers';
 import { useSite } from '@/lib/site-context';
-import { prettifyLyrics } from '@/lib/lyrics-display';
 import { RotatingStatus } from './RotatingStatus';
 import { track } from '@/lib/tracking';
 import { formatPrice } from '@/lib/site-shared';
@@ -36,6 +27,10 @@ type Data = {
   customLyrics: string;
   dedic: string;
   packageTier: PackageTier;
+  /** true după ce userul a acceptat versurile în pasul de review (validate OK). */
+  lyricsAccepted: boolean;
+  /** Câte regenerări AI a folosit în pasul de versuri (max 5). */
+  lyricsRegenCount: number;
   // Câmpuri legacy păstrate pentru compatibilitate cu referințe vechi —
   // nu mai sunt folosite în pasul de pachete.
   tipAmount: number;
@@ -51,12 +46,18 @@ const EMPTY: Data = {
   customLyrics: '',
   dedic: '',
   packageTier: DEFAULT_PACKAGE_TIER,
+  lyricsAccepted: false,
+  lyricsRegenCount: 0,
   tipAmount: 0,
   premium: false,
 };
 
-const STEP_NAMES_FALLBACK = ['Stil', 'Ocazie', 'Detalii', 'Pachet', 'Demo', 'Deblochează'];
-const STEP_NAMES_PAYFIRST_FALLBACK = ['Stil', 'Ocazie', 'Detalii', 'Pachet', 'Plătește'];
+// Pasul de versuri (review înainte de plată) e per-site (Site.lyricsReviewEnabled,
+// default ON). Activ → wizardul are 6 pași; altfel 5 (pay-first direct).
+const STEP_NAMES_FALLBACK = ['Stil', 'Ocazie', 'Detalii', 'Versuri', 'Pachet', 'Plată'];
+const STEP_NAMES_PAYFIRST_FALLBACK = ['Stil', 'Ocazie', 'Detalii', 'Pachet', 'Plată'];
+
+type StepKey = 'style' | 'occ' | 'details' | 'lyrics' | 'package' | 'pay';
 
 // Cache global pentru mostrele audio (voice/style) — evită refetch-urile.
 // `null` înseamnă "am cerut, nu există mostră publică pentru această voce/stil".
@@ -238,8 +239,13 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   useSamplePreview(playing, handleSampleAutoStop);
 
   const site = useSite();
-  const demoEnabled = site.demoEnabled !== false;
-  const totalSteps = demoEnabled ? 6 : 5;
+  // Pasul de review al versurilor (înainte de plată) e per-site, default ON.
+  // Fără el: flux pay-first direct (Stil → Ocazie → Detalii → Pachet → Plată).
+  const lyricsReviewEnabled = site.lyricsReviewEnabled !== false;
+  const STEP_KEYS: StepKey[] = lyricsReviewEnabled
+    ? ['style', 'occ', 'details', 'lyrics', 'package', 'pay']
+    : ['style', 'occ', 'details', 'package', 'pay'];
+  const totalSteps = STEP_KEYS.length;
   const effectiveStyles = useMemo<StyleOption[]>(
     () => (site.styles?.length ? siteStylesToOptions(site.styles, site.locale) : STYLES),
     [site.styles, site.locale],
@@ -284,7 +290,6 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   // (fără să creeze unul nou).
   const restoreAttemptedRef = useRef(false);
   useEffect(() => {
-    if (demoEnabled) return; // doar pay-first
     if (restoreAttemptedRef.current) return;
     const canceled = search.get('paymentCanceled');
     const genId = search.get('genId');
@@ -303,11 +308,13 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
             customLyrics: gen.customLyrics ?? '',
             dedic: gen.dedication ?? '',
             packageTier: gen.packageTier ?? DEFAULT_PACKAGE_TIER,
+            lyricsAccepted: true,
+            lyricsRegenCount: 0,
             tipAmount: gen.tipAmount ?? 0,
             premium: !!gen.premium,
           });
           setGenerationId(gen.id);
-          setStep(4);
+          setStep(STEP_KEYS.indexOf('pay'));
           setError(tGen('humanError.paymentCanceled'));
         }
       } catch {
@@ -319,7 +326,7 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demoEnabled]);
+  }, []);
   const [emailDraft, setEmailDraft] = useState('');
   const [emailDraftTouched, setEmailDraftTouched] = useState(false);
   const [autoFilled, setAutoFilled] = useState(false);
@@ -345,8 +352,6 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   // câmpurile lipsă + scroll la primul lipsă. Se șterge la schimbare de step
   // sau când câmpurile lipsă devin completate.
   const [nudgeStep, setNudgeStep] = useState<number | null>(null);
-
-  const { data: poll } = useGenerationPolling(generationId);
 
   const upd = <K extends keyof Data>(k: K, v: Data[K]) =>
     setData((d) => ({ ...d, [k]: v }));
@@ -429,19 +434,15 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   }, [step, data, generationId, totalSteps, tGen]);
 
   const stepDone = (i: number): boolean => {
-    if (i === 0) return !!data.style;
-    if (i === 1) return !!data.occ;
-    if (i === 2) return !!data.name && !!data.msg && !!data.voice;
-    if (i === 3) return maxVisited > 3; // optional, considerat făcut doar după ce-l treci
-    if (demoEnabled) {
-      if (i === 4) return !!generationId;
-      if (i === 5) return !!poll?.paidUnlocked;
-    } else {
-      // Pay-first: ultimul pas e step 4 (Plătește). „Done" = userul a inițiat
-      // checkout-ul Stripe (redirect-ul s-a întâmplat deja, deci nu mai vedem
-      // efectiv UI după). Marcăm done când există generationId (creat la pay).
-      if (i === 4) return !!generationId;
-    }
+    const key = STEP_KEYS[i];
+    if (key === 'style') return !!data.style;
+    if (key === 'occ') return !!data.occ;
+    if (key === 'details') return !!data.name && !!data.msg && !!data.voice;
+    if (key === 'lyrics') return !!data.lyricsAccepted;
+    if (key === 'package') return maxVisited > i; // opțional, „făcut" după ce-l treci
+    // 'pay' — ultimul pas. „Done" = checkout-ul Stripe a fost inițiat (există
+    // generationId, creat la pay sau restaurat după cancel).
+    if (key === 'pay') return !!generationId;
     return false;
   };
 
@@ -457,12 +458,14 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   };
 
   const lastStep = totalSteps - 1;
+  const stepKey = STEP_KEYS[step];
 
   // Câmpurile lipsă pentru un step dat (folosite în nudge + canNext).
   const missingFieldsFor = (i: number): string[] => {
-    if (i === 0) return data.style ? [] : ['style'];
-    if (i === 1) return data.occ ? [] : ['occ'];
-    if (i === 2) {
+    const key = STEP_KEYS[i];
+    if (key === 'style') return data.style ? [] : ['style'];
+    if (key === 'occ') return data.occ ? [] : ['occ'];
+    if (key === 'details') {
       const m: string[] = [];
       if (!data.name?.trim()) m.push('name');
       if (!data.msg?.trim()) m.push('msg');
@@ -506,108 +509,13 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   };
   const prev = () => setStep((s) => Math.max(0, s - 1));
 
-  const reset = () => {
-    setStep(0);
-    setData(EMPTY);
-    setSubmitting(false);
-    setGenerationId(null);
-    setError(null);
-    setEmailDraft('');
-    setAutoFilled(false);
-  };
-
   // (canNext eliminat — validarea pe „Continuă →" se face acum în handler-ul
   //  `next()` prin missingFieldsFor() + nudge, ca să dăm feedback util
   //  utilizatorului în loc să dezactivăm tăcut butonul.)
 
-  async function submitDemo() {
-    const candidate = emailDraft.trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
-      setError(tGen('humanError.emailInvalid'));
-      flagEmailError();
-      return;
-    }
-    // Pentru guests: persistăm email-ul curent (poate fi modificat față de cel
-    // anterior). Pentru users logați, nu schimbăm email-ul contului — folosim
-    // candidatul doar ca destinație pentru această comandă (server-side).
-    if (!session.email || candidate !== session.email) {
-      if (!session.email) {
-        try {
-          await api.setGuestEmail(candidate);
-          await session.refresh();
-          // Meta CompleteRegistration — user a oferit email (lead înalt-calitativ).
-          // Trimitem și pentru AM enrichment server-side: server-ul va hash-ui emailul.
-          try {
-            track('CompleteRegistration', {
-              email: candidate,
-              content_name: 'guest_email_provided',
-              custom_data: { source: 'generator' },
-            });
-          } catch { /* silent */ }
-        } catch {
-          setError(tGen('humanError.emailSaveFailed'));
-          return;
-        }
-      }
-    }
-    setSubmitting(true);
-    setError(null);
-    try {
-      const created = await api.createGeneration({
-        type: 'demo',
-        style: data.style,
-        occasion: data.occ,
-        recipientName: data.name,
-        message: data.msg,
-        dedication: data.dedic || undefined,
-        voiceArtist: data.voice,
-        customLyrics: data.customLyrics || undefined,
-        tipAmount: data.tipAmount || 0,
-        premium: data.premium,
-      });
-      setGenerationId(created.id);
-      await session.refresh();
-    } catch (e) {
-      setError(e instanceof ApiError ? humanError(e, tGen) : tGen('humanError.generic'));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function startCheckout() {
-    if (!generationId) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const total = site.basePriceCents / 100;
-      track('InitiateCheckout', {
-        content_id: generationId,
-        content_name: 'Manea Cadou',
-        content_type: 'product',
-        value: total,
-        currency: site.currency,
-        // event_id stabil → Meta dedupes click-uri multiple pe același generation.
-        event_id: `init-${generationId}`,
-      });
-      const { url } = await api.createCheckoutSession({
-        generationId,
-        promoCode: promoApplied?.code,
-        email: emailDraft.trim() || undefined,
-      });
-      window.location.href = url;
-    } catch (e) {
-      setError(
-        e instanceof ApiError && e.status === 503
-          ? tGen('humanError.stripeNotConfigured')
-          : tGen('humanError.checkoutFailed'),
-      );
-      setSubmitting(false);
-    }
-  }
-
-  /** Pay-first checkout: site.demoEnabled=false. Trimite tot formularul la
-   *  API, care creează generation pending + payment + Stripe Checkout într-o
-   *  singură cerere. Redirect direct la Stripe.  */
+  /** Pay-first checkout (singurul flux acum): trimite tot formularul la API,
+   *  care creează generation pending + payment + Stripe Checkout într-o singură
+   *  cerere. Redirect direct la Stripe.  */
   async function startDirectCheckout() {
     const candidate = emailDraft.trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
@@ -686,21 +594,6 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     }
   }
 
-  // Auto-advance step 4 → 5 când demo e creat (doar în flow demo)
-  useEffect(() => {
-    if (!demoEnabled) return;
-    if (generationId && step !== 4 && step !== 5) setStep(4);
-  }, [generationId, demoEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Auto-advance to step 5 after success and not yet paid (doar în flow demo)
-  useEffect(() => {
-    if (!demoEnabled) return;
-    if (poll?.status === 'succeeded' && !poll.paidUnlocked && step === 4) {
-      const t = setTimeout(() => setStep(5), 800);
-      return () => clearTimeout(t);
-    }
-  }, [poll?.status, poll?.paidUnlocked, step, demoEnabled]);
-
   return (
     <div className="gen" id="generator">
       <Stepper
@@ -711,34 +604,27 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
         totalSteps={totalSteps}
       />
       <div className="gen-body">
-        {step === 0 && (
-          <StyleStep data={data} upd={upd} playing={playing} onPlay={onPlay} styles={effectiveStyles} nudgeActive={nudgeStep === 0} />
+        {stepKey === 'style' && (
+          <StyleStep data={data} upd={upd} playing={playing} onPlay={onPlay} styles={effectiveStyles} nudgeActive={nudgeStep === step} />
         )}
-        {step === 1 && <OccStep data={data} upd={upd} occasions={effectiveOccasions} nudgeActive={nudgeStep === 1} />}
-        {step === 2 && (
+        {stepKey === 'occ' && <OccStep data={data} upd={upd} occasions={effectiveOccasions} nudgeActive={nudgeStep === step} />}
+        {stepKey === 'details' && (
           <DetailsStep
             data={data}
             upd={upd}
             voices={effectiveVoices}
-            nudgeFields={nudgeStep === 2 ? currentMissing : []}
+            nudgeFields={nudgeStep === step ? currentMissing : []}
           />
         )}
-        {step === 3 && <PackageStep data={data} upd={upd} />}
-        {step === 4 && demoEnabled && (
-          <DemoStep
+        {stepKey === 'lyrics' && (
+          <LyricsStep
             data={data}
-            email={session.email}
-            emailDraft={emailDraft}
-            onEmailChange={onEmailDraftChange}
-            emailErrorTick={emailErrorTick}
-            freeDemoUsed={session.freeDemoUsed}
-            generation={poll ?? null}
-            onSubmit={submitDemo}
-            submitting={submitting}
-            error={error}
+            upd={upd}
+            goNext={() => setStep((s) => Math.min(lastStep, s + 1))}
           />
         )}
-        {step === 4 && !demoEnabled && (
+        {stepKey === 'package' && <PackageStep data={data} upd={upd} />}
+        {stepKey === 'pay' && (
           <PayFirstStep
             data={data}
             email={session.email}
@@ -756,23 +642,6 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
             setPromoError={setPromoError}
           />
         )}
-        {step === 5 && demoEnabled && (
-          <UnlockStep
-            generation={poll ?? null}
-            data={data}
-            onPay={startCheckout}
-            onAgain={reset}
-            submitting={submitting}
-            error={error}
-            promoCode={promoCode}
-            setPromoCode={setPromoCode}
-            promoApplied={promoApplied}
-            setPromoApplied={setPromoApplied}
-            promoError={promoError}
-            setPromoError={setPromoError}
-            email={session.email}
-          />
-        )}
       </div>
       {nudgeStep === step && currentMissing.length > 0 && (
         <NudgeBanner missing={currentMissing} />
@@ -782,7 +651,8 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
           <button className="btn btn-ghost btn-sm" onClick={prev}>← {tCommon('back')}</button>
         )}
         <div className="progress">{tGen('stepPattern', { current: step + 1, total: totalSteps })}</div>
-        {step < 4 && (
+        {/* 'lyrics' și 'pay' au butoanele lor primare (Acceptă / Plătește). */}
+        {(stepKey === 'style' || stepKey === 'occ' || stepKey === 'details' || stepKey === 'package') && (
           <button
             className="btn btn-gold btn-sm"
             onClick={next}
@@ -979,82 +849,6 @@ function Stepper({
 }
 
 type TFn = (key: string, values?: Record<string, string | number>) => string;
-
-function humanError(e: ApiError, t: TFn): string {
-  if (e.status === 409) return t('humanError.duplicate');
-  if (e.status === 403) {
-    const code = (e.body as { message?: string })?.message;
-    if (code === 'email_required') return t('humanError.emailRequired');
-    return t('humanError.paymentRequired');
-  }
-  return e.message ?? t('humanError.unknown');
-}
-
-function RetryGenerationButton({ generationId }: { generationId: string }) {
-  const qc = useQueryClient();
-  const tg = useTranslations('generator');
-  const [retrying, setRetrying] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function go() {
-    setRetrying(true);
-    setErr(null);
-    try {
-      await api.retryGeneration(generationId);
-      await qc.invalidateQueries({ queryKey: ['generation', generationId] });
-    } catch (e) {
-      if (e instanceof ApiError) {
-        const reason = (e.body as { message?: string })?.message;
-        if (reason === 'retry_limit_reached') {
-          setErr(tg('retry.limitReached'));
-        } else if (reason === 'already_running') {
-          setErr(tg('retry.alreadyRunning'));
-        } else {
-          setErr(e.message);
-        }
-      } else {
-        setErr(tg('retry.generic'));
-      }
-      setRetrying(false);
-    }
-  }
-
-  return (
-    <>
-      <button
-        onClick={go}
-        disabled={retrying}
-        className="btn"
-        style={{
-          marginTop: 12,
-          background: 'linear-gradient(180deg,#fff5cc 0%,#ffe28a 30%,#f1c84d 60%,#b07c1e 100%)',
-          color: '#2a1a04',
-          fontWeight: 700,
-          opacity: retrying ? 0.7 : 1,
-          cursor: retrying ? 'wait' : 'pointer',
-        }}
-      >
-        {retrying ? tg('retry.retrying') : tg('retry.cta')}
-      </button>
-      {err && (
-        <div style={{ marginTop: 8, fontSize: 12, color: '#ff8888' }}>{err}</div>
-      )}
-    </>
-  );
-}
-
-function humanizeGenError(err: string | null | undefined, t: TFn): string {
-  if (!err) return t('live.humanizeFail.noMessage');
-  const e = err.toLowerCase();
-  if (e.includes('sensitive_word') || e.includes('sensitive word')) return t('live.humanizeFail.sensitive');
-  if (e.includes('timeout')) return t('live.humanizeFail.timeout');
-  if (e.includes('not configured') || e.includes('suno_api_key')) return t('live.humanizeFail.notConfigured');
-  if (e.includes('credit') || e.includes('insufficient') || e.includes('quota')) return t('live.humanizeFail.credit');
-  if (e.includes('429') || e.includes('rate')) return t('live.humanizeFail.rate');
-  if (e.includes('network') || e.includes('econnreset') || e.includes('etimedout')) return t('live.humanizeFail.network');
-  if (e.startsWith('suno failed:')) return t('live.humanizeFail.sunoFailed');
-  return t('live.humanizeFail.default');
-}
 
 // ============ STEP 1 ============
 function StyleStep({ data, upd, playing, onPlay, styles, nudgeActive }: any & { styles: StyleOption[]; nudgeActive?: boolean }) {
@@ -1448,88 +1242,282 @@ function useFieldErrorSignal(tick: number) {
   return { wrapperRef, inputRef, shaking: active };
 }
 
-// ============ STEP 5 — DEMO ============
-function DemoStep({
-  data,
-  email,
-  emailDraft,
-  onEmailChange,
-  emailErrorTick,
-  freeDemoUsed,
-  generation,
-  onSubmit,
-  submitting,
-  error,
-}: {
-  data: Data;
-  email: string | null;
-  emailDraft: string;
-  onEmailChange: (v: string) => void;
-  emailErrorTick: number;
-  freeDemoUsed: boolean;
-  generation: GenerationDto | null;
-  onSubmit: () => void;
-  submitting: boolean;
-  error: string | null;
-}) {
-  const { data: recent } = useQuery({
-    queryKey: ['recent'],
-    queryFn: () => api.recentGenerations(8),
-    staleTime: 60_000,
-  });
+// ============ STEP — VERSURI (review înainte de plată) ============
+const MAX_LYRICS_REGENS = 5;
+const REJECT_REASONS = ['artist_name', 'public_figure', 'offensive', 'copyright', 'other'];
 
-  const tg = useTranslations('generator');
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailDraft.trim());
-  // Border roșu rămâne aprins după primul tick până când user introduce un
-  // email valid. Animația shake doar la fiecare tick nou.
-  const emailSignal = useFieldErrorSignal(emailErrorTick);
-  const showEmailError = emailErrorTick > 0 && !emailValid;
-  if (!generation) {
-    return (
-      <>
-        <h3>{tg('step5Demo.title')}</h3>
-        <p className="ld">{tg('step5Demo.sub')}</p>
-
-        <div
-          ref={emailSignal.wrapperRef}
-          className={`field${showEmailError ? ' field-error' : ''}${emailSignal.shaking ? ' shake-x' : ''}`}
-          style={{ marginTop: 14 }}
-        >
-          <label>{tg('step5Demo.emailLabel')}</label>
-          <input
-            ref={emailSignal.inputRef}
-            type="email"
-            placeholder={tg('step5Demo.emailPlaceholder')}
-            value={emailDraft}
-            onChange={(e) => onEmailChange(e.target.value)}
-            aria-invalid={showEmailError || undefined}
-            required
-          />
-          <div style={{ fontSize: 11, color: emailDraft ? 'var(--gold-2)' : 'rgba(255,245,220,0.5)', marginTop: 4 }}>
-            {emailDraft ? `${tg('step5Demo.emailSentTo')} ${emailDraft}` : tg('step5Demo.emailHint')}
-          </div>
-        </div>
-
-        {error && <ErrorBox text={error} />}
-
-        <button
-          className="btn btn-gold btn-lg btn-block"
-          onClick={onSubmit}
-          disabled={submitting}
-          style={{ marginTop: 16, opacity: submitting ? 0.4 : 1 }}
-          data-hint={!submitting ? 'true' : undefined}
-          data-hint-label={tg('step5Demo.submitHint')}
-        >
-          {submitting ? tg('step5Demo.submitting') : tg('step5Demo.submitCta')}
-        </button>
-      </>
-    );
+function rejectReasonText(tg: TFn, reason: string): string {
+  switch (reason) {
+    case 'artist_name': return tg('lyricsReview.rejected.artist_name');
+    case 'public_figure': return tg('lyricsReview.rejected.public_figure');
+    case 'offensive': return tg('lyricsReview.rejected.offensive');
+    case 'copyright': return tg('lyricsReview.rejected.copyright');
+    default: return tg('lyricsReview.rejected.other');
   }
-
-  return <GenerationLive generation={generation} recent={recent ?? []} />;
 }
 
-// ============ STEP 5 ALT — PAY-FIRST (site.demoEnabled=false) ============
+function LyricsStep({
+  data,
+  upd,
+  goNext,
+}: {
+  data: Data;
+  upd: <K extends keyof Data>(k: K, v: Data[K]) => void;
+  goNext: () => void;
+}) {
+  const site = useSite();
+  const tg = useTranslations('generator');
+  const [text, setText] = useState(data.customLyrics || '');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState('');
+  const [validating, setValidating] = useState(false);
+  const [rejected, setRejected] = useState<{ reason: string; detail?: string } | null>(null);
+  const startedRef = useRef(false);
+
+  const regenLeft = MAX_LYRICS_REGENS - data.lyricsRegenCount;
+
+  const generate = useCallback(
+    async (fb?: string) => {
+      setLoading(true);
+      setError(null);
+      setRejected(null);
+      try {
+        const res = await api.generateLyrics({
+          style: data.style,
+          occasion: data.occ,
+          recipientName: data.name,
+          message: data.msg || undefined,
+          dedication: data.dedic || undefined,
+          voiceArtist: data.voice,
+          locale: site.locale,
+          feedback: fb || undefined,
+          previousLyrics: fb ? text || data.customLyrics || undefined : undefined,
+        });
+        setText(res.lyrics);
+        upd('customLyrics', res.lyrics);
+        upd('lyricsAccepted', false);
+      } catch {
+        setError(tg('lyricsReview.errGenerate'));
+      } finally {
+        setLoading(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data.style, data.occ, data.name, data.msg, data.dedic, data.voice, site.locale, text],
+  );
+
+  // Generăm automat la prima intrare în pas, dacă nu există deja versuri
+  // (ex. userul s-a întors din pasul de pachet → păstrăm ce avea).
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    if (data.customLyrics?.trim()) {
+      setText(data.customLyrics);
+    } else {
+      void generate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const onEditText = (v: string) => {
+    setText(v);
+    upd('customLyrics', v);
+    upd('lyricsAccepted', false);
+    setRejected(null);
+  };
+
+  const onRegen = () => {
+    if (loading || regenLeft <= 0) return;
+    if (!feedback.trim()) {
+      setError(tg('lyricsReview.errFeedbackEmpty'));
+      return;
+    }
+    upd('lyricsRegenCount', data.lyricsRegenCount + 1);
+    const fb = feedback.trim();
+    setFeedback('');
+    void generate(fb);
+  };
+
+  const onAccept = async () => {
+    if (loading || validating) return;
+    const lyrics = text.trim();
+    if (!lyrics) {
+      setError(tg('lyricsReview.errEmpty'));
+      return;
+    }
+    setValidating(true);
+    setError(null);
+    setRejected(null);
+    try {
+      const res = await api.validateLyrics({
+        lyrics,
+        recipientName: data.name,
+        dedication: data.dedic || undefined,
+        locale: site.locale,
+      });
+      if (res.ok) {
+        upd('customLyrics', lyrics);
+        upd('lyricsAccepted', true);
+        goNext();
+      } else {
+        const reason = res.reason && REJECT_REASONS.includes(res.reason) ? res.reason : 'other';
+        setRejected({ reason, detail: res.detail });
+      }
+    } catch {
+      setError(tg('lyricsReview.errValidate'));
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const loadingPhrases = (() => {
+    try {
+      const raw = (tg as unknown as { raw: (k: string) => unknown }).raw('lyricsReview.loadingPhrases');
+      return Array.isArray(raw) && raw.length ? (raw as string[]) : [tg('lyricsReview.loading')];
+    } catch {
+      return [tg('lyricsReview.loading')];
+    }
+  })();
+
+  const firstLoad = loading && !text;
+
+  return (
+    <>
+      <h3>{tg('lyricsReview.title')}</h3>
+      <p className="ld">{tg('lyricsReview.sub')}</p>
+
+      {firstLoad ? (
+        <LyricsLoader phrases={loadingPhrases} hint={tg('lyricsReview.loadingHint')} />
+      ) : (
+        <>
+          <div style={{ position: 'relative', marginTop: 14 }}>
+            <div style={{
+              fontSize: 11, color: 'var(--gold)', fontWeight: 700, letterSpacing: '0.1em',
+              textTransform: 'uppercase', marginBottom: 8, display: 'flex',
+              justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <span>{tg('lyricsReview.lyricsLabel')}</span>
+              {data.lyricsAccepted && <span style={{ color: '#7be09b' }}>✓ {tg('lyricsReview.acceptedTag')}</span>}
+            </div>
+            <textarea
+              value={text}
+              onChange={(e) => onEditText(e.target.value)}
+              rows={14}
+              spellCheck={false}
+              style={{
+                width: '100%', resize: 'vertical', minHeight: 240, padding: 14, borderRadius: 12,
+                background: 'rgba(241,200,77,0.05)', border: '1px solid rgba(241,200,77,0.25)',
+                color: 'var(--gold-2)', fontSize: 14, lineHeight: 1.7, fontFamily: 'inherit',
+              }}
+            />
+            {loading && (
+              <div style={{
+                position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
+                background: 'rgba(10,6,6,0.55)', borderRadius: 12, backdropFilter: 'blur(2px)',
+              }}>
+                <LyricsLoader phrases={loadingPhrases} compact />
+              </div>
+            )}
+            <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.45)', marginTop: 6 }}>
+              {tg('lyricsReview.bracketsHint')}
+            </div>
+          </div>
+
+          <div style={{
+            marginTop: 16, padding: 14, borderRadius: 12,
+            background: 'rgba(255,255,255,0.02)', border: '1px solid var(--line)',
+          }}>
+            <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--gold-2)', display: 'block', marginBottom: 6 }}>
+              {tg('lyricsReview.feedbackLabel')}
+            </label>
+            <textarea
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              placeholder={tg('lyricsReview.feedbackPlaceholder')}
+              rows={2}
+              maxLength={2000}
+              disabled={regenLeft <= 0 || loading}
+              style={{
+                width: '100%', resize: 'vertical', padding: '10px 12px', borderRadius: 8,
+                background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)',
+                color: 'var(--cream)', fontSize: 13, fontFamily: 'inherit',
+                opacity: regenLeft <= 0 ? 0.5 : 1,
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 10 }}>
+              <span style={{ fontSize: 11, color: regenLeft > 0 ? 'rgba(255,245,220,0.55)' : '#ffb3b3', fontWeight: 600 }}>
+                {regenLeft > 0 ? tg('lyricsReview.regensLeft', { count: regenLeft }) : tg('lyricsReview.regensExhausted')}
+              </span>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={onRegen}
+                disabled={regenLeft <= 0 || loading || !feedback.trim()}
+                style={{ opacity: regenLeft <= 0 || loading || !feedback.trim() ? 0.5 : 1 }}
+              >
+                {loading ? tg('lyricsReview.regenerating') : `🔁 ${tg('lyricsReview.regenCta')}`}
+              </button>
+            </div>
+          </div>
+
+          {rejected && (
+            <div role="alert" style={{
+              marginTop: 12, padding: '10px 12px', borderRadius: 10,
+              background: 'linear-gradient(135deg, rgba(220,38,38,0.18), rgba(220,38,38,0.08))',
+              border: '1px solid rgba(255,120,120,0.45)', color: '#ffd4d4', fontSize: 13, fontWeight: 600,
+            }}>
+              ⚠️ {rejectReasonText(tg, rejected.reason)}
+              {rejected.detail ? <span style={{ opacity: 0.8 }}>{` („${rejected.detail}")`}</span> : null}
+            </div>
+          )}
+
+          {error && <ErrorBox text={error} />}
+
+          <button
+            className="btn btn-gold btn-lg btn-block"
+            onClick={onAccept}
+            disabled={loading || validating || !text.trim()}
+            style={{ marginTop: 14, opacity: loading || validating || !text.trim() ? 0.5 : 1 }}
+            data-hint={!loading && !validating ? 'true' : undefined}
+            data-hint-label={tg('lyricsReview.acceptHint')}
+          >
+            {validating ? tg('lyricsReview.validating') : `${tg('lyricsReview.acceptCta')} →`}
+          </button>
+        </>
+      )}
+    </>
+  );
+}
+
+/** Loader brandit pentru generarea versurilor (spinner gold + fraze rotative). */
+function LyricsLoader({ phrases, hint, compact }: { phrases: string[]; hint?: string; compact?: boolean }) {
+  return (
+    <div style={{
+      display: 'grid', placeItems: 'center', gap: 16, textAlign: 'center',
+      padding: compact ? 12 : '44px 12px',
+    }}>
+      <style>{`@keyframes mcLyrSpin{to{transform:rotate(360deg)}}@keyframes mcLyrGlow{0%,100%{opacity:.45}50%{opacity:1}}`}</style>
+      <div style={{ position: 'relative', width: compact ? 52 : 72, height: compact ? 52 : 72 }}>
+        <div style={{
+          position: 'absolute', inset: 0, borderRadius: '50%',
+          border: '3px solid rgba(241,200,77,0.15)', borderTopColor: 'var(--gold)',
+          animation: 'mcLyrSpin 0.9s linear infinite',
+        }} />
+        <div style={{
+          position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
+          fontSize: compact ? 20 : 28, animation: 'mcLyrGlow 1.6s ease-in-out infinite',
+        }}>🎶</div>
+      </div>
+      <div style={{ minHeight: '1.4em', fontWeight: 700, color: 'var(--gold-2)', fontSize: compact ? 13 : 15 }}>
+        <RotatingStatus phrases={phrases} intervalMs={2200} />
+      </div>
+      {hint && <div style={{ fontSize: 12, color: 'rgba(255,245,220,0.5)', maxWidth: 360 }}>{hint}</div>}
+    </div>
+  );
+}
+
+// ============ STEP — PLATĂ (pay-first) ============
 function PayFirstStep({
   data,
   email,
@@ -1700,421 +1688,6 @@ function PayFirstStep({
   );
 }
 
-/**
- * Progres-bar time-based, independent de status. Profile:
- *   0 → 90%   în primele 3 minute  (liniar, 0.5%/s)
- *   90 → 99%  cu 1% pe minut       (rămâne sub 100 până la finish)
- *   succeeded → 100%
- *   failed    → 100% (pe culoarea rose)
- * Pleacă de la `generation.createdAt` (sincronizat backend), așa că
- * refresh-ul nu resetează progresul.
- */
-function useTimeBasedProgress(generation: GenerationDto): number {
-  const startMs = useMemo(() => {
-    const t = new Date(generation.createdAt).getTime();
-    return Number.isFinite(t) ? t : Date.now();
-  }, [generation.createdAt]);
-
-  const computePct = useCallback((): number => {
-    if (generation.status === 'succeeded' || generation.status === 'failed') return 100;
-    const elapsedSec = Math.max(0, (Date.now() - startMs) / 1000);
-    if (elapsedSec <= 180) return (elapsedSec / 180) * 90;
-    return Math.min(99, 90 + (elapsedSec - 180) / 60);
-  }, [generation.status, startMs]);
-
-  const [pct, setPct] = useState<number>(computePct);
-
-  useEffect(() => {
-    setPct(computePct());
-    if (generation.status === 'succeeded' || generation.status === 'failed') return;
-    const id = setInterval(() => setPct(computePct()), 1000);
-    return () => clearInterval(id);
-  }, [computePct, generation.status]);
-
-  return Math.min(100, Math.max(0, pct));
-}
-
-function GenerationLive({ generation, recent }: { generation: GenerationDto; recent: RecentDto[] }) {
-  const tg = useTranslations('generator');
-  const site = useSite();
-  const pct = useTimeBasedProgress(generation);
-  const statusLabel = tg(`live.status.${generation.status}`);
-  const isPlaying = generation.status !== 'succeeded' && generation.status !== 'failed';
-  const isFailed = generation.status === 'failed';
-
-  // Rotire de fraze pe „generating_audio" — același UX uman ca pe /m/[id].
-  const rotation: string[] | null = (() => {
-    if (generation.status !== 'generating_audio') return null;
-    try {
-      const raw = (tg as any).raw('live.statusRotation.generating_audio');
-      return Array.isArray(raw) && raw.length > 0 ? (raw as string[]) : null;
-    } catch { return null; }
-  })();
-
-  return (
-    <>
-      <h3>
-        {generation.status === 'succeeded'
-          ? tg('live.succeededTitle')
-          : isFailed
-            ? tg('live.failedTitle')
-            : tg('live.workingTitle')}
-      </h3>
-      <p className="ld" style={{ minHeight: '1.4em' }}>
-        {isFailed
-          ? humanizeGenError(generation.error, tg)
-          : rotation
-            ? <RotatingStatus phrases={rotation} />
-            : statusLabel}
-      </p>
-      {isFailed && (
-        <>
-          {generation.error && (
-            <details style={{ marginTop: 8 }}>
-              <summary style={{ fontSize: 11, color: 'rgba(255,245,220,0.4)', cursor: 'pointer' }}>
-                {tg('live.techDetails')}
-              </summary>
-              <pre style={{
-                marginTop: 6, fontSize: 11, padding: 10, borderRadius: 6,
-                background: 'rgba(255,255,255,0.03)', border: '1px solid var(--line)',
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'rgba(255,245,220,0.7)',
-              }}>{generation.error}</pre>
-              <div style={{ fontSize: 10, color: 'rgba(255,245,220,0.4)', marginTop: 4 }}>
-                ID: {generation.id}
-              </div>
-            </details>
-          )}
-          <RetryGenerationButton generationId={generation.id} />
-        </>
-      )}
-
-      <div style={{
-        marginTop: 14, height: 6, borderRadius: 999,
-        background: 'rgba(241,200,77,0.1)', overflow: 'hidden',
-      }}>
-        <div
-          style={{
-            width: `${pct}%`,
-            height: '100%',
-            background: generation.status === 'failed'
-              ? 'var(--rose)'
-              : 'linear-gradient(90deg,#ffe28a,#f1c84d,#b07c1e)',
-            transition: 'width 1s linear',
-          }}
-        />
-      </div>
-
-      {generation.lyrics && (
-        <div style={{
-          marginTop: 18, padding: 14, borderRadius: 10,
-          background: 'rgba(241,200,77,0.05)',
-          border: '1px solid rgba(241,200,77,0.2)',
-        }}>
-          <div style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
-            {tg('live.lyricsVerified')}
-          </div>
-          <pre style={{ whiteSpace: 'pre-wrap', color: 'var(--gold-2)', fontSize: 13, lineHeight: 1.6 }}>
-            {prettifyLyrics(generation.lyrics, site.locale)}
-          </pre>
-        </div>
-      )}
-      {!generation.lyrics && generation.lyricsDraft && (
-        <div style={{
-          marginTop: 18, padding: 14, borderRadius: 10,
-          background: 'rgba(255,255,255,0.02)',
-          border: '1px dashed rgba(241,200,77,0.2)',
-        }}>
-          <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.5)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
-            {tg('live.lyricsDraft')}
-          </div>
-          <pre style={{ whiteSpace: 'pre-wrap', color: 'rgba(255,245,220,0.7)', fontSize: 12, lineHeight: 1.5 }}>
-            {prettifyLyrics(generation.lyricsDraft, site.locale)}
-          </pre>
-        </div>
-      )}
-
-      {generation.status === 'succeeded' && (generation.audioUrl || generation.bonusAudioUrl) && (() => {
-        const previewSec = generation.type === 'demo' && !generation.paidUnlocked ? 30 : undefined;
-        return (
-          <div style={{ marginTop: 18 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gold-2)', marginBottom: 8 }}>
-              {tg('live.twoVersionsTitle')}
-            </div>
-            {generation.audioUrl && (
-              <div style={{ marginBottom: 10 }}>
-                <ManeaPlayer audioUrl={generation.audioUrl} title={tg('live.version1')} maxDurationSec={previewSec} />
-              </div>
-            )}
-            {generation.bonusAudioUrl && (
-              <ManeaPlayer audioUrl={generation.bonusAudioUrl} title={tg('live.version2Gift')} maxDurationSec={previewSec} />
-            )}
-          </div>
-        );
-      })()}
-
-      {isPlaying && (
-        <div style={{ marginTop: 24 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,245,220,0.6)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
-            {tg('live.listenWhileWaiting')}
-          </div>
-          <div style={{ display: 'grid', gap: 8, maxHeight: 280, overflowY: 'auto', paddingRight: 4 }}>
-            {recent.length === 0 && (
-              <div style={{ fontSize: 12, color: 'rgba(255,245,220,0.4)' }}>{tg('live.noPublicYet')}</div>
-            )}
-            {recent.map((r) => (
-              <div key={r.id} style={{
-                display: 'flex', gap: 10, padding: 10,
-                background: 'rgba(255,255,255,0.02)',
-                border: '1px solid var(--line)', borderRadius: 8,
-              }}>
-                <div style={{
-                  width: 32, height: 32, borderRadius: '50%',
-                  background: 'linear-gradient(135deg,#ffe28a,#b07c1e)',
-                  display: 'grid', placeItems: 'center', color: '#2a1a04', fontSize: 14,
-                  flexShrink: 0,
-                }}>♫</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, color: 'var(--gold-2)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {tg('live.forSomeone', { name: r.recipientName })}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.5)' }}>
-                    {r.style} · {r.voiceArtist}
-                  </div>
-                </div>
-                {r.audioUrl && (
-                  <div style={{ width: 200, flexShrink: 0 }}>
-                    <ManeaPlayer audioUrl={r.audioUrl} compact />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-// ============ STEP 6 — UNLOCK ============
-function UnlockStep({
-  generation,
-  data,
-  onPay,
-  onAgain,
-  submitting,
-  error,
-  promoCode,
-  setPromoCode,
-  promoApplied,
-  setPromoApplied,
-  promoError,
-  setPromoError,
-  email,
-}: {
-  generation: GenerationDto | null;
-  data: Data;
-  onPay: () => void;
-  onAgain: () => void;
-  submitting: boolean;
-  error: string | null;
-  promoCode: string;
-  setPromoCode: (v: string) => void;
-  promoApplied: { code: string; discountCents: number } | null;
-  setPromoApplied: (v: { code: string; discountCents: number } | null) => void;
-  promoError: string | null;
-  setPromoError: (v: string | null) => void;
-  email: string | null;
-}) {
-  const site = useSite();
-  const tg = useTranslations('generator');
-  const pkg = PACKAGES.find((p) => p.tier === data.packageTier)!;
-  const { data: quote } = useQuery({
-    queryKey: ['package-quote', data.packageTier],
-    queryFn: () => api.priceQuote(data.packageTier),
-    staleTime: 5 * 60_000,
-  });
-  const fmt = (cents: number) => formatPrice(site, cents);
-  const packagePrice = quote?.total ?? pkg.priceCents;
-
-  if (!generation) return <p className="ld">{tg('step6.waiting')}</p>;
-  if (generation.status === 'failed') {
-    return (
-      <>
-        <h3 style={{ color: 'var(--rose)' }}>{tg('step6.failedTitle')}</h3>
-        <p className="ld">{humanizeGenError(generation.error, tg)}</p>
-        {generation.error && (
-          <details style={{ marginTop: 8 }}>
-            <summary style={{ fontSize: 11, color: 'rgba(255,245,220,0.4)', cursor: 'pointer' }}>
-              {tg('step6.techDetails')}
-            </summary>
-            <pre style={{
-              marginTop: 6, fontSize: 11, padding: 10, borderRadius: 6,
-              background: 'rgba(255,255,255,0.03)', border: '1px solid var(--line)',
-              whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'rgba(255,245,220,0.7)',
-            }}>{generation.error}</pre>
-            <div style={{ fontSize: 10, color: 'rgba(255,245,220,0.4)', marginTop: 4 }}>
-              ID: {generation.id}
-            </div>
-          </details>
-        )}
-        <RetryGenerationButton generationId={generation.id} />
-        <button onClick={onAgain} className="btn btn-ghost" style={{ marginTop: 8 }}>{tg('step6.againBtnGhost')}</button>
-      </>
-    );
-  }
-
-  if (generation.paidUnlocked) {
-    return (
-      <>
-        <h3 className="gold-text">{tg('step6.unlockedTitle')}</h3>
-        <p className="ld">{tg('step6.unlockedSub')}</p>
-        {generation.audioUrl && (
-          <div style={{ marginTop: 14 }}>
-            <ManeaPlayer audioUrl={generation.audioUrl} title={tg('step6.version1Full')} />
-          </div>
-        )}
-        {generation.bonusAudioUrl && (
-          <div style={{ marginTop: 10 }}>
-            <ManeaPlayer audioUrl={generation.bonusAudioUrl} title={tg('step6.version2Full')} />
-          </div>
-        )}
-        <button onClick={onAgain} className="btn btn-ghost" style={{ marginTop: 16 }}>{tg('step6.againCta')}</button>
-      </>
-    );
-  }
-
-  return (
-    <>
-      <h3>{tg('step6.title')}</h3>
-      <p className="ld">{tg('step6.sub')}</p>
-
-      {(generation.audioUrl || generation.bonusAudioUrl) && (
-        <div style={{ marginTop: 14, padding: 12, borderRadius: 10,
-          background: 'rgba(241,200,77,0.04)', border: '1px solid rgba(241,200,77,0.2)' }}>
-          <div style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
-            {tg('step6.replayTitle')}
-          </div>
-          {generation.audioUrl && (
-            <div style={{ marginBottom: 8 }}>
-              <ManeaPlayer audioUrl={generation.audioUrl} title={tg('live.version1')} maxDurationSec={30} />
-            </div>
-          )}
-          {generation.bonusAudioUrl && (
-            <ManeaPlayer audioUrl={generation.bonusAudioUrl} title={tg('live.version2Gift')} maxDurationSec={30} />
-          )}
-        </div>
-      )}
-
-      <div style={{
-        marginTop: 14, padding: 14, borderRadius: 10,
-        background: 'linear-gradient(135deg, rgba(90,13,24,0.4), rgba(40,12,18,0.4))',
-        border: '1px solid var(--gold)',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-          <span>{pkg.nameRO}</span>
-          <span>{fmt(packagePrice)}</span>
-        </div>
-        {promoApplied && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4, color: 'var(--green)' }}>
-            <span>{tg('step5PayFirst.promoLine')} <code>{promoApplied.code}</code></span>
-            <span>−{fmt(promoApplied.discountCents)}</span>
-          </div>
-        )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
-          <span style={{ fontWeight: 800 }}>{tg('step5PayFirst.totalLabel')}</span>
-          <span className="gold-text" style={{ fontWeight: 900, fontSize: 22 }}>
-            {fmt(Math.max(0, packagePrice - (promoApplied?.discountCents ?? 0)))}
-          </span>
-        </div>
-      </div>
-
-      {/* Promo code input */}
-      <div style={{ marginTop: 12 }}>
-        {!promoApplied ? (
-          <div style={{ display: 'flex', gap: 6 }}>
-            <input
-              type="text"
-              placeholder={tg('step5PayFirst.promoPlaceholder')}
-              value={promoCode}
-              onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoError(null); }}
-              style={{
-                flex: 1,
-                padding: '10px 12px',
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid var(--line)',
-                borderRadius: 8,
-                color: 'var(--cream)',
-                fontFamily: 'inherit',
-                fontSize: 13,
-                fontWeight: 600,
-                letterSpacing: '0.05em',
-              }}
-            />
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              disabled={!promoCode.trim()}
-              onClick={async () => {
-                setPromoError(null);
-                try {
-                  const r = await api.validatePromo(promoCode.trim(), email ?? undefined, packagePrice);
-                  if (r.ok && r.appliedDiscountCents) {
-                    setPromoApplied({ code: promoCode.trim(), discountCents: r.appliedDiscountCents });
-                  } else {
-                    setPromoError(translatePromoError(r.reason, tg));
-                  }
-                } catch {
-                  setPromoError(tg('step5PayFirst.promoValidationError'));
-                }
-              }}
-            >
-              {tg('step5PayFirst.promoApply')}
-            </button>
-          </div>
-        ) : (
-          <div style={{
-            padding: 10, borderRadius: 8,
-            background: 'rgba(62,224,126,0.08)', border: '1px solid rgba(62,224,126,0.4)',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          }}>
-            <span style={{ fontSize: 13, color: 'var(--green)' }}>
-              {tg('step5PayFirst.promoActive')} <code>{promoApplied.code}</code> — {tg('step5PayFirst.promoDiscount')} {fmt(promoApplied.discountCents)}
-            </span>
-            <button
-              onClick={() => { setPromoApplied(null); setPromoCode(''); }}
-              style={{ background: 'transparent', border: 'none', color: 'rgba(255,245,220,0.5)', cursor: 'pointer', fontSize: 14 }}
-            >
-              ✕
-            </button>
-          </div>
-        )}
-        {promoError && <div style={{ fontSize: 12, color: 'var(--rose)', marginTop: 6 }}>{promoError}</div>}
-      </div>
-
-      {error && <ErrorBox text={error} />}
-
-      <button
-        className="btn btn-gold btn-lg btn-block"
-        onClick={onPay}
-        disabled={submitting}
-        style={{ marginTop: 14 }}
-        data-hint="true"
-        data-hint-label={tg('step6.payHint')}
-      >
-        {submitting
-          ? tg('step6.payingCta')
-          : tg('step6.unlockCta', { amount: fmt(Math.max(0, packagePrice - (promoApplied?.discountCents ?? 0))) })}
-      </button>
-
-      <button onClick={onAgain} style={{
-        background: 'transparent', border: 'none', color: 'rgba(255,245,220,0.5)',
-        textDecoration: 'underline', fontSize: 12, marginTop: 14, cursor: 'pointer', display: 'block', textAlign: 'center', width: '100%',
-      }}>
-        {tg('step6.laterCta')}
-      </button>
-    </>
-  );
-}
 
 function translatePromoError(reason: string | undefined, t: TFn): string {
   switch (reason) {

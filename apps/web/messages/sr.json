@@ -336,14 +336,14 @@
       "whyBullet1": "🎯 Tekst piše naš tim, proverava urednik",
       "whyBullet2": "🎤 2 audio verzije, biraš najbolju",
       "whyBullet3": "📧 Stiže na mejl za <2 minuta",
-      "whyBullet4": "💰 Demo besplatno — plaćaš samo ako želiš celo",
+      "whyBullet4": "💰 Plaćaš jednom — bez pretplate",
       "howTitle": "Kako funkcioniše?",
       "howStep1Title": "Biraš",
       "howStep1Body": "Stil, povod, ime, glas — par klikova.",
       "howStep2Title": "Komponujemo + pevamo",
       "howStep2Body": "Komponujemo tekst i snimamo 2 pesme izabranim glasom.",
-      "howStep3Title": "Slušaš i plaćaš",
-      "howStep3Body": "Besplatan demo 30s. Sviđa ti se? Otključavaš punu verziju.",
+      "howStep3Title": "Plaćaš i dobijaš",
+      "howStep3Body": "Plaćaš jednom i dobijaš 2 pune verzije na mejl, za nekoliko minuta.",
       "giftSomeone": "🎁 Poklon za nekoga"
     },
     "top": {
@@ -361,7 +361,7 @@
       "title": "Šta kažu braća"
     },
     "listen": {
-      "badge": "🎧 Besplatan demo",
+      "badge": "🎧 Slušaj besplatno",
       "title": "Slušaj sada",
       "sub": "6 primera — pritisni ▶ na bilo koji.",
       "viewAll": "Vidi sve pesme →"
@@ -372,16 +372,16 @@
       "Stil",
       "Prilika",
       "Detalji",
-      "Poklon",
-      "Demo",
-      "Otključaj"
+      "Tekst",
+      "Paket",
+      "Plaćanje"
     ],
     "stepsPayFirst": [
       "Stil",
       "Prilika",
       "Detalji",
-      "Poklon",
-      "Plati"
+      "Paket",
+      "Plaćanje"
     ],
     "step1Title": "1. Kakva vrsta pesme?",
     "step1Sub": "Pritisni ▶ da čuješ kako zvuči svaki stil.",
@@ -426,6 +426,42 @@
       "defaultDraft": "{name}, ova pesma je napisana za tebe,\nda ti ostane u glavi, na usnama i u duši.\nTi si od onih koje ne zaboravljaš,\ni zaslužuješ pesmu koja to glasno govori.",
       "defaultDraftYou": "tebe"
     },
+    "lyricsReview": {
+      "title": "Tvoj tekst",
+      "sub": "Sastavili smo ga na osnovu tvojih detalja. Pročitaj ga, promeni šta želiš direktno u tekstu — ili nam reci da ga prepravimo.",
+      "loading": "Sastavljamo tekst...",
+      "loadingPhrases": [
+        "✍️ Sastavljamo tekst po tvojoj meri...",
+        "🎤 Tražimo pravu rimu...",
+        "🔥 Dodajemo balkanski stav...",
+        "💛 Ubacujemo ime u refren...",
+        "✨ Doteruje se poslednji detalj..."
+      ],
+      "loadingHint": "Traje nekoliko sekundi. Tekst je napisan na pravilnom srpskom — možeš ga izmeniti u svakom trenutku.",
+      "lyricsLabel": "Tekst",
+      "acceptedTag": "prihvaćeno",
+      "bracketsHint": "Redovi u [zagradama] su muzičke oznake (intro, refren) — ne pevaju se kao takvi.",
+      "feedbackLabel": "Želiš nešto da promenimo? Napiši ovde i prepravljamo uz AI:",
+      "feedbackPlaceholder": "npr. manje o parama, više o porodici; ubaci i ime Andrej...",
+      "regensLeft": "Preostalo {count} AI prepravki",
+      "regensExhausted": "Iskoristio si svih 5 AI prepravki. Tekst možeš ručno izmeniti gore.",
+      "regenCta": "Prepravi uz AI",
+      "regenerating": "Prepravlja se...",
+      "validating": "Proveravamo tekst...",
+      "acceptCta": "Prihvati tekst i nastavi",
+      "acceptHint": "Prihvati i nastavi",
+      "errGenerate": "Nismo uspeli da generišemo tekst. Pokušaj još jednom.",
+      "errValidate": "Nismo uspeli da proverimo tekst. Pokušaj opet.",
+      "errFeedbackEmpty": "Napiši šta bi želeo da promenimo.",
+      "errEmpty": "Tekst ne može biti prazan.",
+      "rejected": {
+        "artist_name": "Tekst sadrži ime pravog izvođača. Molimo te izbaci ga — ne možemo da koristimo imena poznatih izvođača.",
+        "public_figure": "Tekst sadrži ime javne ličnosti. Molimo te izbaci ga.",
+        "offensive": "Tekst sadrži jezik koji ne možemo da koristimo. Molimo te preformuliši.",
+        "copyright": "Tekst izgleda kao da reprodukuje postojeću pesmu. Molimo te napiši ga svojim rečima.",
+        "other": "Tekst se ne može prihvatiti ovakav. Molimo te prilagodi ga i pokušaj ponovo."
+      }
+    },
     "step4": {
       "title": "4. Poklon i Premium",
       "sub": "Koliko ćeš mu staviti u tekst da ga oboriš s nogu? (Doplata 5%, plafon 50 RSD.)",
@@ -442,8 +478,7 @@
       "baseLine": "Osnovna pesma (3 min × 2)",
       "premiumLine": "👑 Premium nadogradnja",
       "tipSurchargeLine": "Doplata posveta ({amount} RSD × 5%, plafon 50)",
-      "totalUnlock": "Ukupno za otključavanje",
-      "demoFooter": "🎁 Besplatni demo dobijaš na sledećem koraku. Plaćaš NAKON što ga čuješ."
+      "totalUnlock": "Ukupno za otključavanje"
     },
     "step5Demo": {
       "title": "5. Besplatni demo (30s)",
@@ -594,7 +629,7 @@
   "studio": {
     "heroFlag": "🎤 Profi studio · 6 jednostavnih koraka",
     "title": "Napravi svoju pesmu sad",
-    "leadPart1": "Besplatan demo (30s × 2 verzije) odmah nakon slanja. Plaćaš samo ako želiš punu verziju.",
+    "leadPart1": "Biraš stil, glas i tekst, plaćaš jednom i dobijaš 2 pune verzije na mejl za nekoliko minuta.",
     "giftBadge": "🎁 1+1 BESPLATNO",
     "noSubBadge": "🛡️ Jednokratno plaćanje, bez pretplate.",
     "sideOfferTitle": "Ponuda",
@@ -603,7 +638,7 @@
     "whyBullet1": "🎯 Tekst piše naš tim, proverava urednik",
     "whyBullet2": "🎤 2 audio verzije, biraš najbolju",
     "whyBullet3": "📧 Stiže na mejl za <2 minuta",
-    "whyBullet4": "💰 Demo besplatno — plaćaš samo ako želiš celo"
+    "whyBullet4": "💰 Plaćaš jednom — bez pretplate"
   },
   "chat": {
     "openAria": "Otvori chat",
@@ -686,7 +721,7 @@
       },
       "sec3": {
         "h": "3. Cene i plaćanja",
-        "b1": "Besplatan demo: 30 sekundi, 1 po nalogu/sesiji.",
+        "b1": "Plaćanje se vrši pre generisanja; pesma se kreira nakon što se plaćanje potvrdi.",
         "b2": "Kompletna pesma: <b>{fullPrice}</b> (PDV uključen).",
         "b3": "Doplata za posvetu: 10% od iznosa pomenutog u tekstu, ograničeno na 150 dinara (samo za RSD).",
         "b4": "Plaćanja se obrađuju preko Stripe-a — ne čuvamo podatke o kartici."
@@ -810,7 +845,7 @@
   },
   "myGens": {
     "title": "🎵 Moje pesme",
-    "lead": "Sve pesme koje si generisao — demoi i pune. Klikni na bilo koju da je čuješ i (ako je demo) da je otključaš.",
+    "lead": "Sve tvoje pesme. Klikni na bilo koju da je čuješ.",
     "ctaMake": "🎤 Napravi još jednu",
     "loading": "Učitavam tvoje pesme...",
     "errLoad": "Nisam mogao da učitam listu. Pokušaj opet za momenat.",
@@ -859,7 +894,7 @@
     "items": [
       {
         "q": "Koliko traje da dobijem pesmu?",
-        "a": "Besplatni demo (30s) je gotov za ~60-90 sekundi. Cela pesma (3 min × 2 verzije) je gotova za ~2 minuta nakon plaćanja."
+        "a": "Cela pesma (3 min × 2 verzije) je gotova za ~2-3 minuta nakon što se plaćanje potvrdi i dobijaš je na mejl."
       },
       {
         "q": "Da li su glasovi pravi? Da li su umetnici?",
@@ -983,7 +1018,7 @@
     "breadcrumbAll": "Članci",
     "backToAll": "← Svi članci",
     "articleCtaTitle": "Spreman da napraviš svoju pesmu?",
-    "articleCtaSub": "Besplatni demo za 30 sekundi. Plaćaš samo ako ti se sviđa.",
+    "articleCtaSub": "Biraš, plaćaš jednom i dobijaš svoju pesmu za nekoliko minuta.",
     "articleCtaButton": "🎤 Počni sada — {price}",
     "notFound": "Članak nije pronađen",
     "categories": {

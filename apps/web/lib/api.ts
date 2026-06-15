@@ -316,6 +316,34 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ locale: getCurrentLocale(), ...input }),
     }),
+  /** Generează versuri (writer + critic) pentru pasul de review din wizard,
+   *  înainte de plată. `feedback` + `previousLyrics` = regenerare cu modificări. */
+  generateLyrics: (input: {
+    style: string;
+    occasion: string;
+    recipientName: string;
+    message?: string;
+    dedication?: string;
+    voiceArtist: string;
+    feedback?: string;
+    previousLyrics?: string;
+    locale?: string;
+  }) =>
+    request<{ lyrics: string }>('/suggestions/lyrics', {
+      method: 'POST',
+      body: JSON.stringify({ locale: getCurrentLocale(), ...input }),
+    }),
+  /** Validează versurile (nume artiști reali etc.) înainte de a trece mai departe. */
+  validateLyrics: (input: {
+    lyrics: string;
+    recipientName?: string;
+    dedication?: string;
+    locale?: string;
+  }) =>
+    request<{ ok: boolean; reason?: string; detail?: string }>('/suggestions/lyrics/validate', {
+      method: 'POST',
+      body: JSON.stringify({ locale: getCurrentLocale(), ...input }),
+    }),
   createGeneration: (input: CreateGenerationInput) =>
     request<GenerationDto>('/generations', {
       method: 'POST',

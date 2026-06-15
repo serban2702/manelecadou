@@ -336,14 +336,14 @@
       "whyBullet1": "🎯 Besedilo piše naša ekipa, preveri urednik",
       "whyBullet2": "🎤 2 zvočni različici, izbereš najboljšo",
       "whyBullet3": "📧 Dostava na e-pošto v <2 minutah",
-      "whyBullet4": "💰 Demo brezplačno — plačaš le, če želiš vse",
+      "whyBullet4": "💰 Plačaš samo enkrat — brez naročnine",
       "howTitle": "Kako deluje?",
       "howStep1Title": "Izbereš",
       "howStep1Body": "Slog, priložnost, ime, glas — nekaj klikov.",
       "howStep2Title": "Skladamo + pojemo",
       "howStep2Body": "Skladamo besedilo in posnamemo 2 pesmi z izbranim glasom.",
-      "howStep3Title": "Poslušaš in plačaš",
-      "howStep3Body": "Brezplačni demo 30s. Ti je všeč? Odkleneš polno različico.",
+      "howStep3Title": "Plačaš in prejmeš",
+      "howStep3Body": "Plačaš samo enkrat in v nekaj minutah prejmeš 2 polni različici na e-pošto.",
       "giftSomeone": "🎁 Darilo nekomu"
     },
     "top": {
@@ -361,7 +361,7 @@
       "title": "Kaj pravijo frendi"
     },
     "listen": {
-      "badge": "🎧 Brezplačen demo",
+      "badge": "🎧 Poslušaj brezplačno",
       "title": "Poslušaj zdaj",
       "sub": "6 primerov — pritisni ▶ na poljubnega.",
       "viewAll": "Poglej vse pesmi →"
@@ -372,16 +372,16 @@
       "Slog",
       "Priložnost",
       "Podrobnosti",
-      "Darilo",
-      "Demo",
-      "Odkleni"
+      "Besedilo",
+      "Paket",
+      "Plačilo"
     ],
     "stepsPayFirst": [
       "Slog",
       "Priložnost",
       "Podrobnosti",
-      "Darilo",
-      "Plačaj"
+      "Paket",
+      "Plačilo"
     ],
     "step1Title": "1. Kakšna pesem?",
     "step1Sub": "Pritisni ▶, da slišiš, kako zveni vsak slog.",
@@ -426,6 +426,42 @@
       "defaultDraft": "{name}, ta pesem je napisana zate,\nda ti ostane v glavi, na ustnicah in v duši.\nSi eden tistih, ki jih ne pozabiš,\nin zaslužiš si pesem, ki to glasno pove.",
       "defaultDraftYou": "tebe"
     },
+    "lyricsReview": {
+      "title": "Tvoje besedilo",
+      "sub": "Sestavili smo ga na podlagi tvojih podrobnosti. Preberi ga, spremeni karkoli želiš neposredno v besedilu — ali nas prosi, da ga predelamo.",
+      "loading": "Sestavljamo besedilo...",
+      "loadingPhrases": [
+        "✍️ Sestavljamo besedilo po tvojem okusu...",
+        "🎤 Iščemo pravo rimo...",
+        "🔥 Dodajamo manele atitudo...",
+        "💛 V refren dodajamo ime...",
+        "✨ Še zadnji popravek..."
+      ],
+      "loadingHint": "Traja nekaj sekund. Besedilo je napisano v pravilni slovenščini — lahko ga kadar koli urejaš.",
+      "lyricsLabel": "Besedilo",
+      "acceptedTag": "sprejeto",
+      "bracketsHint": "Vrstice med [oklepaji] so glasbene oznake (intro, refren) — ne pojejo se dobesedno.",
+      "feedbackLabel": "Želiš kaj spremeniti? Napiši tukaj in predelamo z AI:",
+      "feedbackPlaceholder": "npr. manj o denarju, več o družini; dodaj tudi ime Andrej...",
+      "regensLeft": "Še {count} AI predelav na voljo",
+      "regensExhausted": "Porabil si vseh 5 AI predelav. Besedilo lahko urejaš ročno zgoraj.",
+      "regenCta": "Predelaj z AI",
+      "regenerating": "Se predeluje...",
+      "validating": "Preverjamo besedilo...",
+      "acceptCta": "Sprejmi besedilo in nadaljuj",
+      "acceptHint": "Sprejmi in nadaljuj",
+      "errGenerate": "Besedila nismo mogli generirati. Poskusi še enkrat.",
+      "errValidate": "Besedila nismo mogli preveriti. Poskusi znova.",
+      "errFeedbackEmpty": "Napiši, kaj naj spremenimo.",
+      "errEmpty": "Besedilo ne sme biti prazno.",
+      "rejected": {
+        "artist_name": "Besedilo vsebuje ime resničnega izvajalca. Prosimo, odstrani ga — ne moremo uporabljati imen znanih izvajalcev.",
+        "public_figure": "Besedilo vsebuje ime javne osebe. Prosimo, odstrani ga.",
+        "offensive": "Besedilo vsebuje jezik, ki ga ne moremo uporabiti. Prosimo, preoblikuj ga.",
+        "copyright": "Besedilo je videti, da posnema obstoječo pesem. Prosimo, napiši ga s svojimi besedami.",
+        "other": "Besedila tako ne moremo sprejeti. Prosimo, prilagodi ga in poskusi znova."
+      }
+    },
     "step4": {
       "title": "4. Darilo in Premium",
       "sub": "Koliko damo v besedilo, da ga prevzameš? (Doplačilo 5%, zgornja meja 50 €.)",
@@ -442,8 +478,7 @@
       "baseLine": "Osnovna pesem (3 min × 2)",
       "premiumLine": "👑 Premium nadgradnja",
       "tipSurchargeLine": "Doplačilo posvetilo ({amount} € × 5%, zgornja meja 50)",
-      "totalUnlock": "Skupaj za odklepanje",
-      "demoFooter": "🎁 Brezplačni demo dobiš na naslednjem koraku. Plačaš PO tem, ko ga poslušaš."
+      "totalUnlock": "Skupaj za odklepanje"
     },
     "step5Demo": {
       "title": "5. Brezplačni demo (30s)",
@@ -594,7 +629,7 @@
   "studio": {
     "heroFlag": "🎤 Profi studio · 6 preprostih korakov",
     "title": "Naredi svojo pesem zdaj",
-    "leadPart1": "Brezplačna demo (30s × 2 različici) takoj po pošiljanju. Plačaš le, če želiš celotno različico.",
+    "leadPart1": "Izbereš slog, glas in besedilo, plačaš samo enkrat in v nekaj minutah prejmeš 2 polni različici na e-pošto.",
     "giftBadge": "🎁 1+1 BREZPLAČNO",
     "noSubBadge": "🛡️ Enkratno plačilo, brez naročnine.",
     "sideOfferTitle": "Ponudba",
@@ -603,7 +638,7 @@
     "whyBullet1": "🎯 Besedilo piše naša ekipa, preveri urednik",
     "whyBullet2": "🎤 2 zvočni različici, izbereš najboljšo",
     "whyBullet3": "📧 Dostava na e-pošto v <2 minutah",
-    "whyBullet4": "💰 Demo brezplačno — plačaš le, če želiš vse"
+    "whyBullet4": "💰 Plačaš samo enkrat — brez naročnine"
   },
   "chat": {
     "openAria": "Odpri klepet",
@@ -686,7 +721,7 @@
       },
       "sec3": {
         "h": "3. Cene in plačila",
-        "b1": "Brezplačni demo: 30 sekund, 1 na račun/sejo.",
+        "b1": "Plačilo se izvede pred generiranjem; pesem se ustvari po potrditvi plačila.",
         "b2": "Celotna manele pesem: <b>{fullPrice}</b> (DDV vključen).",
         "b3": "Doplačilo za posvetilo: 10 % zneska, omenjenega v besedilu, omejeno na 150 lei (samo za leie).",
         "b4": "Plačila se obdelujejo prek Stripe — podatkov o kartici ne shranjujemo."
@@ -810,7 +845,7 @@
   },
   "myGens": {
     "title": "🎵 Moje pesmi",
-    "lead": "Vse pesmi, ki si jih generiral — demoji in polne. Klikni katerokoli za poslušanje in (če je demo) za odklepanje.",
+    "lead": "Vse tvoje pesmi. Klikni katerokoli za poslušanje.",
     "ctaMake": "🎤 Naredi še eno",
     "loading": "Nalagam tvoje pesmi...",
     "errLoad": "Nisem mogel naložiti seznama. Poskusi znova čez trenutek.",
@@ -859,7 +894,7 @@
     "items": [
       {
         "q": "Koliko časa traja, da dobim pesem?",
-        "a": "Brezplačni demo (30s) je pripravljen v ~60-90 sekundah. Celotna pesem (3 min × 2 različici) je pripravljena v ~2 minutah po plačilu."
+        "a": "Celotna pesem (3 min × 2 različici) je pripravljena v ~2-3 minutah po potrditvi plačila in jo prejmeš po e-pošti."
       },
       {
         "q": "Ali so glasovi pravi? Ali so umetniki?",
@@ -983,7 +1018,7 @@
     "breadcrumbAll": "Članki",
     "backToAll": "← Vsi članki",
     "articleCtaTitle": "Pripravljen narediti svojo pesem?",
-    "articleCtaSub": "Brezplačni demo v 30 sekundah. Plačaš le, če ti je všeč.",
+    "articleCtaSub": "Izbereš, plačaš samo enkrat in v nekaj minutah prejmeš svojo pesem.",
     "articleCtaButton": "🎤 Začni zdaj — {price}",
     "notFound": "Članek ni najden",
     "categories": {

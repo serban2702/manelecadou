@@ -336,14 +336,14 @@
       "whyBullet1": "🎯 Ekibimiz tarafından yazılan sözler, editör tarafından doğrulanmış",
       "whyBullet2": "🎤 2 ses versiyonu, en iyisini seçiyorsun",
       "whyBullet3": "📧 E-postaya <2 dakikada teslim",
-      "whyBullet4": "💰 Demo ücretsiz — sadece tamamını istersen ödersin",
+      "whyBullet4": "💰 Tek seferlik ödeme — abonelik yok",
       "howTitle": "Nasıl çalışır?",
       "howStep1Title": "Seçiyorsun",
       "howStep1Body": "Stil, ortam, isim, ses — birkaç tık.",
       "howStep2Title": "Besteliyoruz + söylüyoruz",
       "howStep2Body": "Sözleri besteliyor ve seçilen sesle 2 parça kaydediyoruz.",
-      "howStep3Title": "Dinliyorsun ve ödüyorsun",
-      "howStep3Body": "Ücretsiz 30s demo. Beğendin mi? Tam sürümün kilidini açıyorsun.",
+      "howStep3Title": "Öde ve al",
+      "howStep3Body": "Tek seferlik ödüyorsun ve 2 tam versiyonu birkaç dakikada e-postayla alıyorsun.",
       "giftSomeone": "🎁 Birine hediye"
     },
     "top": {
@@ -361,7 +361,7 @@
       "title": "Kankalar ne diyor"
     },
     "listen": {
-      "badge": "🎧 Bedava demo",
+      "badge": "🎧 Ücretsiz dinle",
       "title": "Şimdi dinle",
       "sub": "6 örnek — herhangi birine ▶ bas.",
       "viewAll": "Tüm şarkıları gör →"
@@ -372,16 +372,16 @@
       "Stil",
       "Vesile",
       "Detaylar",
-      "Hediye",
-      "Demo",
-      "Kilidi aç"
+      "Sözler",
+      "Paket",
+      "Ödeme"
     ],
     "stepsPayFirst": [
       "Stil",
       "Vesile",
       "Detaylar",
-      "Hediye",
-      "Öde"
+      "Paket",
+      "Ödeme"
     ],
     "step1Title": "1. Nasıl bir şarkı?",
     "step1Sub": "Her stilin nasıl olduğunu dinlemek için ▶'ye bas.",
@@ -426,6 +426,42 @@
       "defaultDraft": "{name}, bu şarkı senin için yazıldı,\nkafanda, dudaklarında ve ruhunda kalsın.\nSen unutulmayacak biriydin,\nve bunu yüksek sesle söyleyen bir parça hak ediyorsun.",
       "defaultDraftYou": "senin için biri"
     },
+    "lyricsReview": {
+      "title": "Senin sözlerin",
+      "sub": "Verdiğin detaylara göre besteledik. Oku, istediğini doğrudan metinde değiştir — ya da yeniden yazmamızı iste.",
+      "loading": "Sözleri besteliyoruz...",
+      "loadingPhrases": [
+        "✍️ Sözleri zevkine göre besteliyoruz...",
+        "🎤 Uygun kafiyeyi arıyoruz...",
+        "🔥 Manele havası katıyoruz...",
+        "💛 İsmi nakarata ekliyoruz...",
+        "✨ Son bir rötuş daha yapıyoruz..."
+      ],
+      "loadingHint": "Birkaç saniye sürer. Sözler doğru Türkçe ile yazılır — istediğin zaman düzenleyebilirsin.",
+      "lyricsLabel": "Sözler",
+      "acceptedTag": "kabul edildi",
+      "bracketsHint": "[Parantez] içindeki satırlar müzik yönergeleridir (intro, nakarat) — bu haliyle söylenmez.",
+      "feedbackLabel": "Bir şey değiştirmek ister misin? Buraya yaz, AI ile yeniden yazalım:",
+      "feedbackPlaceholder": "örn. para hakkında daha az, aile hakkında daha çok; Andrei'nin de adını koy...",
+      "regensLeft": "{count} AI yeniden üretim hakkı kaldı",
+      "regensExhausted": "5 AI yeniden üretim hakkını kullandın. Sözleri yukarıdan elle düzenleyebilirsin.",
+      "regenCta": "AI ile yeniden yaz",
+      "regenerating": "Yeniden yazılıyor...",
+      "validating": "Sözleri kontrol ediyoruz...",
+      "acceptCta": "Sözleri kabul et ve devam et",
+      "acceptHint": "Kabul et ve devam et",
+      "errGenerate": "Sözleri üretemedim. Bir daha dene.",
+      "errValidate": "Sözleri kontrol edemedim. Tekrar dene.",
+      "errFeedbackEmpty": "Neyi değiştirmek istediğini yaz.",
+      "errEmpty": "Sözler boş olamaz.",
+      "rejected": {
+        "artist_name": "Sözler gerçek bir sanatçının adını içeriyor. Lütfen çıkar — ünlü sanatçı isimleri kullanamayız.",
+        "public_figure": "Sözler tanınmış bir kişinin adını içeriyor. Lütfen çıkar.",
+        "offensive": "Sözler kullanamayacağımız bir dil içeriyor. Lütfen yeniden ifade et.",
+        "copyright": "Sözler mevcut bir şarkıyı kopyalıyor gibi görünüyor. Lütfen kendi kelimelerinle yeniden yaz.",
+        "other": "Sözler bu haliyle kabul edilemez. Lütfen düzenleyip tekrar dene."
+      }
+    },
     "step4": {
       "title": "4. Hediye ve Premium",
       "sub": "Onu deviresin diye sözlere ne kadar koyalım? (%5 ek ücret, üst sınır 50 TL.)",
@@ -442,8 +478,7 @@
       "baseLine": "Temel şarkı (3 min × 2)",
       "premiumLine": "👑 Premium yükseltme",
       "tipSurchargeLine": "İthaf ek ücreti ({amount} TL × %5, üst sınır 50)",
-      "totalUnlock": "Kilidi açma toplam",
-      "demoFooter": "🎁 Ücretsiz demoyu bir sonraki adımda alıyorsun. Ödeme dinledikten SONRA yapılır."
+      "totalUnlock": "Kilidi açma toplam"
     },
     "step5Demo": {
       "title": "5. Ücretsiz demo (30s)",
@@ -594,7 +629,7 @@
   "studio": {
     "heroFlag": "🎤 Profi stüdyo · 6 kolay adım",
     "title": "Şarkını şimdi yap",
-    "leadPart1": "Ücretsiz demo (30s × 2 versiyon) gönderdikten hemen sonra. Sadece tam versiyonu istersen ödersin.",
+    "leadPart1": "Stili, sesi ve sözleri sen seçersin, tek seferlik ödersin ve 2 tam versiyonu birkaç dakikada e-postayla alırsın.",
     "giftBadge": "🎁 1+1 BEDAVA",
     "noSubBadge": "🛡️ Tek seferlik ödeme, abonelik yok.",
     "sideOfferTitle": "Teklif",
@@ -603,7 +638,7 @@
     "whyBullet1": "🎯 Ekibimiz tarafından yazılan sözler, editör tarafından doğrulanmış",
     "whyBullet2": "🎤 2 ses versiyonu, en iyisini seçiyorsun",
     "whyBullet3": "📧 E-postaya <2 dakikada teslim",
-    "whyBullet4": "💰 Demo ücretsiz — sadece tamamını istersen ödersin"
+    "whyBullet4": "💰 Tek seferlik ödeme — abonelik yok"
   },
   "chat": {
     "openAria": "Sohbeti aç",
@@ -686,7 +721,7 @@
       },
       "sec3": {
         "h": "3. Fiyatlar ve ödemeler",
-        "b1": "Ücretsiz demo: 30 saniye, hesap/oturum başına 1 adet.",
+        "b1": "Ödeme üretimden önce yapılır; şarkı, ödeme onaylandıktan sonra oluşturulur.",
         "b2": "Tam manele: <b>{fullPrice}</b> (KDV dahil).",
         "b3": "İthaf ek ücreti: sözlerde geçen tutarın %10'u, üst sınır 150 TL (yalnızca TL için).",
         "b4": "Ödemeler Stripe üzerinden işlenir — kart bilgilerini saklamıyoruz."
@@ -810,7 +845,7 @@
   },
   "myGens": {
     "title": "🎵 Şarkılarım",
-    "lead": "Ürettiğin tüm parçalar — demolar ve tamlar. Dinlemek için herhangi birine tıkla ve (demo ise) kilidini aç.",
+    "lead": "Tüm şarkıların. Dinlemek için herhangi birine tıkla.",
     "ctaMake": "🎤 Bir tane daha yap",
     "loading": "Şarkıların yükleniyor...",
     "errLoad": "Listeyi yükleyemedim. Birazdan tekrar dene.",
@@ -859,7 +894,7 @@
     "items": [
       {
         "q": "Şarkıyı almam ne kadar sürer?",
-        "a": "Ücretsiz demo (30s) ~60-90 saniyede hazır. Tam şarkı (3 min × 2 versiyon) ödemeden sonra ~2 dakikada hazır."
+        "a": "Tam şarkı (3 dk × 2 versiyon), ödeme onaylandıktan sonra ~2-3 dakikada hazır olur ve e-postayla sana ulaşır."
       },
       {
         "q": "Sesler gerçek mi? Sanatçı mı?",
@@ -983,7 +1018,7 @@
     "breadcrumbAll": "Makaleler",
     "backToAll": "← Tüm makaleler",
     "articleCtaTitle": "Kendi şarkını yapmaya hazır mısın?",
-    "articleCtaSub": "30 saniyede ücretsiz demo. Sadece beğenirsen ödersin.",
+    "articleCtaSub": "Seçersin, tek seferlik ödersin ve şarkını birkaç dakikada alırsın.",
     "articleCtaButton": "🎤 Şimdi başla — {price}",
     "notFound": "Makale bulunamadı",
     "categories": {

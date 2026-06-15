@@ -335,14 +335,14 @@
       "whyBullet1": "🎯 Versuri scrise de echipa noastră, verificate de editor",
       "whyBullet2": "🎤 2 versiuni audio, alegi pe cea mai tare",
       "whyBullet3": "📧 Livrate pe email în <2 minute",
-      "whyBullet4": "💰 Demo gratis — plătești doar dacă vrei tot",
+      "whyBullet4": "💰 Plătești o singură dată — fără abonament",
       "howTitle": "Cum funcționează?",
       "howStep1Title": "Alegi",
       "howStep1Body": "Stilul, ocazia, numele, vocea — câteva click-uri.",
       "howStep2Title": "Compunem + cântăm",
       "howStep2Body": "Compunem versurile și înregistrăm 2 piese cu vocea aleasă.",
-      "howStep3Title": "Asculți & plătești",
-      "howStep3Body": "Demo gratis 30s. Îți place? Deblochezi varianta completă."
+      "howStep3Title": "Plătești & primești",
+      "howStep3Body": "Plătești o singură dată și primești 2 versiuni complete pe email, în câteva minute."
     },
     "top": {
       "badge": "★ Top săptămână",
@@ -359,7 +359,7 @@
       "title": "Ce zic frații"
     },
     "listen": {
-      "badge": "🎧 Demo gratis",
+      "badge": "🎧 Ascultă gratis",
       "title": "Ascultă acum",
       "sub": "6 exemple — apasă ▶ pe oricare.",
       "viewAll": "Vezi toate manelele →"
@@ -370,16 +370,16 @@
       "Stil",
       "Ocazie",
       "Detalii",
+      "Versuri",
       "Pachet",
-      "Demo",
-      "Deblochează"
+      "Plată"
     ],
     "stepsPayFirst": [
       "Stil",
       "Ocazie",
       "Detalii",
       "Pachet",
-      "Plătește"
+      "Plată"
     ],
     "step1Title": "1. Ce fel de manea?",
     "step1Sub": "Apasă pe ▶ să asculți cum sună fiecare stil.",
@@ -424,6 +424,42 @@
       "defaultDraft": "{name}, manaua asta e scrisă pentru tine,\nsă-ți rămână-n cap, pe buze și-n suflet.\nEști dintre ăia pe care nu-i uiți o viață,\nși meriți o piesă care să-ți spună asta tare.",
       "defaultDraftYou": "tine"
     },
+    "lyricsReview": {
+      "title": "Versurile tale",
+      "sub": "Le-am compus pe baza detaliilor tale. Citește-le, schimbă ce vrei direct în text — sau cere-ne să le refacem.",
+      "loading": "Compunem versurile...",
+      "loadingPhrases": [
+        "✍️ Compunem versurile pe placul tău...",
+        "🎤 Căutăm rima potrivită...",
+        "🔥 Punem atitudine de manea...",
+        "💛 Adăugăm numele în refren...",
+        "✨ Mai dăm un retuș final..."
+      ],
+      "loadingHint": "Durează câteva secunde. Versurile sunt scrise în limba română corectă — le poți edita oricând.",
+      "lyricsLabel": "Versuri",
+      "acceptedTag": "acceptate",
+      "bracketsHint": "Rândurile dintre [paranteze] sunt indicații muzicale (intro, refren) — nu se cântă ca atare.",
+      "feedbackLabel": "Vrei să schimbăm ceva? Scrie aici și le refacem cu AI:",
+      "feedbackPlaceholder": "ex. mai puțin despre bani, mai mult despre familie; pune și numele lui Andrei...",
+      "regensLeft": "{count} regenerări AI rămase",
+      "regensExhausted": "Ai folosit cele 5 regenerări AI. Poți edita versurile manual mai sus.",
+      "regenCta": "Refă cu AI",
+      "regenerating": "Se reface...",
+      "validating": "Verificăm versurile...",
+      "acceptCta": "Acceptă versurile și continuă",
+      "acceptHint": "Acceptă și continuă",
+      "errGenerate": "Nu am putut genera versurile. Mai încearcă o dată.",
+      "errValidate": "Nu am putut verifica versurile. Mai încearcă.",
+      "errFeedbackEmpty": "Scrie ce ai vrea să schimbăm.",
+      "errEmpty": "Versurile nu pot fi goale.",
+      "rejected": {
+        "artist_name": "Versurile conțin numele unui artist real. Te rugăm să-l scoți — nu putem folosi nume de artiști celebri.",
+        "public_figure": "Versurile conțin numele unei persoane publice. Te rugăm să-l scoți.",
+        "offensive": "Versurile conțin un limbaj pe care nu îl putem folosi. Te rugăm să reformulezi.",
+        "copyright": "Versurile par a reproduce o piesă existentă. Te rugăm să le rescrii cu cuvintele tale.",
+        "other": "Versurile nu pot fi acceptate așa. Te rugăm să le ajustezi și să încerci din nou."
+      }
+    },
     "step4": {
       "title": "4. Alege pachetul",
       "sub": "Alege ce vrei să primești. Poți schimba oricând până la plată.",
@@ -440,8 +476,7 @@
       "baseLine": "Manea de bază (3 min × 2)",
       "premiumLine": "👑 Upgrade Premium",
       "tipSurchargeLine": "Suprataxă dedicație ({amount} lei × 5%, plafon 50)",
-      "totalUnlock": "Total la deblocare",
-      "demoFooter": "🎁 Demo-ul gratuit primesti acum la pasul următor. Plata se face DUPĂ ce-l asculți."
+      "totalUnlock": "Total la deblocare"
     },
     "step5Demo": {
       "title": "5. Demo gratuit (30s)",
@@ -592,7 +627,7 @@
   "studio": {
     "heroFlag": "🎤 Studio profi · 6 pași simpli",
     "title": "Fă-ți maneaua ta acum",
-    "leadPart1": "Demo gratuit (30s × 2 versiuni) imediat după trimitere. Plătești doar dacă vrei varianta completă.",
+    "leadPart1": "Alegi stilul, vocea și versurile, plătești o singură dată și primești 2 versiuni complete pe email în câteva minute.",
     "giftBadge": "🎁 1+1 GRATIS",
     "noSubBadge": "🛡️ Plată unică, fără abonament.",
     "sideOfferTitle": "Ofertă",
@@ -601,7 +636,7 @@
     "whyBullet1": "🎯 Versuri scrise de echipa noastră, verificate de editor",
     "whyBullet2": "🎤 2 versiuni audio, alegi pe cea mai tare",
     "whyBullet3": "📧 Livrate pe email în <2 minute",
-    "whyBullet4": "💰 Demo gratis — plătești doar dacă vrei tot"
+    "whyBullet4": "💰 Plătești o singură dată — fără abonament"
   },
   "chat": {
     "openAria": "Deschide chat",
@@ -684,7 +719,7 @@
       },
       "sec3": {
         "h": "3. Prețuri și plăți",
-        "b1": "Demo gratuit: 30 secunde, 1 per cont/sesiune.",
+        "b1": "Plata se face înainte de generare; maneaua se creează după confirmarea plății.",
         "b2": "Manea completă: <b>{fullPrice}</b> (TVA inclus).",
         "b3": "Suprataxă dedicație: 10% din suma menționată în versuri, plafonată la 150 lei (doar pentru lei).",
         "b4": "Plățile se procesează prin Stripe — nu stocăm datele cardului."
@@ -808,7 +843,7 @@
   },
   "myGens": {
     "title": "🎵 Manelele mele",
-    "lead": "Toate piesele pe care le-ai generat — demouri și complete. Click pe oricare ca să asculți și (dacă e demo) să o deblochezi.",
+    "lead": "Toate melodiile tale. Click pe oricare ca să o asculți.",
     "ctaMake": "🎤 Fă încă o manea",
     "loading": "Se încarcă manelele tale...",
     "errLoad": "Nu am putut încărca lista. Încearcă din nou peste un moment.",
@@ -857,7 +892,7 @@
     "items": [
       {
         "q": "Cât durează să primesc maneaua?",
-        "a": "Demo-ul gratuit (30s) e gata în ~60-90 secunde. Maneaua completă (3 min × 2 versiuni) e gata în ~2 minute după plată."
+        "a": "Maneaua completă (3 min × 2 versiuni) e gata în ~2-3 minute după confirmarea plății și o primești pe email."
       },
       {
         "q": "Vocile sunt reale? Sunt artiști?",
@@ -981,7 +1016,7 @@
     "breadcrumbAll": "Articole",
     "backToAll": "← Toate articolele",
     "articleCtaTitle": "Gata să faci propria manea?",
-    "articleCtaSub": "Demo gratis în 30 secunde. Plătești doar dacă vrei tot.",
+    "articleCtaSub": "Alegi, plătești o dată și primești maneaua ta în câteva minute.",
     "articleCtaButton": "🎤 Începe acum — {price}",
     "notFound": "Articol negăsit",
     "categories": {
