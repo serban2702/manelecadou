@@ -1,5 +1,5 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
-import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { IsEmail, IsEnum, IsString, MinLength } from 'class-validator';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -592,6 +592,29 @@ export class AdminController {
       demoAudioUrl: g.demoAudioUrl,
       demoBonusAudioUrl: g.demoBonusAudioUrl,
     };
+  }
+
+  /**
+   * Upload manual al unui MP3 ca VARIAȚIE nouă (field `file`, max 25MB). Nu
+   * atinge piesa live; apare în Studio la „Toate piesele generate", de unde se
+   * promovează ca principală/bonus. Admin poate încărca oricâte variante vrea.
+   */
+  @Post('generations/:id/manual-upload-variation')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 25 * 1024 * 1024 } }))
+  async manualUploadVariation(
+    @Param('id') id: string,
+    @Body('label') label: string | undefined,
+    @UploadedFile() file?: { buffer: Buffer; originalname: string; size: number; mimetype: string },
+  ) {
+    if (!file) throw new BadRequestException('Lipsește fișierul (field: file)');
+    const g = await this.generationsService.adminManualUploadVariation(id, file.buffer, label);
+    return { ok: true, id: g.id, status: g.status, audioUrl: g.audioUrl, variationLabel: g.variationLabel };
+  }
+
+  /** Re-trimite emailul de livrare („melodia ta e gata") + chat notify. */
+  @Post('generations/:id/resend-email')
+  async resendDeliveryEmail(@Param('id') id: string) {
+    return this.generationsService.adminResendDeliveryEmail(id);
   }
 
   @Post('generations/:id/retry')

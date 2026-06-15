@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useAsync, useAsyncCallback } from '@/lib/hooks/use-async';
 import { AdminApi, type OrderDetail, type AdminVariation } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +39,7 @@ import {
   Shuffle,
   Sparkles,
   Trash2,
+  Upload,
   User,
   Wand2,
   X,
@@ -660,6 +661,7 @@ function StudioTab({ data, refetch }: { data: OrderDetail; refetch: () => Promis
   const [rxMode, setRxMode] = useState<'chorus' | 'manual'>('chorus');
   const [rxStart, setRxStart] = useState('');
   const [rxEnd, setRxEnd] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function act(key: string, run: () => Promise<unknown>, okMsg: string) {
     if (acting) return;
@@ -682,6 +684,36 @@ function StudioTab({ data, refetch }: { data: OrderDetail; refetch: () => Promis
     const ids = list.map((v) => v.id);
     [ids[index], ids[target]] = [ids[target], ids[index]];
     await act('reorder', () => AdminApi.generationReorderVariations(rootId, ids), 'Ordine actualizată');
+  }
+
+  /** Încarcă unul sau mai multe MP3-uri ca variații noi (secvențial). */
+  async function uploadVariations(files: FileList | null) {
+    if (!files || files.length === 0 || acting) return;
+    const list = Array.from(files);
+    setActing('upload');
+    let ok = 0;
+    try {
+      for (const f of list) {
+        await AdminApi.generationManualUploadVariation(g.id, f, 'Upload manual');
+        ok++;
+      }
+      toast({
+        variant: 'success',
+        title: `${ok} ${ok === 1 ? 'variantă încărcată' : 'variante încărcate'}`,
+        description: 'Apar mai jos. Ascult-o și promoveaz-o pe cea bună ca principală/bonus.',
+      });
+      await Promise.all([variations.refetch(), refetch()]);
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: ok > 0 ? `Doar ${ok} încărcate` : 'Upload eșuat',
+        description: errorMessage(e),
+      });
+      await variations.refetch();
+    } finally {
+      setActing(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   }
 
   const canSunoTools = !!g.providerJobId && g.providerJobId !== 'manual';
@@ -708,13 +740,29 @@ function StudioTab({ data, refetch }: { data: OrderDetail; refetch: () => Promis
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setHelpOpen(true)}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white transition hover:border-amber-400/40 hover:bg-amber-500/10 hover:text-amber-200"
-          >
-            <BookOpen className="h-3.5 w-3.5" /> Ghid
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              disabled={acting === 'resend' || g.status !== 'succeeded'}
+              onClick={() => act('resend', () => AdminApi.generationResendEmail(g.id), 'Email de livrare retrimis')}
+              title={
+                g.status !== 'succeeded'
+                  ? 'Comanda nu e gata (status succeeded)'
+                  : 'Retrimite emailul „melodia ta e gata" + mesaj în chat către client'
+              }
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/30 bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {acting === 'resend' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+              Retrimite mailul
+            </button>
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white transition hover:border-amber-400/40 hover:bg-amber-500/10 hover:text-amber-200"
+            >
+              <BookOpen className="h-3.5 w-3.5" /> Ghid
+            </button>
+          </div>
         </div>
         <div className="relative mt-4 flex flex-wrap gap-2">
           <Stat label="Melodia live" value={g.status === 'succeeded' ? 'gata' : g.status} tone={g.status === 'succeeded' ? 'ok' : 'warn'} />
@@ -1036,8 +1084,26 @@ function StudioTab({ data, refetch }: { data: OrderDetail; refetch: () => Promis
       <Section
         icon={<Music2 className="h-4 w-4" />}
         title="Toate piesele generate"
-        subtitle="Piesa principală (live) plus toate variațiile. Promovează, rearanjează sau șterge."
+        subtitle="Piesa live + variațiile (generate cu AI sau MP3-uri încărcate de tine). Promovează, rearanjează sau șterge."
         badge={String((variations.data?.length ?? 0) + 1)}
+        right={
+          <label
+            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-400/30 bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:bg-emerald-500/25 ${acting ? 'pointer-events-none opacity-50' : ''}`}
+            title="Încarcă unul sau mai multe MP3-uri ca variante (nu atinge piesa live)"
+          >
+            {acting === 'upload' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+            {acting === 'upload' ? 'Se încarcă…' : 'Încarcă MP3'}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="audio/mpeg,audio/mp3,audio/wav,audio/*"
+              multiple
+              className="hidden"
+              disabled={!!acting}
+              onChange={(e) => uploadVariations(e.target.files)}
+            />
+          </label>
+        }
       >
         {/* Piesa principală — cea livrată clientului, nu se poate șterge */}
         <PrincipalCard g={g} />

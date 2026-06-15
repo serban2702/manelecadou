@@ -387,6 +387,24 @@ export class AdminApi {
   static generationVariations(id: string): Promise<AdminVariation[]> {
     return http.get(`/admin/generations/${id}/variations`);
   }
+  /** Upload manual al unui MP3 ca variație nouă (oricâte). Nu atinge piesa live. */
+  static generationManualUploadVariation(
+    id: string,
+    file: File,
+    label?: string,
+  ): Promise<{ ok: boolean; id: string; status: string; audioUrl: string | null; variationLabel: string | null }> {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (label) fd.append('label', label);
+    return http.post(`/admin/generations/${id}/manual-upload-variation`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120_000,
+    });
+  }
+  /** Re-trimite emailul de livrare („melodia ta e gata") către client. */
+  static generationResendEmail(id: string): Promise<{ ok: boolean }> {
+    return http.post(`/admin/generations/${id}/resend-email`);
+  }
   static generationPromote(
     variationId: string,
     body: { slot: 'main' | 'bonus'; notify?: boolean },

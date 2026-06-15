@@ -453,6 +453,60 @@ export class GenerationsService {
   }
 
   /**
+   * Upload manual al unui MP3 ca VARIAȚIE nouă (rând-copil) — NU atinge piesa
+   * live a clientului. Admin încarcă oricâte variante vrea (din Studio), le
+   * ascultă și o promovează pe cea bună ca principală/bonus. providerJobId='manual'.
+   * Nu trimite email — livrarea se face la promovare sau prin „Retrimite mailul".
+   */
+  async adminManualUploadVariation(
+    generationId: string,
+    buffer: Buffer,
+    label?: string,
+  ): Promise<Generation> {
+    const src = await this.repo.findOne({ where: { id: generationId } });
+    if (!src) throw new NotFoundException('Generation not found');
+    if (!buffer || buffer.length === 0) throw new ConflictException('file_required');
+
+    // Rând-copil pe baza comenzii-sursă (populează toate câmpurile NOT NULL).
+    const payload = this.buildRegenPayload(src, undefined, src.lyrics ?? src.customLyrics ?? null);
+    payload.parentGenerationId = this.rootGenerationId(src);
+    payload.variationLabel = (label ?? '').trim() || 'Upload manual';
+    payload.status = 'succeeded';
+    payload.providerJobId = 'manual';
+    payload.completedAt = new Date();
+    const child = await this.repo.save(this.repo.create(payload));
+
+    // Salvează audio + demo (ffmpeg re-encode 128k), atașează URL-urile.
+    const main = await this.audio.saveAndMakeDemo(child.id, buffer, 'full');
+    child.audioUrl = main.fullUrl;
+    child.demoAudioUrl = main.demoUrl;
+    child.tracks = [{ audioUrl: main.fullUrl, durationSec: child.durationSec }];
+    const saved = await this.repo.save(child);
+    this.logger.warn(`[admin-upload-variation] parent=${payload.parentGenerationId} → ${saved.id}`);
+    return saved;
+  }
+
+  /**
+   * Re-trimite emailul de livrare („melodia ta e gata") + chat notify pentru o
+   * comandă, fără a schimba audio. Folosit din Studio după livrarea/modificarea
+   * manuală (upload variante → promovare → „Retrimite mailul" dintr-un buton).
+   */
+  async adminResendDeliveryEmail(generationId: string): Promise<{ ok: boolean }> {
+    const gen = await this.repo.findOne({ where: { id: generationId } });
+    if (!gen) throw new NotFoundException('Generation not found');
+    try {
+      const proc = this.moduleRef.get(GenerationsProcessor, { strict: false });
+      await proc.notifyOwner(gen);
+      void proc.notifyChat(gen.id, 'succeeded');
+    } catch (err) {
+      this.logger.error(`resend delivery email failed: ${(err as Error).message}`);
+      throw err;
+    }
+    this.logger.warn(`[admin-resend-email] generation=${gen.id}`);
+    return { ok: true };
+  }
+
+  /**
    * Admin force-retry: bypassează owner check + retry limit. Folosit din admin
    * când Suno a căzut (status='failed') sau o generation a rămas blocată în
    * 'pending' / 'queued' (worker mort, lock pierdut etc.). Resetează același
