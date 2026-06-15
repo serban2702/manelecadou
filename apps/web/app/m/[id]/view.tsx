@@ -28,6 +28,9 @@ const IN_PROGRESS_STATUSES = new Set([
   'pending', 'queued', 'writing_lyrics', 'checking_lyrics', 'generating_audio', 'running',
 ]);
 
+/** O variantă redabilă pe pagină (vine din payload-ul backend, câmpul `variants`). */
+type PlayableVariant = { id: string; kind: 'main' | 'bonus' | 'variation'; label: string; audioUrl: string };
+
 function ShareGenerationViewInner() {
   const t = useTranslations('mViewPage');
   const tLive = useTranslations('generator.live');
@@ -256,24 +259,32 @@ function ShareGenerationViewInner() {
         />
       )}
 
-      {g.audioUrl && (
-        <div style={{ marginTop: 16 }}>
-          <ManeaPlayer
-            audioUrl={resolveMediaUrl(g.audioUrl)!}
-            title={t('version1')}
-            subtitle={isPaid ? t('full') : t('demo30')}
-          />
-        </div>
-      )}
-      {g.bonusAudioUrl && (
-        <div style={{ marginTop: 12 }}>
-          <ManeaPlayer
-            audioUrl={resolveMediaUrl(g.bonusAudioUrl)!}
-            title={t('version2')}
-            subtitle={isPaid ? t('full') : t('demo30')}
-          />
-        </div>
-      )}
+      {(() => {
+        // Lista variantelor afișate clientului: din backend (`variants` = piesa
+        // principală + bonus + toate variațiile puse de admin) cu fallback pe
+        // câmpurile clasice. Clientul le ascultă pe toate și o alege pe care vrea.
+        const variantList = (g as typeof g & { variants?: PlayableVariant[] }).variants;
+        const list: PlayableVariant[] = variantList && variantList.length > 0
+          ? variantList
+          : [
+              ...(g.audioUrl ? [{ id: g.id, kind: 'main' as const, label: 'main', audioUrl: g.audioUrl }] : []),
+              ...(g.bonusAudioUrl ? [{ id: g.id, kind: 'bonus' as const, label: 'bonus', audioUrl: g.bonusAudioUrl }] : []),
+            ];
+        if (list.length === 0) return null;
+        // „Versiunea" derivat din traducere (scoatem cifra finală) ca să
+        // numerotăm 1..N în orice limbă, fără chei i18n noi.
+        const versionWord = t('version1').replace(/[\s\d]+$/u, '').trim() || t('version1');
+        const single = list.length === 1;
+        return list.map((v, i) => (
+          <div key={`${v.id}:${v.kind}:${i}`} style={{ marginTop: i === 0 ? 16 : 12 }}>
+            <ManeaPlayer
+              audioUrl={resolveMediaUrl(v.audioUrl)!}
+              title={single ? t('version1') : `${versionWord} ${i + 1}`}
+              subtitle={isPaid ? t('full') : t('demo30')}
+            />
+          </div>
+        ));
+      })()}
 
       {!isPaid && g.status === 'succeeded' && g.audioUrl && (
         <PaywallSection generationId={g.id} />

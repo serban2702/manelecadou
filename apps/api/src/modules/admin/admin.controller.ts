@@ -617,6 +617,14 @@ export class AdminController {
     return this.generationsService.adminResendDeliveryEmail(id);
   }
 
+  /** Scoate de pe pagina clientului piesa principală (`main`) sau bonusul (`bonus`). */
+  @Post('generations/:id/clear-slot')
+  async clearSlot(@Param('id') id: string, @Body('slot') slot: 'main' | 'bonus') {
+    if (slot !== 'main' && slot !== 'bonus') throw new BadRequestException('slot invalid (main|bonus)');
+    const g = await this.generationsService.adminClearSlot(id, slot);
+    return { ok: true, id: g.id, audioUrl: g.audioUrl, bonusAudioUrl: g.bonusAudioUrl };
+  }
+
   @Post('generations/:id/retry')
   async retryGeneration(@Param('id') id: string) {
     const g = await this.generationsService.adminRetry(id);

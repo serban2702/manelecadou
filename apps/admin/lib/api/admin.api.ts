@@ -405,6 +405,13 @@ export class AdminApi {
   static generationResendEmail(id: string): Promise<{ ok: boolean }> {
     return http.post(`/admin/generations/${id}/resend-email`);
   }
+  /** Scoate de pe pagina clientului piesa principală (`main`) sau bonusul (`bonus`). */
+  static generationClearSlot(
+    id: string,
+    slot: 'main' | 'bonus',
+  ): Promise<{ ok: boolean; id: string; audioUrl: string | null; bonusAudioUrl: string | null }> {
+    return http.post(`/admin/generations/${id}/clear-slot`, { slot });
+  }
   static generationPromote(
     variationId: string,
     body: { slot: 'main' | 'bonus'; notify?: boolean },

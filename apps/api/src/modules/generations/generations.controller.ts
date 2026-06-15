@@ -264,7 +264,9 @@ export class GenerationsController {
       // NU expunem hash-ul parolei către client.
       const hasUnlockPassword = !!sanitized.unlockPasswordHash;
       delete sanitized.unlockPasswordHash;
-      return { ...sanitized, isOwner: true, hasUnlockPassword, unlocked: true };
+      const ownerPaid = g.type === 'full' || g.paidUnlocked === true;
+      const variants = await this.svc.listPlayableVariants(g, ownerPaid);
+      return { ...sanitized, isOwner: true, hasUnlockPassword, unlocked: true, variants };
     } catch {
       // Fallback: orice generation succeeded e accesibil public cu URL-ul direct.
       // Pentru demo neplătit → expunem demoAudioUrl. Pentru paidUnlocked sau type='full'
@@ -294,6 +296,7 @@ export class GenerationsController {
         voiceArtist: pub.voiceArtist,
         audioUrl: isPaid ? pub.audioUrl : pub.demoAudioUrl,
         bonusAudioUrl: isPaid ? pub.bonusAudioUrl : pub.demoBonusAudioUrl,
+        variants: await this.svc.listPlayableVariants(pub, isPaid),
         coverUrl: pub.coverUrl,
         lyrics: pub.lyrics,
         paidUnlocked: pub.paidUnlocked,

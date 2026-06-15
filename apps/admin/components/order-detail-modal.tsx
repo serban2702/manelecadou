@@ -1083,8 +1083,8 @@ function StudioTab({ data, refetch }: { data: OrderDetail; refetch: () => Promis
       {/* ===== Toate piesele generate ===== */}
       <Section
         icon={<Music2 className="h-4 w-4" />}
-        title="Toate piesele generate"
-        subtitle="Piesa live + variațiile (generate cu AI sau MP3-uri încărcate de tine). Promovează, rearanjează sau șterge."
+        title="Variantele de pe pagina clientului"
+        subtitle="TOT ce e aici apare pe pagina melodiei — clientul ascultă și alege. Adaugă cu butonul Încarcă MP3, șterge variantele sau scoate originalele."
         badge={String((variations.data?.length ?? 0) + 1)}
         right={
           <label
@@ -1105,8 +1105,18 @@ function StudioTab({ data, refetch }: { data: OrderDetail; refetch: () => Promis
           </label>
         }
       >
-        {/* Piesa principală — cea livrată clientului, nu se poate șterge */}
-        <PrincipalCard g={g} />
+        {/* Originalele (main + bonus) — apar pe pagină; le poți scoate individual */}
+        <PrincipalCard
+          g={g}
+          acting={!!acting}
+          onClearSlot={(slot) =>
+            act(
+              `clear-${slot}`,
+              () => AdminApi.generationClearSlot(g.id, slot),
+              slot === 'main' ? 'Piesa principală scoasă de pe pagină' : 'Bonusul scos de pe pagină',
+            )
+          }
+        />
 
         {!variations.data || variations.data.length === 0 ? (
           <div className="mt-2.5 rounded-xl border border-dashed border-white/10 bg-black/20 px-4 py-6 text-center">
@@ -1323,34 +1333,55 @@ function SlotToggle({ value, onChange }: { value: 'main' | 'bonus'; onChange: (v
   );
 }
 
-function PrincipalCard({ g }: { g: NonNullable<OrderDetail['generation']> }) {
-  const ready = g.status === 'succeeded' && !!g.audioUrl;
-  const audio = g.audioUrl ?? g.demoAudioUrl;
-  const bonus = g.bonusAudioUrl ?? g.demoBonusAudioUrl;
+function PrincipalCard({
+  g,
+  acting,
+  onClearSlot,
+}: {
+  g: NonNullable<OrderDetail['generation']>;
+  acting: boolean;
+  onClearSlot: (slot: 'main' | 'bonus') => void;
+}) {
+  const mainAudio = g.audioUrl ?? g.demoAudioUrl;
+  const bonusAudio = g.bonusAudioUrl ?? g.demoBonusAudioUrl;
+  if (!mainAudio && !bonusAudio) {
+    return (
+      <div className="rounded-xl border border-amber-400/20 bg-amber-500/[0.04] px-4 py-3 text-[11px] leading-relaxed text-muted-foreground">
+        Piesa principală nu mai are audio (scoasă de pe pagină). Pe pagina clientului apar doar
+        variantele de mai jos. Poți promova una ca principală, dacă vrei.
+      </div>
+    );
+  }
+  const SlotRow = ({ slot, label, audio }: { slot: 'main' | 'bonus'; label: string; audio: string }) => (
+    <div className="flex items-center gap-2">
+      <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-200">{label}</span>
+      <audio controls src={audio} className="h-8 min-w-0 flex-1" />
+      <button
+        type="button"
+        disabled={acting}
+        onClick={() => onClearSlot(slot)}
+        title={`Scoate „${label}" de pe pagina clientului`}
+        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-rose-400/25 bg-rose-500/10 px-2 py-1 text-[11px] font-medium text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <Trash2 className="h-3 w-3" /> Scoate
+      </button>
+    </div>
+  );
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-amber-400/30 bg-amber-500/[0.06] p-3">
       <div className="flex items-center gap-2">
         <Badge variant="warning" className="shrink-0">
-          <Sparkles className="mr-1 h-3 w-3" /> Principală · live
+          <Sparkles className="mr-1 h-3 w-3" /> Originale (live)
         </Badge>
-        {ready ? <StatusBadge status={g.status} /> : (
-          <span className="inline-flex items-center gap-1 text-[11px] text-amber-300">{g.status}</span>
-        )}
-        <span className="ml-auto text-[10px] text-muted-foreground">livrată clientului</span>
+        <StatusBadge status={g.status} />
+        <span className="ml-auto text-[10px] text-muted-foreground">apar pe pagina clientului</span>
       </div>
       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
         <code className="rounded bg-white/5 px-1.5 py-0.5">{g.style}</code>
         <span>{voiceLabel(g.voiceArtist)}</span>
       </div>
-      {audio && (
-        <div className="space-y-1">
-          <audio controls src={audio} className="h-8 w-full" />
-          {bonus && <audio controls src={bonus} className="h-8 w-full" />}
-        </div>
-      )}
-      <p className="text-[10px] text-muted-foreground/70">
-        Aceasta e piesa activă. Ca s-o schimbi, promovează o variație de mai jos.
-      </p>
+      {mainAudio && <SlotRow slot="main" label="Principală" audio={mainAudio} />}
+      {bonusAudio && <SlotRow slot="bonus" label="Bonus" audio={bonusAudio} />}
     </div>
   );
 }

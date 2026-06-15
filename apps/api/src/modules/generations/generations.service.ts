@@ -182,6 +182,63 @@ export class GenerationsService {
     return this.repo.findOne({ where: { id } });
   }
 
+  /**
+   * Lista variantelor REDABILE pe pagina publică /m/<id>, în ordinea afișării:
+   * piesa principală (main + bonus) + toate variațiile-copil succeeded. Dedup pe
+   * path normalizat (o variație promovată în principală nu apare de două ori).
+   * Întoarce demo sau full în funcție de plată — nu scurge full-ul către neplătiți.
+   */
+  async listPlayableVariants(
+    gen: Generation,
+    isPaid: boolean,
+  ): Promise<Array<{ id: string; kind: 'main' | 'bonus' | 'variation'; label: string; audioUrl: string }>> {
+    const out: Array<{ id: string; kind: 'main' | 'bonus' | 'variation'; label: string; audioUrl: string }> = [];
+    const seen = new Set<string>();
+    const push = (
+      id: string,
+      kind: 'main' | 'bonus' | 'variation',
+      label: string,
+      url: string | null | undefined,
+    ) => {
+      if (!url) return;
+      const key = stripCacheBust(url);
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ id, kind, label, audioUrl: url });
+    };
+    push(gen.id, 'main', gen.variationLabel ?? 'Principală', isPaid ? gen.audioUrl : gen.demoAudioUrl);
+    push(gen.id, 'bonus', 'Bonus', isPaid ? gen.bonusAudioUrl : gen.demoBonusAudioUrl);
+    const variations = await this.repo.find({
+      where: { parentGenerationId: gen.id, status: 'succeeded' },
+      order: { sortOrder: 'ASC', createdAt: 'ASC' },
+      take: 50,
+    });
+    for (const v of variations) {
+      push(v.id, 'variation', v.variationLabel ?? 'Variație', isPaid ? v.audioUrl : v.demoAudioUrl);
+    }
+    return out;
+  }
+
+  /**
+   * Scoate de pe pagina clientului piesa principală (`main`) sau bonusul
+   * (`bonus`) — golește slotul (audio + demo). Folosit ca admin să șteargă de pe
+   * pagină variantele „deja generate" (originalele Suno), păstrând doar ce vrea.
+   */
+  async adminClearSlot(generationId: string, slot: 'main' | 'bonus'): Promise<Generation> {
+    const gen = await this.repo.findOne({ where: { id: generationId } });
+    if (!gen) throw new NotFoundException('Generation not found');
+    if (slot === 'main') {
+      gen.audioUrl = null;
+      gen.demoAudioUrl = null;
+    } else {
+      gen.bonusAudioUrl = null;
+      gen.demoBonusAudioUrl = null;
+    }
+    const saved = await this.repo.save(gen);
+    this.logger.warn(`[admin-clear-slot] generation=${saved.id} slot=${slot}`);
+    return saved;
+  }
+
   /** Owner setează (sau șterge cu password=null/'') parola de deblocare a
    *  conținutului privat (poze custom + colaje). Doar owner-ul (findOne throws). */
   async setUnlockPassword(
