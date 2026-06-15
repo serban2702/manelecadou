@@ -1267,6 +1267,7 @@ function LyricsStep({
 }) {
   const site = useSite();
   const tg = useTranslations('generator');
+  const tc = useTranslations('common');
   const [text, setText] = useState(data.customLyrics || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1276,6 +1277,8 @@ function LyricsStep({
   // false = vede versurile + butoanele [Nu îmi plac][Îmi plac];
   // true = a apăsat „Nu îmi plac" → apare feedback-ul + [Înapoi][Regenerează].
   const [feedbackMode, setFeedbackMode] = useState(false);
+  // true după ce „Refă cu AI" a fost apăsat cu feedback gol → highlight roșu pe câmp.
+  const [feedbackErr, setFeedbackErr] = useState(false);
   const startedRef = useRef(false);
 
   const regenLeft = MAX_LYRICS_REGENS - data.lyricsRegenCount;
@@ -1333,9 +1336,10 @@ function LyricsStep({
   const onRegen = () => {
     if (loading || regenLeft <= 0) return;
     if (!feedback.trim()) {
-      setError(tg('lyricsReview.errFeedbackEmpty'));
+      setFeedbackErr(true); // câmp gol → eroare roșie pe câmp (ca la ceilalți pași)
       return;
     }
+    setFeedbackErr(false);
     upd('lyricsRegenCount', data.lyricsRegenCount + 1);
     const fb = feedback.trim();
     setFeedback('');
@@ -1438,22 +1442,28 @@ function LyricsStep({
               </label>
               <textarea
                 value={feedback}
-                onChange={(e) => setFeedback(e.target.value)}
+                onChange={(e) => { setFeedback(e.target.value); if (feedbackErr) setFeedbackErr(false); }}
                 placeholder={tg('lyricsReview.feedbackPlaceholder')}
                 rows={2}
                 maxLength={2000}
-                autoFocus
                 disabled={regenLeft <= 0 || loading}
                 style={{
                   width: '100%', resize: 'vertical', padding: '10px 12px', borderRadius: 8,
-                  background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: feedbackErr ? '1px solid var(--rose)' : '1px solid var(--line)',
                   color: 'var(--cream)', fontSize: 13, fontFamily: 'inherit',
                   opacity: regenLeft <= 0 ? 0.5 : 1,
                 }}
               />
-              <div style={{ fontSize: 11, color: regenLeft > 0 ? 'rgba(255,245,220,0.55)' : '#ffb3b3', fontWeight: 600, marginTop: 8 }}>
-                {regenLeft > 0 ? tg('lyricsReview.regensLeft', { count: regenLeft }) : tg('lyricsReview.regensExhausted')}
-              </div>
+              {feedbackErr ? (
+                <div style={{ fontSize: 12, color: 'var(--rose)', fontWeight: 700, marginTop: 8 }}>
+                  {tg('lyricsReview.errFeedbackEmpty')}
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: regenLeft > 0 ? 'rgba(255,245,220,0.55)' : '#ffb3b3', fontWeight: 600, marginTop: 8 }}>
+                  {regenLeft > 0 ? tg('lyricsReview.regensLeft', { count: regenLeft }) : tg('lyricsReview.regensExhausted')}
+                </div>
+              )}
             </div>
           )}
 
@@ -1476,7 +1486,7 @@ function LyricsStep({
                 <button
                   type="button"
                   className="btn btn-ghost btn-lg"
-                  onClick={() => { setError(null); setRejected(null); setFeedbackMode(true); }}
+                  onClick={() => { setError(null); setRejected(null); setFeedbackErr(false); setFeedbackMode(true); }}
                   disabled={loading || validating}
                   style={{ flex: 1, opacity: loading || validating ? 0.5 : 1 }}
                 >
@@ -1499,20 +1509,20 @@ function LyricsStep({
                 <button
                   type="button"
                   className="btn btn-ghost btn-lg"
-                  onClick={() => { setError(null); setFeedbackMode(false); }}
+                  onClick={() => { setError(null); setFeedbackErr(false); setFeedbackMode(false); }}
                   disabled={loading}
                   style={{ flex: 1, opacity: loading ? 0.5 : 1 }}
                 >
-                  ← {tg('lyricsReview.backCta')}
+                  {tc('cancel')}
                 </button>
                 <button
                   type="button"
                   className="btn btn-gold btn-lg"
                   onClick={onRegen}
-                  disabled={regenLeft <= 0 || loading || !feedback.trim()}
-                  style={{ flex: 1, opacity: regenLeft <= 0 || loading || !feedback.trim() ? 0.5 : 1 }}
+                  disabled={regenLeft <= 0 || loading}
+                  style={{ flex: 1, opacity: regenLeft <= 0 || loading ? 0.5 : 1 }}
                 >
-                  {loading ? tg('lyricsReview.regenerating') : `🔁 ${tg('lyricsReview.regenCta')}`}
+                  {loading ? tg('lyricsReview.regenerating') : tg('lyricsReview.regenCta')}
                 </button>
               </>
             )}
