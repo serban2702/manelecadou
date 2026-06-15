@@ -137,22 +137,33 @@ export function Analytics() {
   const GA_ID = site.analytics?.ga4Id ?? '';
   const META_PIXEL_ID = site.analytics?.metaPixelId ?? '';
   const TIKTOK_PIXEL_ID = site.analytics?.tiktokPixelId ?? '';
+  const GADS_ID = site.analytics?.googleAdsConversionId ?? '';
+  const GADS_PURCHASE_LABEL = site.analytics?.googleAdsPurchaseLabel ?? '';
+
+  // `gtag.js` e un singur loader pentru ambele produse Google: GA4 (`G-...`) și
+  // Google Ads (`AW-...`). Îl încărcăm o dată cu primul ID disponibil, apoi
+  // configurăm fiecare destinație separat. Astfel un site poate avea doar Google
+  // Ads, doar GA4, sau ambele — fără să dublăm scriptul.
+  const gtagLoaderId = GA_ID || GADS_ID;
 
   return (
     <>
-      {GA_ID && (
+      {gtagLoaderId && (
         <>
           <Script
-            key={`ga4-loader-${GA_ID}`}
-            src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`}
+            key={`gtag-loader-${gtagLoaderId}`}
+            src={`https://www.googletagmanager.com/gtag/js?id=${gtagLoaderId}`}
             strategy="afterInteractive"
           />
-          <Script id="ga4" key={`ga4-init-${GA_ID}`} strategy="afterInteractive">
+          <Script id="gtag-init" key={`gtag-init-${GA_ID}-${GADS_ID}`} strategy="afterInteractive">
             {`
               window.dataLayer = window.dataLayer || [];
               function gtag(){dataLayer.push(arguments);}
               gtag('js', new Date());
-              gtag('config', '${GA_ID}', { send_page_view: true });
+              ${GA_ID ? `gtag('config', '${GA_ID}', { send_page_view: true });` : ''}
+              ${GADS_ID ? `gtag('config', '${GADS_ID}');` : ''}
+              // Config Google Ads citit de track('Purchase') din lib/tracking.ts.
+              window.__mcGads = { id: ${JSON.stringify(GADS_ID)}, purchaseLabel: ${JSON.stringify(GADS_PURCHASE_LABEL)} };
             `}
           </Script>
         </>

@@ -30,6 +30,15 @@ export interface SiteAnalytics {
   ga4Id?: string;
   metaPixelId?: string;
   tiktokPixelId?: string;
+  /** Google Ads Conversion ID — din Google Ads → Goals → Conversions → Tag setup.
+   *  Format `AW-XXXXXXXXX`. Public (apare oricum în HTML-ul paginii). `gtag.js` se
+   *  încarcă o singură dată și deservește atât GA4 (`G-...`) cât și Google Ads
+   *  (`AW-...`) prin `gtag('config', ...)` separate. */
+  googleAdsConversionId?: string;
+  /** Conversion label pentru achiziție — din acțiunea de conversie „Purchase" din
+   *  Google Ads (eticheta apare ca `AW-XXXXXXXXX/AbC-D_efGh`; stocăm doar partea de
+   *  după `/`). Folosit la `gtag('event','conversion', { send_to })` pe Purchase. */
+  googleAdsPurchaseLabel?: string;
   /** ID-ul contului de ads Meta (partea numerică din `act_1234567890`). Folosit de
    *  Marketing API pentru a trage spend-ul defalcat pe campanie. */
   metaAdAccountId?: string;

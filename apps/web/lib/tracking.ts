@@ -67,6 +67,9 @@ declare global {
     };
     fbq?: (...args: unknown[]) => void;
     gtag?: (...args: unknown[]) => void;
+    /** Config Google Ads per-site, expus de <Analytics>. `id` = `AW-XXXXXXXXX`,
+     *  `purchaseLabel` = eticheta acțiunii de conversie „Purchase". */
+    __mcGads?: { id?: string; purchaseLabel?: string };
   }
 }
 
@@ -151,6 +154,28 @@ export function track(event: TrackEventName, params: TrackParams = {}): string {
       });
     } catch (e) {
       console.warn('[tracking] gtag failed', e);
+    }
+  }
+
+  // Google Ads — conversie pe achiziție (cont separat de GA4; alimentează Smart
+  // Bidding). Conversion ID + label sunt per-site, expuse pe window de <Analytics>.
+  // gtag.js e deja încărcat (îl partajează cu GA4). Fără Consent Mode intenționat —
+  // aceeași decizie ca la Meta (tracking fără banner de consimțământ).
+  if (window.gtag && event === 'Purchase') {
+    const gads = window.__mcGads;
+    if (gads?.id && gads.purchaseLabel) {
+      try {
+        window.gtag('event', 'conversion', {
+          send_to: `${gads.id}/${gads.purchaseLabel}`,
+          value: params.value,
+          currency: params.currency,
+          // transaction_id stabil per achiziție (generationId) → Google Ads
+          // dedup-uiește dacă userul reîncarcă pagina de succes.
+          transaction_id: params.content_id,
+        });
+      } catch (e) {
+        console.warn('[tracking] gads conversion failed', e);
+      }
     }
   }
 

@@ -30,7 +30,13 @@ export interface SiteConfig {
     faviconUrl?: string;
   };
   seo: { title?: string; description?: string; keywords?: string };
-  analytics: { ga4Id?: string; metaPixelId?: string; tiktokPixelId?: string };
+  analytics: {
+    ga4Id?: string;
+    metaPixelId?: string;
+    tiktokPixelId?: string;
+    googleAdsConversionId?: string;
+    googleAdsPurchaseLabel?: string;
+  };
   social?: {
     instagram?: string;
     facebook?: string;

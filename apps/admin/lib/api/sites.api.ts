@@ -32,6 +32,8 @@ export interface SiteDto {
     ga4Id?: string;
     metaPixelId?: string;
     tiktokPixelId?: string;
+    googleAdsConversionId?: string;
+    googleAdsPurchaseLabel?: string;
     metaAdAccountId?: string;
     tiktokAdvertiserId?: string;
   };

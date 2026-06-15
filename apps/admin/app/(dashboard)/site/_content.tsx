@@ -829,6 +829,20 @@ function BrandSeoTab({ siteId, form, setForm }: { siteId: string; form: SiteDto;
             onChange={(e) => setForm({ ...form, analyticsSecrets: { ...form.analyticsSecrets, tiktokAccessToken: e.target.value } })}
           />
         </Field>
+        <Field label="Google Ads Conversion ID" description={'Din Google Ads → Goals → Conversions → alegi acțiunea → „Tag setup". Format „AW-XXXXXXXXX". gtag.js e partajat cu GA4 — nu se dublează scriptul.'}>
+          <Input
+            value={form.analytics?.googleAdsConversionId ?? ''}
+            onChange={(e) => setForm({ ...form, analytics: { ...form.analytics, googleAdsConversionId: e.target.value } })}
+            placeholder="AW-XXXXXXXXX"
+          />
+        </Field>
+        <Field label="Google Ads — Conversion label (Purchase)" description={'Partea de după „/" din eticheta acțiunii de conversie „Purchase" (din „AW-123456789/AbC-D_efGh" pui doar „AbC-D_efGh"). Conversia se declanșează la plata reușită, cu valoare + transaction_id.'}>
+          <Input
+            value={form.analytics?.googleAdsPurchaseLabel ?? ''}
+            onChange={(e) => setForm({ ...form, analytics: { ...form.analytics, googleAdsPurchaseLabel: e.target.value } })}
+            placeholder="AbC-D_efGh"
+          />
+        </Field>
       </Section>
 
       <Section title="Cheltuieli ads (Marketing API)">
