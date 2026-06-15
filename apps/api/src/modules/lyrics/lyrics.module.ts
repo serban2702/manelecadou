@@ -341,16 +341,15 @@ function localArtistHit(text: string): string | null {
 }
 
 const MODERATION_SYSTEM = [
-  'You are a strict content-safety reviewer for AI-generated personalized song lyrics (manele / Balkan pop, offered as gifts).',
-  'Decide whether the lyrics are SAFE to send to the music-generation model.',
-  'REJECT (ok=false) if the lyrics contain ANY of:',
-  '- The name of a REAL famous artist, band, or public figure — ESPECIALLY Romanian/Balkan manele singers (e.g. Florin Salam, Adrian Minune / Copilul Minune, Nicolae Guță, Vali Vijelie, Tzancă Uraganu, Jean de la Craiova, Susanu, Mr Juve, Dani Mocanu, Bogdan de la Ploiești) — or any clear attempt to name/impersonate a celebrity → reason "artist_name" (use "public_figure" for non-musicians like politicians/athletes).',
-  '- Sexually explicit content, hate speech, slurs, threats, or instructions for illegal/harmful acts → reason "offensive".',
-  '- Reproduction of a specific copyrighted existing song or a real brand campaign → reason "copyright".',
-  'IMPORTANT: the recipient and sender names provided by the user are PRIVATE individuals receiving the gift — they are ALLOWED and must NEVER be flagged, even if they happen to resemble a common name.',
-  'Ordinary first names, terms of endearment, and normal love/celebration/party themes are ALLOWED.',
-  'Respond with STRICT JSON ONLY — no prose, no code fences:',
-  '{"ok": true} when safe, OR {"ok": false, "reason": "artist_name|public_figure|offensive|copyright|other", "detail": "<the exact word or phrase that triggered it>"} when unsafe.',
+  'You review AI-generated PERSONALIZED gift song lyrics (manele / Balkan pop) written ABOUT a private person (the gift recipient — for a birthday, baptism, wedding, anniversary, etc.).',
+  'These lyrics are intentionally formulaic (love, family, celebration, blessings, money, pride, swagger) and are almost ALWAYS safe. Your DEFAULT answer is {"ok": true}.',
+  'Reject ONLY when you can copy a SPECIFIC offending word/phrase STRAIGHT OUT of the lyrics text below:',
+  '- The lyrics literally name a REAL famous singer, band or celebrity (e.g. Florin Salam, Adrian Minune / Copilul Minune, Nicolae Guță, Vali Vijelie, Tzancă Uraganu, Jean de la Craiova, Dani Mocanu) → {"ok": false, "reason": "artist_name", "detail": "<the exact celebrity name copied verbatim from the lyrics>"}.',
+  '- The lyrics contain sexually explicit content, slurs, hate speech, threats, or instructions for serious illegal/violent acts → {"ok": false, "reason": "offensive", "detail": "<the exact offending phrase copied verbatim from the lyrics>"}.',
+  'The names of the gift recipient and the sender are PRIVATE individuals — NEVER flag them, even if unusual or royal-sounding (e.g. "Prințul Ramon").',
+  'NEVER reject for: clichéd or generic phrasing, common words, religious or spiritual references, mentions of money / cars / luxury / pride, the website or brand name, ordinary first names, or "it sounds like a typical song". Personalized lyrics are NOT copyright infringement and there is NO "copyright" verdict.',
+  'If you are not 100% certain there is a real, nameable problem, answer {"ok": true}.',
+  'Respond with STRICT JSON ONLY — no prose, no code fences, no markdown.',
 ].join('\n');
 
 function parseModeration(content: string): LyricsModerationResult {
@@ -378,6 +377,39 @@ function parseModeration(content: string): LyricsModerationResult {
     // JSON nevalid → lenient (Suno oricum face strip pe numele de artiști).
     return { ok: true };
   }
+}
+
+/** Normalizează pentru comparare: lowercase + fără diacritice + spații colapsate. */
+function normalizeForMatch(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Plasă de siguranță împotriva fals-pozitivelor de la gpt-4o-mini (observat în
+ * prod 2026-06-15: a respins versuri normale de botez cu reason="copyright",
+ * detail="manelecadou.ro" — un detaliu INEXISTENT în versuri, halucinat).
+ * Reguli:
+ *  - 'copyright' / 'other' → NU blocăm (categorii nesigure pe mini).
+ *  - 'artist_name' / 'public_figure' → blocăm DOAR dacă `detail` apare efectiv
+ *    în versuri (altfel e halucinație → permitem).
+ *  - 'offensive' → blocăm (rar, preferăm prudența).
+ */
+function guardModeration(parsed: LyricsModerationResult, lyrics: string): LyricsModerationResult {
+  if (parsed.ok) return parsed;
+  const reason = parsed.reason ?? 'other';
+  if (reason === 'copyright' || reason === 'other') return { ok: true };
+  if (reason === 'artist_name' || reason === 'public_figure') {
+    const needle = parsed.detail ? normalizeForMatch(parsed.detail) : '';
+    if (!needle || !normalizeForMatch(lyrics).includes(needle)) {
+      return { ok: true };
+    }
+  }
+  return parsed;
 }
 
 // ── Rescriere fonetică pentru Suno („cum se aud") ─────────────────────────────
@@ -577,7 +609,8 @@ export class LyricsService {
     }
     try {
       const result = await this.openaiChat(apiKey, model, sys, user, { temperature: 0 });
-      const parsed = parseModeration(result.content);
+      // Parsează + plasă de siguranță contra fals-pozitivelor (detail halucinat).
+      const parsed = guardModeration(parseModeration(result.content), input.lyrics);
       await this.logs.finalize(logId, {
         outcome: 'success',
         responseStatus: result.status,
