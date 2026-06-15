@@ -452,6 +452,9 @@
       "errValidate": "Nu am putut verifica versurile. Mai încearcă.",
       "errFeedbackEmpty": "Scrie ce ai vrea să schimbăm.",
       "errEmpty": "Versurile nu pot fi goale.",
+      "likeCta": "Îmi plac",
+      "dislikeCta": "Nu îmi plac",
+      "backCta": "Înapoi",
       "rejected": {
         "artist_name": "Versurile conțin numele unui artist real. Te rugăm să-l scoți — nu putem folosi nume de artiști celebri.",
         "public_figure": "Versurile conțin numele unei persoane publice. Te rugăm să-l scoți.",

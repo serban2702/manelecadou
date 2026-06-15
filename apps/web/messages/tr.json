@@ -454,6 +454,9 @@
       "errValidate": "Sözleri kontrol edemedim. Tekrar dene.",
       "errFeedbackEmpty": "Neyi değiştirmek istediğini yaz.",
       "errEmpty": "Sözler boş olamaz.",
+      "likeCta": "Beğendim",
+      "dislikeCta": "Beğenmedim",
+      "backCta": "Geri",
       "rejected": {
         "artist_name": "Sözler gerçek bir sanatçının adını içeriyor. Lütfen çıkar — ünlü sanatçı isimleri kullanamayız.",
         "public_figure": "Sözler tanınmış bir kişinin adını içeriyor. Lütfen çıkar.",

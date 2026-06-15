@@ -454,6 +454,9 @@
       "errValidate": "Nismo uspeli da proverimo tekst. Pokušaj opet.",
       "errFeedbackEmpty": "Napiši šta bi želeo da promenimo.",
       "errEmpty": "Tekst ne može biti prazan.",
+      "likeCta": "Sviđaju mi se",
+      "dislikeCta": "Ne sviđaju mi se",
+      "backCta": "Nazad",
       "rejected": {
         "artist_name": "Tekst sadrži ime pravog izvođača. Molimo te izbaci ga — ne možemo da koristimo imena poznatih izvođača.",
         "public_figure": "Tekst sadrži ime javne ličnosti. Molimo te izbaci ga.",

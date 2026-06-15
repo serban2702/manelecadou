@@ -454,6 +454,9 @@
       "errValidate": "Besedila nismo mogli preveriti. Poskusi znova.",
       "errFeedbackEmpty": "Napiši, kaj naj spremenimo.",
       "errEmpty": "Besedilo ne sme biti prazno.",
+      "likeCta": "Všeč so mi",
+      "dislikeCta": "Niso mi všeč",
+      "backCta": "Nazaj",
       "rejected": {
         "artist_name": "Besedilo vsebuje ime resničnega izvajalca. Prosimo, odstrani ga — ne moremo uporabljati imen znanih izvajalcev.",
         "public_figure": "Besedilo vsebuje ime javne osebe. Prosimo, odstrani ga.",
