@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Repository } from 'typeorm';
+import { In, IsNull, MoreThan, Repository } from 'typeorm';
 import { Conversation, AiChatMode } from './conversation.entity';
 import { ChatMessage, ChatMessageType, ChatMessagePayload } from './message.entity';
 import { QuickReply } from './quick-reply.entity';
@@ -1663,6 +1663,23 @@ export class ChatService implements OnModuleInit {
       'Felicitări, ai un cadou super! 🎤 Mulțumim că ne-ai dat o șansă să fim parte din momentul ăsta. ❤️',
       'Mă bucur că totul a ieșit cum trebuie! 🎶 Mulțumim mult, ne vedem la următoarea manea! ✨',
     ];
+    // GUARD anti-spam (2026-06-17, audit conv af0b5a7d): când se completează mai multe
+    // generații pentru aceeași conversație în câteva secunde (variante/regenerări
+    // duplicate), fiecare ar apela acest thank-you → clientul primea „Felicitări, ai un
+    // cadou super!" de 3 ori la rând. Trimitem UN SINGUR mesaj de mulțumire per fereastră
+    // de 3 minute. (Cauza rădăcină — generările duplicate — e separată, vezi audit.)
+    const recentThankYou = await this.msg.findOne({
+      where: {
+        conversationId,
+        authorRole: 'admin',
+        messageType: 'text',
+        aiGenerated: true,
+        body: In(variants),
+        createdAt: MoreThan(new Date(Date.now() - 3 * 60 * 1000)),
+      },
+    });
+    if (recentThankYou) return;
+
     const text = variants[Math.floor(Math.random() * variants.length)];
     const conv = await this.conv.findOne({ where: { id: conversationId } });
     if (!conv) return;
