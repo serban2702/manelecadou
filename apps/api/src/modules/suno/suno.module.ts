@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AuthModule } from '../auth/auth.module';
 import { AdminGuard } from '../../common/admin.guard';
 import { SunoProvider } from './suno.types';
 import { SunoMockProvider } from './providers/suno.mock.provider';
@@ -18,8 +18,16 @@ import { SunoCreditMonitorService } from './suno-credit-monitor.service';
 @Module({
   imports: [
     ConfigModule,
-    AuthModule,
     TypeOrmModule.forFeature([SunoLog, SunoCreditPurchase, SunoCreditMonitorState]),
+    // JwtModule local cu același secret ca AuthModule — pentru AdminGuard pe
+    // controllerul de credite. NU importa AuthModule aici: SitesModule importă
+    // SunoModule, deci AuthModule → SitesModule → SunoModule → AuthModule ar fi
+    // o dependență circulară (vezi sites.module.ts pentru același pattern).
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({ secret: config.get<string>('JWT_SECRET') }),
+    }),
   ],
   controllers: [SunoController, SunoCreditsController],
   providers: [
