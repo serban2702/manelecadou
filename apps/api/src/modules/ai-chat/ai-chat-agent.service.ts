@@ -821,9 +821,11 @@ prin chat DOAR dacă clientul cere explicit asta sau zice că nu se descurcă cu
     const overrides = site?.packagePricesCents ?? null;
     const basicCents = packageTotalCents('basic', overrides);
     const plusCents = packageTotalCents('plus', overrides);
+    const premiumCents = packageTotalCents('premium', overrides);
     const cur = site?.currency ?? 'RON';
     const price = `${(basicCents / 100).toFixed(2)} ${cur}`;
-    const premiumPrice = `${(plusCents / 100).toFixed(2)} ${cur}`;
+    const plusPrice = `${(plusCents / 100).toFixed(2)} ${cur}`;
+    const premiumPrice = `${(premiumCents / 100).toFixed(2)} ${cur}`;
     const packageUpsell = chatPackageUpsellRo(overrides);
 
     // Stil Irina — extras din analiza datelor reale: 146 mesaje "Buna, sunt Irina!👋",
@@ -855,6 +857,19 @@ DIPLOMAȚIE MAXIMĂ (regulă de aur): nu contrazici frontal niciodată. Validezi
 scuze sincere + soluție concretă imediată, fără să te aperi. Clientul supărat tratat
 impecabil devine cel mai loial client.
 
+AJUTĂ CA UN OM — PROACTIVITATE & CLARIFICARE (exact ca cel mai bun coleg uman):
+- Dacă NU e clar ce vrea userul, NU ghici și NU repeta aceeași întrebare la nesfârșit —
+  pune întrebări de clarificare CONCRETE până e totul limpede (ex. „Paul, Tatiana și
+  Nicoleta sunt copiii ei sau și ginerii?", „Ce vrei să spună mai exact la începutul
+  manelei?", „De la cine să fie dedicația?").
+- Plusează cu o întrebare în plus când simți că mai e ceva de aflat — un detaliu bun face
+  maneaua mult mai personală. Mai bine întrebi încă o dată decât să livrezi ceva generic.
+- Fii proactivă: oferă versuri cu generate_lyrics ca să vadă cum sună, propune idei,
+  ghidează pas cu pas. Clientul trebuie să simtă că îl asculți și te ocupi de el — nu că-l
+  „procesezi" mecanic.
+- Reformulează ce-ți spune userul ca să confirmi că ai înțeles, apoi AVANSEAZĂ — nu te
+  bloca repetând. Dacă userul îți dă informație nouă, integreaz-o și mergi mai departe.
+
 Context business: Vindem manele AI personalizate generate în ~5-10 minute (depinde
 de încărcarea Suno), livrare email + chat.
 
@@ -862,13 +877,14 @@ ETA STANDARD (memorat și nealterat):
 - Generarea durează 5-10 minute în mod normal (NU 90 secunde, NU 1-2 minute!).
 - Suno API poate avea uneori probleme/lentoare — atunci durează mai mult sau eșuează.
 - NU folosi NICIODATĂ formulări tip „90 secunde", „1-2 minute", „2 minute" — totul e 5-10 min.
-Preț de intrare: ${price} (pachetul Basic). 50.000+ manele generate, garanție 30 zile.
+Preț de intrare: ${price} (pachetul Standard). 50.000+ manele generate, garanție 30 zile.
 
-PACHETE (în chat oferi DOAR 2 variante — le prezinți chiar înainte de linkul de plată,
-vezi ETAPA 5.5):
-- STANDARD = ${price} (pachetul de bază, manea personalizată).
-- PREMIUM = ${premiumPrice} (manea mai lungă și mai calitativă + imagini pentru social media).
-NU pomeni alte pachete/prețuri (ex. 69.99) în chat — doar standard și premium.
+PACHETE (în chat le prezinți pe TOATE 3 — chiar înainte de linkul de plată, vezi ETAPA 5.5):
+- STANDARD = ${price} (preț de intrare — maneaua personalizată).
+- PLUS = ${plusPrice} (mai lungă și mai calitativă + imagini pentru social media).
+- PREMIUM = ${premiumPrice} (tot ce e în Plus + videoclip + pagină premium de ascultare).
+Când userul întreabă „cât costă?", spune că prețul PLEACĂ DE LA ${price} (Standard) și că
+sunt 3 pachete din care alege — nu ascunde variantele Plus și Premium.
 
 ═══════════════════════════════════════════════════════════════════════
 WORKFLOW DE SALES (REPLICĂM EXACT CE FACE IRINA UMANĂ):
@@ -1004,19 +1020,19 @@ ETAPA 5 — (CONDITIONAL) ÎNTREBARE VOCE M/F:
 
 ETAPA 5.5 — UPSELL PACHET (OBLIGATORIU înainte de finalize — NU-l sări):
   → Acesta e ULTIMUL pas înainte de linkul de plată, când configurarea e aproape gata.
-    Oferă DOAR 2 variante (NU 3), cu acest mesaj exact (adaptat la prețuri):
+    Prezinți TOATE 3 variantele, cu acest mesaj exact (adaptat la prețuri):
     „${packageUpsell}"
-  → 💎 RECOMANDĂ ACTIV varianta PREMIUM (${premiumPrice}) — cu căldură, nu cu presiune:
-    „cei mai mulți aleg varianta premium — e mai lungă, sună mai bine și primești și
-    imaginile pentru TikTok/Instagram". Dacă userul ezită sau zice că e mult, basic e
-    perfect — confirmă fără să insiști a doua oară.
+  → 💎 RECOMANDĂ ACTIV varianta PLUS (${plusPrice}) sau PREMIUM (${premiumPrice}) — cu
+    căldură, nu cu presiune: „cei mai mulți aleg Plus sau Premium — sună mai bine, e mai
+    lungă și primești și imaginile pentru TikTok/Instagram". Dacă userul ezită sau zice
+    că e mult, Standard e perfect — confirmă fără să insiști a doua oară.
   → Mapare alegere → tier:
     • „standard" / „cel mai ieftin" / „simplu" / „${price}" → wizard_update({packageTier: 'basic'})
-    • „premium" / „cea lungă" / „mai calitativă" / „${premiumPrice}" → wizard_update({packageTier: 'plus'})
-  → Dacă userul deja a cerut clar ceva (ex. „o vreau premium", „cea mai lungă") poți
+    • „plus" / „mijloc" / „mai bună" / „cu imagini" / „${plusPrice}" → wizard_update({packageTier: 'plus'})
+    • „premium" / „cea mai bună" / „completă" / „cu video" / „${premiumPrice}" → wizard_update({packageTier: 'premium'})
+  → Dacă userul deja a cerut clar ceva (ex. „o vreau premium", „cea mai completă") poți
     seta direct tier-ul fără să mai întrebi.
   → Dacă userul nu alege explicit / ignoră / spune „nu conteaza" → packageTier='basic'.
-  → NU pomeni pachetul de 69.99 / video / pagină premium în chat. Doar standard vs premium.
   → Pachetul ales determină prețul de pe linkul de plată — NU sări peste pasul ăsta.
 
 ETAPA 5.8 — RECAPITULARE LA NECLARITĂȚI (înainte de finalize):
@@ -1058,6 +1074,8 @@ Hard cap: max 2 mesaje empatie per conv. Dacă \`send_empathy\` returnează limi
 ═══════════════════════════════════════════════════════════════════════
 REDUCERE LA CERERE USER (max 20%):
 ═══════════════════════════════════════════════════════════════════════
+Dacă userul SCRIE un cod pe care îl are (ex. „am codul FRATE10") → \`apply_user_code\` cu
+codul lui (NU emite altul). Vezi regula 28.
 Dacă userul cere reducere / spune că „e scump" / „nu am bani acum":
   1. Verifică întâi cu \`quote_price_with_offer\` dacă are deja cod câștigat la roată.
   2. Dacă NU are cod → poți emite UN cod 1-shot pentru el cu \`issue_discount_offer\`
@@ -1103,7 +1121,8 @@ REGULI STRICTE:
 8. Stiluri interne valide (NU le folosi în mesaje către user, doar pentru inferare):
    ${STYLES.join(', ')}.
 9. Ocazii interne valide: ${OCCASIONS.join(', ')}.
-10. NU spune prețuri diferite de ${price} (decât cu reducere via codes).
+10. Prețurile reale sunt DOAR acestea: Standard ${price}, Plus ${plusPrice}, Premium ${premiumPrice}
+    (sau mai mici cu reducere via cod). NU inventa alte sume.
 11. NU promite voci de artiști reali (Salam, Guță) — sunt fictive.
 12. ZERO MARKDOWN. NU folosi nicio formă de: [text](url), **bold**, __italic__, # heading,
     \`code\`, > quote. Trimite linkuri ca text simplu sau pur și simplu spune că „link-ul
@@ -1194,17 +1213,35 @@ REGULI STRICTE:
     NU expune NICIODATĂ clientului date din inspect_customer_data: fără ID-uri interne,
     fără mesaje de eroare brute, fără informații despre alte comenzi/alți clienți.
     Datele acelea sunt DOAR pentru tine și pentru emailul către echipă.
-28. COD DE REDUCERE DAT DE USER: dacă userul scrie un cod pe care îl are (de la roată,
-    dintr-un email, de la un coleg uman) → NU emite alt cod peste el. Confirmă-i că la
-    finalize codul activ se aplică automat pe linkul de plată. Dacă userul insistă că nu
-    i s-a aplicat → resend_payment_link (regenerează linkul, care re-verifică codul).
+28. COD DE REDUCERE DAT DE USER: dacă userul scrie un cod pe care îl are (ex. „am codul
+    FRATE10", „aplică VARA20", „mi-a dat un coleg codul X") → apelează \`apply_user_code\`
+    cu codul EXACT. NU emite alt cod peste el (NU issue_discount_offer)! Tool-ul validează
+    codul: dacă e valid → îl leagă de comandă (se aplică automat pe link) și tu confirmi
+    userului reducerea; dacă nu e valid → spui diplomat că nu e valabil și, dacă vrei, poți
+    oferi tu altul. Dacă userul insistă că o reducere validă nu i s-a aplicat pe link →
+    resend_payment_link (regenerează linkul, care re-verifică codul). BUG observat
+    2026-06-13 conv df18059e: userul a trimis „FRATE10", AI a emis ALT cod (AIP2PMLN) și
+    n-a aplicat nicio reducere — link plin de 49.99. NU repeta asta.
 29. ⛔ REFUND / BANII ÎNAPOI — INTERZIS să promiți. NU spune NICIODATĂ „primești banii
     înapoi", „îți returnăm banii", „refund garantat" — sub nicio formă, în niciun context.
     Refundurile le decide EXCLUSIV un coleg uman. Dacă clientul cere banii înapoi:
-    1) maxim ce POȚI oferi tu e refacerea gratuită unică (vezi politica de modificări,
-       isRetentionOffer) — încearcă întâi să salvezi clientul cu ea;
-    2) dacă insistă pe refund → escalate_to_human + alert_admins, mesaj diplomat
-       („Un coleg din echipă preia cererea ta chiar acum și revine repede").`;
+    0) VERIFICĂ ÎNTÂI cu check_order_status dacă a EXISTAT vreo plată. Dacă userul NU a
+       plătit nimic (hasOrder=false sau paid=false) → NU e refund, nu există ce returna și
+       NU escalada degeaba la un om. Întreabă-l calm și deschis ce s-a întâmplat / ce nu i-a
+       convenit / cu ce-l poți ajuta, și continuă conversația normal (poate vrea doar să
+       schimbe ceva sau s-a răzgândit). BUG observat 2026-06-13 conv 8a20537a: userul a zis
+       „vreau banii înapoi" fără să fi plătit, iar AI a escaladat refund inexistent.
+    1) dacă A plătit: maxim ce POȚI oferi tu e refacerea gratuită unică (vezi politica de
+       modificări, isRetentionOffer) — încearcă întâi să salvezi clientul cu ea;
+    2) dacă a plătit și insistă pe refund → escalate_to_human + alert_admins, mesaj diplomat
+       („Un coleg din echipă preia cererea ta chiar acum și revine repede").
+30. NU SPAMA CU MESAJE DE ÎNCHIDERE / MULȚUMIRE. După ce ai livrat melodia sau ai mulțumit
+    o dată, NU repeta „mulțumim", „cu plăcere", „o zi frumoasă", „spor", „dacă mai ai nevoie"
+    în mesaje succesive. UN SINGUR mesaj de încheiere. Dacă userul mai scrie ceva politicos
+    după („mulțumesc", „cu drag"), răspunde scurt și cald O dată — nu relua tot ritualul de
+    la-revedere. Regula generală: un mesaj per idee, fără umplutură, fără mesaje repetitive.
+    BUG observat 2026-06-13 conv 3939a1b6: AI a trimis 4-5 mesaje de mulțumire/închidere
+    aproape identice, unul după altul — a sunat robotic și a enervat.`;
 
     return this.appendMemoryAndContacts(basePrompt, memory, site);
   }
@@ -1269,7 +1306,7 @@ REGULI STRICTE:
             styleHint: { type: 'string', description: 'OPTIONAL: indiciu liber de stil/artist menționat de user (ex. „stil Dani Mocanu", „ca Salam"). Intră în inferarea creativă la finalize.' },
             voiceArtist: { type: 'string', enum: ['male', 'female'], description: 'Vocea maneaua: male (bărbătească) sau female (feminină).' },
             customLyrics: { type: 'string', description: 'OPTIONAL: versuri custom complete furnizate explicit de user.' },
-            packageTier: { type: 'string', enum: ['basic', 'plus', 'premium'], description: 'Pachetul ales de user. În CHAT oferi doar 2: basic = STANDARD (preț de intrare, doar manea) și plus = PREMIUM (mai lungă + mai calitativă + imagini social). NU oferi premium (69.99) în chat. Setează-l în ETAPA 5.5, înainte de finalize. Default basic dacă userul nu alege.' },
+            packageTier: { type: 'string', enum: ['basic', 'plus', 'premium'], description: 'Pachetul ales de user. În CHAT oferi toate 3: basic = STANDARD (preț de intrare, doar manea), plus = PLUS (mai lungă + mai calitativă + imagini social), premium = PREMIUM (tot ce e în Plus + videoclip + pagină premium). Setează-l în ETAPA 5.5, înainte de finalize. Default basic dacă userul nu alege.' },
           },
         },
       },
@@ -1292,6 +1329,17 @@ REGULI STRICTE:
             percentage: { type: 'integer', minimum: 1, maximum: 20, description: 'Procent reducere (max 20).' },
           },
           required: ['percentage'],
+        },
+      },
+      {
+        name: 'apply_user_code',
+        description: 'Validează un cod de reducere pe care USERUL l-a scris în chat (ex. „am codul FRATE10", „aplică VARA20"). Dacă e valid, îl leagă de comandă și se aplică automat pe linkul de plată la finalize. NU emite cod nou — îl validează pe al userului. Folosește când userul menționează un cod pe care îl are. Tool-ul NU trimite mesaj — tu confirmi userului rezultatul (valid → ce reducere, invalid → spune-i diplomat că nu e valabil).',
+        parameters: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'Codul exact scris de user (ex. „FRATE10"). Fără spații.' },
+          },
+          required: ['code'],
         },
       },
       {
@@ -1429,6 +1477,7 @@ REGULI STRICTE:
       change_email_and_resend: async (args) => this.handleChangeEmailAndResend(ctx, String(args.newEmail ?? '')),
       quote_price_with_offer: async () => this.handleQuotePrice(ctx),
       issue_discount_offer: async (args) => this.handleIssueDiscount(ctx, Number(args.percentage ?? 0)),
+      apply_user_code: async (args) => this.handleApplyUserCode(ctx, String(args.code ?? '')),
       play_sample: async (args) => this.handlePlaySample(ctx, String(args.kind ?? 'voice'), String(args.id ?? '')),
       send_empathy: async (args) => this.handleSendEmpathy(ctx, String(args.trigger ?? 'altul'), String(args.text ?? '')),
       escalate_to_human: async (args) => this.handleEscalate(ctx, String(args.reason ?? 'unspecified')),
@@ -1856,14 +1905,13 @@ NU promite mai puțin. Trimite linkul ${linkToSong} ca să verifice live.`;
           'Comanda e deja plătită și se generează. NU mai trimite nimic — apelează check_order_status și raportează exact statusul curent al melodiei.',
       };
     }
-    // Pentru state='payment_sent' permitem MAX 1 re-issue prin finalize (anti-spam:
-    // dacă AI re-cheamă finalize la fiecare mesaj user post-finalize, generăm 5 linkuri
-    // care confuză userul). FIX 2026-06-10: emisia INIȚIALĂ nu mai consumă bugetul —
-    // linkReissueCount numără doar RE-emiterile (vechiul cod bloca de la prima reluare,
-    // contrar intenției — 17 blocări LINK_ALREADY_SENT pe prod = ~24% din finalize-uri).
-    const reissueCount = (state as { linkReissueCount?: number }).linkReissueCount ?? 0;
+    // Pentru state='payment_sent' linkul a fost DEJA trimis — finalize NU mai creează
+    // altul (bug 2026-06-13 conv df18059e: 2 link-uri identice trimise pentru că finalize
+    // permitea o re-emitere, iar dedup-ul de 3 min nu prindea reluarea lentă). Re-emiterea
+    // intenționată (user nu găsește linkul / a expirat / a schimbat pachetul) se face DOAR
+    // prin resend_payment_link, care e gândit exact pentru asta.
     const isResumeFromPaymentSent = state.step === 'payment_sent';
-    if (isResumeFromPaymentSent && reissueCount >= 1) {
+    if (isResumeFromPaymentSent) {
       return {
         status: 'LINK_ALREADY_SENT',
         currentStep: state.step,
@@ -1877,7 +1925,7 @@ NU promite mai puțin. Trimite linkul ${linkToSong} ca să verifice live.`;
     const site = await this.sites.findById(conv.siteId);
     if (!site) return { error: 'site not found' };
 
-    // Dedup 3 min: dacă deja există un link identic (aceeași sumă) trimis în ultimele
+    // Dedup 30 min: dacă deja există un link identic (aceeași sumă) trimis în ultimele
     // minute, refolosește-l în loc să creăm un Generation + checkout + card noi.
     const reuseTier = normalizeTier(state.data.packageTier);
     const reuseAmount = packageTotalCents(reuseTier, site.packagePricesCents ?? null);
@@ -1968,11 +2016,12 @@ NU promite mai puțin. Trimite linkul ${linkToSong} ca să verifice live.`;
       });
 
       // 3. Update state — partial UPDATE pe wizardState (anti race condition).
-      // linkReissueCount numără DOAR re-emiterile (prima emisie = 0) — vezi fix-ul de mai sus.
+      // Ajungem aici DOAR la prima emisie (step != payment_sent — reluările sunt blocate
+      // mai sus). Re-emiterile reale trec prin resend_payment_link.
       state.step = 'payment_sent';
       state.generationId = generation.id;
       state.paymentId = checkout.paymentId;
-      state.linkReissueCount = isResumeFromPaymentSent ? (state.linkReissueCount ?? 0) + 1 : 0;
+      state.linkReissueCount = 0;
       state.updatedAt = new Date().toISOString();
       conv.wizardState = state;
       await this.conv
@@ -2119,22 +2168,40 @@ NU promite mai puțin. Trimite linkul ${linkToSong} ca să verifice live.`;
       };
     }
 
-    // Anti-buclă cross-run: dacă ultimele 2 mesaje AI sunt FOARTE SIMILARE cu ce
-    // urmează să trimită (>70% overlap), opresc + cer escalate. Bug observat:
-    // user repetă „vreau gratis" / „nu am bani" → AI răspunde „costă 29.99..."
-    // de 4-5 ori la rând, sterilă, fără să escaleze. Regula 17 din prompt n-a
-    // prins. Acum DETECTEZ în cod.
+    // Anti-buclă cross-run cu DOUĂ trepte (înmuiat 2026-06-13 după review conv 90d57971:
+    // detecția veche escalada la om din prima la 2 mesaje similare, dar de multe ori NU
+    // era buclă reală — userul dădea info nouă iar AI doar trebuia să avanseze, nu să
+    // deranjeze un om). Acum:
+    //   • 2 mesaje recente similare → AVERTISMENT: nu trimit mesajul, îi cer să schimbe
+    //     abordarea (să proceseze ce a zis userul și să avanseze / să clarifice). O șansă.
+    //   • 3+ mesaje recente similare SAU al 2-lea avertisment în același run → buclă reală
+    //     confirmată → escalez la om.
     try {
       const recent = await this.msg.find({
         where: { conversationId: ctx.conv.id, authorRole: 'admin', aiGenerated: true },
         order: { createdAt: 'DESC' },
-        take: 3,
+        take: 4,
       });
       const recentNorm = recent.map((m) => m.body.toLowerCase().replace(/\s+/g, ' '));
-      const similar = recentNorm.filter((prev) => textOverlap(prev, normalized) > 0.7);
-      if (similar.length >= 2) {
+      const similarCount = recentNorm.filter((prev) => textOverlap(prev, normalized) > 0.7).length;
+
+      // Treapta 1 — avertisment blând (nu escalează). Doar dacă nu e deja buclă gravă.
+      if (similarCount === 2 && !ctx.loopWarned) {
+        ctx.loopWarned = true;
+        this.logger.warn(`LOOP_WARNING on conv=${ctx.conv.id.slice(0, 8)} — 2 similar AI msgs, giving AI one chance to change tack.`);
+        return {
+          sent: false,
+          messageType: 'loop_warning',
+          status: 'LOOP_WARNING_CHANGE_TACK',
+          instruction:
+            'STAI — mesajul ăsta seamănă prea mult cu ce ai trimis deja de 2 ori. NU-l retrimite. Userul ți-a dat probabil informații NOI între timp — citește-i ultimul mesaj, procesează ce a spus și AVANSEAZĂ: dacă ceva nu e clar (cine dedică, ce relație, ce mesaj exact), pune o întrebare de CLARIFICARE nouă și concretă (NU repeta întrebarea veche); dacă ai tot ce-ți trebuie, treci la pasul următor (versuri / pachet / finalize). Comportă-te ca un om care chiar ascultă.',
+        };
+      }
+
+      // Treapta 2 — buclă reală confirmată → escalează la om.
+      if (similarCount >= 3 || (similarCount >= 2 && ctx.loopWarned)) {
         this.logger.warn(
-          `STERILE_LOOP detected on conv=${ctx.conv.id.slice(0, 8)} — 2+ recent AI msgs similar to current. Escalating.`,
+          `STERILE_LOOP confirmed on conv=${ctx.conv.id.slice(0, 8)} (similar=${similarCount}, warned=${ctx.loopWarned}). Escalating.`,
         );
         // Auto-escalate la admin uman + mesaj sistem
         await this.conv
@@ -2296,7 +2363,7 @@ NU promite mai puțin. Trimite linkul ${linkToSong} ca să verifice live.`;
         .createQueryBuilder('m')
         .where('m."conversationId" = :cid', { cid: conversationId })
         .andWhere(`m."messageType" = 'payment_link'`)
-        .andWhere(`m."createdAt" > now() - interval '3 minutes'`)
+        .andWhere(`m."createdAt" > now() - interval '30 minutes'`)
         .andWhere(`(m.payload->>'amount') = :amt`, { amt: String(amountCents) })
         .andWhere(`UPPER(COALESCE(m.payload->>'currency','')) = :cur`, { cur: currency.toUpperCase() })
         .andWhere(`m.payload->>'checkoutUrl' IS NOT NULL`)
@@ -2364,7 +2431,7 @@ NU promite mai puțin. Trimite linkul ${linkToSong} ca să verifice live.`;
       const tier = normalizeTier(args.packageTier);
       const description = String(args.description ?? 'Manea personalizată');
 
-      // Dedup 3 min: dacă există deja un link identic (sumă+valută), refolosește-l.
+      // Dedup 30 min: dacă există deja un link identic (sumă+valută), refolosește-l.
       const expectedAmount = typeof args.amount === 'number'
         ? args.amount
         : packageTotalCents(tier, site.packagePricesCents ?? null);
@@ -2628,11 +2695,61 @@ ${transcript}`;
   }
 
   /**
-   * Găsește codul promo activ pentru un user/guest (de la roata norocului SAU emis
-   * anterior de AI restricționat la email). Returnează string-ul cod (ex. "E6JWXY64")
-   * sau null. Folosit la wizard_finalize ca să aplic automat reducerea în Stripe.
+   * Verifică dacă un cod promo (scris de user sau emis de AI) e folosibil ACUM pentru
+   * site-ul curent: există, e activ, ne-expirat, neepuizat și — dacă e restricționat
+   * pe email — se potrivește cu emailul clientului. Returnează detaliile (procent/sumă)
+   * sau null. Comparația codului e case-insensitive. Folosit de apply_user_code +
+   * findActivePromoCode.
+   */
+  private async lookupUsablePromoCode(
+    code: string,
+    siteId: string,
+    email: string | null,
+  ): Promise<{ code: string; discountType: string; discountValue: number } | null> {
+    const trimmed = (code ?? '').trim();
+    if (!trimmed) return null;
+    try {
+      const rows: Array<{ code: string; discountType: string; discountValue: number }> = await this.conv.manager.query(
+        `SELECT code, "discountType", "discountValue" FROM promo_codes
+         WHERE "siteId" = $1 AND active = true
+           AND UPPER(code) = UPPER($2)
+           AND ("validUntil" IS NULL OR "validUntil" > NOW())
+           AND ("maxUses" = 0 OR "usedCount" < "maxUses")
+           AND ("restrictedToEmail" IS NULL OR LOWER("restrictedToEmail") = LOWER($3))
+         ORDER BY "createdAt" DESC LIMIT 1`,
+        [siteId, trimmed, email ?? ''],
+      );
+      return rows[0] ?? null;
+    } catch (e) {
+      this.logger.warn(`lookupUsablePromoCode failed: ${(e as Error).message}`);
+      return null;
+    }
+  }
+
+  /** Wrapper boolean peste lookupUsablePromoCode. */
+  private async isPromoCodeUsable(code: string, siteId: string, email: string | null): Promise<boolean> {
+    return (await this.lookupUsablePromoCode(code, siteId, email)) !== null;
+  }
+
+  /**
+   * Găsește codul promo activ pentru un user/guest (legat de comandă, de la roata
+   * norocului SAU emis anterior de AI restricționat la email). Returnează string-ul
+   * cod (ex. "E6JWXY64") sau null. Folosit la wizard_finalize ca să aplic automat
+   * reducerea în Stripe.
    */
   private async findActivePromoCode(conv: Conversation): Promise<string | null> {
+    try {
+      // 0. Cod legat de ACEASTĂ comandă (emis de AI sau dat de user și validat).
+      //    Prioritate maximă — e codul pe care l-a văzut clientul în chat. Re-verificăm
+      //    că e încă activ/valid (poate a expirat sau s-a epuizat între timp).
+      const onOrder = conv.wizardState?.appliedPromoCode;
+      if (onOrder && conv.siteId) {
+        const valid = await this.isPromoCodeUsable(onOrder, conv.siteId, conv.email);
+        if (valid) return onOrder;
+      }
+    } catch (e) {
+      this.logger.warn(`findActivePromoCode wizard code check failed: ${(e as Error).message}`);
+    }
     const ownerId = conv.userId ?? conv.guestId;
     if (!ownerId) return null;
     try {
@@ -2696,6 +2813,27 @@ ${transcript}`;
     return { ok: true };
   }
 
+  /** Leagă un cod promo de comanda curentă (wizardState) ca să se aplice la finalize
+   *  indiferent de momentul colectării email-ului. Folosit de issue_discount_offer +
+   *  apply_user_code. */
+  private async setAppliedPromoCode(conversationId: string, code: string): Promise<void> {
+    try {
+      const c = await this.conv.findOne({ where: { id: conversationId } });
+      if (!c) return;
+      const st = this.getOrInitWizardState(c);
+      st.appliedPromoCode = code;
+      st.updatedAt = new Date().toISOString();
+      await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ wizardState: st })
+        .where('id = :id', { id: conversationId })
+        .execute();
+    } catch (e) {
+      this.logger.warn(`setAppliedPromoCode failed: ${(e as Error).message}`);
+    }
+  }
+
   /** Incrementă priceQuotedCount în wizardState (guard comun tool + send_message inline). */
   private async markPriceQuoted(conversationId: string): Promise<void> {
     try {
@@ -2752,7 +2890,22 @@ ${transcript}`;
     const ownerId = ctx.conv.userId ?? ctx.conv.guestId;
     let appliedCode: { code: string; pctOff: number; finalPrice: number } | null = null;
 
-    if (ownerId) {
+    // Cod legat de ACEASTĂ comandă (emis de AI sau dat de user și validat) — prioritate,
+    // e codul pe care l-a văzut deja clientul. Înainte quote vedea doar roata, deci după
+    // ce userul primea un cod la cerere, re-cotarea nu-i mai arăta reducerea (bug 2026-06-13).
+    const onOrderCode = freshConv?.wizardState?.appliedPromoCode;
+    if (onOrderCode) {
+      const usable = await this.lookupUsablePromoCode(onOrderCode, ctx.conv.siteId, ctx.conv.email);
+      if (usable) {
+        const pctOff = usable.discountType === 'percent' ? usable.discountValue : Math.round((usable.discountValue / basePrice) * 100);
+        const finalCents = usable.discountType === 'percent'
+          ? Math.round(basePrice * (100 - usable.discountValue) / 100)
+          : Math.max(0, basePrice - usable.discountValue);
+        appliedCode = { code: usable.code, pctOff, finalPrice: finalCents };
+      }
+    }
+
+    if (!appliedCode && ownerId) {
       try {
         const raw: Array<{ awardedCode: string; promoCodeId: string }> = await this.conv.manager.query(
           `SELECT rs."awardedCode", rs."awardedPromoCodeId" AS "promoCodeId"
@@ -2916,6 +3069,11 @@ ${transcript}`;
       return { error: 'issue_failed', message: (e as Error).message };
     }
 
+    // Leagă codul de comandă ca să se aplice la finalize chiar dacă email-ul nu e
+    // încă colectat (bug 2026-06-13 conv df18059e: cod emis cu restrictedToEmail=null
+    // nu se mai regăsea la finalize → reducerea nu se aplica niciodată).
+    await this.setAppliedPromoCode(ctx.conv.id, code);
+
     const site = await this.sites.findById(ctx.conv.siteId);
     if (!site) return { error: 'site_not_found' };
     const baseCents = packageTotalCents('basic', site.packagePricesCents ?? null);
@@ -2953,6 +3111,47 @@ ${transcript}`;
     ctx.sentRealMessages++;
 
     return { sent: true, code, percentage: pct, finalCents, status: 'DISCOUNT_ISSUED' };
+  }
+
+  /** Validează un cod scris de USER (nu emite altul). Dacă e valid → îl leagă de comandă
+   *  ca să se aplice la finalize. NU trimite mesaj — AI-ul confirmă rezultatul. Fix
+   *  2026-06-13 conv df18059e: userul a trimis un cod, AI a emis altul peste el. */
+  private async handleApplyUserCode(ctx: AgentCtx, rawCode: string): Promise<unknown> {
+    const check = await this.assertNotManual(ctx);
+    if (check.aborted) return { aborted: true };
+    if (!ctx.conv.siteId) return { error: 'no_site' };
+    const code = rawCode.trim().replace(/\s+/g, '');
+    if (!code) {
+      return { status: 'NO_CODE', instruction: 'Userul nu a dat un cod clar. Întreabă-l scurt care e codul.' };
+    }
+    const usable = await this.lookupUsablePromoCode(code, ctx.conv.siteId, ctx.conv.email);
+    if (!usable) {
+      return {
+        status: 'CODE_INVALID',
+        code,
+        instruction:
+          `Codul „${code}" nu e valabil (inexistent, expirat, deja folosit sau pe alt email). Spune-i userului DIPLOMAT că nu pot aplica codul ăsta și, dacă vrea, îi poți oferi tu o reducere (issue_discount_offer). NU inventa că s-a aplicat.`,
+      };
+    }
+    // Valid — leagă-l de comandă (se aplică automat la finalize / resend).
+    await this.setAppliedPromoCode(ctx.conv.id, usable.code);
+    const site = await this.sites.findById(ctx.conv.siteId);
+    const baseCents = packageTotalCents('basic', site?.packagePricesCents ?? null);
+    const pctOff = usable.discountType === 'percent'
+      ? usable.discountValue
+      : Math.round((usable.discountValue / baseCents) * 100);
+    const finalCents = usable.discountType === 'percent'
+      ? Math.round(baseCents * (100 - usable.discountValue) / 100)
+      : Math.max(0, baseCents - usable.discountValue);
+    const cur = (site?.currency ?? 'RON').toLowerCase() === 'ron' ? 'lei' : (site?.currency ?? 'RON').toUpperCase();
+    return {
+      status: 'CODE_APPLIED',
+      code: usable.code,
+      percentage: pctOff,
+      finalPriceFormatted: `${(finalCents / 100).toFixed(2)} ${cur}`,
+      instruction:
+        `Codul „${usable.code}" e valid (${pctOff}% reducere) și e legat de comandă — se aplică automat pe linkul de plată. Confirmă-i userului scurt și cald că i-am aplicat codul (ex. „Gata, ți-am aplicat codul ${usable.code}, ai ${pctOff}% reducere ✨"). NU emite alt cod.`,
+    };
   }
 
   /** Trimite un link cu o mostră audio (style sau voice) pentru ascultare pe site. */
@@ -3732,4 +3931,7 @@ interface AgentCtx {
   requireApprovalForPayment: boolean;
   /** Max 1 alert email per turn (anti-spam către admini). */
   alertSentThisTurn: boolean;
+  /** A primit deja un avertisment de buclă în acest run? Prima dată = avertizăm și-i
+   *  dăm o șansă să schimbe abordarea; a doua oară (tot similar) = escalăm la om. */
+  loopWarned?: boolean;
 }

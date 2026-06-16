@@ -126,16 +126,22 @@ export function packagesPitchRo(
 }
 
 /**
- * Pitch SIMPLIFICAT pentru chat-ul Irinei — DOAR 2 opțiuni (upsell standard vs premium):
- *  - standard = basic (preț de intrare)
- *  - premium  = plus (mai lungă + mai calitativă)
- * Premium-ul de top (video/pagină premium) NU se oferă în chat — doar în Generator-ul web.
+ * Pitch pentru chat-ul Irinei — TOATE 3 pachetele (decizie owner 2026-06-13, review-uri
+ * admin: clienții trebuie să vadă și varianta de 69.99, nu doar standard + plus):
+ *  - Standard = basic (preț de intrare, maneaua personalizată)
+ *  - Plus     = plus  (mai lungă + mai calitativă + imagini social media)
+ *  - Premium  = premium (tot ce e în Plus + videoclip + pagină premium)
  * Folosit în ETAPA de alegere a pachetului, înainte de linkul de plată.
  */
 export function chatPackageUpsellRo(
   overrides?: Partial<Record<PackageTier, number>> | null,
 ): string {
   const standard = (packagePriceCents('basic', overrides) / 100).toFixed(2);
-  const premium = (packagePriceCents('plus', overrides) / 100).toFixed(2);
-  return `Doriti ca maneaua sa fie din pachetul standard de ${standard} lei sau premium la ${premium} lei? Cea premium este mai lunga si mai calitativa.`;
+  const plus = (packagePriceCents('plus', overrides) / 100).toFixed(2);
+  const premium = (packagePriceCents('premium', overrides) / 100).toFixed(2);
+  return (
+    `Avem 3 pachete: Standard ${standard} lei — maneaua ta personalizata; ` +
+    `Plus ${plus} lei — mai lunga si mai calitativa, cu imagini pentru social media (TikTok/Instagram); ` +
+    `Premium ${premium} lei — tot ce e in Plus plus videoclip si pagina premium de ascultare. Ce alegi?`
+  );
 }

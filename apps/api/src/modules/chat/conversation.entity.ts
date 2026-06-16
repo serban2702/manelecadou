@@ -74,6 +74,11 @@ export interface WizardState {
   /** De câte ori s-a trimis deja mesajul de cotare a prețului — guard anti-buclă.
    *  După prima cotare, quote_price_with_offer nu mai retrimite mesajul ci redirecționează AI-ul spre finalize. */
   priceQuotedCount?: number;
+  /** Codul promo activ pe ACEASTĂ comandă — fie emis de AI (issue_discount_offer),
+   *  fie introdus de user și validat (apply_user_code). Sursa de adevăr la finalize:
+   *  se aplică pe checkout-ul Stripe. Leagă codul de conversație, nu doar de email —
+   *  fix bug 2026-06-13 (cod emis înainte de colectarea email-ului nu se mai aplica). */
+  appliedPromoCode?: string | null;
   /** Câte drafturi de versuri a generat AI-ul în chat (cap 3 — control cost). */
   lyricsDraftCount?: number;
   /** Modificare contra cost în așteptarea plății (request_modification). */
