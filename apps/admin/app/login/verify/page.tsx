@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { AlertCircle, Crown, Loader2 } from 'lucide-react';
 import { AuthApi, AdminApi, setAdminToken } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
@@ -16,7 +16,6 @@ export default function VerifyPage() {
 
 function VerifyPageInner() {
   const params = useSearchParams();
-  const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +39,7 @@ function VerifyPageInner() {
       setAdminToken(accessToken);
       try {
         await AdminApi.stats();
-        router.replace('/');
+        window.location.href = '/';
       } catch (e2) {
         const status = (e2 as { status?: number })?.status;
         if (status === 401 || status === 403) {
@@ -51,7 +50,7 @@ function VerifyPageInner() {
         } else {
           // 429 (rate limit) / 5xx / network — tranzitoriu, NU înseamnă „not admin".
           // Intră oricum; dashboard-ul își ia datele când limita se eliberează.
-          router.replace('/');
+          window.location.href = '/';
         }
       }
     } catch (e) {

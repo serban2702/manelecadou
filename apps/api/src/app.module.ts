@@ -53,9 +53,9 @@ import { RecoveryModule } from './modules/recovery/recovery.module';
       validate: configValidate,
     }),
     ThrottlerModule.forRoot([
-      { name: 'short',  ttl: 1_000,    limit: 10 },    // 10 req/secundă per IP
-      { name: 'medium', ttl: 60_000,   limit: 60 },    // 60 req/minut per IP
-      { name: 'long',   ttl: 86_400_000, limit: 1000 }, // 1000 req/zi per IP
+      { name: 'short',  ttl: 1_000,    limit: 20 },      // 20 req/secundă per IP
+      { name: 'medium', ttl: 60_000,   limit: 300 },     // 300 req/minut per IP
+      { name: 'long',   ttl: 86_400_000, limit: 30_000 }, // 30000 req/zi per IP
     ]),
     BullModule.forRootAsync({
       useFactory: () => ({

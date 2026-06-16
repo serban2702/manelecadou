@@ -26,7 +26,7 @@ export class AuthController {
     private readonly users: UsersService,
   ) {}
 
-  @Throttle({ short: { limit: 1, ttl: 10_000 }, medium: { limit: 5, ttl: 3_600_000 } })
+  @Throttle({ short: { limit: 1, ttl: 10_000 }, medium: { limit: 20, ttl: 3_600_000 } })
   @Post('magic-link/request')
   async request(
     @Body() body: RequestMagicLinkDto,
