@@ -84,6 +84,30 @@ export const SETTINGS_SCHEMA: SettingCategory[] = [
       { key: 'SUNO_API_BASE_URL', label: 'API base URL', kind: 'string', hotReload: true },
       { key: 'SUNO_API_KEY', label: 'API key', kind: 'secret', encrypted: true, hotReload: true },
       { key: 'SUNO_MODEL', label: 'Model', kind: 'string', hotReload: true, placeholder: 'V4_5' },
+      {
+        key: 'SUNO_CREDIT_MONITOR_ENABLED',
+        label: 'Monitor credite activ',
+        description: 'Cron la fiecare minut care citește soldul de credite Suno și alertează pe Wingo. Default ON; oprește cu „false".',
+        kind: 'bool',
+        hotReload: true,
+      },
+      {
+        key: 'SUNO_CREDIT_ALERT_THRESHOLD',
+        label: 'Prag alertă credite scăzute',
+        description: 'Sub această valoare se trimite o alertă pe Wingo (o singură dată, apoi doar dacă soldul scade și mai mult). Default 100.',
+        kind: 'number',
+        hotReload: true,
+        placeholder: '100',
+      },
+    ],
+  },
+  {
+    id: 'wingo',
+    title: 'Wingo (notificări push owner)',
+    description: 'Canal de alerte push către owner (https://notifications.wingo.ro). Folosit de monitorul de credite Suno (credite scăzute + API căzut).',
+    settings: [
+      { key: 'WINGO_API_KEY', label: 'API key', kind: 'secret', encrypted: true, hotReload: true, placeholder: '64 caractere hex' },
+      { key: 'WINGO_NOTIFY_URL', label: 'Endpoint send', kind: 'string', hotReload: true, placeholder: 'https://notifications.wingo.ro/api/v1/notify/send' },
     ],
   },
   {
