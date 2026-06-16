@@ -41,10 +41,18 @@ function VerifyPageInner() {
       try {
         await AdminApi.stats();
         router.replace('/');
-      } catch {
-        setAdminToken(null);
-        setError('Email-ul tău nu are rol de admin. Setează ADMIN_EMAILS și încearcă din nou.');
-        setBusy(false);
+      } catch (e2) {
+        const status = (e2 as { status?: number })?.status;
+        if (status === 401 || status === 403) {
+          // Token valid, dar fără rol de admin.
+          setAdminToken(null);
+          setError('Email-ul tău nu are rol de admin. Setează ADMIN_EMAILS și încearcă din nou.');
+          setBusy(false);
+        } else {
+          // 429 (rate limit) / 5xx / network — tranzitoriu, NU înseamnă „not admin".
+          // Intră oricum; dashboard-ul își ia datele când limita se eliberează.
+          router.replace('/');
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Eroare necunoscută');

@@ -143,9 +143,15 @@ function DashboardShell({ children }: { children: ReactNode }) {
     if (authed === true && !me) {
       AuthApi.me()
         .then((u) => setMe(u))
-        .catch(() => {
-          setAdminToken(null);
-          setAuthed(false);
+        .catch((e) => {
+          // Doar 401/403 = chiar nu ești autentificat → logout. Erorile tranzitorii
+          // (429 rate-limit, 5xx, network) NU trebuie să te deconecteze — altfel un
+          // 429 pe /auth/me te dădea afară imediat după login (bounce → relogin → 429…).
+          const status = (e as { status?: number })?.status;
+          if (status === 401 || status === 403) {
+            setAdminToken(null);
+            setAuthed(false);
+          }
         });
     }
   }, [authed, me]);

@@ -11,6 +11,11 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
 
     if (req.path === '/health' || req.path === '/api/health') return true;
     if (req.path.startsWith('/api/admin/')) return true;
+    // /auth/me (citire self) + /auth/magic-link/consume (token random, neghicibil) NU
+    // trebuie limitate de throttler-ul global; altfel un 429 pe /auth/me deconecta
+    // admin-ul imediat după login (bounce). magic-link/request rămâne limitat — are
+    // @Throttle propriu pentru anti-spam email.
+    if (req.path === '/api/auth/me' || req.path === '/api/auth/magic-link/consume') return true;
 
     // Request-uri interne din rețeaua Docker (healthcheck wget, Caddy ask etc.):
     // nu au X-Forwarded-For și vin de pe loopback → ar otrăvi bucket-ul 127.0.0.1.
