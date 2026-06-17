@@ -17,6 +17,7 @@ import { User } from '../users/user.entity';
 import { MailerService } from '../../mailer/mailer.module';
 import { generationReadyTemplate } from '../../mailer/templates/templates';
 import { brandingFromSite } from '../../mailer/branding';
+import { PromoService } from '../promo/promo.service';
 import { SitesService } from '../sites/sites.service';
 import { AudioProcessorService } from './audio-processor.service';
 import { GenerationMediaService } from '../media/generation-media.service';
@@ -38,6 +39,7 @@ export class GenerationsProcessor extends WorkerHost {
     private readonly lyricsSvc: LyricsService,
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
+    private readonly promo: PromoService,
     private readonly sites: SitesService,
     private readonly audio: AudioProcessorService,
     private readonly media: GenerationMediaService,
@@ -630,6 +632,31 @@ export class GenerationsProcessor extends WorkerHost {
       }
     }
 
+    // Cod de fidelizare „next order": 40% reducere la următoarea manea, valabil 24h,
+    // o singură utilizare, legat de emailul clientului. DOAR pe melodia completă
+    // (full/paid) — pe demo rămâne CTA-ul de upgrade existent, ca să nu canibalizăm
+    // prima vânzare. Idempotent pe gen.id (dedupeNote), deci re-trimiterea emailului
+    // (retry worker) nu creează coduri multiple. Eșecul emiterii NU blochează mailul.
+    const NEXT_ORDER_DISCOUNT_PERCENT = 40;
+    const NEXT_ORDER_DISCOUNT_HOURS = 24;
+    let discountCode: string | null = null;
+    if (effectiveType === 'full') {
+      try {
+        const promo = await this.promo.issueNextOrderDiscount({
+          siteId: gen.siteId ?? null,
+          email,
+          percent: NEXT_ORDER_DISCOUNT_PERCENT,
+          validHours: NEXT_ORDER_DISCOUNT_HOURS,
+          dedupeNote: `post_generation gen:${gen.id}`,
+        });
+        discountCode = promo.code;
+      } catch (err) {
+        this.logger.warn(
+          `notifyOwner: nu am putut emite codul de reducere pentru gen ${gen.id}: ${(err as Error).message}`,
+        );
+      }
+    }
+
     const tpl = generationReadyTemplate({
       recipientName: gen.recipientName,
       type: effectiveType,
@@ -641,6 +668,10 @@ export class GenerationsProcessor extends WorkerHost {
       instrumentalUrl: effectiveType === 'full' ? gen.instrumentalUrl : null,
       videoUrl: effectiveType === 'full' ? gen.videoUrl : null,
       unlockPin,
+      discountCode,
+      discountPercent: NEXT_ORDER_DISCOUNT_PERCENT,
+      discountValidHours: NEXT_ORDER_DISCOUNT_HOURS,
+      orderUrl: baseUrl,
       locale: site?.locale ?? gen.locale ?? 'ro',
       branding,
     });

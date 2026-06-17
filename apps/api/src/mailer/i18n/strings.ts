@@ -34,6 +34,13 @@ type Dict = {
     promoLink: string;
     aiNote: string;
     text: (kind: string, name: string, link: string) => string;
+    /** Cod de fidelizare „next order" (afișat doar în emailul de melodie completă). */
+    discountTitle: (percent: number) => string;
+    discountBody: (percent: number, hours: number) => string;
+    discountCodeLabel: string;
+    discountCta: string;
+    discountExpires: (hours: number) => string;
+    discountText: (code: string, percent: number, hours: number) => string;
   };
   paymentSuccess: {
     subject: (amount: string, currency: string) => string;
@@ -107,6 +114,14 @@ const RO: Dict = {
     promoLink: 'deblochează aici',
     aiNote: 'Vocea e fictivă, parodică, fără legătură cu artiști reali.',
     text: (kind, name, link) => `Maneaua ta ${kind} pentru ${name} e gata: ${link}`,
+    discountTitle: (p) => `🎟️ ${p}% reducere la următoarea ta manea`,
+    discountBody: (p, h) =>
+      `Cadou pentru tine: folosește codul de mai jos la următoarea comandă și ai <b>${p}% reducere</b> la o manea. Grăbește-te — e valabil doar <b>${h} de ore</b>.`,
+    discountCodeLabel: 'Codul tău de reducere',
+    discountCta: '🎤 Comandă acum cu reducere',
+    discountExpires: (h) => `⏳ Valabil ${h}h · pentru o singură manea · doar pe acest email`,
+    discountText: (code, p, h) =>
+      `Bonus: cod ${code} = ${p}% reducere la următoarea manea (valabil ${h}h, o singură dată).`,
   },
   paymentSuccess: {
     subject: (amount, currency) => `✓ Plata confirmată — ${amount} ${currency}`,
@@ -182,6 +197,14 @@ const BG: Dict = {
     promoLink: 'отключи тук',
     aiNote: 'Гласът е измислен, пародиен, без връзка с реални артисти.',
     text: (kind, name, link) => `Твоето ${kind} манеле за ${name} е готово: ${link}`,
+    discountTitle: (p) => `🎟️ ${p}% отстъпка за следващото ти манеле`,
+    discountBody: (p, h) =>
+      `Подарък за теб: използвай кода по-долу при следваща поръчка и получаваш <b>${p}% отстъпка</b> за едно манеле. Побързай — валиден е само <b>${h} часа</b>.`,
+    discountCodeLabel: 'Твоят код за отстъпка',
+    discountCta: '🎤 Поръчай сега с отстъпка',
+    discountExpires: (h) => `⏳ Валиден ${h}ч · за едно манеле · само за този имейл`,
+    discountText: (code, p, h) =>
+      `Бонус: код ${code} = ${p}% отстъпка за следващото манеле (валиден ${h}ч, еднократно).`,
   },
   paymentSuccess: {
     subject: (amount, currency) => `✓ Плащането е потвърдено — ${amount} ${currency}`,
@@ -239,6 +262,14 @@ const TR: Dict = {
     promoLink: 'buradan aç',
     aiNote: 'Ses kurgusal, parodi, gerçek sanatçılarla ilgisi yok.',
     text: (kind, name, link) => `${name} için ${kind} şarkın hazır: ${link}`,
+    discountTitle: (p) => `🎟️ Sonraki şarkında %${p} indirim`,
+    discountBody: (p, h) =>
+      `Sana hediye: aşağıdaki kodu bir sonraki siparişinde kullan, bir şarkıda <b>%${p} indirim</b> kazan. Acele et — sadece <b>${h} saat</b> geçerli.`,
+    discountCodeLabel: 'İndirim kodun',
+    discountCta: '🎤 İndirimle şimdi sipariş ver',
+    discountExpires: (h) => `⏳ ${h}s geçerli · tek şarkı için · sadece bu e-posta`,
+    discountText: (code, p, h) =>
+      `Bonus: kod ${code} = sonraki şarkıda %${p} indirim (${h}s geçerli, tek kullanım).`,
   },
   paymentSuccess: {
     subject: (amount, currency) => `✓ Ödeme onaylandı — ${amount} ${currency}`,
@@ -296,6 +327,14 @@ const EL: Dict = {
     promoLink: 'ξεκλείδωσε εδώ',
     aiNote: 'Η φωνή είναι φανταστική, παρωδική, χωρίς σχέση με πραγματικούς καλλιτέχνες.',
     text: (kind, name, link) => `Το ${kind} τραγούδι σου για ${name} είναι έτοιμο: ${link}`,
+    discountTitle: (p) => `🎟️ ${p}% έκπτωση στο επόμενο τραγούδι σου`,
+    discountBody: (p, h) =>
+      `Δώρο για σένα: χρησιμοποίησε τον κωδικό παρακάτω στην επόμενη παραγγελία και κέρδισε <b>${p}% έκπτωση</b> σε ένα τραγούδι. Βιάσου — ισχύει μόνο για <b>${h} ώρες</b>.`,
+    discountCodeLabel: 'Ο κωδικός έκπτωσής σου',
+    discountCta: '🎤 Παράγγειλε τώρα με έκπτωση',
+    discountExpires: (h) => `⏳ Ισχύει ${h}ω · για ένα τραγούδι · μόνο για αυτό το email`,
+    discountText: (code, p, h) =>
+      `Μπόνους: κωδικός ${code} = ${p}% έκπτωση στο επόμενο τραγούδι (ισχύει ${h}ω, μία φορά).`,
   },
   paymentSuccess: {
     subject: (amount, currency) => `✓ Πληρωμή επιβεβαιώθηκε — ${amount} ${currency}`,
@@ -353,6 +392,14 @@ const SR: Dict = {
     promoLink: 'otključaj ovde',
     aiNote: 'Glas je izmišljen, parodijski, bez veze sa stvarnim izvođačima.',
     text: (kind, name, link) => `Tvoja ${kind} pesma za ${name} je gotova: ${link}`,
+    discountTitle: (p) => `🎟️ ${p}% popusta na sledeću pesmu`,
+    discountBody: (p, h) =>
+      `Poklon za tebe: iskoristi kod ispod pri sledećoj porudžbini i dobijaš <b>${p}% popusta</b> na jednu pesmu. Požuri — važi samo <b>${h} sata</b>.`,
+    discountCodeLabel: 'Tvoj kod za popust',
+    discountCta: '🎤 Poruči odmah uz popust',
+    discountExpires: (h) => `⏳ Važi ${h}h · za jednu pesmu · samo za ovaj mejl`,
+    discountText: (code, p, h) =>
+      `Bonus: kod ${code} = ${p}% popusta na sledeću pesmu (važi ${h}h, jednokratno).`,
   },
   paymentSuccess: {
     subject: (amount, currency) => `✓ Plaćanje potvrđeno — ${amount} ${currency}`,

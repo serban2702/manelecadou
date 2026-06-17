@@ -202,6 +202,12 @@ export interface GenerationReadyVars {
   videoUrl?: string | null;
   /** PIN auto pentru deblocarea conținutului privat (poze custom + colaje). */
   unlockPin?: string | null;
+  /** Cod de fidelizare „next order" — afișat doar la melodia completă (full/paid). */
+  discountCode?: string | null;
+  discountPercent?: number | null;
+  discountValidHours?: number | null;
+  /** URL unde poate plasa o comandă nouă (homepage site). */
+  orderUrl?: string | null;
   locale?: string;
   branding?: EmailBranding;
 }
@@ -228,6 +234,21 @@ export function generationReadyTemplate(v: GenerationReadyVars): { subject: stri
          <p style="margin:6px 0 0;font-size:12px;color:rgba(255,245,220,0.6);line-height:1.5;">Cine are linkul + parola poate vedea pozele tale custom și colajele. O poți schimba oricând din pagina manelei.</p>
        </div>`
     : '';
+  // Cod de fidelizare „next order" — DOAR pe emailul de melodie completă (full/paid),
+  // ca să nu canibalizeze prima vânzare pe demo (care are deja CTA de upgrade).
+  const discountPercent = v.discountPercent ?? 40;
+  const discountHours = v.discountValidHours ?? 24;
+  const discountHtml =
+    v.type === 'full' && v.discountCode
+      ? `<div style="margin:24px 0 0;padding:18px;background:rgba(241,200,77,0.1);border:1px solid rgba(241,200,77,0.35);border-radius:12px;text-align:center;">
+           <p style="margin:0 0 6px;font-size:15px;color:${COLORS.goldMid};font-weight:800;">${d.discountTitle(discountPercent)}</p>
+           <p style="margin:0 0 14px;font-size:13px;color:${COLORS.cream};line-height:1.55;">${d.discountBody(discountPercent, discountHours)}</p>
+           <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:rgba(255,245,220,0.6);">${d.discountCodeLabel}</p>
+           <div style="font-size:28px;font-weight:800;letter-spacing:5px;color:${COLORS.cream};margin:0 0 14px;font-family:'Courier New',monospace;">${escape(v.discountCode)}</div>
+           ${v.orderUrl ? `<div style="margin:0 0 10px;">${buttonGold(v.orderUrl, d.discountCta)}</div>` : ''}
+           <p style="margin:6px 0 0;font-size:12px;color:rgba(255,245,220,0.6);">${d.discountExpires(discountHours)}</p>
+         </div>`
+      : '';
   return {
     subject: d.subject(v.recipientName),
     html: layout({
@@ -243,6 +264,7 @@ export function generationReadyTemplate(v: GenerationReadyVars): { subject: stri
         ${v.audioUrl ? `<p style="text-align:center;margin:0 0 18px;font-size:12px;color:rgba(255,245,220,0.5);">${d.download.replace('{link}', `<a href="${escape(v.audioUrl)}" style="color:${COLORS.goldMid};">MP3</a>`)}</p>` : ''}
         ${extrasHtml}
         ${pinHtml}
+        ${discountHtml}
         ${v.type === 'demo' ? `
           <div style="margin-top:24px;padding:16px;background:rgba(255,45,126,0.08);border:1px solid rgba(255,45,126,0.3);border-radius:10px;">
             <p style="margin:0 0 8px;font-size:14px;color:${COLORS.goldMid};font-weight:700;">${d.promoTitle}</p>
@@ -251,7 +273,11 @@ export function generationReadyTemplate(v: GenerationReadyVars): { subject: stri
         <p style="margin:24px 0 0;font-size:11px;color:rgba(255,245,220,0.4);text-align:center;">${d.aiNote}</p>
       `,
     }),
-    text: d.text(v.type, v.recipientName, v.link),
+    text:
+      d.text(v.type, v.recipientName, v.link) +
+      (v.type === 'full' && v.discountCode
+        ? `\n\n${d.discountText(v.discountCode, discountPercent, discountHours)}`
+        : ''),
   };
 }
 

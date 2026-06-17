@@ -41,6 +41,7 @@ export class PromoService {
     maxUses?: number;
     restrictedToEmail?: string | null;
     note?: string | null;
+    source?: PromoCode['source'];
   }): Promise<PromoCode> {
     let code = (input.code ?? this.generateCode()).toUpperCase();
     // unique pe (siteId, code)
@@ -58,9 +59,44 @@ export class PromoService {
       usedCount: 0,
       restrictedToEmail: input.restrictedToEmail?.toLowerCase().trim() || null,
       note: input.note ?? null,
+      source: input.source ?? null,
       active: true,
     });
     return this.codes.save(created);
+  }
+
+  /**
+   * Emite (sau refolosește) un cod de fidelizare „next order" pentru emailul de
+   * melodie finalizată. Idempotent pe `dedupeNote` (ex. `gen:<id>`): dacă există
+   * deja un cod pentru aceeași generație, îl întoarce pe acela — ca re-trimiterea
+   * emailului (retry worker) să NU creeze coduri multiple. Cod single-use, legat
+   * de email, cu expirare scurtă.
+   */
+  async issueNextOrderDiscount(input: {
+    siteId: string | null;
+    email: string;
+    percent: number;
+    validHours: number;
+    dedupeNote: string;
+  }): Promise<PromoCode> {
+    const existing = await this.codes.findOne({
+      where: {
+        siteId: input.siteId ?? IsNull(),
+        note: input.dedupeNote,
+        source: 'post_generation',
+      },
+    });
+    if (existing) return existing;
+    return this.create({
+      siteId: input.siteId,
+      discountType: 'percent',
+      discountValue: input.percent,
+      validUntil: new Date(Date.now() + input.validHours * 3600 * 1000),
+      maxUses: 1,
+      restrictedToEmail: input.email,
+      note: input.dedupeNote,
+      source: 'post_generation',
+    });
   }
 
   /** Listare admin. siteId === null → cross-site (admin „Toate"). */

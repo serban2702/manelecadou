@@ -16,6 +16,7 @@ import { User } from '../users/user.entity';
 import { MailerModule } from '../../mailer/mailer.module';
 import { LyricsModule } from '../lyrics/lyrics.module';
 import { GiftCodesModule } from '../gift-codes/gift-codes.module';
+import { PromoModule } from '../promo/promo.module';
 import { SitesModule } from '../sites/sites.module';
 import { MediaModule } from '../media/media.module';
 import { SiteDemosModule } from '../site-demos/site-demos.module';
@@ -30,6 +31,7 @@ import { SiteDemosModule } from '../site-demos/site-demos.module';
     MailerModule,
     LyricsModule,
     GiftCodesModule,
+    PromoModule,
     SitesModule,
     MediaModule,
     SiteDemosModule,
