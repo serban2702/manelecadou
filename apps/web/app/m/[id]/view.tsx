@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { useParams, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { api, ApiError, resolveMediaUrl, type GenerationDto, type CollageAspect, type CollageDto } from '@/lib/api';
+import type { PackageTier } from '@/lib/packages';
 import { track } from '@/lib/tracking';
 import { ManeaPlayer } from '@/components/ManeaPlayer';
 import { VideoPlayer } from '@/components/VideoPlayer';
@@ -141,13 +142,26 @@ function ShareGenerationViewInner() {
   if (!g) return <main style={{ padding: 40, textAlign: 'center' }}><p className="ld">{t('loading')}</p></main>;
 
   const isPaid = g.type === 'full' || g.paidUnlocked;
+  // Pay-first (site.demoEnabled=false): generation se creează cu type='full' +
+  // status='pending' + paidUnlocked=false ÎNAINTE de plată. Dacă userul
+  // abandonează Stripe Checkout fără să apese butonul „cancel" (închide tabul,
+  // back din browser, sesiune expirată), nu trece prin cancel_url, iar mai
+  // târziu aterizează aici din „Manelele mele" pe o piesă care PARE „Deblocată +
+  // în lucru" → loader infinit fals (status nu avansează niciodată, generarea
+  // nu a pornit). O detectăm ca „plată neterminată" și-i oferim reluarea plății.
+  // Excludem flow-ul de success (?success=1 / ?paymentId=…) unde generation e
+  // legitim pending câteva secunde până vine webhook-ul Stripe.
+  const justPaid = search.get('success') === '1' || !!search.get('paymentId');
+  const awaitingPayment = g.status === 'pending' && !g.paidUnlocked && !justPaid;
   // Owner-ul (user logat sau aceeași sesiune guest) e singurul care primește
   // owner ids în payload — payload-ul public le omite. Folosit ca să afișăm
   // colajul DOAR pentru cine a generat maneaua (backend-ul oricum impune 403).
   const isOwner = g.isOwner ?? !!(g.ownerUserId || g.ownerGuestId);
   // Owner SAU vizitator care a deblocat cu parola → poate vedea conținutul privat.
   const canSeePrivate = isOwner || !!g.unlocked;
-  const inProgress = IN_PROGRESS_STATUSES.has(g.status);
+  // Cât așteptăm plata, NU arătăm progress bar-ul „Acum compunem…" (generarea
+  // nu a pornit) — afișăm în schimb secțiunea de reluare a plății.
+  const inProgress = IN_PROGRESS_STATUSES.has(g.status) && !awaitingPayment;
   // Pachetele plus/premium au livrabile extra (imagini sociale; + videoclip la
   // premium) care se generează în fundal după ce melodia e gata. Cât
   // `deliverablesReady` e false, arătăm placeholder-e „se generează".
@@ -193,21 +207,34 @@ function ShareGenerationViewInner() {
         <p className="ld" style={{ marginTop: 2, fontSize: 13 }}>{t('fromSomeone', { from: g.dedication })}</p>
       )}
       <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{
-          fontSize: 11, padding: '3px 10px', borderRadius: 999,
-          background: isPaid ? 'rgba(62,224,126,0.15)' : 'rgba(241,200,77,0.15)',
-          color: isPaid ? '#bff5d2' : '#f1c84d', fontWeight: 600,
-        }}>
-          {isPaid ? t('unlockedBadge') : t('demoBadge')}
-        </span>
-        {g.packageTier === 'premium' && (
+        {awaitingPayment ? (
+          // Plată neterminată — NU arătăm „Deblocată"/„PREMIUM" (ar fi înșelător:
+          // piesa nu e plătită încă).
           <span style={{
             fontSize: 11, padding: '3px 10px', borderRadius: 999,
-            background: 'linear-gradient(180deg,#ffe28a,#f1c84d,#b07c1e)',
-            color: '#2a1a04', fontWeight: 800, letterSpacing: '0.04em',
+            background: 'rgba(255,150,40,0.15)', color: '#ffce9a', fontWeight: 600,
           }}>
-            👑 PREMIUM
+            ⏳ {t('paymentIncompleteBadge')}
           </span>
+        ) : (
+          <>
+            <span style={{
+              fontSize: 11, padding: '3px 10px', borderRadius: 999,
+              background: isPaid ? 'rgba(62,224,126,0.15)' : 'rgba(241,200,77,0.15)',
+              color: isPaid ? '#bff5d2' : '#f1c84d', fontWeight: 600,
+            }}>
+              {isPaid ? t('unlockedBadge') : t('demoBadge')}
+            </span>
+            {g.packageTier === 'premium' && (
+              <span style={{
+                fontSize: 11, padding: '3px 10px', borderRadius: 999,
+                background: 'linear-gradient(180deg,#ffe28a,#f1c84d,#b07c1e)',
+                color: '#2a1a04', fontWeight: 800, letterSpacing: '0.04em',
+              }}>
+                👑 PREMIUM
+              </span>
+            )}
+          </>
         )}
         {g.status === 'failed' && (
           <span style={{
@@ -249,6 +276,8 @@ function ShareGenerationViewInner() {
           onChanged={() => refresh()}
         />
       )}
+
+      {awaitingPayment && <PaymentRetrySection generation={g} />}
 
       {inProgress && (
         <GenerationProgress
@@ -823,6 +852,91 @@ function PaywallSection({ generationId }: { generationId: string }) {
         )}
         {promoError && <div style={{ marginTop: 6, fontSize: 12, color: '#ff8888' }}>{promoError}</div>}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Plată neterminată (pay-first): generation rămas „pending" + neplătit fiindcă
+ * userul a abandonat Stripe Checkout fără să treacă prin cancel_url. Reia plata
+ * pentru ACEEAȘI generație (refolosește generationId + packageTier → preț
+ * corect), apoi redirect la Stripe. La success se întoarce pe
+ * /m/<id>?success=1 și pornește generarea reală.
+ */
+function PaymentRetrySection({ generation }: { generation: GenerationDto }) {
+  const t = useTranslations('mViewPage');
+  const site = useSite();
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [price, setPrice] = useState<{ total: number; currency: string } | null>(null);
+
+  // Prețul corect al pachetului (premium ≠ basic) — pentru afișare pe buton.
+  useEffect(() => {
+    let alive = true;
+    const tier: PackageTier = generation.packageTier ?? 'basic';
+    api
+      .priceQuote(tier)
+      .then((q) => { if (alive) setPrice({ total: q.total, currency: q.currency }); })
+      .catch(() => {/* afișăm butonul fără sumă */});
+    return () => { alive = false; };
+  }, [generation.packageTier]);
+
+  async function retry() {
+    setSubmitting(true);
+    setErr(null);
+    try {
+      track('InitiateCheckout', {
+        content_id: generation.id,
+        content_name: 'Manea Cadou',
+        content_type: 'product',
+        value: (price?.total ?? site.basePriceCents) / 100,
+        currency: price?.currency ?? site.currency,
+        // event_id stabil pe generație — Meta dedup-uiește reîncercările.
+        event_id: `init-${generation.id}`,
+      });
+      const { url } = await api.createCheckoutSession({
+        generationId: generation.id,
+        packageTier: generation.packageTier,
+      });
+      window.location.href = url;
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : t('errCheckout'));
+      setSubmitting(false);
+    }
+  }
+
+  const amount = price ? formatPrice(site, price.total) : null;
+
+  return (
+    <div style={{
+      marginTop: 18, padding: 18, borderRadius: 12,
+      background: 'linear-gradient(135deg, rgba(120,60,10,0.30), rgba(60,28,10,0.30))',
+      border: '1px solid rgba(241,200,77,0.55)',
+    }}>
+      <h3 style={{ marginTop: 0, fontSize: 18, color: 'var(--gold-2)' }}>
+        ⏳ {t('paymentIncompleteTitle')}
+      </h3>
+      <p className="ld" style={{ fontSize: 14, marginTop: 6, lineHeight: 1.5 }}>
+        {t('paymentIncompleteSub')}
+      </p>
+      <button
+        type="button"
+        onClick={retry}
+        disabled={submitting}
+        className="btn"
+        style={{
+          marginTop: 14, width: '100%', padding: '12px 16px', fontWeight: 700,
+          background: 'linear-gradient(180deg,#fff5cc 0%,#ffe28a 30%,#f1c84d 60%,#b07c1e 100%)',
+          color: '#2a1a04', cursor: submitting ? 'wait' : 'pointer', opacity: submitting ? 0.7 : 1,
+        }}
+      >
+        {submitting
+          ? t('checkoutLoading')
+          : amount
+            ? t('retryPaymentCtaPrice', { amount })
+            : t('retryPaymentCta')}
+      </button>
+      {err && <div style={{ marginTop: 8, fontSize: 12, color: '#ff8888' }}>{err}</div>}
     </div>
   );
 }

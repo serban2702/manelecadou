@@ -866,8 +866,12 @@
       "checking_lyrics": "Ελέγχουμε στίχους",
       "generating_audio": "Τραγουδιέται",
       "succeeded": "Έτοιμο",
-      "failed": "Απέτυχε"
-    }
+      "failed": "Απέτυχε",
+      "pending": "Σε αναμονή",
+      "running": "Τραγουδιέται"
+    },
+    "paymentIncompleteBadge": "Ημιτελής πληρωμή",
+    "resumePayment": "Συνέχισε την πληρωμή →"
   },
   "contactPage": {
     "title": "Επικοινωνία",
@@ -998,7 +1002,12 @@
     "errCheckout": "Σφάλμα εκκίνησης πληρωμής",
     "removePromo": "✕ Αφαίρεση promo",
     "applying": "...",
-    "applyPromo": "Εφαρμογή"
+    "applyPromo": "Εφαρμογή",
+    "paymentIncompleteBadge": "Ημιτελής πληρωμή",
+    "paymentIncompleteTitle": "Η πληρωμή δεν ολοκληρώθηκε",
+    "paymentIncompleteSub": "Η παραγγελία σου αποθηκεύτηκε. Συνέχισε την πληρωμή για να φτιάξουμε το τραγούδι και να σου το στείλουμε με email.",
+    "retryPaymentCta": "Συνέχισε την πληρωμή",
+    "retryPaymentCtaPrice": "Συνέχισε την πληρωμή — {amount}"
   },
   "cursorHint": {
     "default": "Πάτα εδώ"

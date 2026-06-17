@@ -866,8 +866,12 @@
       "checking_lyrics": "Verificăm versuri",
       "generating_audio": "Se cântă",
       "succeeded": "Gata",
-      "failed": "Eșuat"
-    }
+      "failed": "Eșuat",
+      "pending": "În așteptare",
+      "running": "Se cântă"
+    },
+    "paymentIncompleteBadge": "Plată neterminată",
+    "resumePayment": "Reia plata →"
   },
   "contactPage": {
     "title": "Contact",
@@ -998,7 +1002,12 @@
     "errCheckout": "Eroare la inițierea plății",
     "removePromo": "✕ Elimină promo",
     "applying": "...",
-    "applyPromo": "Aplică"
+    "applyPromo": "Aplică",
+    "paymentIncompleteBadge": "Plată neterminată",
+    "paymentIncompleteTitle": "Plata nu a fost finalizată",
+    "paymentIncompleteSub": "Comanda ta e salvată. Reia plata ca să-ți compunem maneaua și să ți-o trimitem pe email.",
+    "retryPaymentCta": "Reia plata",
+    "retryPaymentCtaPrice": "Reia plata — {amount}"
   },
   "cursorHint": {
     "default": "Apasă aici"

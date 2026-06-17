@@ -868,8 +868,12 @@
       "checking_lyrics": "Preverjamo besedilo",
       "generating_audio": "Se poje",
       "succeeded": "Pripravljeno",
-      "failed": "Neuspešno"
-    }
+      "failed": "Neuspešno",
+      "pending": "Čaka",
+      "running": "Se poje"
+    },
+    "paymentIncompleteBadge": "Nedokončano plačilo",
+    "resumePayment": "Nadaljuj s plačilom →"
   },
   "contactPage": {
     "title": "Kontakt",
@@ -1000,7 +1004,12 @@
     "errCheckout": "Napaka pri zagonu plačila",
     "removePromo": "✕ Odstrani promo",
     "applying": "...",
-    "applyPromo": "Uporabi"
+    "applyPromo": "Uporabi",
+    "paymentIncompleteBadge": "Nedokončano plačilo",
+    "paymentIncompleteTitle": "Plačilo ni bilo dokončano",
+    "paymentIncompleteSub": "Tvoje naročilo je shranjeno. Nadaljuj s plačilom, da ustvarimo pesem in ti jo pošljemo po e-pošti.",
+    "retryPaymentCta": "Nadaljuj s plačilom",
+    "retryPaymentCtaPrice": "Nadaljuj s plačilom — {amount}"
   },
   "cursorHint": {
     "default": "Pritisni tukaj"

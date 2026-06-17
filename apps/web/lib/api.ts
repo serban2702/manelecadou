@@ -423,6 +423,9 @@ export const api = {
     request<{ id: string; status: string; amount: number; currency: string }>(`/payments/${id}`),
   createCheckoutSession: (input: {
     generationId?: string;
+    /** Pachetul ales — necesar ca backend-ul să calculeze prețul corect
+     *  (premium ≠ basic) la reluarea plății pentru o generație existentă. */
+    packageTier?: PackageTier;
     tipAmount?: number;
     premium?: boolean;
     promoCode?: string;

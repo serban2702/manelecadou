@@ -112,10 +112,18 @@ function GenerationRow({ g }: { g: GenerationDto }) {
     adminVoice?.nm ||
     VOICES.find((v) => v.id === g.voiceArtist)?.nm ||
     g.voiceArtist;
-  const statusLabel = (() => { try { return t(`status.${g.status}`); } catch { return g.status; } })();
+  // `t.has()` evită eroarea next-intl MISSING_MESSAGE (care e logată, NU aruncată,
+  // deci un try/catch n-o prinde) când un status nou n-are încă cheie de traducere.
+  const statusKey = `status.${g.status}`;
+  const statusLabel = (t as { has?: (k: string) => boolean }).has?.(statusKey)
+    ? t(statusKey as Parameters<typeof t>[0])
+    : g.status;
   const color = STATUS_COLOR[g.status] ?? { color: '#ccc', bg: 'rgba(255,255,255,0.08)' };
   const isPaid = g.type === 'full' || g.paidUnlocked;
   const isPlayable = g.status === 'succeeded' && !!g.audioUrl;
+  // Pay-first abandonat: generation rămas „pending" + neplătit. Nu e nici
+  // „Deblocată" (înșelător), nici în lucru — așteaptă reluarea plății.
+  const awaitingPayment = g.status === 'pending' && !g.paidUnlocked;
 
   return (
     <Link
@@ -137,27 +145,38 @@ function GenerationRow({ g }: { g: GenerationDto }) {
             <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--gold-2)' }}>
               {t('forSomeone', { name: g.recipientName })}
             </span>
-            <span style={{
-              fontSize: 11, padding: '2px 8px', borderRadius: 999,
-              background: color.bg, color: color.color, fontWeight: 600,
-            }}>
-              {statusLabel}
-            </span>
-            {isPaid ? (
+            {awaitingPayment ? (
               <span style={{
                 fontSize: 11, padding: '2px 8px', borderRadius: 999,
-                background: 'rgba(62,224,126,0.15)', color: '#bff5d2', fontWeight: 600,
+                background: 'rgba(255,150,40,0.15)', color: '#ffce9a', fontWeight: 600,
               }}>
-                {t('unlockedBadge')}
+                ⏳ {t('paymentIncompleteBadge')}
               </span>
-            ) : g.type === 'demo' ? (
-              <span style={{
-                fontSize: 11, padding: '2px 8px', borderRadius: 999,
-                background: 'rgba(241,200,77,0.15)', color: '#f1c84d', fontWeight: 600,
-              }}>
-                {t('demoBadge')}
-              </span>
-            ) : null}
+            ) : (
+              <>
+                <span style={{
+                  fontSize: 11, padding: '2px 8px', borderRadius: 999,
+                  background: color.bg, color: color.color, fontWeight: 600,
+                }}>
+                  {statusLabel}
+                </span>
+                {isPaid ? (
+                  <span style={{
+                    fontSize: 11, padding: '2px 8px', borderRadius: 999,
+                    background: 'rgba(62,224,126,0.15)', color: '#bff5d2', fontWeight: 600,
+                  }}>
+                    {t('unlockedBadge')}
+                  </span>
+                ) : g.type === 'demo' ? (
+                  <span style={{
+                    fontSize: 11, padding: '2px 8px', borderRadius: 999,
+                    background: 'rgba(241,200,77,0.15)', color: '#f1c84d', fontWeight: 600,
+                  }}>
+                    {t('demoBadge')}
+                  </span>
+                ) : null}
+              </>
+            )}
           </div>
           <div style={{ fontSize: 12, color: 'rgba(255,245,220,0.55)', marginTop: 4 }}>
             {styleNm} · {occNm} · {t('voiceLabel')}: {voiceNm}
@@ -172,7 +191,11 @@ function GenerationRow({ g }: { g: GenerationDto }) {
           </div>
         </div>
         <div style={{ alignSelf: 'center', fontSize: 13, color: 'var(--gold)', whiteSpace: 'nowrap' }}>
-          {isPlayable ? (isPaid ? t('listen') : t('listenUnlock')) : t('details')}
+          {awaitingPayment
+            ? t('resumePayment')
+            : isPlayable
+              ? (isPaid ? t('listen') : t('listenUnlock'))
+              : t('details')}
         </div>
       </div>
     </Link>

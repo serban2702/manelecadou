@@ -868,8 +868,12 @@
       "checking_lyrics": "Sözleri kontrol ediyoruz",
       "generating_audio": "Söyleniyor",
       "succeeded": "Hazır",
-      "failed": "Başarısız"
-    }
+      "failed": "Başarısız",
+      "pending": "Beklemede",
+      "running": "Söyleniyor"
+    },
+    "paymentIncompleteBadge": "Ödeme tamamlanmadı",
+    "resumePayment": "Ödemeye devam et →"
   },
   "contactPage": {
     "title": "İletişim",
@@ -1000,7 +1004,12 @@
     "errCheckout": "Ödeme başlatma hatası",
     "removePromo": "✕ Promoyu kaldır",
     "applying": "...",
-    "applyPromo": "Uygula"
+    "applyPromo": "Uygula",
+    "paymentIncompleteBadge": "Ödeme tamamlanmadı",
+    "paymentIncompleteTitle": "Ödeme tamamlanamadı",
+    "paymentIncompleteSub": "Siparişin kaydedildi. Şarkını hazırlayıp e-posta ile göndermemiz için ödemeyi tekrar başlat.",
+    "retryPaymentCta": "Ödemeyi tekrar başlat",
+    "retryPaymentCtaPrice": "Ödemeyi tekrar başlat — {amount}"
   },
   "cursorHint": {
     "default": "Buraya bas"

@@ -866,8 +866,12 @@
       "checking_lyrics": "Проверяваме текста",
       "generating_audio": "Изпява се",
       "succeeded": "Готово",
-      "failed": "Неуспешно"
-    }
+      "failed": "Неуспешно",
+      "pending": "Чака",
+      "running": "Изпява се"
+    },
+    "paymentIncompleteBadge": "Незавършено плащане",
+    "resumePayment": "Поднови плащането →"
   },
   "contactPage": {
     "title": "Контакти",
@@ -998,7 +1002,12 @@
     "errCheckout": "Грешка при инициализиране на плащане",
     "removePromo": "✕ Премахни промо",
     "applying": "...",
-    "applyPromo": "Приложи"
+    "applyPromo": "Приложи",
+    "paymentIncompleteBadge": "Незавършено плащане",
+    "paymentIncompleteTitle": "Плащането не беше завършено",
+    "paymentIncompleteSub": "Поръчката ти е запазена. Поднови плащането, за да създадем песента и да ти я изпратим по имейл.",
+    "retryPaymentCta": "Поднови плащането",
+    "retryPaymentCtaPrice": "Поднови плащането — {amount}"
   },
   "cursorHint": {
     "default": "Натисни тук"
