@@ -163,11 +163,12 @@ export class AnalyticsAdminController {
   /** Sumar marketing: KPI plăți + trafic + conversie + funnel + trend. */
   @Get('marketing-summary')
   marketingSummary(
-    @Query() q: { from?: string; to?: string; excludeBots?: string },
+    @Query() q: { from?: string; to?: string; excludeBots?: string; excludeTests?: string },
     @CurrentSiteId() siteId: string | null,
   ) {
     return this.analytics.marketingSummary(rangeFromQuery(q), siteId, {
       excludeBots: q.excludeBots !== '0' && q.excludeBots !== 'false',
+      excludeTests: q.excludeTests !== '0' && q.excludeTests !== 'false',
     });
   }
 
@@ -176,11 +177,12 @@ export class AnalyticsAdminController {
    *  package/occasion/voiceGender/buyerGender. */
   @Get('marketing-breakdown')
   marketingBreakdown(
-    @Query() q: { from?: string; to?: string; dimension?: string; excludeBots?: string },
+    @Query() q: { from?: string; to?: string; dimension?: string; excludeBots?: string; excludeTests?: string },
     @CurrentSiteId() siteId: string | null,
   ) {
     return this.analytics.marketingBreakdown(rangeFromQuery(q), q.dimension ?? 'source', siteId, {
       excludeBots: q.excludeBots !== '0' && q.excludeBots !== 'false',
+      excludeTests: q.excludeTests !== '0' && q.excludeTests !== 'false',
     });
   }
 

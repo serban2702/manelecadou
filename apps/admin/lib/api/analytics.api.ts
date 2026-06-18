@@ -133,16 +133,26 @@ export class AnalyticsApi {
   static adSpendSync(days = 7): Promise<{ ok: boolean; scope: string; results: AdSpendSyncResult[] }> {
     return http.post(`/admin/analytics/ad-spend/sync?days=${days}`, {});
   }
-  static marketingSummary(range: AnalyticsRange, excludeBots = true): Promise<MarketingSummary> {
-    return http.get(`/admin/analytics/marketing-summary${qs(range, excludeBots ? undefined : { excludeBots: '0' })}`);
+  static marketingSummary(range: AnalyticsRange, excludeBots = true, excludeTests = true): Promise<MarketingSummary> {
+    return http.get(
+      `/admin/analytics/marketing-summary${qs(range, {
+        ...(excludeBots ? {} : { excludeBots: '0' }),
+        ...(excludeTests ? {} : { excludeTests: '0' }),
+      })}`,
+    );
   }
   static marketingBreakdown(
     range: AnalyticsRange,
     dimension: MarketingDimension,
     excludeBots = true,
+    excludeTests = true,
   ): Promise<MarketingBreakdown> {
     return http.get(
-      `/admin/analytics/marketing-breakdown${qs(range, { dimension, ...(excludeBots ? {} : { excludeBots: '0' }) })}`,
+      `/admin/analytics/marketing-breakdown${qs(range, {
+        dimension,
+        ...(excludeBots ? {} : { excludeBots: '0' }),
+        ...(excludeTests ? {} : { excludeTests: '0' }),
+      })}`,
     );
   }
   static backfillBuyerNames(limit = 200): Promise<{

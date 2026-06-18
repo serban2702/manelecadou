@@ -249,18 +249,19 @@ function fmtCell(v: number | null, kind: MktColKind): string {
 function MarketingTab({ range }: { range: { from: string; to: string } }) {
   const { toast } = useToast();
   const [excludeBots, setExcludeBots] = useState(true);
+  const [excludeTests, setExcludeTests] = useState(true);
   const [dim, setDim] = useState<MarketingDimension>('source');
   const [sortBy, setSortBy] = useState<keyof MarketingBreakdownRow | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [backfilling, setBackfilling] = useState(false);
 
   const summary = useAsync<MarketingSummary>(
-    () => AnalyticsApi.marketingSummary(range, excludeBots),
-    [range, excludeBots],
+    () => AnalyticsApi.marketingSummary(range, excludeBots, excludeTests),
+    [range, excludeBots, excludeTests],
   );
   const breakdown = useAsync(
-    () => AnalyticsApi.marketingBreakdown(range, dim, excludeBots),
-    [range, dim, excludeBots],
+    () => AnalyticsApi.marketingBreakdown(range, dim, excludeBots, excludeTests),
+    [range, dim, excludeBots, excludeTests],
   );
 
   const s = summary.data;
@@ -338,13 +339,23 @@ function MarketingTab({ range }: { range: { from: string; to: string } }) {
         <p className="text-sm text-muted-foreground">
           Cumpărări, checkout-uri abandonate, trafic și conversie — defalcate pentru optimizarea campaniilor.
         </p>
-        <Button
-          variant={excludeBots ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setExcludeBots((v) => !v)}
-        >
-          {excludeBots ? '🤖 Boți excluși' : '🤖 Boți incluși'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={excludeTests ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setExcludeTests((v) => !v)}
+            title="Exclude comenzile de test interne (serban2702 / @manelecadou.ro)"
+          >
+            {excludeTests ? 'Teste ascunse' : 'Teste incluse'}
+          </Button>
+          <Button
+            variant={excludeBots ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setExcludeBots((v) => !v)}
+          >
+            {excludeBots ? '🤖 Boți excluși' : '🤖 Boți incluși'}
+          </Button>
+        </div>
       </div>
 
       {/* KPI principale */}

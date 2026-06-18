@@ -810,6 +810,17 @@ export class AnalyticsService {
   }
 
   /**
+   * Filtru SQL care exclude comenzile de test interne (emailul owner-ului sau
+   * adrese @manelecadou.ro). Necesită un `LEFT JOIN guest_sessions gst ON gst.id =
+   * p."guestId"` în query. Null-safe (COALESCE la ''). Alias plată = `p`.
+   */
+  private testFilter(excludeTests: boolean): string {
+    if (!excludeTests) return '';
+    const e = `COALESCE(lower(COALESCE(p."customerEmail", gst.email)),'')`;
+    return `AND ${e} NOT LIKE 'serban2702%' AND ${e} NOT LIKE '%@manelecadou.ro'`;
+  }
+
+  /**
    * Sumar marketing: trafic (sesiuni ne-bot), plăți inițiate/finalizate/eșuate/
    * abandonate, revenue RON, AOV, rate de conversie + funnel + trend vs perioada
    * anterioară. Baza dashboard-ului din admin `/analytics` tab Marketing.
@@ -817,13 +828,14 @@ export class AnalyticsService {
   async marketingSummary(
     range: RangeQuery,
     siteId: string | null = null,
-    opts: { excludeBots?: boolean } = {},
+    opts: { excludeBots?: boolean; excludeTests?: boolean } = {},
   ) {
     const excludeBots = opts.excludeBots !== false;
+    const excludeTests = opts.excludeTests !== false;
     const r = this.fmtRange(range);
 
     const traffic = await this.marketingTraffic(range, siteId, excludeBots);
-    const pay = await this.marketingPayments(range, siteId);
+    const pay = await this.marketingPayments(range, siteId, excludeTests);
 
     // Câți au început formularul (indicativ — eveniment sub-raportat istoric, nu-l
     // punem în funnel ca să nu rupem monotonia, dar îl expunem separat).
@@ -844,7 +856,7 @@ export class AnalyticsService {
       to: new Date(range.from.getTime() - 1),
     };
     const prevTraffic = await this.marketingTraffic(prevRange, siteId, excludeBots);
-    const prevPay = await this.marketingPayments(prevRange, siteId);
+    const prevPay = await this.marketingPayments(prevRange, siteId, excludeTests);
 
     const sessions = traffic.sessions;
     const visitorConv = sessions > 0 ? Math.round((pay.purchases / sessions) * 10000) / 100 : 0;
@@ -946,7 +958,7 @@ export class AnalyticsService {
   }
 
   /** Agregat plăți pentru un range (toate statusurile, revenue normalizat RON). */
-  private async marketingPayments(range: RangeQuery, siteId: string | null) {
+  private async marketingPayments(range: RangeQuery, siteId: string | null, excludeTests = true) {
     const params: unknown[] = [range.from.toISOString(), range.to.toISOString()];
     let site = '';
     if (siteId) {
@@ -963,7 +975,8 @@ export class AnalyticsService {
            COALESCE(SUM(${AnalyticsService.AMOUNT_RON}) FILTER (WHERE p.status='paid'),0)::int AS revenue,
            COUNT(*) FILTER (WHERE p.status='paid' AND p."buyerGender" IS NOT NULL)::int AS gender_known
          FROM payments p
-         WHERE p."createdAt" BETWEEN $1 AND $2 ${site}`,
+         LEFT JOIN guest_sessions gst ON gst.id = p."guestId"
+         WHERE p."createdAt" BETWEEN $1 AND $2 ${site} ${this.testFilter(excludeTests)}`,
         params,
       )
     )[0] as {
@@ -991,9 +1004,10 @@ export class AnalyticsService {
     range: RangeQuery,
     dimension: string,
     siteId: string | null = null,
-    opts: { excludeBots?: boolean } = {},
+    opts: { excludeBots?: boolean; excludeTests?: boolean } = {},
   ): Promise<{ dimension: string; hasTraffic: boolean; rows: MarketingBreakdownRow[] }> {
     const excludeBots = opts.excludeBots !== false;
+    const excludeTests = opts.excludeTests !== false;
     const TRAFFIC: Record<string, { sess: string; att: string }> = {
       source: { sess: `COALESCE(NULLIF(s.source,''),'direct')`, att: `COALESCE(NULLIF(att.source,''),'direct')` },
       medium: { sess: `COALESCE(NULLIF(s.medium,''),'(none)')`, att: `COALESCE(NULLIF(att.medium,''),'(none)')` },
@@ -1006,16 +1020,16 @@ export class AnalyticsService {
     };
 
     if (TRAFFIC[dimension]) {
-      return { dimension, hasTraffic: true, rows: await this.breakdownTraffic(range, dimension, TRAFFIC[dimension], siteId, excludeBots) };
+      return { dimension, hasTraffic: true, rows: await this.breakdownTraffic(range, dimension, TRAFFIC[dimension], siteId, excludeBots, excludeTests) };
     }
     if (dimension === 'day' || dimension === 'hour' || dimension === 'dow') {
-      return { dimension, hasTraffic: true, rows: await this.breakdownTemporal(range, dimension, siteId, excludeBots) };
+      return { dimension, hasTraffic: true, rows: await this.breakdownTemporal(range, dimension, siteId, excludeBots, excludeTests) };
     }
     if (dimension === 'buyerGender') {
-      return { dimension, hasTraffic: false, rows: await this.breakdownBuyerGender(range, siteId) };
+      return { dimension, hasTraffic: false, rows: await this.breakdownBuyerGender(range, siteId, excludeTests) };
     }
     if (dimension === 'package' || dimension === 'occasion' || dimension === 'voiceGender') {
-      return { dimension, hasTraffic: false, rows: await this.breakdownGeneration(range, dimension, siteId) };
+      return { dimension, hasTraffic: false, rows: await this.breakdownGeneration(range, dimension, siteId, excludeTests) };
     }
     throw new BadRequestException(`Dimensiune necunoscută: ${dimension}`);
   }
@@ -1047,6 +1061,7 @@ export class AnalyticsService {
     cfg: { sess: string; att: string },
     siteId: string | null,
     excludeBots: boolean,
+    excludeTests = true,
   ): Promise<MarketingBreakdownRow[]> {
     // 1. Plăți atribuite la sesiunea responsabilă (last non-direct touch).
     const pParams: unknown[] = [range.from.toISOString(), range.to.toISOString()];
@@ -1061,7 +1076,8 @@ export class AnalyticsService {
                 p."sessionKey" AS p_skey, p."visitorId" AS p_vid,
                 (${AnalyticsService.AMOUNT_RON}) AS amount_ron
          FROM payments p
-         WHERE p."createdAt" BETWEEN $1 AND $2 ${pSite}
+         LEFT JOIN guest_sessions gst ON gst.id = p."guestId"
+         WHERE p."createdAt" BETWEEN $1 AND $2 ${pSite} ${this.testFilter(excludeTests)}
        ),
        att AS (
          SELECT paid.*, s.source, s.medium, s.campaign, s.device,
@@ -1144,13 +1160,14 @@ export class AnalyticsService {
     dim: 'day' | 'hour' | 'dow',
     siteId: string | null,
     excludeBots: boolean,
+    excludeTests = true,
   ): Promise<MarketingBreakdownRow[]> {
     const DOW_RO = ['Duminică', 'Luni', 'Marți', 'Miercuri', 'Joi', 'Vineri', 'Sâmbătă'];
     const keyExpr = (col: string) =>
       dim === 'day'
         ? `to_char(${this.localTs(col)},'YYYY-MM-DD')`
         : dim === 'hour'
-          ? `lpad(extract(hour FROM ${this.localTs(col)})::text,2,'0')||':00'`
+          ? `lpad(extract(hour FROM ${this.localTs(col)})::text,2,'0')`
           : `extract(isodow FROM ${this.localTs(col)})::int::text`;
 
     const sParams: unknown[] = [range.from.toISOString(), range.to.toISOString()];
@@ -1182,7 +1199,9 @@ export class AnalyticsService {
               COUNT(*) FILTER (WHERE p.status='paid')::int AS purchases,
               COUNT(*) FILTER (WHERE p.status='failed')::int AS failed,
               COALESCE(SUM(${AnalyticsService.AMOUNT_RON}) FILTER (WHERE p.status='paid'),0)::int AS revenue
-       FROM payments p WHERE p."createdAt" BETWEEN $1 AND $2 ${pSite}
+       FROM payments p
+       LEFT JOIN guest_sessions gst ON gst.id = p."guestId"
+       WHERE p."createdAt" BETWEEN $1 AND $2 ${pSite} ${this.testFilter(excludeTests)}
        GROUP BY key`,
       pParams,
     )) as Array<{ key: string; initiated: number; purchases: number; failed: number; revenue: number }>;
@@ -1215,13 +1234,18 @@ export class AnalyticsService {
       r.aov = r.purchases > 0 ? Math.round(r.revenueRon / r.purchases) : null;
       r.checkoutConv = r.initiated > 0 ? Math.round((r.purchases / r.initiated) * 10000) / 100 : null;
       r.visitorConv = r.sessions && r.sessions > 0 ? Math.round((r.purchases / r.sessions) * 10000) / 100 : null;
-      if (dim === 'dow') r.label = DOW_RO[Number(r.key) % 7] ?? r.key;
+      if (dim === 'dow') {
+        r.label = DOW_RO[Number(r.key) % 7] ?? r.key;
+      } else if (dim === 'hour') {
+        const h = Number(r.key);
+        r.label = `${String(h).padStart(2, '0')}:00 – ${String((h + 1) % 24).padStart(2, '0')}:00`;
+      }
     }
     // Temporal = sortare cronologică (nu pe revenue).
     return rows.sort((a, b) => a.key.localeCompare(b.key));
   }
 
-  private async breakdownBuyerGender(range: RangeQuery, siteId: string | null): Promise<MarketingBreakdownRow[]> {
+  private async breakdownBuyerGender(range: RangeQuery, siteId: string | null, excludeTests = true): Promise<MarketingBreakdownRow[]> {
     const params: unknown[] = [range.from.toISOString(), range.to.toISOString()];
     let site = '';
     if (siteId) {
@@ -1234,7 +1258,9 @@ export class AnalyticsService {
               COUNT(*) FILTER (WHERE p.status='paid')::int AS purchases,
               COUNT(*) FILTER (WHERE p.status='failed')::int AS failed,
               COALESCE(SUM(${AnalyticsService.AMOUNT_RON}) FILTER (WHERE p.status='paid'),0)::int AS revenue
-       FROM payments p WHERE p."createdAt" BETWEEN $1 AND $2 ${site}
+       FROM payments p
+       LEFT JOIN guest_sessions gst ON gst.id = p."guestId"
+       WHERE p."createdAt" BETWEEN $1 AND $2 ${site} ${this.testFilter(excludeTests)}
        GROUP BY key`,
       params,
     )) as Array<{ key: string; initiated: number; purchases: number; failed: number; revenue: number }>;
@@ -1255,6 +1281,7 @@ export class AnalyticsService {
     range: RangeQuery,
     dim: 'package' | 'occasion' | 'voiceGender',
     siteId: string | null,
+    excludeTests = true,
   ): Promise<MarketingBreakdownRow[]> {
     const keyExpr =
       dim === 'package'
@@ -1281,7 +1308,8 @@ export class AnalyticsService {
               COALESCE(SUM(${AnalyticsService.AMOUNT_RON}) FILTER (WHERE p.status='paid'),0)::int AS revenue
        FROM generations g
        LEFT JOIN payments p ON p.id = g."paymentId"
-       WHERE g."createdAt" BETWEEN $1 AND $2 ${site}
+       LEFT JOIN guest_sessions gst ON gst.id = p."guestId"
+       WHERE g."createdAt" BETWEEN $1 AND $2 ${site} ${this.testFilter(excludeTests)}
        GROUP BY key`,
       params,
     )) as Array<{ key: string; initiated: number; purchases: number; failed: number; revenue: number }>;
