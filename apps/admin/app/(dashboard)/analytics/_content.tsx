@@ -313,18 +313,19 @@ function MarketingTab({ range }: { range: { from: string; to: string } }) {
 
   async function runBackfill() {
     if (backfilling) return;
-    if (!window.confirm('Aduce numele cumpărătorilor din Stripe pentru plățile istorice (max 300)? Poate dura ~1 min.')) return;
     setBackfilling(true);
     try {
-      const res = await AnalyticsApi.backfillBuyerNames(300);
+      // Întâi aducem numele noi din Stripe, apoi inferăm genul din nume + email.
+      await AnalyticsApi.backfillBuyerNames(400).catch(() => null);
+      const res = await AnalyticsApi.backfillBuyerGender(5000);
       toast({
-        title: 'Backfill terminat',
-        description: `${res.updated} actualizate, ${res.genderInferred} cu gen inferat, ${res.skipped} sărite, ${res.errors} erori.`,
+        title: 'Gen completat',
+        description: `${res.updated} plăți actualizate (${res.byName} din nume, ${res.byEmail} din email). ${res.skipped} rămase fără sursă.`,
       });
       summary.refetch();
       breakdown.refetch();
     } catch (e) {
-      toast({ title: 'Eroare backfill', description: (e as Error).message, variant: 'destructive' });
+      toast({ title: 'Eroare', description: (e as Error).message, variant: 'destructive' });
     } finally {
       setBackfilling(false);
     }
@@ -444,11 +445,11 @@ function MarketingTab({ range }: { range: { from: string; to: string } }) {
           {dim === 'buyerGender' && s && (
             <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2 text-xs">
               <span className="text-muted-foreground">
-                Gen cunoscut pentru <strong className="text-foreground">{s.buyerGenderCoverage}%</strong> din cumpărări, inferat din numele Stripe.
-                Vine din datele de plată → disponibil mai ales pe plăți finalizate; uită-te la <strong className="text-foreground">Cumpărări/Venit</strong>, nu la rata de finalizare.
+                Gen cunoscut pentru <strong className="text-foreground">{s.buyerGenderCoverage}%</strong> din cumpărări, inferat din numele Stripe + emailul clientului.
+                Necunoscutele rămase sunt mai ales comenzi de test interne și clienți de pe site-urile BG/GR (nume non-românești).
               </span>
               <Button variant="outline" size="sm" onClick={runBackfill} disabled={backfilling}>
-                {backfilling ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : 'Adu nume din Stripe'}
+                {backfilling ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : 'Recompletează genul'}
               </Button>
             </div>
           )}

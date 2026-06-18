@@ -150,6 +150,11 @@ export class AnalyticsApi {
   }> {
     return http.post(`/admin/analytics/backfill-buyer-names?limit=${limit}`, {});
   }
+  static backfillBuyerGender(limit = 2000): Promise<{
+    scanned: number; updated: number; byName: number; byEmail: number; skipped: number;
+  }> {
+    return http.post(`/admin/analytics/backfill-buyer-gender?limit=${limit}`, {});
+  }
 }
 
 /** Dimensiunile suportate de matricea de marketing (rânduri). */
