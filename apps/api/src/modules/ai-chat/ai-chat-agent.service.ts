@@ -2593,7 +2593,11 @@ NU promite mai puțin. Trimite linkul ${linkToSong} ca să verifice live.`;
 
     // Default-uri site-aware
     const fallbackStyle = STYLES[0]; // Clasică de pahar
-    const fallbackOccasion = OCCASIONS[0]; // Zi de naștere
+    // Default neutru — NU 'Zi de naștere'. Birthday ca default silent băga „la mulți
+    // ani" / „la ziua ta" în versurile manelelor de dragoste sau de răzbunare fără
+    // niciun eveniment. (2026-06-18, audit conv 9bb5bb9b + 40db5e6a.) 'Altă ocazie'
+    // lasă mesajul clientului să dicteze tema, fără să inventeze un eveniment.
+    const fallbackOccasion = 'Altă ocazie';
     const fallbackVoice = wizardData.recipientGender === 'F' ? VOICE_DEFAULTS.F : VOICE_DEFAULTS.M;
 
     // Iau ULTIMELE 25 mesaje user (DESC + reverse) — cu ASC luam cele mai VECHI,
@@ -2627,7 +2631,8 @@ Pe baza conversației user-ului de mai jos și a datelor wizard deja colectate, 
 REGULI:
 - Dacă userul a SPUS explicit ceva ("vreau ceva clasic", "voce de femeie") → folosește exact.
 - Dacă wizardData are deja câmp setat → respectă-l, nu schimba.
-- Pentru style/occasion/voice fără indicii clare → alege default-uri logice (zi de naștere → Modernă, voce match sex recipient).
+- occasion: NU presupune un eveniment pe care userul nu l-a menționat. "Zi de naștere" SE alege DOAR dacă apar indicii clare (zi de naștere, "la mulți ani", împlinește ani). Manea de dragoste / "te iubesc" fără eveniment → "Declarație". Răzbunare, ironie, "să sufere", "m-a înșelat" → "Roast prieten". Fără niciun indiciu de ocazie → "Altă ocazie". NICIODATĂ nu băga referințe la un eveniment (zi de naștere, nuntă, botez) pe care userul nu l-a cerut.
+- Pentru style/voice fără indicii clare → alege default-uri logice (voce match sex recipient).
 
 Returnează STRICT JSON: {"style": "...", "occasion": "...", "voiceArtist": "...", "enrichedMessage": "..."}`;
 
@@ -3589,6 +3594,16 @@ ${transcript}`;
         instruction: 'Înainte de versuri am nevoie de pentru cine e melodia + mesajul. Întreabă-le întâi (wizard_update), apoi generate_lyrics.',
       };
     }
+    // GUARD anti-burst per tur: dacă am trimis DEJA un draft în acest run, nu mai
+    // genera altul — userul abia a primit versurile, trebuie să reacționeze întâi.
+    // (2026-06-18, audit conv 9bb5bb9b: AI a chemat generate_lyrics de 2x la rând cu
+    //  revisionNotes ~identice → a trimis draft 2 și 3 spate-n spate și a ars limita.)
+    if (ctx.lyricsSentThisTurn) {
+      return {
+        status: 'ALREADY_SENT_THIS_TURN',
+        instruction: 'Ai trimis DEJA versurile în acest tur. NU mai genera alt draft acum — așteaptă ca userul să-ți spună dacă-i plac sau exact ce să schimbe. TERMINĂ TURUL.',
+      };
+    }
     if ((state.lyricsDraftCount ?? 0) >= MAX_LYRICS_DRAFTS) {
       return {
         status: 'LYRICS_LIMIT_REACHED',
@@ -3633,6 +3648,7 @@ ${transcript}`;
     const cleanLyrics = lyrics.trim().slice(0, 3500);
     state.data.customLyrics = cleanLyrics;
     state.lyricsDraftCount = (state.lyricsDraftCount ?? 0) + 1;
+    ctx.lyricsSentThisTurn = true; // anti-burst: max 1 draft per tur (vezi guard sus)
     if (state.step === 'idle') state.step = 'collecting';
     state.updatedAt = new Date().toISOString();
     await this.conv
@@ -3961,4 +3977,9 @@ interface AgentCtx {
   /** A primit deja un avertisment de buclă în acest run? Prima dată = avertizăm și-i
    *  dăm o șansă să schimbe abordarea; a doua oară (tot similar) = escalăm la om. */
   loopWarned?: boolean;
+  /** A trimis deja un draft de versuri în acest run? Anti-burst: 1 singur draft per
+   *  tur, apoi așteaptă reacția userului. (2026-06-18, audit conv 9bb5bb9b: AI a
+   *  apelat generate_lyrics de 2x la rând cu revisionNotes ~identice → a ars draft 2
+   *  și 3 instant și a lovit LYRICS_LIMIT prematur.) */
+  lyricsSentThisTurn?: boolean;
 }

@@ -1680,7 +1680,22 @@ export class ChatService implements OnModuleInit {
     });
     if (recentThankYou) return;
 
-    const text = variants[Math.floor(Math.random() * variants.length)];
+    // Evită repetarea IDENTICĂ a ultimei mulțumiri: clientul care primește a 2-a
+    // melodie (ex. încă o generare pe site, mai târziu) primea exact același text
+    // („Mă bucur că totul a ieșit cum trebuie!" de 2x — 2026-06-18, audit conv
+    // 40db5e6a). Exclude varianta folosită ultima dată în această conversație.
+    const lastThankYou = await this.msg.findOne({
+      where: {
+        conversationId,
+        authorRole: 'admin',
+        messageType: 'text',
+        aiGenerated: true,
+        body: In(variants),
+      },
+      order: { createdAt: 'DESC' },
+    });
+    const pool = lastThankYou ? variants.filter((v) => v !== lastThankYou.body) : variants;
+    const text = pool[Math.floor(Math.random() * pool.length)];
     const conv = await this.conv.findOne({ where: { id: conversationId } });
     if (!conv) return;
     const msg = this.msg.create({
