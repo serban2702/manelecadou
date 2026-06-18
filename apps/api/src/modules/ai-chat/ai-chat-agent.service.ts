@@ -877,7 +877,12 @@ ETA STANDARD (memorat și nealterat):
 - Generarea durează 5-10 minute în mod normal (NU 90 secunde, NU 1-2 minute!).
 - Suno API poate avea uneori probleme/lentoare — atunci durează mai mult sau eșuează.
 - NU folosi NICIODATĂ formulări tip „90 secunde", „1-2 minute", „2 minute" — totul e 5-10 min.
-Preț de intrare: ${price} (pachetul Standard). 50.000+ manele generate, garanție 30 zile.
+Preț de intrare: ${price} (pachetul Standard). 50.000+ manele generate.
+„Garanție 30 zile" e DOAR semnal de încredere (badge marketing). ⛔ NU înseamnă refund / banii
+înapoi. Dacă un client întreabă ce e cu garanția: înseamnă că, dacă nu e mulțumit, refacem
+versurile/melodia la cerere — NU că primește banii înapoi. Nu promite NICIODATĂ returnarea
+banilor și nu spune că are „drept de refund 30 zile" (vezi regula 29). BUG observat 2026-06-18
+conv 9d844ab9: AI a spus clientului că are drept de refund 30 zile — fals, nu oferim refund.
 
 PACHETE (în chat le prezinți pe TOATE 3 — chiar înainte de linkul de plată, vezi ETAPA 5.5):
 - STANDARD = ${price} (preț de intrare — maneaua personalizată).
@@ -2188,6 +2193,23 @@ NU promite mai puțin. Trimite linkul ${linkToSong} ca să verifice live.`;
         take: 4,
       });
       const recentNorm = recent.map((m) => m.body.toLowerCase().replace(/\s+/g, ' '));
+
+      // Treapta 0 — BLOC HARD pe duplicat EXACT cross-run. Un mesaj byte-identic cu unul
+      // dintre ultimele mesaje AI e mereu robotic — spre deosebire de tiers-urile de mai jos
+      // (care tolerează parafraze când userul a dat info nouă), aici blocăm din prima, fără
+      // escaladare. BUG observat 2026-06-18 conv 258bd67b + 93817b1b: aceeași frază exactă
+      // („Ești deja pe pasul 6/6...", „Care e numele...") trimisă identic de 2 ori la rând.
+      if (recentNorm.includes(normalized)) {
+        this.logger.warn(`EXACT_DUP blocked on conv=${ctx.conv.id.slice(0, 8)} — identic cu un mesaj AI recent.`);
+        return {
+          sent: false,
+          messageType: 'duplicate_text',
+          status: 'EXACT_DUPLICATE_BLOCKED',
+          instruction:
+            'STAI — mesajul ăsta e IDENTIC cu unul pe care l-ai trimis deja recent. NU-l retrimite. Citește ultimul mesaj al userului, procesează ce a spus și AVANSEAZĂ concret: pune o întrebare NOUĂ de clarificare sau treci la pasul următor (versuri / pachet / finalize). Dacă userul cere linkul de plată și nu ai comanda finalizată, colectează scurt ce lipsește (nume destinatar + mesaj) apoi finalizează — NU repeta aceeași explicație cuvânt cu cuvânt.',
+        };
+      }
+
       const similarCount = recentNorm.filter((prev) => textOverlap(prev, normalized) > 0.7).length;
 
       // Treapta 1 — avertisment blând (nu escalează). Doar dacă nu e deja buclă gravă.

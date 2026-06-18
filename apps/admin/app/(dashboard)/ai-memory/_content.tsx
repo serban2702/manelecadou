@@ -306,7 +306,7 @@ function AddMemoryForm({ onClose, onSaved }: { onClose: () => void; onSaved: () 
             value={content}
             onChange={(e) => setContent(e.target.value)}
             rows={3}
-            placeholder="Ex: Garanție 30 zile, refund integral fără întrebări."
+            placeholder="Ex: Prețul de intrare e 29.99 lei. Livrare în 5-10 minute."
           />
         </div>
       </div>

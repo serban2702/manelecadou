@@ -118,8 +118,8 @@ Returnează JSON cu schema:
 { "facts": [ { "kind": "fact" | "faq" | "tone_example" | "edge_case" | "product" | "policy", "content": "string scurt (max 250 caractere) în română", "confidence": 0.0..1.0 } ] }
 
 Tipuri:
-- "fact": fapt despre brand/preț/livrare verificat în conversație (ex. „Garanție 30 zile cu refund integral").
-- "faq": Q clientului + A canonic admin condensat (ex. „Q: Cât durează? A: 90 secunde de la plată.").
+- "fact": fapt despre brand/preț/livrare verificat în conversație (ex. „Prețul de intrare e 29.99 lei"). ⛔ NU extrage fapte despre refund / banii înapoi — NU oferim refund (decis exclusiv de un om).
+- "faq": Q clientului + A canonic admin condensat (ex. „Q: Cât durează? A: 5-10 minute de la plată.").
 - "tone_example": un exemplu scurt de răspuns admin care a funcționat (max 150 caractere).
 - "edge_case": situație rară gestionată (ex. „User cu plată dublă — refund manual prin Stripe").
 - "product": detaliu produs (stiluri disponibile, voci, opțiuni premium).
