@@ -108,6 +108,50 @@ export function inferGenderFromName(name: string | null | undefined): 'M' | 'F' 
   return null;
 }
 
+/**
+ * Pentru tokeni cu prenume + nume LIPITE (tipic în emailuri: „iondumitrascu",
+ * „mariacrudu", „florinpian"), găsește cel mai LUNG prenume cunoscut care e
+ * prefix al tokenului. Cel mai lung câștigă → rezolvă corect perechile unde forma
+ * masculină e prefix al celei feminine (daniel/daniela, ionel/ionela): dacă tokenul
+ * continuă cu „-a", match-ul lung e forma feminină, ceea ce e de obicei corect.
+ * Folosit DOAR pe emailuri (nu pe numele Stripe), ca să nu greșim pe nume de familie.
+ */
+function genderByPrefix(token: string): 'M' | 'F' | null {
+  if (token.length < 5) return null;
+  let best: { len: number; g: 'M' | 'F' } | null = null;
+  const scan = (set: Set<string>, g: 'M' | 'F') => {
+    for (const name of set) {
+      if (name.length >= 3 && token.startsWith(name) && (!best || name.length > best.len)) {
+        best = { len: name.length, g };
+      }
+    }
+  };
+  scan(FEMALE_NAMES, 'F');
+  scan(MALE_NAMES, 'M');
+  return best?.g ?? null;
+}
+
+/**
+ * Variantă pentru pattern-ul invers „nume+prenume" lipit („parvugheorghe",
+ * „padurarubogdan", „zecherurobert"). Cel mai lung prenume cunoscut care e SUFIX.
+ * Prag ≥4 litere (mai conservator decât prefixul) ca să nu prindă terminații
+ * accidentale de nume de familie.
+ */
+function genderBySuffix(token: string): 'M' | 'F' | null {
+  if (token.length < 6) return null;
+  let best: { len: number; g: 'M' | 'F' } | null = null;
+  const scan = (set: Set<string>, g: 'M' | 'F') => {
+    for (const name of set) {
+      if (name.length >= 4 && token.endsWith(name) && token.length > name.length && (!best || name.length > best.len)) {
+        best = { len: name.length, g };
+      }
+    }
+  };
+  scan(FEMALE_NAMES, 'F');
+  scan(MALE_NAMES, 'M');
+  return best?.g ?? null;
+}
+
 /** Emailuri interne / de test — nu reprezintă clienți reali, nu inferăm gen din ele. */
 export function isInternalEmail(email: string | null | undefined): boolean {
   if (!email) return false;
@@ -131,7 +175,21 @@ export function inferGenderFromEmail(email: string | null | undefined): 'M' | 'F
   if (!email || isInternalEmail(email)) return null;
   const local = email.split('@')[0];
   if (!local) return null;
-  return inferGenderFromName(local);
+  // Pas 1: dicționar + terminație pe tokenii separați (maria.popescu, robert_x).
+  const direct = inferGenderFromName(local);
+  if (direct) return direct;
+  // Pas 2: prenume + nume lipite (iondumitrascu, florinpian) → prefix matching.
+  const tokens = tokenize(local);
+  for (const t of tokens) {
+    const g = genderByPrefix(t);
+    if (g) return g;
+  }
+  // Pas 3: nume + prenume lipite (parvugheorghe, zecherurobert) → suffix matching.
+  for (const t of tokens) {
+    const g = genderBySuffix(t);
+    if (g) return g;
+  }
+  return null;
 }
 
 /**
