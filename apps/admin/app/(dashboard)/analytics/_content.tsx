@@ -41,7 +41,13 @@ import {
   YAxis,
   Legend,
 } from 'recharts';
-import { AnalyticsApi, type AdSpendPlatform } from '@/lib/api';
+import {
+  AnalyticsApi,
+  type AdSpendPlatform,
+  type MarketingDimension,
+  type MarketingBreakdownRow,
+  type MarketingSummary,
+} from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -120,7 +126,7 @@ export default function AnalyticsPage() {
     () => ({ from: range.from.toISOString(), to: range.to.toISOString() }),
     [range],
   );
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState('marketing');
 
   return (
     <div>
@@ -135,6 +141,7 @@ export default function AnalyticsPage() {
         onValueChange={setTab}
         listClassName="mb-5 max-w-full overflow-x-auto"
         tabs={[
+          { value: 'marketing', label: 'Marketing' },
           { value: 'overview', label: 'Overview' },
           { value: 'users', label: 'Users' },
           { value: 'sessions', label: 'Sesiuni' },
@@ -145,6 +152,9 @@ export default function AnalyticsPage() {
           { value: 'cross-check', label: 'Cross-check' },
         ]}
       >
+        <TabsContent value="marketing">
+          <MarketingTab range={rangeISO} />
+        </TabsContent>
         <TabsContent value="overview">
           <OverviewTab range={rangeISO} />
         </TabsContent>
@@ -170,6 +180,347 @@ export default function AnalyticsPage() {
           <CrossCheckTab range={rangeISO} />
         </TabsContent>
       </ResponsiveTabs>
+    </div>
+  );
+}
+
+// ============== MARKETING (plăți × trafic × conversie) ==============
+
+/** Dimensiunile disponibile pentru matrice, grupate. */
+const MKT_DIMENSIONS: Array<{ group: string; items: Array<{ value: MarketingDimension; label: string }> }> = [
+  {
+    group: 'Trafic',
+    items: [
+      { value: 'source', label: 'Sursă' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'campaign', label: 'Campanie' },
+      { value: 'device', label: 'Device' },
+      { value: 'os', label: 'OS' },
+      { value: 'browser', label: 'Browser' },
+      { value: 'country', label: 'Țară' },
+      { value: 'landing', label: 'Landing' },
+    ],
+  },
+  {
+    group: 'Temporal',
+    items: [
+      { value: 'day', label: 'Pe zile' },
+      { value: 'hour', label: 'Oră din zi' },
+      { value: 'dow', label: 'Zi săptămână' },
+    ],
+  },
+  {
+    group: 'Comandă',
+    items: [
+      { value: 'buyerGender', label: 'Gen cumpărător' },
+      { value: 'voiceGender', label: 'Gen voce' },
+      { value: 'package', label: 'Pachet' },
+      { value: 'occasion', label: 'Ocazie' },
+    ],
+  },
+];
+
+type MktColKind = 'num' | 'money' | 'pct';
+const MKT_COLUMNS: Array<{
+  key: keyof MarketingBreakdownRow;
+  label: string;
+  kind: MktColKind;
+  trafficOnly?: boolean;
+  hint?: string;
+}> = [
+  { key: 'sessions', label: 'Sesiuni', kind: 'num', trafficOnly: true },
+  { key: 'visitors', label: 'Vizitatori', kind: 'num', trafficOnly: true },
+  { key: 'initiated', label: 'Checkout init.', kind: 'num', hint: 'Plăți inițiate (orice status)' },
+  { key: 'purchases', label: 'Cumpărări', kind: 'num', hint: 'Plăți finalizate (paid)' },
+  { key: 'failed', label: 'Eșuate', kind: 'num' },
+  { key: 'revenueRon', label: 'Venit', kind: 'money' },
+  { key: 'aov', label: 'AOV', kind: 'money', hint: 'Valoare medie comandă' },
+  { key: 'visitorConv', label: 'Conv. vizitator', kind: 'pct', trafficOnly: true, hint: 'Cumpărări / sesiuni' },
+  { key: 'checkoutConv', label: 'Finalizare', kind: 'pct', hint: 'Cumpărări / checkout inițiat' },
+];
+
+function fmtCell(v: number | null, kind: MktColKind): string {
+  if (v == null) return '—';
+  if (kind === 'money') return RON(v);
+  if (kind === 'pct') return `${v.toLocaleString('ro-RO', { maximumFractionDigits: 1 })}%`;
+  return v.toLocaleString('ro-RO');
+}
+
+function MarketingTab({ range }: { range: { from: string; to: string } }) {
+  const { toast } = useToast();
+  const [excludeBots, setExcludeBots] = useState(true);
+  const [dim, setDim] = useState<MarketingDimension>('source');
+  const [sortBy, setSortBy] = useState<keyof MarketingBreakdownRow | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [backfilling, setBackfilling] = useState(false);
+
+  const summary = useAsync<MarketingSummary>(
+    () => AnalyticsApi.marketingSummary(range, excludeBots),
+    [range, excludeBots],
+  );
+  const breakdown = useAsync(
+    () => AnalyticsApi.marketingBreakdown(range, dim, excludeBots),
+    [range, dim, excludeBots],
+  );
+
+  const s = summary.data;
+  const sessTrend = s ? pct(s.sessions, s.previous.sessions) : null;
+  const purchTrend = s ? pct(s.purchases, s.previous.purchases) : null;
+  const revTrend = s ? pct(s.revenueRon, s.previous.revenueRon) : null;
+  const convTrend = s ? pct(s.visitorConv, s.previous.visitorConv) : null;
+
+  const rows = useMemo(() => {
+    const list = breakdown.data?.rows ?? [];
+    if (!sortBy) return list;
+    const copy = [...list];
+    copy.sort((a, b) => {
+      const av = a[sortBy];
+      const bv = b[sortBy];
+      const an = typeof av === 'number' ? av : -Infinity;
+      const bn = typeof bv === 'number' ? bv : -Infinity;
+      return sortDir === 'asc' ? an - bn : bn - an;
+    });
+    return copy;
+  }, [breakdown.data, sortBy, sortDir]);
+
+  const totals = useMemo(() => {
+    const list = breakdown.data?.rows ?? [];
+    return list.reduce(
+      (acc, r) => {
+        acc.sessions += r.sessions ?? 0;
+        acc.visitors += r.visitors ?? 0;
+        acc.initiated += r.initiated;
+        acc.purchases += r.purchases;
+        acc.failed += r.failed;
+        acc.revenueRon += r.revenueRon;
+        return acc;
+      },
+      { sessions: 0, visitors: 0, initiated: 0, purchases: 0, failed: 0, revenueRon: 0 },
+    );
+  }, [breakdown.data]);
+
+  const hasTraffic = breakdown.data?.hasTraffic ?? true;
+  const visibleColumns = MKT_COLUMNS.filter((c) => !c.trafficOnly || hasTraffic);
+
+  function toggleSort(key: keyof MarketingBreakdownRow) {
+    if (sortBy === key) {
+      setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
+    } else {
+      setSortBy(key);
+      setSortDir('desc');
+    }
+  }
+
+  async function runBackfill() {
+    if (backfilling) return;
+    if (!window.confirm('Aduce numele cumpărătorilor din Stripe pentru plățile istorice (max 300)? Poate dura ~1 min.')) return;
+    setBackfilling(true);
+    try {
+      const res = await AnalyticsApi.backfillBuyerNames(300);
+      toast({
+        title: 'Backfill terminat',
+        description: `${res.updated} actualizate, ${res.genderInferred} cu gen inferat, ${res.skipped} sărite, ${res.errors} erori.`,
+      });
+      summary.refetch();
+      breakdown.refetch();
+    } catch (e) {
+      toast({ title: 'Eroare backfill', description: (e as Error).message, variant: 'destructive' });
+    } finally {
+      setBackfilling(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Bara de control: exclude boți */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-sm text-muted-foreground">
+          Cumpărări, checkout-uri abandonate, trafic și conversie — defalcate pentru optimizarea campaniilor.
+        </p>
+        <Button
+          variant={excludeBots ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setExcludeBots((v) => !v)}
+        >
+          {excludeBots ? '🤖 Boți excluși' : '🤖 Boți incluși'}
+        </Button>
+      </div>
+
+      {/* KPI principale */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <KpiCard label="Vizitatori (sesiuni)" value={s?.sessions.toLocaleString('ro-RO')} trend={sessTrend} icon={<Users />} tone="info" loading={summary.isLoading} sub={s ? `${s.visitors.toLocaleString('ro-RO')} unici · ${s.botSessions.toLocaleString('ro-RO')} boți` : undefined} />
+        <KpiCard label="Cumpărări" value={s?.purchases.toLocaleString('ro-RO')} trend={purchTrend} icon={<CreditCard />} tone="success" loading={summary.isLoading} sub={s ? `din ${s.checkoutsInitiated.toLocaleString('ro-RO')} checkout-uri` : undefined} />
+        <KpiCard label="Venit" value={s ? RON(s.revenueRon) : undefined} trend={revTrend} icon={<CircleDollarSign />} tone="primary" loading={summary.isLoading} sub={s ? `AOV ${RON(s.aov)}` : undefined} />
+        <KpiCard label="Conversie vizitator" value={s ? `${s.visitorConv}%` : undefined} trend={convTrend} icon={<Target />} tone="warning" loading={summary.isLoading} sub={s ? `finalizare checkout ${s.checkoutConv}%` : undefined} />
+      </div>
+
+      {/* KPI secundare */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <KpiCard label="Checkout inițiate" value={s?.checkoutsInitiated.toLocaleString('ro-RO')} icon={<MousePointerClick />} loading={summary.isLoading} />
+        <KpiCard label="Plăți eșuate" value={s?.failed.toLocaleString('ro-RO')} icon={<AlertTriangle />} tone="destructive" loading={summary.isLoading} sub={s && s.checkoutsInitiated > 0 ? `${Math.round((s.failed / s.checkoutsInitiated) * 100)}% din checkout` : undefined} />
+        <KpiCard label="Abandonate (pending)" value={s?.abandoned.toLocaleString('ro-RO')} icon={<Timer />} loading={summary.isLoading} />
+        <KpiCard label="Pagini văzute" value={s?.pageViews.toLocaleString('ro-RO')} icon={<Eye />} loading={summary.isLoading} sub={s ? `bounce ${s.bounceRate}% · ${fmtDuration(s.avgSessionSec)}/sesiune` : undefined} />
+      </div>
+
+      {/* Funnel */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Funnel conversie</CardTitle>
+          <CardDescription>De la vizitator la plată finalizată — pe perioada selectată</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {summary.isLoading || !s ? (
+            <Skeleton className="h-40 w-full" />
+          ) : (
+            <div className="space-y-2.5">
+              {(() => {
+                const FUNNEL_LABELS: Record<string, string> = {
+                  visitors: 'Vizitatori (sesiuni)',
+                  form_start: 'Au început formularul',
+                  checkout_init: 'Checkout inițiat',
+                  purchase: 'Plată finalizată',
+                };
+                const top = s.funnel[0]?.count || 0;
+                return s.funnel.map((step, i) => {
+                  const prev = i === 0 ? step.count : s.funnel[i - 1].count;
+                  const ofTotal = top > 0 ? Math.round((step.count / top) * 1000) / 10 : 0;
+                  const ofPrev = prev > 0 ? Math.round((step.count / prev) * 1000) / 10 : 0;
+                  return (
+                    <div key={step.step}>
+                      <div className="flex items-center justify-between text-sm mb-1">
+                        <span className="font-medium">{FUNNEL_LABELS[step.step] ?? step.step}</span>
+                        <span className="tabular-nums text-muted-foreground">
+                          {step.count.toLocaleString('ro-RO')}{' '}
+                          <span className="text-xs">({ofTotal}% total{i > 0 ? ` · ${ofPrev}% pas anterior` : ''})</span>
+                        </span>
+                      </div>
+                      <div className="h-2.5 rounded-full bg-secondary overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-primary to-amber-300 rounded-full" style={{ width: `${ofTotal}%` }} />
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Matricea de defalcare */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <CardTitle>Defalcare detaliată</CardTitle>
+              <CardDescription>Alege un criteriu (rânduri). Click pe coloană pentru sortare.</CardDescription>
+            </div>
+          </div>
+          {/* Selector dimensiune — chips grupate */}
+          <div className="mt-3 space-y-2">
+            {MKT_DIMENSIONS.map((g) => (
+              <div key={g.group} className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] uppercase tracking-wider text-muted-foreground w-16 shrink-0">{g.group}</span>
+                <div className="flex gap-1.5 flex-wrap">
+                  {g.items.map((it) => (
+                    <button
+                      key={it.value}
+                      onClick={() => { setDim(it.value); setSortBy(null); }}
+                      className={cn(
+                        'px-2.5 py-1 rounded-md text-xs font-medium border transition-colors',
+                        dim === it.value
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-secondary/40 border-border hover:bg-secondary text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {it.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {dim === 'buyerGender' && s && (
+            <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2 text-xs">
+              <span className="text-muted-foreground">
+                Gen cumpărător cunoscut pentru <strong className="text-foreground">{s.buyerGenderCoverage}%</strong> din cumpărări (inferat din numele Stripe).
+              </span>
+              <Button variant="outline" size="sm" onClick={runBackfill} disabled={backfilling}>
+                {backfilling ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : 'Adu nume din Stripe'}
+              </Button>
+            </div>
+          )}
+          {breakdown.isLoading ? (
+            <Skeleton className="h-64 w-full" />
+          ) : rows.length === 0 ? (
+            <Empty title="Date insuficiente" description="Nicio înregistrare pentru perioada selectată." />
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="sticky left-0 bg-card">Criteriu</TableHead>
+                    {visibleColumns.map((c) => (
+                      <TableHead
+                        key={c.key}
+                        className="text-right cursor-pointer select-none whitespace-nowrap"
+                        onClick={() => toggleSort(c.key)}
+                        title={c.hint}
+                      >
+                        {c.label}
+                        {sortBy === c.key ? (sortDir === 'desc' ? ' ↓' : ' ↑') : ''}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((r) => (
+                    <TableRow key={r.key}>
+                      <TableCell className="font-medium sticky left-0 bg-card max-w-[220px] truncate" title={r.label}>{r.label}</TableCell>
+                      {visibleColumns.map((c) => {
+                        const val = r[c.key] as number | null;
+                        const isConv = c.kind === 'pct';
+                        return (
+                          <TableCell
+                            key={c.key}
+                            className={cn(
+                              'text-right tabular-nums whitespace-nowrap',
+                              c.key === 'purchases' && (val ?? 0) > 0 && 'text-success font-medium',
+                              c.key === 'revenueRon' && (val ?? 0) > 0 && 'font-medium',
+                              isConv && val != null && val >= 3 && 'text-success',
+                              c.key === 'failed' && (val ?? 0) > 0 && 'text-destructive',
+                            )}
+                          >
+                            {fmtCell(val, c.kind)}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  ))}
+                  {/* Total */}
+                  <TableRow className="border-t-2 border-border font-semibold">
+                    <TableCell className="sticky left-0 bg-card">Total ({rows.length})</TableCell>
+                    {visibleColumns.map((c) => {
+                      let content = '—';
+                      if (c.key === 'sessions') content = fmtCell(totals.sessions, 'num');
+                      else if (c.key === 'visitors') content = fmtCell(totals.visitors, 'num');
+                      else if (c.key === 'initiated') content = fmtCell(totals.initiated, 'num');
+                      else if (c.key === 'purchases') content = fmtCell(totals.purchases, 'num');
+                      else if (c.key === 'failed') content = fmtCell(totals.failed, 'num');
+                      else if (c.key === 'revenueRon') content = fmtCell(totals.revenueRon, 'money');
+                      else if (c.key === 'aov') content = fmtCell(totals.purchases > 0 ? Math.round(totals.revenueRon / totals.purchases) : null, 'money');
+                      else if (c.key === 'visitorConv') content = fmtCell(totals.sessions > 0 ? Math.round((totals.purchases / totals.sessions) * 10000) / 100 : null, 'pct');
+                      else if (c.key === 'checkoutConv') content = fmtCell(totals.initiated > 0 ? Math.round((totals.purchases / totals.initiated) * 10000) / 100 : null, 'pct');
+                      return <TableCell key={c.key} className="text-right tabular-nums whitespace-nowrap">{content}</TableCell>;
+                    })}
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

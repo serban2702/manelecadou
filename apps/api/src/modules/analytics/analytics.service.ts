@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -14,10 +14,30 @@ import { SettingsService } from '../settings/settings.service';
 import { GeoIpService } from './geoip.service';
 import { parseUserAgent } from './ua-parser';
 import { evaluateBot } from './bot-detection';
+import { inferGenderFromName } from './gender-infer';
 
 interface RangeQuery {
   from: Date;
   to: Date;
+}
+
+/** Un rând din matricea de marketing (o valoare a dimensiunii selectate). */
+export interface MarketingBreakdownRow {
+  key: string;
+  label: string;
+  /** Trafic — null pentru dimensiuni de comandă (package/occasion/voce/gen cumpărător). */
+  sessions: number | null;
+  visitors: number | null;
+  pageViews: number | null;
+  /** Plăți. initiated = checkout-uri create (orice status). */
+  initiated: number;
+  purchases: number;
+  failed: number;
+  revenueRon: number;
+  /** Derivate (calculate în finalizeRows). */
+  aov: number | null;
+  visitorConv: number | null;
+  checkoutConv: number | null;
 }
 
 @Injectable()
@@ -767,6 +787,565 @@ export class AnalyticsService {
       returningUsers: returningRow?.returning ?? 0,
       totalUsers,
     };
+  }
+
+  // ============== MARKETING DASHBOARD (plăți × trafic × conversie) ==============
+
+  /**
+   * SQL pentru suma plății normalizată în bani (cents) RON, indiferent de valuta
+   * site-ului. Prioritate: amountRonCents (setat la webhook din balance_transaction)
+   * → amount dacă RON → amount × cursul Stripe → fallback EUR≈4.97. Alias `p`.
+   */
+  private static readonly AMOUNT_RON = `
+    CASE
+      WHEN p."amountRonCents" IS NOT NULL THEN p."amountRonCents"
+      WHEN upper(p.currency) = 'RON' THEN p.amount
+      WHEN p."exchangeRateToRon" IS NOT NULL THEN round(p.amount * p."exchangeRateToRon")::int
+      ELSE round(p.amount * 4.97)::int
+    END`;
+
+  /** Conversie UTC→ora locală RO pentru bucketing temporal corect. Alias dat de caller. */
+  private localTs(col: string): string {
+    return `((${col} AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Bucharest')`;
+  }
+
+  /**
+   * Sumar marketing: trafic (sesiuni ne-bot), plăți inițiate/finalizate/eșuate/
+   * abandonate, revenue RON, AOV, rate de conversie + funnel + trend vs perioada
+   * anterioară. Baza dashboard-ului din admin `/analytics` tab Marketing.
+   */
+  async marketingSummary(
+    range: RangeQuery,
+    siteId: string | null = null,
+    opts: { excludeBots?: boolean } = {},
+  ) {
+    const excludeBots = opts.excludeBots !== false;
+    const r = this.fmtRange(range);
+
+    const traffic = await this.marketingTraffic(range, siteId, excludeBots);
+    const pay = await this.marketingPayments(range, siteId);
+
+    // Funnel: vizitatori (sesiuni) → au început formularul → checkout inițiat → plată
+    const formStartRow = await this.applySite(
+      this.events
+        .createQueryBuilder('e')
+        .select('COUNT(DISTINCT e.sessionKey)::int', 'n')
+        .where(`e.type IN ('form_start','generation_start')`)
+        .andWhere('e.createdAt BETWEEN :from AND :to', r),
+      'e',
+      siteId,
+    ).getRawOne<{ n: number }>();
+
+    // Perioada anterioară (același span) pentru trend.
+    const span = range.to.getTime() - range.from.getTime();
+    const prevRange: RangeQuery = {
+      from: new Date(range.from.getTime() - span),
+      to: new Date(range.from.getTime() - 1),
+    };
+    const prevTraffic = await this.marketingTraffic(prevRange, siteId, excludeBots);
+    const prevPay = await this.marketingPayments(prevRange, siteId);
+
+    const sessions = traffic.sessions;
+    const visitorConv = sessions > 0 ? Math.round((pay.purchases / sessions) * 10000) / 100 : 0;
+    const checkoutConv = pay.initiated > 0 ? Math.round((pay.purchases / pay.initiated) * 10000) / 100 : 0;
+    const aov = pay.purchases > 0 ? Math.round(pay.revenue / pay.purchases) : 0;
+
+    const prevVisitorConv =
+      prevTraffic.sessions > 0 ? (prevPay.purchases / prevTraffic.sessions) * 100 : 0;
+
+    return {
+      range: r,
+      // trafic
+      sessions,
+      visitors: traffic.visitors,
+      pageViews: traffic.pageViews,
+      bounceRate: traffic.bounceRate,
+      avgSessionSec: traffic.avgSessionSec,
+      botSessions: traffic.botSessions,
+      // plăți
+      checkoutsInitiated: pay.initiated,
+      purchases: pay.purchases,
+      failed: pay.failed,
+      abandoned: pay.abandoned,
+      revenueRon: pay.revenue,
+      aov,
+      // conversie
+      visitorConv,
+      checkoutConv,
+      buyerGenderCoverage:
+        pay.purchases > 0 ? Math.round((pay.genderKnown / pay.purchases) * 1000) / 10 : 0,
+      // funnel (sesiuni distincte pe pas)
+      funnel: [
+        { step: 'visitors', count: sessions },
+        { step: 'form_start', count: sessions > 0 ? Math.min(formStartRow?.n ?? 0, sessions) : (formStartRow?.n ?? 0) },
+        { step: 'checkout_init', count: pay.initiated },
+        { step: 'purchase', count: pay.purchases },
+      ],
+      previous: {
+        sessions: prevTraffic.sessions,
+        visitors: prevTraffic.visitors,
+        purchases: prevPay.purchases,
+        revenueRon: prevPay.revenue,
+        visitorConv: Math.round(prevVisitorConv * 100) / 100,
+      },
+    };
+  }
+
+  /** Agregat trafic (sesiuni) pentru un range. excludeBots filtrează `isBot`. */
+  private async marketingTraffic(range: RangeQuery, siteId: string | null, excludeBots: boolean) {
+    const params: unknown[] = [range.from.toISOString(), range.to.toISOString()];
+    let site = '';
+    if (siteId) {
+      params.push(siteId);
+      site = `AND s."siteId" = $${params.length}::uuid`;
+    }
+    const bot = excludeBots ? `AND s."isBot" = false` : '';
+    const row = (
+      await this.sessions.query(
+        `SELECT
+           COUNT(*)::int AS sessions,
+           COUNT(DISTINCT s."visitorId")::int AS visitors,
+           COALESCE(SUM(s."pageViews"),0)::int AS page_views,
+           COALESCE(AVG(s."durationSec"),0)::float AS avg_dur,
+           COALESCE(AVG(CASE WHEN s.bounced THEN 1 ELSE 0 END)*100,0)::float AS bounce,
+           COUNT(*) FILTER (WHERE s."isBot" = true)::int AS bots
+         FROM analytics_sessions s
+         WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${bot}`,
+        params,
+      )
+    )[0] as {
+      sessions: number; visitors: number; page_views: number; avg_dur: number; bounce: number; bots: number;
+    };
+    // botSessions trebuie numărat indiferent de filtru — refacem doar dacă a fost exclus.
+    let botSessions = Number(row?.bots ?? 0);
+    if (excludeBots) {
+      const bParams: unknown[] = [range.from.toISOString(), range.to.toISOString()];
+      let bSite = '';
+      if (siteId) {
+        bParams.push(siteId);
+        bSite = `AND s."siteId" = $${bParams.length}::uuid`;
+      }
+      const b = (
+        await this.sessions.query(
+          `SELECT COUNT(*) FILTER (WHERE s."isBot" = true)::int AS bots
+           FROM analytics_sessions s WHERE s."startedAt" BETWEEN $1 AND $2 ${bSite}`,
+          bParams,
+        )
+      )[0] as { bots: number };
+      botSessions = Number(b?.bots ?? 0);
+    }
+    return {
+      sessions: Number(row?.sessions ?? 0),
+      visitors: Number(row?.visitors ?? 0),
+      pageViews: Number(row?.page_views ?? 0),
+      avgSessionSec: Math.round((row?.avg_dur ?? 0) * 10) / 10,
+      bounceRate: Math.round((row?.bounce ?? 0) * 10) / 10,
+      botSessions,
+    };
+  }
+
+  /** Agregat plăți pentru un range (toate statusurile, revenue normalizat RON). */
+  private async marketingPayments(range: RangeQuery, siteId: string | null) {
+    const params: unknown[] = [range.from.toISOString(), range.to.toISOString()];
+    let site = '';
+    if (siteId) {
+      params.push(siteId);
+      site = `AND p."siteId" = $${params.length}::uuid`;
+    }
+    const row = (
+      await this.payments.query(
+        `SELECT
+           COUNT(*)::int AS initiated,
+           COUNT(*) FILTER (WHERE p.status='paid')::int AS purchases,
+           COUNT(*) FILTER (WHERE p.status='failed')::int AS failed,
+           COUNT(*) FILTER (WHERE p.status='pending')::int AS abandoned,
+           COALESCE(SUM(${AnalyticsService.AMOUNT_RON}) FILTER (WHERE p.status='paid'),0)::int AS revenue,
+           COUNT(*) FILTER (WHERE p.status='paid' AND p."buyerGender" IS NOT NULL)::int AS gender_known
+         FROM payments p
+         WHERE p."createdAt" BETWEEN $1 AND $2 ${site}`,
+        params,
+      )
+    )[0] as {
+      initiated: number; purchases: number; failed: number; abandoned: number; revenue: number; gender_known: number;
+    };
+    return {
+      initiated: Number(row?.initiated ?? 0),
+      purchases: Number(row?.purchases ?? 0),
+      failed: Number(row?.failed ?? 0),
+      abandoned: Number(row?.abandoned ?? 0),
+      revenue: Number(row?.revenue ?? 0),
+      genderKnown: Number(row?.gender_known ?? 0),
+    };
+  }
+
+  /**
+   * Defalcare matrice: o dimensiune (rânduri) × metrici (coloane). Inima
+   * dashboard-ului. Trei familii de dimensiuni:
+   *  - trafic atribuit (source/medium/campaign/device/os/browser/country/landing):
+   *    sesiuni din analytics_sessions + plăți atribuite prin sessionKey→visitorId→IP+timp;
+   *  - temporale (day/hour/dow): sesiuni pe startedAt, plăți pe createdAt (fără atribuire);
+   *  - comandă (package/occasion/voiceGender/buyerGender): doar plăți/generări.
+   */
+  async marketingBreakdown(
+    range: RangeQuery,
+    dimension: string,
+    siteId: string | null = null,
+    opts: { excludeBots?: boolean } = {},
+  ): Promise<{ dimension: string; hasTraffic: boolean; rows: MarketingBreakdownRow[] }> {
+    const excludeBots = opts.excludeBots !== false;
+    const TRAFFIC: Record<string, { sess: string; att: string }> = {
+      source: { sess: `COALESCE(NULLIF(s.source,''),'direct')`, att: `COALESCE(NULLIF(att.source,''),'direct')` },
+      medium: { sess: `COALESCE(NULLIF(s.medium,''),'(none)')`, att: `COALESCE(NULLIF(att.medium,''),'(none)')` },
+      campaign: { sess: `COALESCE(NULLIF(s.campaign,''),'(none)')`, att: `COALESCE(NULLIF(att.campaign,''),'(none)')` },
+      device: { sess: `COALESCE(NULLIF(s.device,''),'unknown')`, att: `COALESCE(NULLIF(att.device,''),'unknown')` },
+      os: { sess: `COALESCE(NULLIF(s."osName",''),'unknown')`, att: `COALESCE(NULLIF(att.os,''),'unknown')` },
+      browser: { sess: `COALESCE(NULLIF(s."browserName",''),'unknown')`, att: `COALESCE(NULLIF(att.browser,''),'unknown')` },
+      country: { sess: `COALESCE(NULLIF(s.country,''),'??')`, att: `COALESCE(NULLIF(att.country,''),'??')` },
+      landing: { sess: `COALESCE(NULLIF(s."landingPath",''),'/')`, att: `COALESCE(NULLIF(att.landing,''),'/')` },
+    };
+
+    if (TRAFFIC[dimension]) {
+      return { dimension, hasTraffic: true, rows: await this.breakdownTraffic(range, dimension, TRAFFIC[dimension], siteId, excludeBots) };
+    }
+    if (dimension === 'day' || dimension === 'hour' || dimension === 'dow') {
+      return { dimension, hasTraffic: true, rows: await this.breakdownTemporal(range, dimension, siteId, excludeBots) };
+    }
+    if (dimension === 'buyerGender') {
+      return { dimension, hasTraffic: false, rows: await this.breakdownBuyerGender(range, siteId) };
+    }
+    if (dimension === 'package' || dimension === 'occasion' || dimension === 'voiceGender') {
+      return { dimension, hasTraffic: false, rows: await this.breakdownGeneration(range, dimension, siteId) };
+    }
+    throw new BadRequestException(`Dimensiune necunoscută: ${dimension}`);
+  }
+
+  private finalizeRows(
+    rows: MarketingBreakdownRow[],
+    hasTraffic: boolean,
+  ): MarketingBreakdownRow[] {
+    for (const r of rows) {
+      r.aov = r.purchases > 0 ? Math.round(r.revenueRon / r.purchases) : null;
+      r.checkoutConv = r.initiated > 0 ? Math.round((r.purchases / r.initiated) * 10000) / 100 : null;
+      r.visitorConv =
+        hasTraffic && r.sessions != null && r.sessions > 0
+          ? Math.round((r.purchases / r.sessions) * 10000) / 100
+          : null;
+    }
+    // Sortare implicită: revenue desc, apoi inițieri desc, apoi sesiuni desc.
+    return rows.sort(
+      (a, b) =>
+        b.revenueRon - a.revenueRon ||
+        b.initiated - a.initiated ||
+        (b.sessions ?? 0) - (a.sessions ?? 0),
+    );
+  }
+
+  private async breakdownTraffic(
+    range: RangeQuery,
+    dim: string,
+    cfg: { sess: string; att: string },
+    siteId: string | null,
+    excludeBots: boolean,
+  ): Promise<MarketingBreakdownRow[]> {
+    // 1. Plăți atribuite la sesiunea responsabilă (last non-direct touch).
+    const pParams: unknown[] = [range.from.toISOString(), range.to.toISOString()];
+    let pSite = '';
+    if (siteId) {
+      pParams.push(siteId);
+      pSite = `AND p."siteId" = $${pParams.length}::uuid`;
+    }
+    const payRows = (await this.payments.query(
+      `WITH paid AS (
+         SELECT p.id, p.status, p."createdAt", p."userId", p."guestId", p."ipAddress",
+                p."sessionKey" AS p_skey, p."visitorId" AS p_vid,
+                (${AnalyticsService.AMOUNT_RON}) AS amount_ron
+         FROM payments p
+         WHERE p."createdAt" BETWEEN $1 AND $2 ${pSite}
+       ),
+       att AS (
+         SELECT paid.*, s.source, s.medium, s.campaign, s.device,
+                s."osName" AS os, s."browserName" AS browser, s.country, s."landingPath" AS landing
+         FROM paid
+         LEFT JOIN LATERAL (
+           SELECT s2.* FROM analytics_sessions s2
+           WHERE (paid.p_skey IS NOT NULL AND s2."sessionKey" = paid.p_skey)
+              OR (paid.p_vid IS NOT NULL AND s2."visitorId" = paid.p_vid)
+              OR (paid."ipAddress" IS NOT NULL AND s2.ip = paid."ipAddress"
+                  AND s2."startedAt" <= paid."createdAt" + INTERVAL '2 hours'
+                  AND s2."startedAt" >= paid."createdAt" - INTERVAL '24 hours')
+           ORDER BY
+             CASE WHEN paid.p_skey IS NOT NULL AND s2."sessionKey" = paid.p_skey THEN 0
+                  WHEN paid.p_vid IS NOT NULL AND s2."visitorId" = paid.p_vid THEN 1
+                  ELSE 2 END,
+             CASE WHEN COALESCE(s2.source,'') NOT IN ('','direct')
+                       AND s2.source NOT LIKE '%stripe%' THEN 0 ELSE 1 END,
+             s2."startedAt" DESC
+           LIMIT 1
+         ) s ON TRUE
+       )
+       SELECT ${cfg.att} AS key,
+              COUNT(*)::int AS initiated,
+              COUNT(*) FILTER (WHERE status='paid')::int AS purchases,
+              COUNT(*) FILTER (WHERE status='failed')::int AS failed,
+              COALESCE(SUM(amount_ron) FILTER (WHERE status='paid'),0)::int AS revenue
+       FROM att GROUP BY key`,
+      pParams,
+    )) as Array<{ key: string; initiated: number; purchases: number; failed: number; revenue: number }>;
+
+    // 2. Sesiuni pe aceeași dimensiune.
+    const sParams: unknown[] = [range.from.toISOString(), range.to.toISOString()];
+    let sSite = '';
+    if (siteId) {
+      sParams.push(siteId);
+      sSite = `AND s."siteId" = $${sParams.length}::uuid`;
+    }
+    const bot = excludeBots ? `AND s."isBot" = false` : '';
+    const sessRows = (await this.sessions.query(
+      `SELECT ${cfg.sess} AS key,
+              COUNT(*)::int AS sessions,
+              COUNT(DISTINCT s."visitorId")::int AS visitors,
+              COALESCE(SUM(s."pageViews"),0)::int AS page_views
+       FROM analytics_sessions s
+       WHERE s."startedAt" BETWEEN $1 AND $2 ${sSite} ${bot}
+       GROUP BY key`,
+      sParams,
+    )) as Array<{ key: string; sessions: number; visitors: number; page_views: number }>;
+
+    const map = new Map<string, MarketingBreakdownRow>();
+    for (const s of sessRows) {
+      map.set(s.key, {
+        key: s.key, label: s.key,
+        sessions: Number(s.sessions), visitors: Number(s.visitors), pageViews: Number(s.page_views),
+        initiated: 0, purchases: 0, failed: 0, revenueRon: 0,
+        aov: null, visitorConv: null, checkoutConv: null,
+      });
+    }
+    for (const p of payRows) {
+      const ex = map.get(p.key);
+      if (ex) {
+        ex.initiated = Number(p.initiated); ex.purchases = Number(p.purchases);
+        ex.failed = Number(p.failed); ex.revenueRon = Number(p.revenue);
+      } else {
+        map.set(p.key, {
+          key: p.key, label: p.key,
+          sessions: 0, visitors: 0, pageViews: 0,
+          initiated: Number(p.initiated), purchases: Number(p.purchases),
+          failed: Number(p.failed), revenueRon: Number(p.revenue),
+          aov: null, visitorConv: null, checkoutConv: null,
+        });
+      }
+    }
+    return this.finalizeRows(Array.from(map.values()), true);
+  }
+
+  private async breakdownTemporal(
+    range: RangeQuery,
+    dim: 'day' | 'hour' | 'dow',
+    siteId: string | null,
+    excludeBots: boolean,
+  ): Promise<MarketingBreakdownRow[]> {
+    const DOW_RO = ['Duminică', 'Luni', 'Marți', 'Miercuri', 'Joi', 'Vineri', 'Sâmbătă'];
+    const keyExpr = (col: string) =>
+      dim === 'day'
+        ? `to_char(${this.localTs(col)},'YYYY-MM-DD')`
+        : dim === 'hour'
+          ? `lpad(extract(hour FROM ${this.localTs(col)})::text,2,'0')||':00'`
+          : `extract(isodow FROM ${this.localTs(col)})::int::text`;
+
+    const sParams: unknown[] = [range.from.toISOString(), range.to.toISOString()];
+    let sSite = '';
+    if (siteId) {
+      sParams.push(siteId);
+      sSite = `AND s."siteId" = $${sParams.length}::uuid`;
+    }
+    const bot = excludeBots ? `AND s."isBot" = false` : '';
+    const sessRows = (await this.sessions.query(
+      `SELECT ${keyExpr('s."startedAt"')} AS key,
+              COUNT(*)::int AS sessions, COUNT(DISTINCT s."visitorId")::int AS visitors,
+              COALESCE(SUM(s."pageViews"),0)::int AS page_views
+       FROM analytics_sessions s
+       WHERE s."startedAt" BETWEEN $1 AND $2 ${sSite} ${bot}
+       GROUP BY key`,
+      sParams,
+    )) as Array<{ key: string; sessions: number; visitors: number; page_views: number }>;
+
+    const pParams: unknown[] = [range.from.toISOString(), range.to.toISOString()];
+    let pSite = '';
+    if (siteId) {
+      pParams.push(siteId);
+      pSite = `AND p."siteId" = $${pParams.length}::uuid`;
+    }
+    const payRows = (await this.payments.query(
+      `SELECT ${keyExpr('p."createdAt"')} AS key,
+              COUNT(*)::int AS initiated,
+              COUNT(*) FILTER (WHERE p.status='paid')::int AS purchases,
+              COUNT(*) FILTER (WHERE p.status='failed')::int AS failed,
+              COALESCE(SUM(${AnalyticsService.AMOUNT_RON}) FILTER (WHERE p.status='paid'),0)::int AS revenue
+       FROM payments p WHERE p."createdAt" BETWEEN $1 AND $2 ${pSite}
+       GROUP BY key`,
+      pParams,
+    )) as Array<{ key: string; initiated: number; purchases: number; failed: number; revenue: number }>;
+
+    const map = new Map<string, MarketingBreakdownRow>();
+    const ensure = (key: string) => {
+      let row = map.get(key);
+      if (!row) {
+        row = {
+          key, label: key, sessions: 0, visitors: 0, pageViews: 0,
+          initiated: 0, purchases: 0, failed: 0, revenueRon: 0,
+          aov: null, visitorConv: null, checkoutConv: null,
+        };
+        map.set(key, row);
+      }
+      return row;
+    };
+    for (const s of sessRows) {
+      const row = ensure(s.key);
+      row.sessions = Number(s.sessions); row.visitors = Number(s.visitors); row.pageViews = Number(s.page_views);
+    }
+    for (const p of payRows) {
+      const row = ensure(p.key);
+      row.initiated = Number(p.initiated); row.purchases = Number(p.purchases);
+      row.failed = Number(p.failed); row.revenueRon = Number(p.revenue);
+    }
+
+    const rows = Array.from(map.values());
+    for (const r of rows) {
+      r.aov = r.purchases > 0 ? Math.round(r.revenueRon / r.purchases) : null;
+      r.checkoutConv = r.initiated > 0 ? Math.round((r.purchases / r.initiated) * 10000) / 100 : null;
+      r.visitorConv = r.sessions && r.sessions > 0 ? Math.round((r.purchases / r.sessions) * 10000) / 100 : null;
+      if (dim === 'dow') r.label = DOW_RO[Number(r.key) % 7] ?? r.key;
+    }
+    // Temporal = sortare cronologică (nu pe revenue).
+    return rows.sort((a, b) => a.key.localeCompare(b.key));
+  }
+
+  private async breakdownBuyerGender(range: RangeQuery, siteId: string | null): Promise<MarketingBreakdownRow[]> {
+    const params: unknown[] = [range.from.toISOString(), range.to.toISOString()];
+    let site = '';
+    if (siteId) {
+      params.push(siteId);
+      site = `AND p."siteId" = $${params.length}::uuid`;
+    }
+    const rows = (await this.payments.query(
+      `SELECT COALESCE(p."buyerGender",'?') AS key,
+              COUNT(*)::int AS initiated,
+              COUNT(*) FILTER (WHERE p.status='paid')::int AS purchases,
+              COUNT(*) FILTER (WHERE p.status='failed')::int AS failed,
+              COALESCE(SUM(${AnalyticsService.AMOUNT_RON}) FILTER (WHERE p.status='paid'),0)::int AS revenue
+       FROM payments p WHERE p."createdAt" BETWEEN $1 AND $2 ${site}
+       GROUP BY key`,
+      params,
+    )) as Array<{ key: string; initiated: number; purchases: number; failed: number; revenue: number }>;
+    const LABEL: Record<string, string> = { M: 'Bărbat', F: 'Femeie', '?': 'Necunoscut' };
+    return this.finalizeRows(
+      rows.map((r) => ({
+        key: r.key, label: LABEL[r.key] ?? r.key,
+        sessions: null, visitors: null, pageViews: null,
+        initiated: Number(r.initiated), purchases: Number(r.purchases),
+        failed: Number(r.failed), revenueRon: Number(r.revenue),
+        aov: null, visitorConv: null, checkoutConv: null,
+      })),
+      false,
+    );
+  }
+
+  private async breakdownGeneration(
+    range: RangeQuery,
+    dim: 'package' | 'occasion' | 'voiceGender',
+    siteId: string | null,
+  ): Promise<MarketingBreakdownRow[]> {
+    const keyExpr =
+      dim === 'package'
+        ? `COALESCE(NULLIF(g."packageTier",''),'basic')`
+        : dim === 'occasion'
+          ? `COALESCE(NULLIF(g.occasion,''),'(necunoscut)')`
+          : `CASE
+               WHEN lower(g."voiceArtist") IN ('female','f','mariana','adita','elena','maria','ana','adriana','irina') THEN 'Voce feminină'
+               WHEN lower(g."voiceArtist") IN ('male','m','florinel','ticu','gigi','nicu','adi','stavros','nicolae') THEN 'Voce masculină'
+               WHEN g."voiceArtist" IS NULL OR g."voiceArtist"='' THEN 'Nespecificat'
+               ELSE 'Altă voce'
+             END`;
+    const params: unknown[] = [range.from.toISOString(), range.to.toISOString()];
+    let site = '';
+    if (siteId) {
+      params.push(siteId);
+      site = `AND g."siteId" = $${params.length}::uuid`;
+    }
+    const rows = (await this.generations.query(
+      `SELECT ${keyExpr} AS key,
+              COUNT(*)::int AS initiated,
+              COUNT(*) FILTER (WHERE p.status='paid')::int AS purchases,
+              COUNT(*) FILTER (WHERE p.status='failed')::int AS failed,
+              COALESCE(SUM(${AnalyticsService.AMOUNT_RON}) FILTER (WHERE p.status='paid'),0)::int AS revenue
+       FROM generations g
+       LEFT JOIN payments p ON p.id = g."paymentId"
+       WHERE g."createdAt" BETWEEN $1 AND $2 ${site}
+       GROUP BY key`,
+      params,
+    )) as Array<{ key: string; initiated: number; purchases: number; failed: number; revenue: number }>;
+    return this.finalizeRows(
+      rows.map((r) => ({
+        key: r.key, label: r.key,
+        sessions: null, visitors: null, pageViews: null,
+        initiated: Number(r.initiated), purchases: Number(r.purchases),
+        failed: Number(r.failed), revenueRon: Number(r.revenue),
+        aov: null, visitorConv: null, checkoutConv: null,
+      })),
+      false,
+    );
+  }
+
+  /**
+   * Backfill nume + email cumpărător din Stripe pentru plăți istorice (înainte ca
+   * webhook-ul să le persiste). Iterează plățile cu `providerSessionId` (cs_…) fără
+   * `customerName`, face retrieve la Checkout Session și inferează genul. Idempotent
+   * — rulabil în loturi. Returnează un sumar.
+   */
+  async backfillBuyerNames(limit = 200): Promise<{
+    scanned: number; updated: number; genderInferred: number; skipped: number; errors: number;
+  }> {
+    const stripe = await this.getStripe();
+    if (!stripe) throw new BadRequestException('Stripe nu e configurat (STRIPE_SECRET_KEY lipsă)');
+
+    const candidates = await this.payments
+      .createQueryBuilder('p')
+      .where(`p."providerSessionId" LIKE 'cs_%'`)
+      .andWhere('p."customerName" IS NULL')
+      .orderBy('p."createdAt"', 'DESC')
+      .limit(Math.min(500, Math.max(1, limit)))
+      .getMany();
+
+    let updated = 0;
+    let genderInferred = 0;
+    let skipped = 0;
+    let errors = 0;
+    for (const p of candidates) {
+      if (!p.providerSessionId) { skipped++; continue; }
+      try {
+        const session = await stripe.checkout.sessions.retrieve(p.providerSessionId, {
+          expand: ['customer_details'],
+        });
+        const name = (session.customer_details?.name ?? '').trim() || null;
+        const email = (session.customer_details?.email ?? '').trim() || null;
+        if (!name && !email) { skipped++; continue; }
+        const gender = name ? inferGenderFromName(name) : null;
+        await this.payments.update(
+          { id: p.id },
+          {
+            customerName: name ? name.slice(0, 160) : null,
+            customerEmail: email ? email.slice(0, 320) : null,
+            buyerGender: gender,
+          },
+        );
+        updated++;
+        if (gender) genderInferred++;
+      } catch (err) {
+        errors++;
+        this.logger.warn(`backfillBuyerNames ${p.id}: ${(err as Error).message}`);
+      }
+    }
+    return { scanned: candidates.length, updated, genderInferred, skipped, errors };
   }
 
   // ============== EXTENDED BREAKDOWNS ==============

@@ -78,6 +78,18 @@ async function request<T>(
   if (typeof window !== 'undefined') {
     const orSid = window.__OR_SESSION_ID__;
     if (orSid) headers.set('X-OpenReplay-SessionID', orSid);
+
+    // Tracking analytics — leagă plata (checkout) de sesiunea/vizitatorul exact,
+    // pentru atribuire precisă pe surse/campanii în dashboard-ul de marketing.
+    // sessionKey trăiește în sessionStorage, visitorId în localStorage (vezi lib/tracker.ts).
+    try {
+      const sk = window.sessionStorage.getItem('mc_session_key');
+      if (sk) headers.set('X-MC-Session-Key', sk);
+      const vid = window.localStorage.getItem('mc_visitor_id');
+      if (vid) headers.set('X-MC-Visitor-Id', vid);
+    } catch {
+      /* storage indisponibil (private mode) — ignorăm */
+    }
   }
 
   // Headere extra (ex. `x-unlock-password` pentru conținut privat).

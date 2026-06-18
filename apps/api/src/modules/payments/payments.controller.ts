@@ -20,7 +20,14 @@ function readCookieValue(cookieHeader: string | undefined, name: string): string
   return m ? decodeURIComponent(m[1]) : null;
 }
 
-/** Extrage atribuire Meta (fbp/fbc/UA/IP) dintr-un request, pentru Pixel attribution. */
+/** Citește un header simplu (string), trunchiat la 64 caractere. */
+function readHeader(req: Request, name: string): string | null {
+  const v = req.headers[name];
+  const s = Array.isArray(v) ? v[0] : v;
+  return typeof s === 'string' && s.trim() ? s.trim().slice(0, 64) : null;
+}
+
+/** Extrage atribuire Meta (fbp/fbc/UA/IP) + tracking analytics (sessionKey/visitorId). */
 function extractMetaContext(req: Request, ua: string | undefined, xff: string | undefined, ip: string) {
   const cookieHeader = req.headers.cookie;
   return {
@@ -28,6 +35,10 @@ function extractMetaContext(req: Request, ua: string | undefined, xff: string | 
     fbc: readCookieValue(cookieHeader, '_fbc'),
     userAgent: ua ?? null,
     ipAddress: ((xff && xff.split(',')[0].trim()) || ip || null) as string | null,
+    // Tracker-ul de analytics (apps/web) le trimite ca headere la checkout —
+    // leagă plata de sesiunea exactă pentru atribuire precisă pe surse/campanii.
+    sessionKey: readHeader(req, 'x-mc-session-key'),
+    visitorId: readHeader(req, 'x-mc-visitor-id'),
   };
 }
 import { IsBoolean, IsEmail, IsIn, IsInt, IsObject, IsOptional, IsUUID, Max, Min } from 'class-validator';

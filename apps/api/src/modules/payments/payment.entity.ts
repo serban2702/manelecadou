@@ -95,6 +95,40 @@ export class Payment {
   @Column({ type: 'timestamptz', nullable: true })
   capiPurchaseSentAt!: Date | null;
 
+  // ============== Atribuire trafic (capturate la checkout creation) ==============
+  // Leagă plata DIRECT de sesiunea de analytics care a generat-o, pentru atribuire
+  // 100% precisă pe surse/campanii/device. Fără ele, atribuirea cade pe IP+fereastră
+  // de timp (heuristic, ~60% acoperire). Vezi AnalyticsService.marketingBreakdown.
+
+  /** sessionKey al sesiunii de analytics din care a pornit checkout-ul (sessionStorage client). */
+  @Index()
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  sessionKey!: string | null;
+
+  /** visitorId stabil (localStorage client) — leagă plata de toate sesiunile vizitatorului. */
+  @Index()
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  visitorId!: string | null;
+
+  // ============== Date cumpărător (din Stripe customer_details, la webhook) ==============
+
+  /** Numele complet al cumpărătorului (Stripe customer_details.name). Sursă pentru `buyerGender`. */
+  @Column({ type: 'varchar', length: 160, nullable: true })
+  customerName!: string | null;
+
+  /** Emailul cumpărătorului (Stripe customer_details.email) — reconciliere + audiență. */
+  @Column({ type: 'varchar', length: 320, nullable: true })
+  customerEmail!: string | null;
+
+  /** Genul cumpărătorului ('M'|'F'), inferat din `customerName` (prenume RO). Null = necunoscut. */
+  @Index()
+  @Column({ type: 'varchar', length: 8, nullable: true })
+  buyerGender!: string | null;
+
+  /** Momentul confirmării plății (status → 'paid'). Distinct de createdAt (inițiere checkout). */
+  @Column({ type: 'timestamptz', nullable: true })
+  paidAt!: Date | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

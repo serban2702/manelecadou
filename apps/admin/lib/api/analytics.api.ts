@@ -133,6 +133,77 @@ export class AnalyticsApi {
   static adSpendSync(days = 7): Promise<{ ok: boolean; scope: string; results: AdSpendSyncResult[] }> {
     return http.post(`/admin/analytics/ad-spend/sync?days=${days}`, {});
   }
+  static marketingSummary(range: AnalyticsRange, excludeBots = true): Promise<MarketingSummary> {
+    return http.get(`/admin/analytics/marketing-summary${qs(range, excludeBots ? undefined : { excludeBots: '0' })}`);
+  }
+  static marketingBreakdown(
+    range: AnalyticsRange,
+    dimension: MarketingDimension,
+    excludeBots = true,
+  ): Promise<MarketingBreakdown> {
+    return http.get(
+      `/admin/analytics/marketing-breakdown${qs(range, { dimension, ...(excludeBots ? {} : { excludeBots: '0' }) })}`,
+    );
+  }
+  static backfillBuyerNames(limit = 200): Promise<{
+    scanned: number; updated: number; genderInferred: number; skipped: number; errors: number;
+  }> {
+    return http.post(`/admin/analytics/backfill-buyer-names?limit=${limit}`, {});
+  }
+}
+
+/** Dimensiunile suportate de matricea de marketing (rânduri). */
+export type MarketingDimension =
+  | 'source' | 'medium' | 'campaign' | 'device' | 'os' | 'browser' | 'country' | 'landing'
+  | 'day' | 'hour' | 'dow'
+  | 'package' | 'occasion' | 'voiceGender' | 'buyerGender';
+
+export interface MarketingSummary {
+  range: AnalyticsRange;
+  sessions: number;
+  visitors: number;
+  pageViews: number;
+  bounceRate: number;
+  avgSessionSec: number;
+  botSessions: number;
+  checkoutsInitiated: number;
+  purchases: number;
+  failed: number;
+  abandoned: number;
+  revenueRon: number;
+  aov: number;
+  visitorConv: number;
+  checkoutConv: number;
+  buyerGenderCoverage: number;
+  funnel: Array<{ step: string; count: number }>;
+  previous: {
+    sessions: number;
+    visitors: number;
+    purchases: number;
+    revenueRon: number;
+    visitorConv: number;
+  };
+}
+
+export interface MarketingBreakdownRow {
+  key: string;
+  label: string;
+  sessions: number | null;
+  visitors: number | null;
+  pageViews: number | null;
+  initiated: number;
+  purchases: number;
+  failed: number;
+  revenueRon: number;
+  aov: number | null;
+  visitorConv: number | null;
+  checkoutConv: number | null;
+}
+
+export interface MarketingBreakdown {
+  dimension: string;
+  hasTraffic: boolean;
+  rows: MarketingBreakdownRow[];
 }
 
 /** Metrici comune fiecărui nivel din ierarhie (campanie / ad set / ad). */

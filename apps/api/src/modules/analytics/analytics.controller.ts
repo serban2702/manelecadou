@@ -160,6 +160,37 @@ export class AnalyticsAdminController {
     return this.analytics.funnel(rangeFromQuery(q), siteId);
   }
 
+  /** Sumar marketing: KPI plăți + trafic + conversie + funnel + trend. */
+  @Get('marketing-summary')
+  marketingSummary(
+    @Query() q: { from?: string; to?: string; excludeBots?: string },
+    @CurrentSiteId() siteId: string | null,
+  ) {
+    return this.analytics.marketingSummary(rangeFromQuery(q), siteId, {
+      excludeBots: q.excludeBots !== '0' && q.excludeBots !== 'false',
+    });
+  }
+
+  /** Matrice marketing: o dimensiune (rânduri) × metrici (coloane). `dimension`
+   *  ∈ source/medium/campaign/device/os/browser/country/landing/day/hour/dow/
+   *  package/occasion/voiceGender/buyerGender. */
+  @Get('marketing-breakdown')
+  marketingBreakdown(
+    @Query() q: { from?: string; to?: string; dimension?: string; excludeBots?: string },
+    @CurrentSiteId() siteId: string | null,
+  ) {
+    return this.analytics.marketingBreakdown(rangeFromQuery(q), q.dimension ?? 'source', siteId, {
+      excludeBots: q.excludeBots !== '0' && q.excludeBots !== 'false',
+    });
+  }
+
+  /** Backfill one-off: nume/email/gen cumpărător din Stripe pentru plăți istorice. */
+  @Post('backfill-buyer-names')
+  @HttpCode(200)
+  backfillBuyerNames(@Query() q: { limit?: string }) {
+    return this.analytics.backfillBuyerNames(parseInt(q.limit ?? '200', 10) || 200);
+  }
+
   @Get('sources')
   sources(@Query() q: { from?: string; to?: string }, @CurrentSiteId() siteId: string | null) {
     return this.analytics.sources(rangeFromQuery(q), siteId);

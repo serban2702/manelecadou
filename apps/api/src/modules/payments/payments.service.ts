@@ -25,6 +25,7 @@ import { GenerationsService } from '../generations/generations.service';
 import { CreateGenerationDto } from '../generations/dto/create-generation.dto';
 import { TiktokEventsService } from '../tiktok/tiktok-events.service';
 import { AnalyticsService } from '../analytics/analytics.service';
+import { inferGenderFromName } from '../analytics/gender-infer';
 import { MetaCapiService } from '../meta-capi/meta-capi.service';
 import {
   productName as i18nProductName,
@@ -76,6 +77,13 @@ interface CheckoutInput {
   fbc?: string | null;
   userAgent?: string | null;
   ipAddress?: string | null;
+
+  // ============== Atribuire trafic ==============
+  // sessionKey/visitorId din tracker-ul de analytics (sessionStorage/localStorage),
+  // trimise de web în headerele requestului de checkout. Persistate pe Payment.*
+  // pentru atribuire 100% precisă pe surse/campanii în dashboard-ul de marketing.
+  sessionKey?: string | null;
+  visitorId?: string | null;
 }
 
 @Injectable()
@@ -302,6 +310,8 @@ export class PaymentsService {
         fbc: input.fbc ?? null,
         userAgent: input.userAgent ?? null,
         ipAddress: input.ipAddress ?? null,
+        sessionKey: input.sessionKey ?? null,
+        visitorId: input.visitorId ?? null,
       }),
     );
 
@@ -424,6 +434,8 @@ export class PaymentsService {
     fbc?: string | null;
     userAgent?: string | null;
     ipAddress?: string | null;
+    sessionKey?: string | null;
+    visitorId?: string | null;
   }): Promise<{ url: string; paymentId: string; generationId: string }> {
     const stripe = await this.getStripe();
     if (!stripe) throw new ServiceUnavailableException('Stripe not configured');
@@ -463,6 +475,8 @@ export class PaymentsService {
       fbc: input.fbc,
       userAgent: input.userAgent,
       ipAddress: input.ipAddress,
+      sessionKey: input.sessionKey,
+      visitorId: input.visitorId,
     });
 
     return { ...checkout, generationId: gen.id };
@@ -503,6 +517,8 @@ export class PaymentsService {
     fbc?: string | null;
     userAgent?: string | null;
     ipAddress?: string | null;
+    sessionKey?: string | null;
+    visitorId?: string | null;
   }): Promise<{ url: string; paymentId: string }> {
     const stripe = await this.getStripe();
     if (!stripe) throw new ServiceUnavailableException('Stripe not configured');
@@ -524,6 +540,8 @@ export class PaymentsService {
         fbc: input.fbc ?? null,
         userAgent: input.userAgent ?? null,
         ipAddress: input.ipAddress ?? null,
+        sessionKey: input.sessionKey ?? null,
+        visitorId: input.visitorId ?? null,
       }),
     );
 
@@ -605,6 +623,17 @@ export class PaymentsService {
         update.failureReason = `Checkout completed with status="${session.payment_status}"`;
         update.failureCode = session.payment_status ?? 'unknown';
       }
+
+      // Date cumpărător din Stripe — persistate pe plată pentru analytics (gen
+      // cumpărător + reconciliere). buyerGender e inferat din prenume (RO).
+      const custName = (session.customer_details?.name ?? '').trim() || null;
+      const custEmail = (session.customer_details?.email ?? '').trim() || null;
+      if (custName) {
+        update.customerName = custName.slice(0, 160);
+        update.buyerGender = inferGenderFromName(custName);
+      }
+      if (custEmail) update.customerEmail = custEmail.slice(0, 320);
+      if (isPaid) update.paidAt = new Date();
 
       // Recuperăm exchange_rate din balance_transaction (pentru rapoarte RON
       // pe site-uri cu valută diferită).
