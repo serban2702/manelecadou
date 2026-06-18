@@ -14,7 +14,7 @@ import { SettingsService } from '../settings/settings.service';
 import { GeoIpService } from './geoip.service';
 import { parseUserAgent } from './ua-parser';
 import { evaluateBot } from './bot-detection';
-import { inferGenderFromName } from './gender-infer';
+import { inferGenderFromName, inferGenderFromEmail } from './gender-infer';
 
 interface RangeQuery {
   from: Date;
@@ -1347,6 +1347,45 @@ export class AnalyticsService {
       }
     }
     return { scanned: candidates.length, updated, genderInferred, skipped, errors };
+  }
+
+  /**
+   * Completează `buyerGender` pe TOATE plățile fără gen, folosind toate sursele
+   * despre cumpărător: numele Stripe → prefixul emailului (Stripe sau guest).
+   * Emailurile interne/de test sunt sărite. Idempotent (atinge doar gen IS NULL),
+   * 100% pe date locale (nu cheamă Stripe), deci rapid pe mii de rânduri.
+   */
+  async backfillBuyerGender(limit = 2000): Promise<{
+    scanned: number; updated: number; byName: number; byEmail: number; skipped: number;
+  }> {
+    const rows = (await this.payments.query(
+      `SELECT p.id, p."customerName" AS name,
+              COALESCE(p."customerEmail", gs.email) AS email
+       FROM payments p
+       LEFT JOIN guest_sessions gs ON gs.id = p."guestId"
+       WHERE p."buyerGender" IS NULL
+       ORDER BY p."createdAt" DESC
+       LIMIT $1`,
+      [Math.min(10000, Math.max(1, limit))],
+    )) as Array<{ id: string; name: string | null; email: string | null }>;
+
+    let updated = 0;
+    let byName = 0;
+    let byEmail = 0;
+    let skipped = 0;
+    for (const r of rows) {
+      const fromName = inferGenderFromName(r.name);
+      const gender = fromName ?? inferGenderFromEmail(r.email);
+      if (!gender) {
+        skipped++;
+        continue;
+      }
+      await this.payments.update({ id: r.id }, { buyerGender: gender });
+      updated++;
+      if (fromName) byName++;
+      else byEmail++;
+    }
+    return { scanned: rows.length, updated, byName, byEmail, skipped };
   }
 
   // ============== EXTENDED BREAKDOWNS ==============

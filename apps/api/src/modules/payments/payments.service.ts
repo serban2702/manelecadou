@@ -25,7 +25,7 @@ import { GenerationsService } from '../generations/generations.service';
 import { CreateGenerationDto } from '../generations/dto/create-generation.dto';
 import { TiktokEventsService } from '../tiktok/tiktok-events.service';
 import { AnalyticsService } from '../analytics/analytics.service';
-import { inferGenderFromName } from '../analytics/gender-infer';
+import { inferBuyerGender } from '../analytics/gender-infer';
 import { MetaCapiService } from '../meta-capi/meta-capi.service';
 import {
   productName as i18nProductName,
@@ -628,11 +628,11 @@ export class PaymentsService {
       // cumpărător + reconciliere). buyerGender e inferat din prenume (RO).
       const custName = (session.customer_details?.name ?? '').trim() || null;
       const custEmail = (session.customer_details?.email ?? '').trim() || null;
-      if (custName) {
-        update.customerName = custName.slice(0, 160);
-        update.buyerGender = inferGenderFromName(custName);
-      }
+      if (custName) update.customerName = custName.slice(0, 160);
       if (custEmail) update.customerEmail = custEmail.slice(0, 320);
+      // Gen cumpărător din nume → prefix email (vezi gender-infer). Plățile noi
+      // sunt astfel populate automat, indiferent dacă Stripe trimite numele.
+      update.buyerGender = inferBuyerGender({ name: custName, email: custEmail });
       if (isPaid) update.paidAt = new Date();
 
       // Recuperăm exchange_rate din balance_transaction (pentru rapoarte RON

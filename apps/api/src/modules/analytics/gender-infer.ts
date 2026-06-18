@@ -29,6 +29,11 @@ const MALE_NAMES = new Set<string>([
   'mihnea', 'leon', 'luca', 'lucas', 'maxim', 'patrick', 'tiberiu', 'titi', 'mircea',
   'aurica', 'ticu', 'gicu', 'puiu', 'relu', 'sile', 'tavi', 'beniamin', 'cristinel',
   'ghita', 'iulius', 'nicholas', 'william', 'rauer', 'iustin', 'gigel',
+  // prenume de bază foarte frecvente (apar des în emailuri prenume.nume)
+  'florin', 'marin', 'costica', 'gheorghita', 'vasilica', 'nelu', 'gigi', 'gaby',
+  'georgel', 'ionica', 'luci', 'mihaita', 'sorinel', 'valentino', 'romeo', 'denis',
+  'dragos', 'razvan', 'alin', 'codrut', 'cristi', 'edi', 'fanel', 'florian', 'georgian',
+  'iuli', 'madalin', 'manu', 'marcelo', 'ovi', 'petrisor', 'robi', 'sergi', 'teo', 'vali',
 ]);
 
 const FEMALE_NAMES = new Set<string>([
@@ -101,4 +106,41 @@ export function inferGenderFromName(name: string | null | undefined): 'M' | 'F' 
   }
 
   return null;
+}
+
+/** Emailuri interne / de test — nu reprezintă clienți reali, nu inferăm gen din ele. */
+export function isInternalEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const e = email.toLowerCase().trim();
+  return (
+    e.startsWith('serban2702@') ||
+    e.endsWith('@manelecadou.ro') ||
+    e.endsWith('@chalgapodarok.bg') ||
+    e.endsWith('@doroparaggelia.gr') ||
+    e.endsWith('@example.com') ||
+    e.endsWith('@test.com')
+  );
+}
+
+/**
+ * Inferă genul din partea locală a unui email (prenume.nume@, prenume_nume@,
+ * prenume123@). Refolosește dicționarul + euristica pe tokenii din local-part.
+ * Returnează null pentru emailuri interne/de test sau când e ambiguu.
+ */
+export function inferGenderFromEmail(email: string | null | undefined): 'M' | 'F' | null {
+  if (!email || isInternalEmail(email)) return null;
+  const local = email.split('@')[0];
+  if (!local) return null;
+  return inferGenderFromName(local);
+}
+
+/**
+ * Inferă genul CUMPĂRĂTORULUI din toate sursele disponibile, în ordinea încrederii:
+ * numele Stripe → prefixul emailului. Folosit la webhook, la checkout și la backfill.
+ */
+export function inferBuyerGender(opts: {
+  name?: string | null;
+  email?: string | null;
+}): 'M' | 'F' | null {
+  return inferGenderFromName(opts.name) ?? inferGenderFromEmail(opts.email);
 }

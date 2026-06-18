@@ -191,6 +191,13 @@ export class AnalyticsAdminController {
     return this.analytics.backfillBuyerNames(parseInt(q.limit ?? '200', 10) || 200);
   }
 
+  /** Backfill gen cumpărător pe toate plățile (nume Stripe + prefix email). Local, rapid. */
+  @Post('backfill-buyer-gender')
+  @HttpCode(200)
+  backfillBuyerGender(@Query() q: { limit?: string }) {
+    return this.analytics.backfillBuyerGender(parseInt(q.limit ?? '2000', 10) || 2000);
+  }
+
   @Get('sources')
   sources(@Query() q: { from?: string; to?: string }, @CurrentSiteId() siteId: string | null) {
     return this.analytics.sources(rangeFromQuery(q), siteId);
