@@ -21,26 +21,90 @@ export function resolveMediaUrl(url: string | null | undefined): string | null {
   return url;
 }
 
+/**
+ * Fallback in-memory pentru identitate. Supraviețuiește în cadrul unui pageload
+ * chiar dacă `localStorage` e complet blocat — cazul browserelor in-app
+ * (Facebook / Instagram / TikTok pe iOS), unde localStorage fie aruncă la
+ * scriere, fie nu persistă. Fără asta, guest-ul rămâne fără id și TOATE
+ * request-urile guest pică cu `400 Missing X-Guest-Id` (plus chat-ul WS nici
+ * nu se conectează). Lecția 2026-06-18.
+ */
+let memoryGuestId: string | null = null;
+let memoryToken: string | null = null;
+
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  try {
+    const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+    return m ? decodeURIComponent(m[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeLocalGet(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 export function getGuestId(): string | null {
   if (typeof window === 'undefined') return null;
-  return window.localStorage.getItem(GUEST_KEY);
+  // memorie → localStorage → cookie. Cookie-ul e plasa de siguranță pentru
+  // in-app browsers care permit cookies first-party dar nu localStorage.
+  if (memoryGuestId) return memoryGuestId;
+  const ls = safeLocalGet(GUEST_KEY);
+  if (ls) return (memoryGuestId = ls);
+  const ck = readCookie(GUEST_KEY);
+  if (ck) return (memoryGuestId = ck);
+  return null;
 }
 
 export function setGuestId(id: string) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(GUEST_KEY, id);
-  document.cookie = `${GUEST_KEY}=${id}; path=/; SameSite=Lax; max-age=31536000`;
+  memoryGuestId = id; // întâi memoria — nu poate eșua, e disponibilă instant
+  try {
+    window.localStorage.setItem(GUEST_KEY, id);
+  } catch {
+    /* storage blocat (in-app browser / private mode) — cookie + memorie acoperă */
+  }
+  try {
+    document.cookie = `${GUEST_KEY}=${id}; path=/; SameSite=Lax; max-age=31536000`;
+  } catch {
+    /* foarte rar (cookies blocate) — rămâne memoria pe durata pageload-ului */
+  }
 }
 
 export function getAccessToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return window.localStorage.getItem(TOKEN_KEY);
+  if (memoryToken) return memoryToken;
+  const ls = safeLocalGet(TOKEN_KEY);
+  if (ls) return (memoryToken = ls);
+  const ck = readCookie(TOKEN_KEY);
+  if (ck) return (memoryToken = ck);
+  return null;
 }
 
 export function setAccessToken(token: string | null) {
   if (typeof window === 'undefined') return;
-  if (token) window.localStorage.setItem(TOKEN_KEY, token);
-  else window.localStorage.removeItem(TOKEN_KEY);
+  memoryToken = token;
+  try {
+    if (token) window.localStorage.setItem(TOKEN_KEY, token);
+    else window.localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* storage blocat — memorie + cookie acoperă */
+  }
+  try {
+    if (token) {
+      document.cookie = `${TOKEN_KEY}=${token}; path=/; SameSite=Lax; max-age=31536000`;
+    } else {
+      document.cookie = `${TOKEN_KEY}=; path=/; SameSite=Lax; max-age=0`;
+    }
+  } catch {
+    /* cookies blocate */
+  }
 }
 
 function getCurrentLocale(): string {
