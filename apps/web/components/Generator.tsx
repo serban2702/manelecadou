@@ -17,6 +17,7 @@ import { track } from '@/lib/tracking';
 import { formatPrice } from '@/lib/site-shared';
 import { claimPlayback, releasePlayback } from '@/lib/audio-registry';
 import { PACKAGES, DEFAULT_PACKAGE_TIER, type PackageTier } from '@/lib/packages';
+import OfferCountdown from './OfferCountdown';
 
 type Data = {
   style: string;
@@ -1124,6 +1125,12 @@ function PackageCard({
   });
   const priceCents = quote?.total ?? pkg.priceCents;
   const fmt = (cents: number) => formatPrice(site, cents);
+  // Preț „tăiat" (marketing) — vine din quote, doar dacă e setat și > prețul real.
+  const compareAtCents =
+    quote?.compareAtCents && quote.compareAtCents > priceCents ? quote.compareAtCents : null;
+  const discountPct = compareAtCents
+    ? Math.round((1 - priceCents / compareAtCents) * 100)
+    : 0;
 
   return (
     <div
@@ -1160,14 +1167,41 @@ function PackageCard({
           RECOMANDAT
         </span>
       )}
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
         <div style={{ fontWeight: 900, fontSize: 16, color: 'var(--gold-2)', fontFamily: 'Cinzel, serif' }}>
           {pkg.nameRO}
         </div>
-        <div className="gold-text" style={{ fontWeight: 900, fontSize: 20, whiteSpace: 'nowrap' }}>
-          {fmt(priceCents)}
+        <div style={{ textAlign: 'right' }}>
+          {compareAtCents && (
+            <div
+              style={{
+                fontSize: 13, fontWeight: 700, lineHeight: 1,
+                color: 'rgba(255,245,220,0.45)', textDecoration: 'line-through',
+              }}
+            >
+              {fmt(compareAtCents)}
+            </div>
+          )}
+          <div className="gold-text" style={{ fontWeight: 900, fontSize: 20, whiteSpace: 'nowrap' }}>
+            {fmt(priceCents)}
+          </div>
         </div>
       </div>
+      {compareAtCents && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+          <span
+            style={{
+              fontSize: 11, fontWeight: 900, letterSpacing: '0.04em',
+              padding: '3px 8px', borderRadius: 999,
+              background: 'linear-gradient(135deg,#e0394b,#b01e2e)', color: '#fff',
+              boxShadow: '0 2px 8px rgba(214,47,63,0.35)',
+            }}
+          >
+            −{discountPct}% REDUCERE
+          </span>
+          <OfferCountdown />
+        </div>
+      )}
       <ul style={{ listStyle: 'none', padding: 0, margin: '12px 0 0' }}>
         {pkg.features.map((f, i) => (
           <li
@@ -1605,6 +1639,8 @@ function PayFirstStep({
   });
   const fmt = (cents: number) => formatPrice(site, cents);
   const packagePrice = quote?.total ?? pkg.priceCents;
+  const compareAtCents =
+    quote?.compareAtCents && quote.compareAtCents > packagePrice ? quote.compareAtCents : null;
   const finalTotal = Math.max(0, packagePrice - (promoApplied?.discountCents ?? 0));
 
   return (
@@ -1646,8 +1682,20 @@ function PayFirstStep({
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
           <span>{pkg.nameRO}</span>
-          <span>{fmt(packagePrice)}</span>
+          <span>
+            {compareAtCents && (
+              <span style={{ textDecoration: 'line-through', opacity: 0.5, marginRight: 6 }}>
+                {fmt(compareAtCents)}
+              </span>
+            )}
+            {fmt(packagePrice)}
+          </span>
         </div>
+        {compareAtCents && (
+          <div style={{ marginTop: 8 }}>
+            <OfferCountdown label="Prețul redus se termină în" />
+          </div>
+        )}
         {promoApplied && (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4, color: 'var(--green)' }}>
             <span>{tg('step5PayFirst.promoLine')} <code>{promoApplied.code}</code></span>

@@ -304,6 +304,8 @@ export interface PriceQuote {
   packageTier: PackageTier;
   total: number;
   currency: string;
+  /** Preț „tăiat" de afișare (marketing). Prezent doar dacă > total. */
+  compareAtCents?: number | null;
 }
 
 export interface CreateGenerationInput {

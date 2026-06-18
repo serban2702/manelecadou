@@ -14,7 +14,7 @@ import Stripe from 'stripe';
 
 import { Payment } from './payment.entity';
 import { PREMIUM_EXTRA_CENTS, packageTotalCents } from './pricing';
-import { normalizeTier, PackageTier } from './packages';
+import { normalizeTier, packageCompareAtCents, PackageTier } from './packages';
 import { PromoService } from '../promo/promo.service';
 import { GiftCodesService } from '../gift-codes/gift-codes.service';
 import { GiftTier, TIER_PRICES_RON } from '../gift-codes/gift-code.entity';
@@ -166,7 +166,13 @@ export class PaymentsService {
     if (input.packageTier) {
       const tier = normalizeTier(input.packageTier);
       const total = this.sitePackageTotal(site, tier);
-      return { packageTier: tier, total, currency: site.currency };
+      // Preț „tăiat" de afișare (marketing) — nu afectează checkout-ul.
+      const compareAtCents = packageCompareAtCents(
+        tier,
+        site.packageCompareAtCents ?? null,
+        site.packagePricesCents ?? null,
+      );
+      return { packageTier: tier, total, currency: site.currency, compareAtCents };
     }
     const tip = input.tipAmount ?? 0;
     const premium = !!input.premium;

@@ -43,7 +43,7 @@ export const PACKAGES: PackageDef[] = [
   },
   {
     tier: 'premium',
-    priceCents: 6999,
+    priceCents: 9999,
     nameRO: 'Pachet Premium',
     features: [
       'Tot din pachetul Plus',

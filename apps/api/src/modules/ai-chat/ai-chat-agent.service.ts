@@ -10,7 +10,7 @@ import { ChatGateway } from '../chat/chat.gateway';
 import { Conversation, WizardData, WizardState } from '../chat/conversation.entity';
 import { ChatMessage, ChatMessagePayload } from '../chat/message.entity';
 import { PaymentsService } from '../payments/payments.service';
-import { normalizeTier, packageLabel, chatPackageUpsellRo, type PackageTier } from '../payments/packages';
+import { normalizeTier, packageLabel, chatPackageUpsellRo, packageCompareAtCents, type PackageTier } from '../payments/packages';
 import { packageTotalCents } from '../payments/pricing';
 import { GenerationsService } from '../generations/generations.service';
 import { GuestSessionsService } from '../guest-sessions/guest-sessions.service';
@@ -819,6 +819,7 @@ prin chat DOAR dacă clientul cere explicit asta sau zice că nu se descurcă cu
     const brand = site?.name ?? 'Manele Cadou';
     const locale = site?.locale ?? 'ro';
     const overrides = site?.packagePricesCents ?? null;
+    const compareOverrides = site?.packageCompareAtCents ?? null;
     const basicCents = packageTotalCents('basic', overrides);
     const plusCents = packageTotalCents('plus', overrides);
     const premiumCents = packageTotalCents('premium', overrides);
@@ -826,7 +827,10 @@ prin chat DOAR dacă clientul cere explicit asta sau zice că nu se descurcă cu
     const price = `${(basicCents / 100).toFixed(2)} ${cur}`;
     const plusPrice = `${(plusCents / 100).toFixed(2)} ${cur}`;
     const premiumPrice = `${(premiumCents / 100).toFixed(2)} ${cur}`;
-    const packageUpsell = chatPackageUpsellRo(overrides);
+    // Preț „tăiat" Plus (marketing) — dacă e setat, Irina îl prezintă ca reducere limitată.
+    const plusCompareCents = packageCompareAtCents('plus', compareOverrides, overrides);
+    const plusOldPrice = plusCompareCents ? `${(plusCompareCents / 100).toFixed(2)} ${cur}` : null;
+    const packageUpsell = chatPackageUpsellRo(overrides, { compareAt: compareOverrides, currency: cur });
 
     // Stil Irina — extras din analiza datelor reale: 146 mesaje "Buna, sunt Irina!👋",
     // colocvial RO fără diacritice obligatoriu, prietenos, max 2-3 fraze, emoji moderat.
@@ -886,10 +890,11 @@ conv 9d844ab9: AI a spus clientului că are drept de refund 30 zile — fals, nu
 
 PACHETE (în chat le prezinți pe TOATE 3 — chiar înainte de linkul de plată, vezi ETAPA 5.5):
 - STANDARD = ${price} (preț de intrare — maneaua personalizată).
-- PLUS = ${plusPrice} (mai lungă și mai calitativă + imagini pentru social media).
+- PLUS = ${plusPrice}${plusOldPrice ? ` (REDUS de la ${plusOldPrice} — ofertă valabilă încă 3 zile)` : ''} (mai lungă și mai calitativă + imagini pentru social media).
 - PREMIUM = ${premiumPrice} (tot ce e în Plus + videoclip + pagină premium de ascultare).
 Când userul întreabă „cât costă?", spune că prețul PLEACĂ DE LA ${price} (Standard) și că
-sunt 3 pachete din care alege — nu ascunde variantele Plus și Premium.
+sunt 3 pachete din care alege — nu ascunde variantele Plus și Premium.${plusOldPrice ? `
+OFERTĂ PLUS: pachetul Plus e acum ${plusPrice} în loc de ${plusOldPrice} — reducere pe timp limitat (mai e ~3 zile). Menționeaz-o ca argument real când userul ezită între pachete, dar fără presiune agresivă.` : ''}
 
 ═══════════════════════════════════════════════════════════════════════
 WORKFLOW DE SALES (REPLICĂM EXACT CE FACE IRINA UMANĂ):

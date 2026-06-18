@@ -450,6 +450,17 @@ export class Site {
   @Column({ type: 'jsonb', nullable: true })
   packagePricesCents!: Partial<Record<'basic' | 'plus' | 'premium', number>> | null;
 
+  /**
+   * Preț „tăiat" (compare-at / anchor) de AFIȘARE per tier, cents în valuta
+   * site-ului. PUR marketing: nu afectează checkout-ul (suma reală e
+   * packagePricesCents / default). Dacă un tier are aici o valoare > prețul
+   * real, wizard-ul îl arată tăiat lângă preț + countdown de ofertă, iar Irina
+   * îl menționează ca reducere. Cheie = tier. NULL = fără preț tăiat.
+   * Synchronize-safe (jsonb nullable).
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  packageCompareAtCents!: Partial<Record<'basic' | 'plus' | 'premium', number>> | null;
+
   @Column({ type: 'jsonb', default: () => `'{}'::jsonb` })
   brand!: SiteBrand;
 

@@ -75,6 +75,8 @@ export class PublicSiteController {
       // Model PACHETE: override-urile brute + prețurile efective per tier.
       packagePricesCents: site.packagePricesCents ?? null,
       packagePrices: effectivePackagePrices(site.packagePricesCents),
+      // Prețuri „tăiate" de afișare (marketing) — gol = fără reducere afișată.
+      packageCompareAtCents: site.packageCompareAtCents ?? null,
       brand: site.brand,
       seo: site.seo,
       analytics: site.analytics,
@@ -386,6 +388,7 @@ export class AdminSitesController {
       giftPriceCents: s.giftPriceCents,
       packagePricesCents: s.packagePricesCents ?? null,
       packagePrices: effectivePackagePrices(s.packagePricesCents),
+      packageCompareAtCents: s.packageCompareAtCents ?? null,
       brand: s.brand,
       seo: s.seo,
       analytics: s.analytics,

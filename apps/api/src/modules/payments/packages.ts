@@ -67,7 +67,7 @@ export const PACKAGES: Record<PackageTier, PackageDef> = {
   premium: {
     tier: 'premium',
     label: 'Premium',
-    priceCents: 6999,
+    priceCents: 9999,
     durationSec: 150,
     instrumental: false,
     socialImage: true,
@@ -102,6 +102,22 @@ export function packagePriceCents(
   return PACKAGES[tier].priceCents;
 }
 
+/**
+ * Prețul „tăiat" (compare-at / anchor) de AFIȘARE pentru un tier, cents.
+ * PUR marketing — nu afectează checkout-ul. Returnează valoarea doar dacă e
+ * strict mai mare decât prețul real al tier-ului (altfel n-are sens să-l tai).
+ */
+export function packageCompareAtCents(
+  tier: PackageTier,
+  compareOverrides?: Partial<Record<PackageTier, number>> | null,
+  priceOverrides?: Partial<Record<PackageTier, number>> | null,
+): number | null {
+  const c = compareOverrides?.[tier];
+  if (typeof c !== 'number' || c <= 0) return null;
+  const real = packagePriceCents(tier, priceOverrides);
+  return c > real ? c : null;
+}
+
 export function packageDef(tier: PackageTier): PackageDef {
   return PACKAGES[tier];
 }
@@ -133,15 +149,39 @@ export function packagesPitchRo(
  *  - Premium  = premium (tot ce e în Plus + videoclip + pagină premium)
  * Folosit în ETAPA de alegere a pachetului, înainte de linkul de plată.
  */
+/** Cuvântul natural pentru monedă, folosit în chat (mai uman decât codul ISO). */
+export function currencyWord(currency?: string | null): string {
+  switch ((currency ?? 'RON').toUpperCase()) {
+    case 'RON':
+      return 'lei';
+    case 'EUR':
+      return 'euro';
+    case 'BGN':
+      return 'leva';
+    default:
+      return currency ?? 'lei';
+  }
+}
+
 export function chatPackageUpsellRo(
   overrides?: Partial<Record<PackageTier, number>> | null,
+  opts?: {
+    compareAt?: Partial<Record<PackageTier, number>> | null;
+    currency?: string | null;
+  },
 ): string {
-  const standard = (packagePriceCents('basic', overrides) / 100).toFixed(2);
-  const plus = (packagePriceCents('plus', overrides) / 100).toFixed(2);
-  const premium = (packagePriceCents('premium', overrides) / 100).toFixed(2);
+  const cur = currencyWord(opts?.currency);
+  const fmt = (cents: number) => (cents / 100).toFixed(2);
+  const standard = fmt(packagePriceCents('basic', overrides));
+  const plus = fmt(packagePriceCents('plus', overrides));
+  const premium = fmt(packagePriceCents('premium', overrides));
+  const plusCompare = packageCompareAtCents('plus', opts?.compareAt, overrides);
+  const plusLine = plusCompare
+    ? `Plus ${plus} ${cur} (redus de la ${fmt(plusCompare)} ${cur} — oferta valabila inca 3 zile) — mai lunga si mai calitativa, cu imagini pentru social media (TikTok/Instagram); `
+    : `Plus ${plus} ${cur} — mai lunga si mai calitativa, cu imagini pentru social media (TikTok/Instagram); `;
   return (
-    `Avem 3 pachete: Standard ${standard} lei — maneaua ta personalizata; ` +
-    `Plus ${plus} lei — mai lunga si mai calitativa, cu imagini pentru social media (TikTok/Instagram); ` +
-    `Premium ${premium} lei — tot ce e in Plus plus videoclip si pagina premium de ascultare. Ce alegi?`
+    `Avem 3 pachete: Standard ${standard} ${cur} — maneaua ta personalizata; ` +
+    plusLine +
+    `Premium ${premium} ${cur} — tot ce e in Plus plus videoclip si pagina premium de ascultare. Ce alegi?`
   );
 }
