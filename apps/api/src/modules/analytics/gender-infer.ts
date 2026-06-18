@@ -118,17 +118,21 @@ export function inferGenderFromName(name: string | null | undefined): 'M' | 'F' 
  */
 function genderByPrefix(token: string): 'M' | 'F' | null {
   if (token.length < 5) return null;
-  let best: { len: number; g: 'M' | 'F' } | null = null;
-  const scan = (set: Set<string>, g: 'M' | 'F') => {
-    for (const name of set) {
-      if (name.length >= 3 && token.startsWith(name) && (!best || name.length > best.len)) {
-        best = { len: name.length, g };
-      }
+  let bestLen = 0;
+  let bestG: 'M' | 'F' | null = null;
+  for (const name of FEMALE_NAMES) {
+    if (name.length >= 3 && name.length > bestLen && token.startsWith(name)) {
+      bestLen = name.length;
+      bestG = 'F';
     }
-  };
-  scan(FEMALE_NAMES, 'F');
-  scan(MALE_NAMES, 'M');
-  return best?.g ?? null;
+  }
+  for (const name of MALE_NAMES) {
+    if (name.length >= 3 && name.length > bestLen && token.startsWith(name)) {
+      bestLen = name.length;
+      bestG = 'M';
+    }
+  }
+  return bestG;
 }
 
 /**
@@ -139,17 +143,21 @@ function genderByPrefix(token: string): 'M' | 'F' | null {
  */
 function genderBySuffix(token: string): 'M' | 'F' | null {
   if (token.length < 6) return null;
-  let best: { len: number; g: 'M' | 'F' } | null = null;
-  const scan = (set: Set<string>, g: 'M' | 'F') => {
-    for (const name of set) {
-      if (name.length >= 4 && token.endsWith(name) && token.length > name.length && (!best || name.length > best.len)) {
-        best = { len: name.length, g };
-      }
+  let bestLen = 0;
+  let bestG: 'M' | 'F' | null = null;
+  for (const name of FEMALE_NAMES) {
+    if (name.length >= 4 && name.length > bestLen && token.length > name.length && token.endsWith(name)) {
+      bestLen = name.length;
+      bestG = 'F';
     }
-  };
-  scan(FEMALE_NAMES, 'F');
-  scan(MALE_NAMES, 'M');
-  return best?.g ?? null;
+  }
+  for (const name of MALE_NAMES) {
+    if (name.length >= 4 && name.length > bestLen && token.length > name.length && token.endsWith(name)) {
+      bestLen = name.length;
+      bestG = 'M';
+    }
+  }
+  return bestG;
 }
 
 /** Emailuri interne / de test — nu reprezintă clienți reali, nu inferăm gen din ele. */
