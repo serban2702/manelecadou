@@ -825,7 +825,8 @@ export class AnalyticsService {
     const traffic = await this.marketingTraffic(range, siteId, excludeBots);
     const pay = await this.marketingPayments(range, siteId);
 
-    // Funnel: vizitatori (sesiuni) → au început formularul → checkout inițiat → plată
+    // Câți au început formularul (indicativ — eveniment sub-raportat istoric, nu-l
+    // punem în funnel ca să nu rupem monotonia, dar îl expunem separat).
     const formStartRow = await this.applySite(
       this.events
         .createQueryBuilder('e')
@@ -874,10 +875,10 @@ export class AnalyticsService {
       checkoutConv,
       buyerGenderCoverage:
         pay.purchases > 0 ? Math.round((pay.genderKnown / pay.purchases) * 1000) / 10 : 0,
-      // funnel (sesiuni distincte pe pas)
+      formStarts: formStartRow?.n ?? 0,
+      // Funnel monoton: vizitatori → checkout inițiat → plată finalizată.
       funnel: [
         { step: 'visitors', count: sessions },
-        { step: 'form_start', count: sessions > 0 ? Math.min(formStartRow?.n ?? 0, sessions) : (formStartRow?.n ?? 0) },
         { step: 'checkout_init', count: pay.initiated },
         { step: 'purchase', count: pay.purchases },
       ],

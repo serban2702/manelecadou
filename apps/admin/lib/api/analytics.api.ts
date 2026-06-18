@@ -175,6 +175,7 @@ export interface MarketingSummary {
   visitorConv: number;
   checkoutConv: number;
   buyerGenderCoverage: number;
+  formStarts: number;
   funnel: Array<{ step: string; count: number }>;
   previous: {
     sessions: number;

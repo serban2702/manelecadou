@@ -356,7 +356,7 @@ function MarketingTab({ range }: { range: { from: string; to: string } }) {
 
       {/* KPI secundare */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KpiCard label="Checkout inițiate" value={s?.checkoutsInitiated.toLocaleString('ro-RO')} icon={<MousePointerClick />} loading={summary.isLoading} />
+        <KpiCard label="Checkout inițiate" value={s?.checkoutsInitiated.toLocaleString('ro-RO')} icon={<MousePointerClick />} loading={summary.isLoading} sub={s ? `${s.formStarts.toLocaleString('ro-RO')} au început formularul` : undefined} />
         <KpiCard label="Plăți eșuate" value={s?.failed.toLocaleString('ro-RO')} icon={<AlertTriangle />} tone="destructive" loading={summary.isLoading} sub={s && s.checkoutsInitiated > 0 ? `${Math.round((s.failed / s.checkoutsInitiated) * 100)}% din checkout` : undefined} />
         <KpiCard label="Abandonate (pending)" value={s?.abandoned.toLocaleString('ro-RO')} icon={<Timer />} loading={summary.isLoading} />
         <KpiCard label="Pagini văzute" value={s?.pageViews.toLocaleString('ro-RO')} icon={<Eye />} loading={summary.isLoading} sub={s ? `bounce ${s.bounceRate}% · ${fmtDuration(s.avgSessionSec)}/sesiune` : undefined} />
