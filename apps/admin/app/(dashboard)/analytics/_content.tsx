@@ -444,7 +444,8 @@ function MarketingTab({ range }: { range: { from: string; to: string } }) {
           {dim === 'buyerGender' && s && (
             <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2 text-xs">
               <span className="text-muted-foreground">
-                Gen cumpărător cunoscut pentru <strong className="text-foreground">{s.buyerGenderCoverage}%</strong> din cumpărări (inferat din numele Stripe).
+                Gen cunoscut pentru <strong className="text-foreground">{s.buyerGenderCoverage}%</strong> din cumpărări, inferat din numele Stripe.
+                Vine din datele de plată → disponibil mai ales pe plăți finalizate; uită-te la <strong className="text-foreground">Cumpărări/Venit</strong>, nu la rata de finalizare.
               </span>
               <Button variant="outline" size="sm" onClick={runBackfill} disabled={backfilling}>
                 {backfilling ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : 'Adu nume din Stripe'}
