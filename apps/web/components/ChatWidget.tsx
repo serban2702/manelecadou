@@ -551,7 +551,7 @@ export function ChatWidget() {
                 deliveredAt?: string | null;
                 readAt?: string | null;
                 messageType?: string;
-                payload?: { amount?: number; currency?: string; description?: string; checkoutUrl?: string; premium?: boolean } | null;
+                payload?: { amount?: number; currency?: string; description?: string; checkoutUrl?: string; premium?: boolean; kind?: string; audioUrl?: string; sampleLabel?: string } | null;
                 attachmentUrl?: string | null;
                 attachmentMime?: string | null;
                 attachmentName?: string | null;
@@ -741,7 +741,28 @@ export function ChatWidget() {
                       );
                     })()
                   )}
-                  {mm.messageType === 'song_preview' && mm.payload && (
+                  {mm.messageType === 'song_preview' && mm.payload?.kind === 'sample' && mm.payload?.audioUrl && (
+                    <div
+                      style={{
+                        padding: 12,
+                        marginBottom: 6,
+                        borderRadius: 10,
+                        background: 'linear-gradient(135deg, #2a1a04, #0a0606)',
+                        border: '1px solid var(--gold)',
+                      }}
+                    >
+                      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
+                        🎵 Mostră de {String(mm.payload.sampleLabel ?? 'stil')}
+                      </div>
+                      <audio
+                        controls
+                        preload="none"
+                        src={String(mm.payload.audioUrl)}
+                        style={{ width: '100%', height: 36 }}
+                      />
+                    </div>
+                  )}
+                  {mm.messageType === 'song_preview' && mm.payload && mm.payload?.kind !== 'sample' && (
                     (() => {
                       const p = mm.payload as {
                         generationId?: string;

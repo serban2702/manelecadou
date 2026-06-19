@@ -3254,13 +3254,23 @@ ${transcript}`;
     }
 
     await this.humanDelay(text, ctx.mode);
+    // Trimitem mostra ca `song_preview` cu payload kind='sample' → clientul randează un
+    // PLAYER AUDIO inline în chat (se redă fără să iasă din conversație). Înainte trimiteam
+    // un link mp3 brut (messageType='text') pe care userii din in-app browsers (FB/IG/TikTok)
+    // nu îl puteau deschide. BUG observat 2026-06-19 conv b6bf78a7: userul a zis de 2 ori „nu
+    // pot intra" pe linkul de mostră. Body-ul păstrează URL-ul (fallback clicabil în admin;
+    // web-ul suprimă body pentru song_preview, deci userul vede doar player-ul).
     const m = this.msg.create({
       conversationId: ctx.conv.id,
       siteId: ctx.conv.siteId,
       authorRole: ctx.mode === 'suggest' ? 'system' : 'admin',
       authorId: null,
       body: text,
-      messageType: ctx.mode === 'suggest' ? 'ai_suggestion' : 'text',
+      messageType: ctx.mode === 'suggest' ? 'ai_suggestion' : 'song_preview',
+      payload:
+        ctx.mode === 'suggest'
+          ? null
+          : { audioUrl: entry.audioUrl, kind: 'sample', sampleLabel: label },
       aiGenerated: true,
       detectedLang: site.locale,
     });
