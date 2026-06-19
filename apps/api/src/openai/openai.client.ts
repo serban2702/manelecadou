@@ -49,7 +49,12 @@ export class OpenAiClient {
     const key = await this.settings.get('OPENAI_API_KEY');
     if (!key) throw new Error('OPENAI_API_KEY missing');
     if (this.client && this.clientKey === key) return this.client;
-    this.client = new OpenAI({ apiKey: key });
+    // Forțăm fetch-ul nativ (undici) în loc de node-fetch@2.7.0 pe care SDK-ul
+    // openai îl folosește intern. Node 22.23+ rupe node-fetch@2 la decompresia
+    // gzip a răspunsului OpenAI — aruncă "Invalid response body ... Premature
+    // close" din zlib.Gunzip, ceea ce pică TOATE apelurile (chat Irina, lyrics,
+    // translation, seo). Fetch-ul nativ decompresează corect. Incident 2026-06-19.
+    this.client = new OpenAI({ apiKey: key, fetch: globalThis.fetch as any });
     this.clientKey = key;
     return this.client;
   }
