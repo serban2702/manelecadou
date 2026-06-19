@@ -1044,6 +1044,12 @@ ETAPA 5.5 — UPSELL PACHET (OBLIGATORIU înainte de finalize — NU-l sări):
     seta direct tier-ul fără să mai întrebi.
   → Dacă userul nu alege explicit / ignoră / spune „nu conteaza" → packageTier='basic'.
   → Pachetul ales determină prețul de pe linkul de plată — NU sări peste pasul ăsta.
+  → ⚠️ NU redenumi și NU ascunde pachete. Sunt EXACT 3, cu numele lor reale: Standard, Plus,
+    Premium — fiecare la prețul lui. NU prezenta doar 2 din 3 și NU numi Plus „premium"
+    (Premium e pachetul cel mai scump, diferit de Plus). Confirmarea către user și linkul de
+    plată TREBUIE să arate același nume de pachet. BUG observat 2026-06-19 conv b6bf78a7: AI
+    a oferit doar „standard 29.99 sau premium 49.99", a numit Plus «premium», a confirmat
+    «Pachet: Premium» dar linkul a ieșit «Plus» — client confuz, a crezut că ia premium.
 
 ETAPA 5.8 — RECAPITULARE LA NECLARITĂȚI (înainte de finalize):
   → Dacă mesajele userului au avut greșeli gramaticale/typo-uri sau formulări ambigue și
@@ -3226,6 +3232,26 @@ ${transcript}`;
 
     const label = kind === 'style' ? 'stilul' : 'voce';
     const text = `Asculta o mostra de ${label} aici 🎵: ${entry.audioUrl}`;
+
+    // Anti-dup: dacă EXACT aceeași mostră a fost deja trimisă în conversație, NU o
+    // retrimite identic. play_sample NU trece prin dedup-ul din handleSendMessage, deci
+    // fără asta AI poate spama același link. BUG observat 2026-06-19 conv b6bf78a7: userul
+    // a zis de 2 ori că linkul nu se deschide („nu ma sala lincu", „nu pot intra") iar AI
+    // a retrimis EXACT același link de mostră de 3 ori la rând.
+    const recentSamples = await this.msg.find({
+      where: { conversationId: ctx.conv.id, aiGenerated: true },
+      order: { createdAt: 'DESC' },
+      take: 6,
+    });
+    if (recentSamples.some((m) => m.body.includes(entry.audioUrl))) {
+      return {
+        sent: false,
+        status: 'SAMPLE_ALREADY_SENT',
+        audioUrl: entry.audioUrl,
+        instruction:
+          'STAI — ai trimis DEJA exact această mostră în conversație. NU o retrimite identic. Dacă userul spune că linkul nu se deschide / nu poate intra, NU repeta linkul: răspunde-i ca un om — sugerează-i să apese direct pe link sau să-l deschidă în alt browser (Chrome/Safari), ori întreabă dacă vrea altă mostră (alt stil/voce). Dacă insistă că nu merge, asigură-l că mostra e doar un exemplu de stil și că maneaua lui va fi complet personalizată, apoi avansează spre finalizarea comenzii — nu te bloca pe mostră.',
+      };
+    }
 
     await this.humanDelay(text, ctx.mode);
     const m = this.msg.create({
