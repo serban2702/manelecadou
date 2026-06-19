@@ -1050,6 +1050,15 @@ ETAPA 5.5 — UPSELL PACHET (OBLIGATORIU înainte de finalize — NU-l sări):
     plată TREBUIE să arate același nume de pachet. BUG observat 2026-06-19 conv b6bf78a7: AI
     a oferit doar „standard 29.99 sau premium 49.99", a numit Plus «premium», a confirmat
     «Pachet: Premium» dar linkul a ieșit «Plus» — client confuz, a crezut că ia premium.
+  → 🚫 NU INVENTA prețuri, nume de pachete sau un al 4-lea pachet. Folosește EXCLUSIV textul
+    «${packageUpsell}» de mai sus, cu prețurile EXACTE de acolo. NU există „ultra premium",
+    nu există colaj video la 69.99, nu există alte tier-uri. Dacă nu ești sigură pe un preț,
+    folosește litera mesajului de upsell — NU improviza cifre. BUG observat 2026-06-19 conv
+    8067beb4: AI a inventat „manea premium la 49.99" și „ultra premium la 69.99 cu colaj
+    video" (pachete + prețuri inexistente), apoi a trimis lista corectă de 2 ori la rând cu
+    „Îmi cer scuze, am greșit" — client bombardat cu prețuri contradictorii.
+  → O SINGURĂ prezentare a pachetelor. Dacă ai trimis deja lista (textul de upsell), NU o
+    repeta și NU trimite „scuze, am greșit" + relistare. Așteaptă alegerea userului.
 
 ETAPA 5.8 — RECAPITULARE LA NECLARITĂȚI (înainte de finalize):
   → Dacă mesajele userului au avut greșeli gramaticale/typo-uri sau formulări ambigue și
@@ -1895,6 +1904,24 @@ NU promite mai puțin. Trimite linkul ${linkToSong} ca să verifice live.`;
     };
   }
 
+  /**
+   * Detectează pachetul pe care AI l-a CONFIRMAT verbal userului (ex. „Ai ales pachetul
+   * Plus la 49.99 lei") — DOAR fraze de confirmare a alegerii, NU listarea ofertei (care
+   * conține toate 3 numele). Folosit de guard-ul anti-mismatch din wizard_finalize.
+   */
+  private detectConfirmedTierFromText(text: string): PackageTier | null {
+    const t = (text || '').toLowerCase();
+    // Trebuie să fie o frază de confirmare a alegerii userului, nu pitch-ul cu toate pachetele.
+    if (!/ai ales|ales pachetul|pachetul ales|ai optat pentru/.test(t)) return null;
+    // Dacă enumeră toate 3 într-un singur mesaj e pitch, nu confirmare — ignoră.
+    const mentionsAll = /standard/.test(t) && /\bplus\b/.test(t) && /premium/.test(t);
+    if (mentionsAll) return null;
+    if (/premium/.test(t)) return 'premium';
+    if (/\bplus\b/.test(t)) return 'plus';
+    if (/standard|basic/.test(t)) return 'basic';
+    return null;
+  }
+
   private async handleWizardFinalize(ctx: AgentCtx): Promise<unknown> {
     const check = await this.assertNotManual(ctx);
     if (check.aborted) {
@@ -1945,6 +1972,43 @@ NU promite mai puțin. Trimite linkul ${linkToSong} ca să verifice live.`;
     if (!conv.siteId) return { error: 'no siteId' };
     const site = await this.sites.findById(conv.siteId);
     if (!site) return { error: 'site not found' };
+
+    // GUARD anti-mismatch pachet (BUG observat 2026-06-19 conv b8eb3a45): userul a ales
+    // „Varianta 2" → Irina a confirmat „Ai ales pachetul Plus la 49.99 lei" dar NU a salvat
+    // packageTier='plus' în wizardState → finalize a căzut pe default basic → link „pachet
+    // Basic 29.99". Regula de prompt (ETAPA 5.5) exista deja, dar AI tot a uitat să persiste
+    // alegerea. Aici detectăm discrepanța în cod și blocăm: dacă AI a confirmat verbal un
+    // pachet diferit de cel salvat, NU emitem link — îi cerem să facă wizard_update întâi.
+    const storedTier = normalizeTier(state.data.packageTier);
+    try {
+      const recentAdmin = await this.msg.find({
+        where: { conversationId: conv.id, authorRole: 'admin', aiGenerated: true },
+        order: { createdAt: 'DESC' },
+        take: 6,
+      });
+      let confirmedTier: PackageTier | null = null;
+      for (const m of recentAdmin) {
+        const t = this.detectConfirmedTierFromText(m.body);
+        if (t) {
+          confirmedTier = t;
+          break;
+        }
+      }
+      if (confirmedTier && confirmedTier !== storedTier) {
+        this.logger.warn(
+          `PACKAGE_MISMATCH on conv=${conv.id.slice(0, 8)} — confirmed=${confirmedTier} stored=${storedTier}. Blocking finalize.`,
+        );
+        return {
+          error: 'package_mismatch',
+          status: 'PACKAGE_NOT_SAVED',
+          confirmedTier,
+          storedTier,
+          instruction: `I-ai confirmat userului pachetul „${packageLabel(confirmedTier)}" dar în comandă e salvat „${packageLabel(storedTier)}". Apelează ÎNTÂI wizard_update({packageTier: '${confirmedTier}'}), apoi wizard_finalize din nou. Linkul de plată TREBUIE să fie pe EXACT pachetul confirmat userului.`,
+        };
+      }
+    } catch (e) {
+      this.logger.warn(`package mismatch guard failed (non-fatal): ${(e as Error).message}`);
+    }
 
     // Dedup 30 min: dacă deja există un link identic (aceeași sumă) trimis în ultimele
     // minute, refolosește-l în loc să creăm un Generation + checkout + card noi.
