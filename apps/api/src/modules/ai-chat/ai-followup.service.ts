@@ -58,6 +58,33 @@ export class AiFollowupService {
                AND m."messageType" IN ('text', 'payment_link')
              ORDER BY m."createdAt" DESC LIMIT 1
            ) = 'admin'
+           -- GUARD 1 (BUG 2026-06-20 conv d808c40b: „SA NU MAI INTREBE DACA ESTI AICI
+           -- DACA ESTE TOTUL GATA"): melodia e DEJA livrată (song_preview în chat) →
+           -- comanda e rezolvată, nu mai bate userul la cap cu „mai ești pe aici?".
+           AND NOT EXISTS (
+             SELECT 1 FROM chat_messages sp
+             WHERE sp."conversationId" = c.id
+               AND sp."messageType" = 'song_preview'
+               AND sp."deletedAt" IS NULL
+           )
+           -- GUARD 2 (BUG 2026-06-20 conv 293ee6cc): s-a escaladat/alertat echipa recent
+           -- → un coleg uman se ocupă; Irina NU trebuie să intervină proactiv peste el.
+           AND NOT EXISTS (
+             SELECT 1 FROM ai_tool_calls tc
+             WHERE tc."conversationId" = c.id
+               AND tc."toolName" IN ('alert_admins', 'escalate_to_human')
+               AND tc."createdAt" > now() - interval '3 hours'
+           )
+           -- GUARD 3 (BUG 2026-06-20 conv 293ee6cc: „nu trebuie să-l țină de vorbă"):
+           -- ultimul mesaj al userului e o închidere/confirmare scurtă („ok", „mersi",
+           -- „da", „bine"...) → conversația s-a încheiat natural, nu re-angaja.
+           AND COALESCE((
+             SELECT lower(btrim(um2.body)) FROM chat_messages um2
+             WHERE um2."conversationId" = c.id
+               AND um2."authorRole" = 'user'
+               AND um2."deletedAt" IS NULL
+             ORDER BY um2."createdAt" DESC LIMIT 1
+           ), 'x') !~ '^((ok|oki|okk|okay|bine|da|daa|gata|mersi|merci|multumesc|mulțumesc|multam|thanks|thx|ty|perfect|super|nu)[[:space:].,!]*)+[👍🙏❤️😊🎶]*$'
          ORDER BY c."lastMessageAt" ASC
          LIMIT 8`,
       );

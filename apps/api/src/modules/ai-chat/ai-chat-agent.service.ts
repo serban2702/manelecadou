@@ -13,6 +13,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { normalizeTier, packageLabel, chatPackageUpsellRo, packageCompareAtCents, type PackageTier } from '../payments/packages';
 import { packageTotalCents } from '../payments/pricing';
 import { GenerationsService } from '../generations/generations.service';
+import { Generation } from '../generations/generation.entity';
 import { GuestSessionsService } from '../guest-sessions/guest-sessions.service';
 import { AiMemory } from './ai-memory.entity';
 import { AiToolCall } from './ai-tool-call.entity';
@@ -403,9 +404,28 @@ export class AIChatAgentService {
    * alertă. NICIODATĂ expus brut în chat-ul cu clientul.
    */
   private async gatherDiagnostics(conv: Conversation): Promise<Record<string, unknown>> {
-    const ownerId = conv.userId ?? conv.guestId;
+    let ownerId = conv.userId ?? conv.guestId;
     const out: Record<string, unknown> = { conversationId: conv.id, email: conv.email, lastIp: conv.lastIp };
     try {
+      // Dacă owner-ul direct al conversației n-are comenzi (client revenit pe alt
+      // device/guest), găsește comanda reală prin identitate (chat/email/IP) și
+      // folosește owner-ul EI — altfel diagnosticul iese GOL deși clientul are comenzi,
+      // iar Irina alertează echipa „nu există comandă" (BUG 2026-06-20 conv 293ee6cc).
+      let directHasGen = false;
+      if (ownerId) {
+        const direct = await this.conv.manager.query(
+          `SELECT 1 FROM generations WHERE "ownerUserId" = $1 OR "ownerGuestId" = $1 LIMIT 1`,
+          [ownerId],
+        );
+        directHasGen = Array.isArray(direct) && direct.length > 0;
+      }
+      if (!directHasGen) {
+        const resolved = await this.resolveCustomerGeneration(conv);
+        if (resolved) {
+          ownerId = resolved.generation.ownerUserId ?? resolved.generation.ownerGuestId ?? ownerId;
+          out.identityResolvedVia = resolved.confidence;
+        }
+      }
       if (ownerId) {
         out.generations = await this.conv.manager.query(
           `SELECT id, status, error, "retryCount", "autoRetryCount", "nextRetryAt", "paidUnlocked",
@@ -655,10 +675,16 @@ export class AIChatAgentService {
     if (opts.followUp) {
       sysPrompt += `
 
-⚠️ TRIGGER FOLLOW-UP (nu e mesaj nou de la user): userul nu a mai răspuns de câteva minute la ultimul tău mesaj.
-Trimite UN SINGUR mesaj scurt, cald și ne-insistent care reia ușor ultima întrebare sau oferă ajutor
-(ex. „Mai ești pe aici? 😊 Dacă ai vreo întrebare, zi-mi", sau dacă aștepta linkul de plată: „Ai reușit cu plata? Te ajut dacă s-a blocat ceva 🙏").
-NU repeta identic mesajul precedent, NU trimite mai mult de un mesaj, NU folosi alte tool-uri în afară de send_message (și check_order_status dacă e relevant).`;
+⚠️ TRIGGER FOLLOW-UP (nu e mesaj nou de la user): userul nu a mai răspuns de câteva minute.
+Follow-up-ul are sens DOAR dacă există o ACȚIUNE CONCRETĂ neterminată de partea ta sau a lui:
+ • aștepta linkul de plată / nu a plătit încă → „Ai reușit cu plata? Te ajut dacă s-a blocat ceva 🙏";
+ • s-a oprit la jumătatea comenzii (lipsesc nume/mesaj/email) → reia FIX întrebarea la care a rămas;
+ • ți-a pus o întrebare la care n-ai răspuns complet → răspunde-i acum, concret.
+🚫 DACĂ NU există nimic concret de rezolvat — comanda e gata/livrată, discuția s-a încheiat natural
+(„ok", „mersi"), sau aștepți un coleg uman după o escaladare — NU TRIMITE NIMIC. Termină turul fără
+send_message. Tăcerea e corectă; un mesaj gol de tip „mai ești pe aici?" enervează clientul
+(reclamat explicit de admin, 2026-06-20). Orientează-te pe REZOLVARE, niciodată pe ținut de vorbă.
+NU repeta identic un mesaj precedent, maxim UN mesaj, doar send_message (+ check_order_status dacă e relevant).`;
     }
 
     const messages: OAIMsg[] = [
@@ -1572,62 +1598,71 @@ REGULI STRICTE:
   /** Returnează statusul comenzii curente (din wizardState.generationId) sau ultima
    *  generation a userului/guest-ului din conversație. AI o folosește când userul
    *  întreabă „a ajuns plata?" sau „cât mai durează?". */
-  private async handleCheckOrderStatus(ctx: AgentCtx): Promise<unknown> {
-    const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
-    if (!conv) return { error: 'conversation gone' };
+  /**
+   * SURSĂ UNICĂ de adevăr pentru „găsește comanda clientului". Folosește TOATE
+   * semnalele de identitate, nu doar owner-ul direct al conversației:
+   *   1. generarea legată de wizard-ul conversației (wizardState.generationId)
+   *   2. ultima generare a owner-ului (ownerUserId / ownerGuestId)
+   *   3. melodia din istoricul chat-ului (song_preview cu /m/<id>)
+   *   4. același email (identitate verificată prin livrare — alt device)
+   *   5. același IP recent (7 zile; pe CGNAT mobil → confidence redus)
+   * Folosită de check_order_status, request_modification ȘI gatherDiagnostics ca să
+   * NU mai dea răspunsuri contradictorii. BUG observat 2026-06-20 conv 293ee6cc:
+   * check_order_status găsea melodia plătită, dar request_modification +
+   * inspect_customer_data căutau DOAR pe owner-ul direct → „nu găsesc comanda" +
+   * alertă inutilă către echipă, deși Irina citase melodia cu 20 min înainte.
+   * Cu requirePaid=true întoarce doar comenzi PLĂTITE.
+   */
+  private async resolveCustomerGeneration(
+    conv: Conversation,
+    opts: { requirePaid?: boolean } = {},
+  ): Promise<{ generation: Generation; confidence: 'same_conversation' | 'same_email' | 'same_ip' } | null> {
+    const requirePaid = opts.requirePaid === true;
+    const usable = (g: Generation | null): g is Generation => !!g && (!requirePaid || !!g.paidUnlocked);
+
+    // 1 — generarea legată direct de wizard-ul conversației
     const wizardGenId = conv.wizardState?.generationId ?? null;
+    const wizardGen = wizardGenId ? await this.generations.findOnePublic(wizardGenId).catch(() => null) : null;
+    if (usable(wizardGen)) return { generation: wizardGen, confidence: 'same_conversation' };
 
-    let generation = wizardGenId
-      ? await this.generations.findOnePublic(wizardGenId).catch(() => null)
-      : null;
-
-    // Fallback 1 — ultima generation a userului/guest-ului din conv.
-    // Coloanele reale pe Generation sunt ownerUserId / ownerGuestId (NU userId/guestId).
-    // BUG observat 2026-06-08 conv dec6adaf: query-ul folosea g.userId/g.guestId
-    // (coloane inexistente) → arunca → catch → hasOrder:false chiar cu comenzi reale.
-    if (!generation && (conv.userId || conv.guestId)) {
+    // 2 — ultima generare a owner-ului. Coloanele reale sunt ownerUserId / ownerGuestId
+    // (NU userId/guestId — BUG 2026-06-08 conv dec6adaf: coloane inexistente → catch).
+    if (conv.userId || conv.guestId) {
       try {
         const recent = await this.generations['repo']
           .createQueryBuilder('g')
-          .where(conv.userId ? 'g.ownerUserId = :u' : 'g.ownerGuestId = :g', {
-            u: conv.userId,
-            g: conv.guestId,
-          })
+          .where(conv.userId ? 'g.ownerUserId = :u' : 'g.ownerGuestId = :gid', { u: conv.userId, gid: conv.guestId })
           .andWhere(conv.siteId ? 'g.siteId = :s' : '1=1', { s: conv.siteId })
+          .andWhere(requirePaid ? 'g.paidUnlocked = true' : '1=1')
           .orderBy('g.createdAt', 'DESC')
           .limit(1)
           .getOne();
-        generation = recent ?? null;
+        if (usable(recent)) return { generation: recent, confidence: 'same_conversation' };
       } catch {
         /* ignore */
       }
     }
 
-    // Fallback 2 — melodia e CHIAR în chat ca song_preview (/m/<id>). Cel mai des userul
-    // revine pe alt guest/altă conversație dar melodia plătită apare ca link în istoric.
-    if (!generation) {
-      try {
-        const previews = await this.msg.find({
-          where: { conversationId: conv.id, messageType: 'song_preview' as ChatMessage['messageType'] },
-          order: { createdAt: 'DESC' },
-          take: 10,
-        });
-        for (const p of previews) {
-          const match = /\/m\/([0-9a-fA-F-]{36})/.exec(p.body ?? '');
-          if (!match) continue;
-          const g = await this.generations.findOnePublic(match[1]).catch(() => null);
-          if (g) { generation = g; break; }
-        }
-      } catch {
-        /* ignore */
+    // 3 — melodia e CHIAR în istoricul chat-ului ca song_preview (/m/<id>)
+    try {
+      const previews = await this.msg.find({
+        where: { conversationId: conv.id, messageType: 'song_preview' as ChatMessage['messageType'] },
+        order: { createdAt: 'DESC' },
+        take: 10,
+      });
+      for (const p of previews) {
+        const match = /\/m\/([0-9a-fA-F-]{36})/.exec(p.body ?? '');
+        if (!match) continue;
+        const cand = await this.generations.findOnePublic(match[1]).catch(() => null);
+        if (usable(cand)) return { generation: cand, confidence: 'same_conversation' };
       }
+    } catch {
+      /* ignore */
     }
 
-    // Fallback 2.6 — același EMAIL, altă conversație/alt device (sigur: emailul e
-    // identitate verificată prin livrare). Acoperă „am comandat de pe telefon, acum
-    // scriu de pe laptop".
-    let identityConfidence: 'same_conversation' | 'same_email' | 'same_ip' = 'same_conversation';
-    if (!generation && conv.email) {
+    // 4 — același EMAIL, altă conversație/alt device (emailul = identitate verificată
+    // prin livrare). Acoperă „am comandat de pe telefon, acum scriu de pe laptop".
+    if (conv.email) {
       try {
         const rows: Array<{ id: string }> = await this.conv.manager.query(
           `SELECT g.id FROM generations g
@@ -1635,23 +1670,22 @@ REGULI STRICTE:
            LEFT JOIN guest_sessions gs ON gs.id = g."ownerGuestId"
            WHERE LOWER(COALESCE(u.email, gs.email)) = LOWER($1)
              AND ($2::uuid IS NULL OR g."siteId" = $2)
+             ${requirePaid ? `AND g."paidUnlocked" = true` : ''}
            ORDER BY g."createdAt" DESC LIMIT 1`,
           [conv.email, conv.siteId],
         );
         if (rows[0]) {
-          const g = await this.generations.findOnePublic(rows[0].id).catch(() => null);
-          if (g) { generation = g; identityConfidence = 'same_email'; }
+          const cand = await this.generations.findOnePublic(rows[0].id).catch(() => null);
+          if (usable(cand)) return { generation: cand, confidence: 'same_email' };
         }
       } catch {
         /* ignore */
       }
     }
 
-    // Fallback 3 — alt chat, același IP (aceeași persoană revine fără să fie logată,
-    // ex. alt device pe același net). ATENȚIE: pe CGNAT mobil IP-ul e partajat —
-    // restrângem la 7 zile + marcăm confidence ca AI-ul să CONFIRME identitatea
-    // înainte să dea detalii (anti scurgere cross-user).
-    if (!generation && conv.lastIp) {
+    // 5 — alt chat, același IP recent (aceeași persoană revine fără login). CGNAT mobil
+    // partajează IP → restrângem la 7 zile + confidence redus (AI confirmă identitatea).
+    if (conv.lastIp) {
       try {
         const sameIp = await this.conv
           .createQueryBuilder('c')
@@ -1665,20 +1699,30 @@ REGULI STRICTE:
         for (const o of sameIp) {
           const gid = o.wizardState?.generationId;
           if (!gid) continue;
-          const g = await this.generations.findOnePublic(gid).catch(() => null);
-          if (g) { generation = g; identityConfidence = 'same_ip'; break; }
+          const cand = await this.generations.findOnePublic(gid).catch(() => null);
+          if (usable(cand)) return { generation: cand, confidence: 'same_ip' };
         }
       } catch {
         /* ignore */
       }
     }
 
-    if (!generation) {
+    return null;
+  }
+
+  private async handleCheckOrderStatus(ctx: AgentCtx): Promise<unknown> {
+    const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
+    if (!conv) return { error: 'conversation gone' };
+
+    const resolved = await this.resolveCustomerGeneration(conv);
+    if (!resolved) {
       return {
         hasOrder: false,
         instruction: 'Nu există comandă în această conversație. Dacă userul vrea să comande, începe wizard_get_state.',
       };
     }
+    const generation = resolved.generation;
+    const identityConfidence: 'same_conversation' | 'same_email' | 'same_ip' = resolved.confidence;
 
     const paid = !!generation.paidUnlocked;
     const audioReady = !!generation.audioUrl && generation.status === 'succeeded';
@@ -3944,6 +3988,24 @@ ${transcript}`;
         [ownerId],
       );
       if (rows[0]) genRow = rows[0];
+    }
+    // Fallback prin TOATE semnalele de identitate (melodia din chat, email, IP) — aceleași
+    // ca check_order_status. Fără asta, dacă comanda plătită e pe alt guest/device,
+    // request_modification dădea NO_PAID_ORDER_FOUND deși melodia exista în istoric
+    // (BUG observat 2026-06-20 conv 293ee6cc — Irina „nu găsea" comanda + alerta inutil).
+    if (!genRow || !genRow.paidUnlocked) {
+      const resolved = await this.resolveCustomerGeneration(conv, { requirePaid: true });
+      if (resolved) {
+        const g = resolved.generation;
+        genRow = {
+          id: g.id,
+          paidUnlocked: !!g.paidUnlocked,
+          status: g.status,
+          recipientName: g.recipientName,
+          message: g.message,
+          freeRemakeUsedAt: (g as { freeRemakeUsedAt?: Date | null }).freeRemakeUsedAt ?? null,
+        };
+      }
     }
     if (!genRow) {
       return {
