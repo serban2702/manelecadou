@@ -183,6 +183,67 @@ export class AnalyticsApi {
   }> {
     return http.post(`/admin/analytics/backfill-buyer-gender?limit=${limit}`, {});
   }
+
+  // ============== Profitabilitate ==============
+  static profitability(range: AnalyticsRange, days?: { fromDay: string; toDay: string }): Promise<ProfitReport> {
+    return http.get(`/admin/analytics/profitability${qs(range, days ? { fromDay: days.fromDay, toDay: days.toDay } : undefined)}`);
+  }
+  static profitConfig(): Promise<ProfitConfigData> {
+    return http.get(`/admin/analytics/profit-config`);
+  }
+  static profitConfigSave(data: ProfitConfigData): Promise<ProfitConfigData> {
+    return http.put(`/admin/analytics/profit-config`, data);
+  }
+}
+
+// ============== Profitabilitate — tipuri ==============
+
+export interface ProfitExpenseItem {
+  id: string;
+  label: string;
+  cadence: 'monthly' | 'yearly';
+  currency: 'RON' | 'EUR' | 'USD';
+  amounts: Record<string, number>;
+  defaultAmount?: number | null;
+  builtin?: string | null;
+}
+
+export interface ProfitConfigData {
+  fx: { eurToRon: number; usdToRon: number };
+  sunoUsdPerRequest: number;
+  vatRatePct: number;
+  microTaxRatePct: number;
+  items: ProfitExpenseItem[];
+}
+
+export interface ProfitRecurringLine {
+  id: string;
+  label: string;
+  cadence: 'monthly' | 'yearly';
+  currency: 'RON' | 'EUR' | 'USD';
+  builtin?: string | null;
+  amountCents: number;
+  ronCents: number;
+}
+
+export interface ProfitReport {
+  range: { fromDay: string; toDay: string; days: number };
+  fx: { eurToRon: number; usdToRon: number };
+  stripeConfigured: boolean;
+  revenueRonCents: number;
+  meta: { ronCents: number; rawCents: number; currency: string | null };
+  suno: { ronCents: number; requests: number; usdPerRequest: number };
+  recurring: ProfitRecurringLine[];
+  recurringTotalRonCents: number;
+  preVatTotalRonCents: number;
+  vatRatePct: number;
+  vatRonCents: number;
+  microTaxRatePct: number;
+  microTaxRonCents: number;
+  stripeFee: { ronCents: number; paymentsKnown: number; paymentsTotal: number };
+  totalExpensesRonCents: number;
+  profitRonCents: number;
+  marginPct: number;
 }
 
 /** Dimensiunile suportate de matricea de marketing (rânduri). */

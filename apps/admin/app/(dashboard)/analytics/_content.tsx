@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useAsync } from "@/lib/hooks/use-async";
 import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 import { ro } from 'date-fns/locale';
@@ -10,23 +10,30 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Banknote,
+  Calculator,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   CircleDollarSign,
+  Coins,
   CreditCard,
   Eye,
   Globe,
+  Landmark,
   Megaphone,
   MousePointerClick,
   Pencil,
+  Percent,
   PiggyBank,
   Plus,
+  Receipt,
   RefreshCw,
+  Save,
   Smartphone,
   Target,
   Timer,
   Trash2,
+  TrendingDown,
   TrendingUp,
   UserCircle2,
   Users,
@@ -57,6 +64,9 @@ import {
   type MarketingDimension,
   type MarketingBreakdownRow,
   type MarketingSummary,
+  type ProfitReport,
+  type ProfitConfigData,
+  type ProfitExpenseItem,
 } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
@@ -155,7 +165,8 @@ export default function AnalyticsPage() {
     () => ({ from: range.from.toISOString(), to: range.to.toISOString() }),
     [range],
   );
-  const [tab, setTab] = useState('marketing');
+  // Tab implicit: Ads & ROAS (cel mai folosit pentru deciziile de buget).
+  const [tab, setTab] = useState('ads');
 
   return (
     <div>
@@ -170,17 +181,23 @@ export default function AnalyticsPage() {
         onValueChange={setTab}
         listClassName="mb-5 max-w-full overflow-x-auto"
         tabs={[
+          { value: 'ads', label: 'Ads & ROAS' },
+          { value: 'profitability', label: 'Profitabilitate' },
           { value: 'marketing', label: 'Marketing' },
           { value: 'overview', label: 'Overview' },
-          { value: 'users', label: 'Users' },
-          { value: 'sessions', label: 'Sesiuni' },
+          { value: 'users', label: 'Users & Sesiuni' },
           { value: 'tech', label: 'Tech & Geo' },
           { value: 'bots', label: 'Boți' },
           { value: 'payments', label: 'Payments' },
-          { value: 'ads', label: 'Ads & ROAS' },
           { value: 'cross-check', label: 'Cross-check' },
         ]}
       >
+        <TabsContent value="ads">
+          <AdsTab range={rangeISO} />
+        </TabsContent>
+        <TabsContent value="profitability">
+          <ProfitabilityTab range={rangeISO} />
+        </TabsContent>
         <TabsContent value="marketing">
           <MarketingTab range={rangeISO} />
         </TabsContent>
@@ -188,10 +205,7 @@ export default function AnalyticsPage() {
           <OverviewTab range={rangeISO} />
         </TabsContent>
         <TabsContent value="users">
-          <UsersTab range={rangeISO} />
-        </TabsContent>
-        <TabsContent value="sessions">
-          <SessionsTab range={rangeISO} />
+          <UsersSessionsTab range={rangeISO} />
         </TabsContent>
         <TabsContent value="tech">
           <TechTab range={rangeISO} />
@@ -201,9 +215,6 @@ export default function AnalyticsPage() {
         </TabsContent>
         <TabsContent value="payments">
           <PaymentsTab range={rangeISO} />
-        </TabsContent>
-        <TabsContent value="ads">
-          <AdsTab range={rangeISO} />
         </TabsContent>
         <TabsContent value="cross-check">
           <CrossCheckTab range={rangeISO} />
@@ -956,7 +967,7 @@ function sourceMeta(source: string): { emoji: string; label: string } {
 
 // ============== USERS ==============
 
-function UsersTab({ range }: { range: { from: string; to: string } }) {
+function UsersSessionsTab({ range }: { range: { from: string; to: string } }) {
   const usersQ = useAsync(() => AnalyticsApi.users(range), [range]);
   const overview = useAsync(() => AnalyticsApi.overview(range), [range]);
 
@@ -1018,6 +1029,9 @@ function UsersTab({ range }: { range: { from: string; to: string } }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Sesiuni recente (drill-down individual) — combinat în același tab cu userii. */}
+      <SessionsTab range={range} />
     </div>
   );
 }
@@ -1308,6 +1322,479 @@ function CrossCheckTab({ range }: { range: { from: string; to: string } }) {
   );
 }
 
+// ============== PROFITABILITATE ==============
+
+/** Cheltuielile au început în mai 2026 — generăm un input per lună/an de atunci. */
+const PROFIT_START_YEAR = 2026;
+const PROFIT_START_MONTH = 5; // mai
+
+/** Lunile calendaristice din 05.2026 până în luna curentă (inclusiv). */
+function profitMonths(): Array<{ key: string; label: string }> {
+  const now = new Date();
+  const res: Array<{ key: string; label: string }> = [];
+  let y = PROFIT_START_YEAR;
+  let m = PROFIT_START_MONTH;
+  const ny = now.getFullYear();
+  const nm = now.getMonth() + 1;
+  while (y < ny || (y === ny && m <= nm)) {
+    res.push({
+      key: `${y}-${String(m).padStart(2, '0')}`,
+      label: format(new Date(y, m - 1, 1), 'LLL yyyy', { locale: ro }),
+    });
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  return res;
+}
+
+/** Anii fiscali (mai→aprilie) din 2026 până în anul fiscal curent (inclusiv). */
+function profitFiscalYears(): Array<{ key: string; label: string }> {
+  const now = new Date();
+  const curFy = now.getMonth() + 1 >= PROFIT_START_MONTH ? now.getFullYear() : now.getFullYear() - 1;
+  const res: Array<{ key: string; label: string }> = [];
+  for (let fy = PROFIT_START_YEAR; fy <= curFy; fy++) {
+    res.push({ key: String(fy), label: `mai ${fy} – apr ${fy + 1}` });
+  }
+  return res;
+}
+
+const CURRENCY_SYMBOL: Record<string, string> = { RON: 'lei', EUR: '€', USD: '$' };
+
+function ProfitabilityTab({ range }: { range: { from: string; to: string } }) {
+  const [section, setSection] = useState<'stats' | 'settings'>('stats');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const days = useMemo(
+    () => ({
+      fromDay: format(new Date(range.from), 'yyyy-MM-dd'),
+      toDay: format(new Date(range.to), 'yyyy-MM-dd'),
+    }),
+    [range],
+  );
+  const report = useAsync(() => AnalyticsApi.profitability(range, days), [range, days, refreshKey]);
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-sm text-muted-foreground">
+          Profit la nivel de business (toate site-urile): venituri reale (fără plățile de test ale echipei) minus
+          cheltuieli, TVA, impozit și comisioane Stripe — pe perioada selectată.
+        </p>
+        <div className="flex items-center gap-1.5">
+          <Button variant={section === 'stats' ? 'default' : 'outline'} size="sm" onClick={() => setSection('stats')}>
+            <Calculator className="mr-2 h-4 w-4" /> Statistici
+          </Button>
+          <Button variant={section === 'settings' ? 'default' : 'outline'} size="sm" onClick={() => setSection('settings')}>
+            <Receipt className="mr-2 h-4 w-4" /> Setări
+          </Button>
+        </div>
+      </div>
+
+      {section === 'stats' ? (
+        <ProfitStats report={report.data} loading={report.isLoading} />
+      ) : (
+        <ProfitSettings onSaved={() => { setRefreshKey((k) => k + 1); setSection('stats'); }} />
+      )}
+    </div>
+  );
+}
+
+function ProfitStats({ report, loading }: { report: ProfitReport | null; loading: boolean }) {
+  const r = report;
+  const profitTone = r ? (r.profitRonCents >= 0 ? 'success' : 'destructive') : 'default';
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <KpiCard
+          label="Venituri (fără teste)"
+          value={r ? RON(r.revenueRonCents) : undefined}
+          icon={<CircleDollarSign />}
+          tone="success"
+          loading={loading}
+          sub={r ? `${r.range.days} ${r.range.days === 1 ? 'zi' : 'zile'} · plăți reale` : undefined}
+        />
+        <KpiCard
+          label="Cheltuieli totale"
+          value={r ? RON(r.totalExpensesRonCents) : undefined}
+          icon={<TrendingDown />}
+          tone="destructive"
+          loading={loading}
+          sub={r ? `incl. TVA ${r.vatRatePct}% + impozit ${r.microTaxRatePct}%` : undefined}
+        />
+        <KpiCard
+          label="Profit net"
+          value={r ? RON(r.profitRonCents) : undefined}
+          icon={<PiggyBank />}
+          tone={profitTone}
+          loading={loading}
+          sub={r ? (r.profitRonCents >= 0 ? 'pe plus' : 'pe minus') : undefined}
+        />
+        <KpiCard
+          label="Marjă de profit"
+          value={r ? `${r.marginPct}%` : undefined}
+          icon={<Percent />}
+          tone={r && r.marginPct >= 0 ? 'primary' : 'warning'}
+          loading={loading}
+          sub="profit ÷ venituri"
+        />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Receipt className="h-4 w-4 text-primary" /> Defalcare cheltuieli
+          </CardTitle>
+          <CardDescription>
+            Toate convertite în RON. Meta + Suno + recurentele intră în baza de TVA ({r?.vatRatePct ?? 21}%).
+            Impozitul și comisionul Stripe nu au TVA.
+            {r ? ` Cursuri: 1€=${r.fx.eurToRon} lei · 1$=${r.fx.usdToRon} lei.` : ''}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading || !r ? (
+            <Skeleton className="h-72 w-full" />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Cheltuială</TableHead>
+                  <TableHead>Detaliu</TableHead>
+                  <TableHead className="text-right">RON</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <ProfitRow
+                  label="Meta Ads"
+                  detail={r.meta.currency && r.meta.currency !== 'RON' ? `${money(r.meta.rawCents, r.meta.currency)} consum` : 'din tab Ads & ROAS'}
+                  cents={r.meta.ronCents}
+                />
+                <ProfitRow
+                  label="Suno"
+                  detail={`${r.suno.requests.toLocaleString('ro-RO')} requesturi × ${r.suno.usdPerRequest}$`}
+                  cents={r.suno.ronCents}
+                />
+                {r.recurring.map((line) => (
+                  <ProfitRow
+                    key={line.id}
+                    label={line.label}
+                    detail={
+                      <span className="inline-flex items-center gap-1.5">
+                        <Badge variant="muted" className="text-[10px]">{line.cadence === 'monthly' ? 'lunar' : 'anual'}</Badge>
+                        {line.currency !== 'RON' ? money(line.amountCents, line.currency) : null}
+                      </span>
+                    }
+                    cents={line.ronCents}
+                    muted={line.ronCents === 0}
+                  />
+                ))}
+                <TableRow className="border-t border-border font-medium">
+                  <TableCell>Subtotal (bază TVA)</TableCell>
+                  <TableCell className="text-muted-foreground text-xs">Meta + Suno + recurente</TableCell>
+                  <TableCell className="text-right tabular-nums">{RON(r.preVatTotalRonCents)}</TableCell>
+                </TableRow>
+                <ProfitRow label={`TVA ${r.vatRatePct}%`} detail="peste cheltuielile de mai sus" cents={r.vatRonCents} />
+                <ProfitRow
+                  label={`Impozit ${r.microTaxRatePct}%`}
+                  detail="microîntreprindere (din venituri)"
+                  cents={r.microTaxRonCents}
+                  icon={<Landmark className="h-3.5 w-3.5" />}
+                />
+                <ProfitRow
+                  label="Comision Stripe"
+                  detail={
+                    !r.stripeConfigured
+                      ? 'Stripe neconfigurat'
+                      : `real din API · ${r.stripeFee.paymentsKnown}/${r.stripeFee.paymentsTotal} plăți`
+                  }
+                  cents={r.stripeFee.ronCents}
+                  icon={<CreditCard className="h-3.5 w-3.5" />}
+                />
+                <TableRow className="border-t-2 border-border font-semibold">
+                  <TableCell>Total cheltuieli</TableCell>
+                  <TableCell />
+                  <TableCell className="text-right tabular-nums text-destructive">{RON(r.totalExpensesRonCents)}</TableCell>
+                </TableRow>
+                <TableRow className="font-semibold text-base">
+                  <TableCell className="flex items-center gap-1.5">
+                    <PiggyBank className="h-4 w-4 text-primary" /> Profit net
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-xs font-normal">venituri − cheltuieli</TableCell>
+                  <TableCell className={cn('text-right tabular-nums', r.profitRonCents >= 0 ? 'text-success' : 'text-destructive')}>
+                    {RON(r.profitRonCents)}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ProfitRow({
+  label,
+  detail,
+  cents,
+  muted,
+  icon,
+}: {
+  label: string;
+  detail?: React.ReactNode;
+  cents: number;
+  muted?: boolean;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <TableRow className={cn(muted && 'opacity-50')}>
+      <TableCell className="font-medium">
+        <span className="inline-flex items-center gap-1.5">{icon}{label}</span>
+      </TableCell>
+      <TableCell className="text-muted-foreground text-xs">{detail}</TableCell>
+      <TableCell className="text-right tabular-nums">{RON(cents)}</TableCell>
+    </TableRow>
+  );
+}
+
+// ============== PROFITABILITATE — SETĂRI ==============
+
+/** "30" / "30,5" / "30.5" → number. null dacă gol/invalid. */
+function parseNum(s: string): number | null {
+  const t = s.replace(',', '.').trim();
+  if (t === '') return null;
+  const n = parseFloat(t);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function ProfitSettings({ onSaved }: { onSaved: () => void }) {
+  const { toast } = useToast();
+  const cfgQ = useAsync(() => AnalyticsApi.profitConfig(), []);
+  const [cfg, setCfg] = useState<ProfitConfigData | null>(null);
+  const [saving, setSaving] = useState(false);
+  const months = useMemo(() => profitMonths(), []);
+  const years = useMemo(() => profitFiscalYears(), []);
+
+  useEffect(() => {
+    if (cfgQ.data) setCfg(JSON.parse(JSON.stringify(cfgQ.data)));
+  }, [cfgQ.data]);
+
+  if (!cfg) return <Skeleton className="h-96 w-full" />;
+
+  const patch = (p: Partial<ProfitConfigData>) => setCfg((c) => (c ? { ...c, ...p } : c));
+  const patchItem = (id: string, p: Partial<ProfitExpenseItem>) =>
+    setCfg((c) => (c ? { ...c, items: c.items.map((it) => (it.id === id ? { ...it, ...p } : it)) } : c));
+  const setItemAmount = (id: string, key: string, val: number | null) =>
+    setCfg((c) => {
+      if (!c) return c;
+      return {
+        ...c,
+        items: c.items.map((it) => {
+          if (it.id !== id) return it;
+          const amounts = { ...it.amounts };
+          if (val == null) delete amounts[key];
+          else amounts[key] = val;
+          return { ...it, amounts };
+        }),
+      };
+    });
+  const removeItem = (id: string) => setCfg((c) => (c ? { ...c, items: c.items.filter((it) => it.id !== id) } : c));
+  const addItem = () =>
+    setCfg((c) =>
+      c
+        ? {
+            ...c,
+            items: [
+              ...c.items,
+              {
+                id: `custom_${Date.now().toString(36)}`,
+                label: 'Cheltuială nouă',
+                cadence: 'monthly',
+                currency: 'RON',
+                amounts: {},
+                defaultAmount: null,
+              },
+            ],
+          }
+        : c,
+    );
+
+  const save = async () => {
+    if (!cfg) return;
+    setSaving(true);
+    try {
+      await AnalyticsApi.profitConfigSave(cfg);
+      toast({ variant: 'success', title: 'Setări salvate', description: 'Calculele folosesc noile valori.' });
+      onSaved();
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Eroare', description: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Parametri globali */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Coins className="h-4 w-4 text-primary" /> Cursuri & rate</CardTitle>
+          <CardDescription>Folosite la conversia cheltuielilor în RON și la TVA / impozit.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <NumField label="Curs EUR → RON" value={cfg.fx.eurToRon} onChange={(v) => patch({ fx: { ...cfg.fx, eurToRon: v ?? 0 } })} />
+          <NumField label="Curs USD → RON" value={cfg.fx.usdToRon} onChange={(v) => patch({ fx: { ...cfg.fx, usdToRon: v ?? 0 } })} />
+          <NumField label="Suno $ / request" value={cfg.sunoUsdPerRequest} onChange={(v) => patch({ sunoUsdPerRequest: v ?? 0 })} step="0.01" />
+          <NumField label="TVA %" value={cfg.vatRatePct} onChange={(v) => patch({ vatRatePct: v ?? 0 })} />
+          <NumField label="Impozit micro %" value={cfg.microTaxRatePct} onChange={(v) => patch({ microTaxRatePct: v ?? 0 })} step="0.1" />
+        </CardContent>
+      </Card>
+
+      {/* Cheltuieli recurente */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2"><Wallet className="h-4 w-4 text-primary" /> Cheltuieli recurente</CardTitle>
+              <CardDescription>
+                Câte un input pe lună (sau pe an fiscal mai→apr). Suma se împarte la 30,5 (lunar) / 365 (anual) și se
+                înmulțește cu zilele din intervalul selectat. „Implicit" se aplică perioadelor lăsate goale.
+              </CardDescription>
+            </div>
+            <Button size="sm" variant="outline" onClick={addItem}><Plus className="mr-2 h-4 w-4" /> Adaugă</Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {cfg.items.map((it) => (
+            <ProfitItemEditor
+              key={it.id}
+              item={it}
+              periods={it.cadence === 'monthly' ? months : years}
+              onPatch={(p) => patchItem(it.id, p)}
+              onAmount={(key, val) => setItemAmount(it.id, key, val)}
+              onRemove={() => removeItem(it.id)}
+            />
+          ))}
+        </CardContent>
+      </Card>
+
+      <div className="flex justify-end">
+        <Button onClick={save} disabled={saving}>
+          <Save className="mr-2 h-4 w-4" /> {saving ? 'Se salvează…' : 'Salvează setările'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function NumField({
+  label,
+  value,
+  onChange,
+  step,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number | null) => void;
+  step?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs">{label}</Label>
+      <Input
+        inputMode="decimal"
+        type="number"
+        step={step ?? '0.01'}
+        value={String(value)}
+        onChange={(e) => onChange(parseNum(e.target.value))}
+      />
+    </div>
+  );
+}
+
+function ProfitItemEditor({
+  item,
+  periods,
+  onPatch,
+  onAmount,
+  onRemove,
+}: {
+  item: ProfitExpenseItem;
+  periods: Array<{ key: string; label: string }>;
+  onPatch: (p: Partial<ProfitExpenseItem>) => void;
+  onAmount: (key: string, val: number | null) => void;
+  onRemove: () => void;
+}) {
+  const sym = CURRENCY_SYMBOL[item.currency] ?? item.currency;
+  return (
+    <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-3">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="space-y-1 min-w-[160px] flex-1">
+          <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">Denumire</Label>
+          <Input value={item.label} onChange={(e) => onPatch({ label: e.target.value })} maxLength={80} />
+        </div>
+        <div className="space-y-1 w-28">
+          <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">Cadență</Label>
+          <Select value={item.cadence} onValueChange={(v) => onPatch({ cadence: v as 'monthly' | 'yearly' })}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="monthly">Lunar</SelectItem>
+              <SelectItem value="yearly">Anual</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1 w-24">
+          <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">Monedă</Label>
+          <Select value={item.currency} onValueChange={(v) => onPatch({ currency: v as 'RON' | 'EUR' | 'USD' })}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="RON">RON</SelectItem>
+              <SelectItem value="EUR">EUR</SelectItem>
+              <SelectItem value="USD">USD</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1 w-28">
+          <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">Implicit</Label>
+          <Input
+            inputMode="decimal"
+            placeholder="—"
+            value={item.defaultAmount == null ? '' : String(item.defaultAmount)}
+            onChange={(e) => onPatch({ defaultAmount: parseNum(e.target.value) })}
+          />
+        </div>
+        <Button variant="ghost" size="icon-sm" className="text-destructive mb-0.5" onClick={onRemove} title="Șterge cheltuiala">
+          <Trash2 />
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+        {periods.length === 0 ? (
+          <span className="text-xs text-muted-foreground col-span-full">Nicio perioadă încă (din mai 2026).</span>
+        ) : (
+          periods.map((p) => {
+            const v = item.amounts[p.key];
+            return (
+              <div key={p.key} className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground capitalize">{p.label}</Label>
+                <div className="relative">
+                  <Input
+                    inputMode="decimal"
+                    className="pr-7 text-sm"
+                    placeholder={item.defaultAmount != null ? String(item.defaultAmount) : '0'}
+                    value={v == null ? '' : String(v)}
+                    onChange={(e) => onAmount(p.key, parseNum(e.target.value))}
+                  />
+                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">{sym}</span>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ============== Reusable bits ==============
 
 // ============== ADS & ROAS ==============
@@ -1361,11 +1848,22 @@ function AdsTab({ range }: { range: { from: string; to: string } }) {
     }
   };
 
+  // Sincronizare automată la intrarea pe tab (o singură dată per montare). Tab-ul
+  // se demontează când nu e activ, deci revenirea pe el re-declanșează sync-ul.
+  const autoSyncedRef = useRef(false);
+  useEffect(() => {
+    if (autoSyncedRef.current) return;
+    autoSyncedRef.current = true;
+    void onSync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           Cheltuieli trase din Meta &amp; TikTok Marketing API, defalcate pe campanie. ROAS = venit ÷ cheltuială.
+          <span className="block text-xs opacity-70">Se sincronizează automat la deschiderea tab-ului.</span>
         </p>
         <Button variant="outline" size="sm" onClick={onSync} disabled={syncing}>
           <RefreshCw className={cn('mr-2 h-4 w-4', syncing && 'animate-spin')} />

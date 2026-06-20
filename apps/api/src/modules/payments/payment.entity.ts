@@ -129,6 +129,20 @@ export class Payment {
   @Column({ type: 'timestamptz', nullable: true })
   paidAt!: Date | null;
 
+  // ============== Comision Stripe (cache pentru raportul de profitabilitate) ==============
+  // Stripe nu expune un fee constant — variază chiar și la plăți de aceeași sumă. Îl
+  // tragem din `balance_transaction.fee` (prin API, on-demand) și îl cache-uim aici
+  // ca să nu reinterogăm Stripe la fiecare deschidere a dashboard-ului. Populat de
+  // ProfitabilityService.backfillStripeFees(). Safe additive (synchronize: true).
+
+  /** Comisionul Stripe în cele mai mici unități ale monedei de settlement (`stripeFeeCurrency`). */
+  @Column({ type: 'integer', nullable: true })
+  stripeFeeCents!: number | null;
+
+  /** Moneda în care Stripe a reținut comisionul (moneda contului/settlement, de regulă RON). */
+  @Column({ type: 'varchar', length: 8, nullable: true })
+  stripeFeeCurrency!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

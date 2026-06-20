@@ -20,6 +20,8 @@ import { CurrentSiteId, CurrentUser, AuthedRequestUser } from '../../common/deco
 import { AnalyticsService } from './analytics.service';
 import { AdSpendService } from './ad-spend.service';
 import { AdPaymentService } from './ad-payment.service';
+import { ProfitabilityService } from './profitability.service';
+import type { ProfitConfigData } from './profit-config.entity';
 import { SitesService } from '../sites/sites.service';
 import { TrackBatchDto, TrackEventDto, AdPaymentCreateDto, AdPaymentUpdateDto } from './dto';
 
@@ -112,8 +114,30 @@ export class AnalyticsAdminController {
     private readonly analytics: AnalyticsService,
     private readonly adSpend: AdSpendService,
     private readonly adPayments: AdPaymentService,
+    private readonly profitability: ProfitabilityService,
     private readonly sites: SitesService,
   ) {}
+
+  // ============== PROFITABILITATE (business-wide: venituri − cheltuieli) ==============
+
+  /** Raport de profitabilitate pe interval. `fromDay`/`toDay` (zile locale) sunt
+   *  folosite pentru pro-rata cheltuielilor recurente + spend-ul Meta. */
+  @Get('profitability')
+  profitabilityReport(
+    @Query() q: { from?: string; to?: string; fromDay?: string; toDay?: string },
+  ) {
+    return this.profitability.compute(rangeFromQuery(q), { fromDay: q.fromDay, toDay: q.toDay });
+  }
+
+  @Get('profit-config')
+  profitConfig() {
+    return this.profitability.getConfig();
+  }
+
+  @Put('profit-config')
+  profitConfigSave(@Body() body: ProfitConfigData) {
+    return this.profitability.saveConfig(body);
+  }
 
   /** Raport cheltuieli ads (Meta + TikTok) defalcat pe campanie + ROAS.
    *  `fromDay`/`toDay` (YYYY-MM-DD, zile locale) — folosite pentru filtrul pe

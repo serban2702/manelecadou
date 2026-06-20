@@ -5,12 +5,15 @@ import { AnalyticsEvent } from './analytics-event.entity';
 import { AnalyticsSession } from './analytics-session.entity';
 import { AdSpend } from './ad-spend.entity';
 import { AdPayment } from './ad-payment.entity';
+import { ProfitConfig } from './profit-config.entity';
 import { Payment } from '../payments/payment.entity';
 import { Generation } from '../generations/generation.entity';
 import { User } from '../users/user.entity';
+import { SunoLog } from '../suno/suno-log.entity';
 import { AnalyticsService } from './analytics.service';
 import { AdSpendService } from './ad-spend.service';
 import { AdPaymentService } from './ad-payment.service';
+import { ProfitabilityService } from './profitability.service';
 import { AnalyticsAdminController, AnalyticsPublicController } from './analytics.controller';
 import { AnalyticsForwarders } from './forwarders';
 import { GeoIpService } from './geoip.service';
@@ -20,12 +23,12 @@ import { SitesModule } from '../sites/sites.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AnalyticsEvent, AnalyticsSession, AdSpend, AdPayment, Payment, Generation, User]),
+    TypeOrmModule.forFeature([AnalyticsEvent, AnalyticsSession, AdSpend, AdPayment, ProfitConfig, Payment, Generation, User, SunoLog]),
     ConfigModule,
     AuthModule,
     SitesModule,
   ],
-  providers: [AnalyticsService, AdSpendService, AdPaymentService, AnalyticsForwarders, AdminGuard, GeoIpService],
+  providers: [AnalyticsService, AdSpendService, AdPaymentService, ProfitabilityService, AnalyticsForwarders, AdminGuard, GeoIpService],
   controllers: [AnalyticsPublicController, AnalyticsAdminController],
   exports: [AnalyticsService],
 })
