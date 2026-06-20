@@ -173,19 +173,17 @@ export class AnalyticsAdminController {
   // ============== AD PAYMENTS (registru manual plăți + reconciliere) ==============
 
   /** Registrul de plăți (cash-flow real către platformă) + reconciliere față de
-   *  consumul raportat (`ad-spend`). Deocamdată doar Meta. */
+   *  consumul raportat (`ad-spend`). Deocamdată doar Meta. Reconcilierea e
+   *  ALL-TIME (nu depinde de intervalul selectat) — vezi AdPaymentService. */
   @Get('ad-payments')
   async adPaymentsList(
-    @Query() q: { from?: string; to?: string; fromDay?: string; toDay?: string; platform?: string },
+    @Query() q: { platform?: string },
     @CurrentSiteId() siteId: string | null,
   ) {
     const platform = q.platform === 'tiktok' ? 'tiktok' : 'meta';
     const [payments, reconciliation] = await Promise.all([
       this.adPayments.list(siteId, platform),
-      this.adPayments.reconciliation(rangeFromQuery(q), siteId, platform, {
-        fromDay: q.fromDay,
-        toDay: q.toDay,
-      }),
+      this.adPayments.reconciliation(siteId, platform),
     ]);
     return { payments, reconciliation };
   }

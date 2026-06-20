@@ -2003,7 +2003,7 @@ function AdsTab({ range }: { range: { from: string; to: string } }) {
         />
       </div>
 
-      <AdPaymentsSection range={range} days={days} />
+      <AdPaymentsSection />
 
       {r && r.totalSpendCents === 0 && !report.isLoading ? (
         <Empty
@@ -2042,21 +2042,14 @@ function centsFromAmount(s: string): number | null {
   return Math.round(n * 100);
 }
 
-function AdPaymentsSection({
-  range,
-  days,
-}: {
-  range: { from: string; to: string };
-  days: { fromDay: string; toDay: string };
-}) {
+function AdPaymentsSection() {
   const { toast } = useToast();
   const [refreshKey, setRefreshKey] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<AdPayment | null>(null);
-  const res = useAsync(
-    () => AnalyticsApi.adPayments(range, days, 'meta'),
-    [range, days, refreshKey],
-  );
+  // Reconcilierea e ALL-TIME (nu depinde de intervalul selectat sus) — plățile sunt
+  // punctuale, deci compararea cu consumul are sens doar pe tot istoricul.
+  const res = useAsync(() => AnalyticsApi.adPayments('meta'), [refreshKey]);
   const recon: AdPaymentReconciliation | undefined = res.data?.reconciliation;
   const payments = res.data?.payments ?? [];
   const cur = recon?.currency ?? 'RON';
@@ -2097,7 +2090,7 @@ function AdPaymentsSection({
               Plăți & alimentări Meta
             </CardTitle>
             <CardDescription>
-              Banii reali plătiți de tine către Meta (alimentări + facturi), față de consumul raportat. Introduse manual — Marketing API nu expune plățile.
+              Banii reali plătiți de tine către Meta (alimentări + facturi), față de consumul raportat. Totaluri pe tot istoricul — nu depind de perioada selectată sus. Introduse manual, fiindcă Marketing API nu expune plățile.
             </CardDescription>
           </div>
           <Button size="sm" onClick={openAdd}>
@@ -2106,33 +2099,25 @@ function AdPaymentsSection({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <KpiCard
-            label="Plătit / încărcat (interval)"
-            value={recon ? money(recon.paidInRangeCents, cur) : undefined}
+            label="Plătit / încărcat (total)"
+            value={recon ? money(recon.totalPaidCents, cur) : undefined}
             icon={<Banknote />}
             tone="primary"
             loading={res.isLoading}
           />
           <KpiCard
-            label="Consumat Meta (interval)"
-            value={recon ? money(recon.spentInRangeCents, cur) : undefined}
+            label="Consumat Meta (total)"
+            value={recon ? money(recon.totalSpentCents, cur) : undefined}
             icon={<Megaphone />}
             tone="destructive"
             loading={res.isLoading}
           />
           <KpiCard
-            label="Net interval"
-            value={recon ? money(recon.netInRangeCents, cur) : undefined}
-            sub={recon ? (recon.netInRangeCents >= 0 ? 'ai băgat peste consum' : 'ai consumat din sold') : undefined}
-            icon={recon && recon.netInRangeCents >= 0 ? <ArrowUpRight /> : <ArrowDownRight />}
-            tone={recon && recon.netInRangeCents >= 0 ? 'success' : 'warning'}
-            loading={res.isLoading}
-          />
-          <KpiCard
             label="Sold rămas (estimat)"
             value={recon ? money(recon.balanceCents, cur) : undefined}
-            sub={recon ? (recon.balanceReliable ? 'plătit − consumat, all-time' : 'incomplet — adaugă istoricul') : undefined}
+            sub={recon ? (recon.balanceReliable ? 'plătit − consumat, tot istoricul' : 'incomplet — adaugă istoricul plăților') : undefined}
             icon={<PiggyBank />}
             tone={recon && recon.balanceCents >= 0 ? 'info' : 'destructive'}
             loading={res.isLoading}

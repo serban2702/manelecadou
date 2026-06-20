@@ -133,14 +133,9 @@ export class AnalyticsApi {
   static adSpendSync(days = 7): Promise<{ ok: boolean; scope: string; results: AdSpendSyncResult[] }> {
     return http.post(`/admin/analytics/ad-spend/sync?days=${days}`, {});
   }
-  static adPayments(
-    range: AnalyticsRange,
-    days?: { fromDay: string; toDay: string },
-    platform: 'meta' | 'tiktok' = 'meta',
-  ): Promise<AdPaymentsResponse> {
-    return http.get(
-      `/admin/analytics/ad-payments${qs(range, { platform, ...(days ?? {}) })}`,
-    );
+  /** Reconcilierea e ALL-TIME (nu depinde de intervalul selectat), deci nu trimite range. */
+  static adPayments(platform: 'meta' | 'tiktok' = 'meta'): Promise<AdPaymentsResponse> {
+    return http.get(`/admin/analytics/ad-payments?platform=${platform}`);
   }
   static adPaymentCreate(body: AdPaymentInput): Promise<AdPayment> {
     return http.post(`/admin/analytics/ad-payments`, body);
@@ -392,12 +387,10 @@ export interface AdPaymentInput {
   note?: string | null;
 }
 
+/** Toate valorile sunt ALL-TIME (nu depind de intervalul selectat în analitice). */
 export interface AdPaymentReconciliation {
   currency: string;
   mixedCurrencies: boolean;
-  paidInRangeCents: number;
-  spentInRangeCents: number;
-  netInRangeCents: number;
   totalPaidCents: number;
   totalSpentCents: number;
   balanceCents: number;

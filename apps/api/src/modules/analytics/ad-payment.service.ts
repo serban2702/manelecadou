@@ -98,25 +98,18 @@ export class AdPaymentService {
    * Compară banii REALI plătiți (din `ad_payment`) cu CONSUMUL raportat de
    * platformă (din `ad_spend`), pentru o platformă (Meta).
    *
-   * - `paidInRange` / `spentInRange` — pe intervalul selectat.
-   * - `balanceCents` — sold all-time = tot ce ai plătit (net) − tot ce s-a consumat.
-   *   Util ca „cât mai ai în cont la Meta acum", DAR e corect doar dacă ai
-   *   înregistrat toate plățile și `ad_spend` e sincronizat complet (de aici `balanceReliable`).
+   * **Totul e ALL-TIME, intenționat** — NU depinde de intervalul selectat în
+   * analitice. Plățile sunt punctuale (alimentezi contul rar, cu sume mari), iar
+   * consumul e zilnic; a le compara pe o fereastră îngustă ar fi înșelător (0
+   * plătit în interval vs. consum zilnic ⇒ pare permanent „în pierdere"). Soldul
+   * = tot ce ai plătit (net) − tot ce s-a consumat = „cât mai ai în cont la Meta".
+   * Corect doar dacă ai înregistrat toate plățile și `ad_spend` e sincronizat
+   * complet — de aici `balanceReliable`.
    *
    * Reconcilierea se face în moneda dominantă a contului de ads (cea mai frecventă
    * monedă din `ad_spend`); plățile în alte monede sunt semnalate prin `mixedCurrencies`.
    */
-  async reconciliation(
-    range: { from: Date; to: Date },
-    siteId: string | null,
-    platform: AdPlatform = 'meta',
-    opts?: { fromDay?: string; toDay?: string },
-  ) {
-    const fromDay =
-      opts?.fromDay && /^\d{4}-\d{2}-\d{2}$/.test(opts.fromDay) ? opts.fromDay : toDay(range.from);
-    const toDayStr =
-      opts?.toDay && /^\d{4}-\d{2}-\d{2}$/.test(opts.toDay) ? opts.toDay : toDay(range.to);
-
+  async reconciliation(siteId: string | null, platform: AdPlatform = 'meta') {
     // --- Moneda de reconciliere = moneda dominantă a spend-ului (după volum) ---
     const curQb = this.spend
       .createQueryBuilder('a')
@@ -135,15 +128,8 @@ export class AdPaymentService {
       currency = lastPay[0]?.currency ?? 'RON';
     }
 
-    // --- Plăți (net) all-time și pe interval, în moneda de reconciliere ---
+    // --- Plăți (net) all-time, în moneda de reconciliere ---
     const payAll = await this.sumPayments({ siteId, platform, currency });
-    const payRange = await this.sumPayments({
-      siteId,
-      platform,
-      currency,
-      fromDay,
-      toDay: toDayStr,
-    });
 
     // Plăți într-o altă monedă decât cea de reconciliere → avertizăm UI.
     const payOther = await this.repo
@@ -155,15 +141,8 @@ export class AdPaymentService {
       .getRawOne<{ count: number }>();
     const mixedCurrencies = (payOther?.count ?? 0) > 0;
 
-    // --- Spend (consum) all-time și pe interval, în aceeași monedă ---
+    // --- Spend (consum) all-time, în aceeași monedă ---
     const spentAll = await this.sumSpend({ siteId, platform, currency });
-    const spentRange = await this.sumSpend({
-      siteId,
-      platform,
-      currency,
-      fromDay,
-      toDay: toDayStr,
-    });
 
     const balanceCents = payAll.netCents - spentAll;
     // Soldul e „de încredere" doar dacă există atât plăți, cât și spend înregistrat.
@@ -172,17 +151,11 @@ export class AdPaymentService {
     return {
       currency,
       mixedCurrencies,
-      // Pe interval
-      paidInRangeCents: payRange.netCents,
-      spentInRangeCents: spentRange,
-      // Cât ai băgat peste consum în interval (poate fi negativ = ai consumat din sold vechi).
-      netInRangeCents: payRange.netCents - spentRange,
-      // All-time
       totalPaidCents: payAll.netCents,
       totalSpentCents: spentAll,
       balanceCents,
       balanceReliable,
-      // Defalcare plăți pe tip (all-time, moneda de reconciliere) pentru context.
+      // Defalcare plăți pe tip (moneda de reconciliere) pentru context.
       byType: payAll.byType,
     };
   }
