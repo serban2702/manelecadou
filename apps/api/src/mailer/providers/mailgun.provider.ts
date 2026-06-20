@@ -45,6 +45,8 @@ export class MailgunMailProvider extends MailProvider {
     const form = new URLSearchParams();
     form.append('from', from);
     form.append('to', opts.to);
+    if (opts.cc) form.append('cc', opts.cc);
+    if (opts.bcc) form.append('bcc', opts.bcc);
     form.append('subject', opts.subject);
     form.append('html', opts.html);
     if (opts.text) form.append('text', opts.text);

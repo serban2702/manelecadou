@@ -51,6 +51,8 @@ export class SmtpMailProvider extends MailProvider {
     const info = await transporter.sendMail({
       from,
       to: opts.to,
+      cc: opts.cc || undefined,
+      bcc: opts.bcc || undefined,
       subject: opts.subject,
       html: opts.html,
       text: opts.text,

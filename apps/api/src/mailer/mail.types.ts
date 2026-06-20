@@ -1,5 +1,9 @@
 export interface SendMailOptions {
   to: string;
+  /** Destinatari în copie (comma-separated). Opțional — folosit la compunere din Inbox. */
+  cc?: string;
+  /** Destinatari în copie ascunsă (comma-separated). Opțional. */
+  bcc?: string;
   subject: string;
   html: string;
   text?: string;

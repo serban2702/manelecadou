@@ -25,6 +25,13 @@ export interface SendMailExtra {
   userId?: string | null;
   /** ID-ul entității asociate (paymentId, generationId, giftCodeId etc.). */
   relatedId?: string | null;
+  /**
+   * Forțează un provider anume, indiferent de configul global/site. Folosit la
+   * compunerea din Inbox („trimite cu mail, nu prin SMTP") → mereu Mailgun, chiar
+   * dacă `MAIL_PROVIDER` global e setat pe `smtp`. Dacă site-ul are credențiale
+   * proprii pentru providerul cerut le folosește pe alea, altfel cade pe cele globale.
+   */
+  forceProvider?: 'smtp' | 'mailgun';
 }
 
 @Injectable()
@@ -42,9 +49,13 @@ export class MailerService {
    * Rezolvă configul de mail: dacă site-ul are mailConfig.provider, folosim
    * configul per-tenant (cu decriptare); altfel cădem pe configul global.
    */
-  private async resolveContext(site?: MailSiteRef): Promise<{ provider: MailProvider; ctx: ResolvedMailContext }> {
+  private async resolveContext(
+    site?: MailSiteRef,
+    force?: 'smtp' | 'mailgun',
+  ): Promise<{ provider: MailProvider; ctx: ResolvedMailContext }> {
     const mc = site?.mailConfig;
-    if (mc?.provider) {
+    // Folosește configul per-site doar dacă există ȘI nu intră în conflict cu providerul forțat.
+    if (mc?.provider && (!force || mc.provider === force)) {
       const ctx: ResolvedMailContext = {
         source: 'site',
         siteSlug: site?.slug,
@@ -72,37 +83,57 @@ export class MailerService {
         return { provider: this.smtp, ctx };
       }
     }
-    // Fallback: config global din SettingsService
+    // Provider forțat fără config per-site potrivit → folosește credențialele globale ale acelui provider.
+    if (force === 'mailgun') {
+      return { provider: this.mailgun, ctx: await this.buildGlobalMailgunCtx(site) };
+    }
+    if (force === 'smtp') {
+      return { provider: this.smtp, ctx: await this.buildGlobalSmtpCtx(site) };
+    }
+    // Fallback: config global din SettingsService (după MAIL_PROVIDER)
     return this.resolveGlobalContext(site);
   }
 
   private async resolveGlobalContext(site?: MailSiteRef): Promise<{ provider: MailProvider; ctx: ResolvedMailContext }> {
     const which = ((await this.settings.get('MAIL_PROVIDER')) || 'smtp').toLowerCase();
-    const ctx: ResolvedMailContext = {
+    if (which === 'mailgun') {
+      return { provider: this.mailgun, ctx: await this.buildGlobalMailgunCtx(site) };
+    }
+    return { provider: this.smtp, ctx: await this.buildGlobalSmtpCtx(site) };
+  }
+
+  private async buildGlobalMailgunCtx(site?: MailSiteRef): Promise<ResolvedMailContext> {
+    return {
       source: 'global',
       siteSlug: site?.slug,
       fromEmail: (site?.fromEmail || (await this.settings.get('MAIL_FROM'))) || undefined,
       fromName: (await this.settings.get('MAIL_FROM_NAME')) || undefined,
-    };
-    if (which === 'mailgun') {
-      ctx.mailgun = {
+      mailgun: {
         apiKey: await this.settings.get('MAILGUN_API_KEY'),
         domain: await this.settings.get('MAILGUN_DOMAIN'),
         region: (((await this.settings.get('MAILGUN_REGION')) || 'us').toLowerCase() as 'eu' | 'us'),
         apiUrl: (await this.settings.get('MAILGUN_API_URL')) || undefined,
         fromEmail: (await this.settings.get('MAILGUN_FROM_EMAIL')) || undefined,
-      };
-      return { provider: this.mailgun, ctx };
-    }
-    ctx.smtp = {
-      host: (await this.settings.get('SMTP_HOST')) || undefined,
-      port: Number(await this.settings.get('SMTP_PORT')) || undefined,
-      secure: (await this.settings.get('SMTP_SECURE')) === 'true',
-      user: (await this.settings.get('SMTP_USER')) || undefined,
-      pass: (await this.settings.get('SMTP_PASS')) || undefined,
+      },
     };
-    if (!ctx.smtp.secure && ctx.smtp.port === 465) ctx.smtp.secure = true;
-    return { provider: this.smtp, ctx };
+  }
+
+  private async buildGlobalSmtpCtx(site?: MailSiteRef): Promise<ResolvedMailContext> {
+    const ctx: ResolvedMailContext = {
+      source: 'global',
+      siteSlug: site?.slug,
+      fromEmail: (site?.fromEmail || (await this.settings.get('MAIL_FROM'))) || undefined,
+      fromName: (await this.settings.get('MAIL_FROM_NAME')) || undefined,
+      smtp: {
+        host: (await this.settings.get('SMTP_HOST')) || undefined,
+        port: Number(await this.settings.get('SMTP_PORT')) || undefined,
+        secure: (await this.settings.get('SMTP_SECURE')) === 'true',
+        user: (await this.settings.get('SMTP_USER')) || undefined,
+        pass: (await this.settings.get('SMTP_PASS')) || undefined,
+      },
+    };
+    if (ctx.smtp && !ctx.smtp.secure && ctx.smtp.port === 465) ctx.smtp.secure = true;
+    return ctx;
   }
 
   /** Mod compatibil cu codul existent — întoarce un obiect simplu cu flag dev. */
@@ -120,7 +151,7 @@ export class MailerService {
 
   /** Trimite și întoarce rezultatul detaliat al provider-ului. */
   async sendDetailed(opts: SendMailOptions, extra?: SendMailExtra): Promise<SendMailResult> {
-    const { provider, ctx } = await this.resolveContext(extra?.site);
+    const { provider, ctx } = await this.resolveContext(extra?.site, extra?.forceProvider);
     // Audit row creat ÎNAINTE de send — prinde și crash-urile provider-elor.
     // Failure-urile la insert (DB down) nu trebuie să blocheze trimiterea mail-ului.
     const siteId = (extra?.site as { id?: string } | undefined)?.id ?? null;

@@ -23,6 +23,7 @@ import { AuthModule } from '../auth/auth.module';
 import { KbModule } from '../kb/kb.module';
 import { OpenAiModule } from '../../openai/openai.module';
 import { SitesModule } from '../sites/sites.module';
+import { MailerModule } from '../../mailer/mailer.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { SitesModule } from '../sites/sites.module';
     KbModule,
     OpenAiModule,
     SitesModule,
+    MailerModule,
   ],
   providers: [
     MailService,

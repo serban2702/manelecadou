@@ -55,6 +55,10 @@ export class MailApi {
   static reply(id: string, body: { html: string; to?: string[]; cc?: string[]; subject?: string }): Promise<MailMessageRow> {
     return http.post(`/admin/mail/messages/${id}/reply`, body);
   }
+  /** Compune și trimite un email NOU dintr-un cont (prin Mailgun, nu prin SMTP-ul contului). */
+  static compose(body: { accountId: string; to: string[]; cc?: string[]; bcc?: string[]; subject: string; html: string }): Promise<MailMessageRow> {
+    return http.post('/admin/mail/compose', body);
+  }
   static archive(id: string): Promise<MailMessageRow> {
     return http.post(`/admin/mail/messages/${id}/archive`);
   }

@@ -15,7 +15,7 @@ import {
 import { Response } from 'express';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { IsBoolean, IsEmail, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEmail, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 
@@ -87,6 +87,16 @@ class ReplyDto {
   @IsOptional() @IsString() targetLang?: string;
   /** Skip explicit pe traducere chiar dacă originalul e în altă limbă. */
   @IsOptional() skipTranslation?: boolean;
+}
+
+class ComposeDto {
+  /** Contul din care se trimite (adresa expeditor + branding-ul site-ului). */
+  @IsString() accountId!: string;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(50) @IsEmail({}, { each: true }) to!: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsEmail({}, { each: true }) cc?: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsEmail({}, { each: true }) bcc?: string[];
+  @IsString() @MinLength(1) @MaxLength(300) subject!: string;
+  @IsString() @MinLength(1) html!: string;
 }
 
 class TranslateOutDto {
@@ -253,6 +263,23 @@ export class MailController {
       subject: dto.subject,
     });
     return { ...sent, translation: translationMeta };
+  }
+
+  /**
+   * Compune și trimite un email NOU (nu un răspuns) către un destinatar arbitrar.
+   * Trimitere prin pipeline-ul de mail al platformei (Mailgun în prod), NU prin
+   * SMTP-ul contului. Corpul e împachetat în șablonul brandat al site-ului contului.
+   */
+  @Post('compose')
+  async compose(@Body() dto: ComposeDto) {
+    return this.send.sendCompose({
+      accountId: dto.accountId,
+      to: dto.to,
+      cc: dto.cc,
+      bcc: dto.bcc,
+      subject: dto.subject,
+      htmlBody: dto.html,
+    });
   }
 
   /**

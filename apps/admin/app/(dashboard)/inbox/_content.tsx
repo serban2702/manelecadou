@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { formatDistanceToNowStrict, format } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import DOMPurify from 'dompurify';
-import { Archive, ArchiveRestore, Bot, Inbox as InboxIcon, Mail, MessagesSquare, Paperclip, Settings2, Sparkles, Trash2, Users, Wifi, WifiOff, X } from 'lucide-react';
+import { Archive, ArchiveRestore, Bot, Inbox as InboxIcon, Mail, MessagesSquare, Paperclip, PenSquare, Settings2, Sparkles, Trash2, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { MailApi, type MailMessageRow } from '@/lib/api';
 import { useAsync } from '@/lib/hooks/use-async';
 import { useMailSocket } from '@/lib/inbox-ws';
@@ -19,6 +19,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { HtmlBody } from '@/components/inbox/HtmlBody';
 import { ReplyComposer } from '@/components/inbox/ReplyComposer';
+import { ComposeDialog } from '@/components/inbox/ComposeDialog';
 import { SuggestionBanner } from '@/components/inbox/SuggestionBanner';
 import { SiteBadge } from '@/components/site-badge';
 import { AssistantPanel } from '@/components/ai-assistant/AssistantPanel';
@@ -35,6 +36,7 @@ export default function InboxPage() {
   const [showAccounts, setShowAccounts] = useState(true);
   const [showAssistant, setShowAssistant] = useState(true);
   const [showReply, setShowReply] = useState(true);
+  const [composeOpen, setComposeOpen] = useState(false);
 
   const { data: accounts, refetch: refetchAccounts } = useAsync(
     () => MailApi.accounts(),
@@ -186,6 +188,9 @@ export default function InboxPage() {
           )}
         </div>
         <div className="flex items-center gap-1.5">
+          <Button size="sm" onClick={() => setComposeOpen(true)}>
+            <PenSquare className="h-4 w-4" /> Scrie email
+          </Button>
           <PanelToggle
             active={showAccounts}
             onClick={() => setShowAccounts((v) => !v)}
@@ -439,6 +444,14 @@ export default function InboxPage() {
           />
         )}
       </div>
+
+      <ComposeDialog
+        open={composeOpen}
+        onOpenChange={setComposeOpen}
+        accounts={accounts}
+        defaultAccountId={activeAccountId && activeAccountId !== 'all' ? activeAccountId : null}
+        onSent={() => { refetchMessages(); }}
+      />
     </div>
   );
 }
