@@ -908,8 +908,15 @@ ETAPA 0 — COMANDĂ EXISTENTĂ (verifică ÎNAINTE de a porni wizard-ul):
     NU cere nume/mesaj/email de la zero. Răspunde pe baza statusului real (gata / se
     generează / plătit) și a melodiei deja existente.
   → ⭐ ÎNCĂ O MELODIE: dacă userul vrea O ALTĂ manea (nouă, pentru altcineva, „mai fac una",
-    „vreau și pentru soția mea") → apelează \`start_new_order\` și reia normal de la ETAPA 1-2.
+    „pot să fac alta", „vreau și pentru soția mea") → apelează \`start_new_order\` ÎNAINTE de a
+    colecta noile date (înainte de wizard_update), apoi reia normal de la ETAPA 1-2.
     NU raporta statusul comenzii vechi, NU refuza! Clienții care revin sunt cei mai valoroși.
+    ⚠️ ASTA SE APLICĂ ȘI dacă prima comandă NU e plătită încă (link de plată trimis dar
+    neplătit): dacă userul vrea acum pentru ALTĂ persoană, OBLIGATORIU \`start_new_order\` întâi —
+    altfel datele noului destinatar se scriu peste comanda veche și userul ajunge să plătească/
+    primească maneaua persoanei greșite. BUG observat 2026-06-20 conv eae31c0f: user a cerut
+    pentru „Ionuț" peste o comandă neplătită pentru „Briana", a sărit start_new_order → a primit
+    Briana, nu Ionuț.
   → 🔧 MODIFICARE pe melodie plătită → folosește \`request_modification\` (NU escalate):
     • REGULA DEFAULT: modificările se PLĂTESC — mică (nume/o strofă/dedicație) = 14.99 lei,
       mare (alt mesaj/stil/refacere amplă) = 29.99 lei. Explică DIPLOMAT: „melodia se
@@ -1436,7 +1443,7 @@ REGULI STRICTE:
       },
       {
         name: 'start_new_order',
-        description: 'Resetează wizard-ul pentru o comandă NOUĂ (încă o melodie). Folosește când userul vrea o ALTĂ manea după una deja comandată/plătită („mai vreau una", „și pentru soția mea"). Păstrează email-ul clientului. După reset reiei normal fluxul (context → preț → detalii → finalize).',
+        description: 'Resetează wizard-ul pentru o comandă NOUĂ (încă o melodie). Folosește când userul vrea o ALTĂ manea — pentru ALTCINEVA sau cu alt mesaj („mai vreau una", „pot să fac alta", „și pentru soția mea", „acum pentru soțul meu Ionuț"). ⚠️ Apelează-l ÎNAINTE de a colecta datele noului destinatar (ÎNAINTE de wizard_update). Funcționează ȘI dacă comanda anterioară NU e încă plătită (link trimis dar neplătit) — altfel datele noului destinatar se pierd peste comanda veche și userul primește maneaua persoanei greșite. Păstrează email-ul clientului. După reset reiei normal fluxul (context → preț → detalii → finalize).',
         parameters: {
           type: 'object',
           properties: {
@@ -1683,13 +1690,13 @@ REGULI STRICTE:
     // Instrucțiune pentru AI bazată pe healthCategory — diferențiat clar
     let instruction: string;
     if (healthCategory === 'ok') {
-      instruction = `Manea e gata. Trimite userului link-ul ${linkToSong} cu un mesaj cald („Gata, e aici 🎵 - ${linkToSong}"). Menționează scurt că a primit-o și pe email.`;
+      instruction = `Manea pentru ${generation.recipientName} e gata. Trimite userului link-ul ${linkToSong} cu un mesaj cald („Gata, e aici 🎵 - ${linkToSong}"). Menționează scurt că a primit-o și pe email. ⚠️ Comanda LIVRATĂ e pentru „${generation.recipientName}" (numele REAL din comandă) — NU spune alt nume. BUG observat 2026-06-20 conv eae31c0f: AI alterna haotic între 2 nume pe ACEEAȘI piesă. Dacă userul insistă că a vrut pentru ALTCINEVA → NU nega, NU inventa: recunoaște clar că piesa livrată e pentru ${generation.recipientName} și oferă-i o comandă nouă (start_new_order) sau request_modification pentru destinatarul corect.`;
     } else if (healthCategory === 'in_progress') {
-      instruction = `Plata e ok, Suno generează acum (rulează de ${ageMinutes} min, normal 5-10 min total). Răspunde NATURAL și variat — alterneză:
+      instruction = `Plata e ok, Suno generează acum maneaua pentru ${generation.recipientName} (rulează de ${ageMinutes} min, normal 5-10 min total). Răspunde NATURAL și variat — alterneză:
 - „Suno generează acum, durează 5-10 minute în total. O primești pe email și aici."
 - „E pe drum, mai am nevoie de câteva minute."
 - „Aproape, Suno termină în 2-3 minute."
-Trimite linkul live ${linkToSong} unde vede progresul. NICIODATĂ „90 secunde" sau „1-2 minute" — totul e 5-10 min. NU repeta același mesaj — alterneză.`;
+Trimite linkul live ${linkToSong} unde vede progresul. NICIODATĂ „90 secunde" sau „1-2 minute" — totul e 5-10 min. NU repeta același mesaj — alterneză. Comanda e pentru „${generation.recipientName}" — folosește EXACT acest nume, nu altul.`;
     } else if (healthCategory === 'in_progress_slow') {
       instruction = `Plata e ok, rulează de ${ageMinutes} min — peste media de 5 min dar încă sub limita de 10. Suno e probabil încărcat azi. Răspunde ÎNCURAJATOR și ONEST: „Suno e încărcat azi, se mai întârzie un pic dar țin de termen — maximum 10 minute total. Pe ea e."
 NU promite mai puțin. Trimite linkul ${linkToSong} ca să verifice live.`;
@@ -1909,6 +1916,18 @@ NU promite mai puțin. Trimite linkul ${linkToSong} ca să verifice live.`;
    * Plus la 49.99 lei") — DOAR fraze de confirmare a alegerii, NU listarea ofertei (care
    * conține toate 3 numele). Folosit de guard-ul anti-mismatch din wizard_finalize.
    */
+  /** Normalizează un nume de persoană pentru comparație robustă (lowercase, fără
+   *  diacritice, spații colapsate). „Briana" ≠ „Ionuț", dar „ Briana " == „briana". */
+  private normalizePersonName(name?: string | null): string {
+    if (!name) return '';
+    return name
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   private detectConfirmedTierFromText(text: string): PackageTier | null {
     const t = (text || '').toLowerCase();
     // Trebuie să fie o frază de confirmare a alegerii userului, nu pitch-ul cu toate pachetele.
@@ -1960,13 +1979,53 @@ NU promite mai puțin. Trimite linkul ${linkToSong} ca să verifice live.`;
     // prin resend_payment_link, care e gândit exact pentru asta.
     const isResumeFromPaymentSent = state.step === 'payment_sent';
     if (isResumeFromPaymentSent) {
-      return {
-        status: 'LINK_ALREADY_SENT',
-        currentStep: state.step,
-        generationId: state.generationId,
-        instruction:
-          'Există deja link de plată activ pe această comandă. NU re-finaliza. Dacă userul nu găsește linkul sau zice că a expirat → apelează resend_payment_link. Dacă vrea cu totul ALTĂ melodie → start_new_order. Dacă doar adaugă detalii post-link („mesajul nostru este...") → răspunde scurt: „Am notat! Dă click pe linkul de plată de mai sus și melodia se generează".',
-      };
+      // A 2-a comandă fără start_new_order (BUG observat 2026-06-20 conv eae31c0f):
+      // userul a cerut o manea NOUĂ pentru ALTĂ persoană („pot să fac alta", „pentru
+      // soțul meu Ionuț"), AI a apelat wizard_update cu noul recipient DAR a sărit peste
+      // start_new_order, apoi finalize. Comanda veche (NEplătită) avea încă link activ →
+      // finalize bloca pe LINK_ALREADY_SENT, datele noului destinatar se pierdeau, iar
+      // userul plătea/primea maneaua persoanei greșite (a plătit pt Ionuț, a primit Briana).
+      // Aici detectăm că recipientName colectat ACUM diferă de cel al comenzii cu link
+      // activ neplătit → tratăm ca o comandă nouă (reset intern, păstrăm datele proaspete)
+      // și lăsăm finalize să continue ca să emită Generation + link NOU pentru recipientul corect.
+      const activeGenId = state.generationId;
+      const newRecipient = this.normalizePersonName(state.data.recipientName);
+      let treatAsNewOrder = false;
+      if (activeGenId && newRecipient) {
+        const activeGen = await this.generations.findOnePublic(activeGenId).catch(() => null);
+        const oldRecipient = this.normalizePersonName(activeGen?.recipientName ?? null);
+        // doar dacă vechea comandă NU e plătită (link încă de abandonat fără pierdere) și
+        // destinatarul s-a schimbat clar — corecție de typo pe același nume nu declanșează.
+        if (activeGen && !activeGen.paidUnlocked && oldRecipient && oldRecipient !== newRecipient) {
+          treatAsNewOrder = true;
+        }
+      }
+      if (treatAsNewOrder) {
+        this.logger.warn(
+          `NEW_ORDER_AUTO_RESET conv=${conv.id.slice(0, 8)} — recipient schimbat pe comandă neplătită; finalize creează comandă nouă în loc de LINK_ALREADY_SENT`,
+        );
+        state.step = 'collecting';
+        state.generationId = null;
+        state.paymentId = null;
+        state.linkReissueCount = 0;
+        state.priceQuotedCount = 0;
+        await this.conv
+          .createQueryBuilder()
+          .update(Conversation)
+          .set({ wizardState: state })
+          .where('id = :id', { id: conv.id })
+          .execute();
+        conv.wizardState = state;
+        // cad prin la restul handleWizardFinalize → emite comanda nouă pentru recipientul corect.
+      } else {
+        return {
+          status: 'LINK_ALREADY_SENT',
+          currentStep: state.step,
+          generationId: state.generationId,
+          instruction:
+            'Există deja link de plată activ pe această comandă. NU re-finaliza. Dacă userul nu găsește linkul sau zice că a expirat → apelează resend_payment_link. Dacă vrea cu totul ALTĂ melodie → start_new_order. Dacă doar adaugă detalii post-link („mesajul nostru este...") → răspunde scurt: „Am notat! Dă click pe linkul de plată de mai sus și melodia se generează".',
+        };
+      }
     }
 
     if (!conv.siteId) return { error: 'no siteId' };
