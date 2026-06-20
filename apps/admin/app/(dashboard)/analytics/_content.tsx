@@ -1359,6 +1359,37 @@ function profitFiscalYears(): Array<{ key: string; label: string }> {
 }
 
 const CURRENCY_SYMBOL: Record<string, string> = { RON: 'lei', EUR: '€', USD: '$' };
+const MONTHS_RO_SHORT = ['ian', 'feb', 'mar', 'apr', 'mai', 'iun', 'iul', 'aug', 'sep', 'oct', 'noi', 'dec'];
+
+/** Lunea (ISO, UTC) săptămânii care conține data — IDENTIC cu backend-ul (cheia fxWeekly). */
+function mondayOfUTC(d: Date): Date {
+  const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dow = x.getUTCDay(); // 0=duminică
+  x.setUTCDate(x.getUTCDate() - (dow === 0 ? 6 : dow - 1));
+  return x;
+}
+
+/** Săptămânile (luni→duminică) din 1 mai 2026 până în prezent. Cheia = lunea ISO. */
+function profitWeeks(): Array<{ key: string; label: string }> {
+  const start = mondayOfUTC(new Date(Date.UTC(PROFIT_START_YEAR, PROFIT_START_MONTH - 1, 1)));
+  const now = new Date();
+  const end = mondayOfUTC(now);
+  const res: Array<{ key: string; label: string }> = [];
+  const cur = new Date(start);
+  let guard = 0;
+  while (cur.getTime() <= end.getTime() && guard < 400) {
+    const key = cur.toISOString().slice(0, 10);
+    const sun = new Date(cur.getTime() + 6 * 86_400_000);
+    const d1 = cur.getUTCDate();
+    const d2 = sun.getUTCDate();
+    const m1 = MONTHS_RO_SHORT[cur.getUTCMonth()];
+    const m2 = MONTHS_RO_SHORT[sun.getUTCMonth()];
+    res.push({ key, label: m1 === m2 ? `${d1}–${d2} ${m2}` : `${d1} ${m1} – ${d2} ${m2}` });
+    cur.setUTCDate(cur.getUTCDate() + 7);
+    guard++;
+  }
+  return res;
+}
 
 function ProfitabilityTab({ range }: { range: { from: string; to: string } }) {
   const [section, setSection] = useState<'stats' | 'settings'>('stats');
@@ -1445,9 +1476,9 @@ function ProfitStats({ report, loading }: { report: ProfitReport | null; loading
             <Receipt className="h-4 w-4 text-primary" /> Defalcare cheltuieli
           </CardTitle>
           <CardDescription>
-            Toate convertite în RON. Meta + Suno + recurentele intră în baza de TVA ({r?.vatRatePct ?? 21}%).
-            Impozitul și comisionul Stripe nu au TVA.
-            {r ? ` Cursuri: 1€=${r.fx.eurToRon} lei · 1$=${r.fx.usdToRon} lei.` : ''}
+            Toate sumele în lei. Meta + Suno + recurentele intră în baza de TVA ({r?.vatRatePct ?? 21}%).
+            Impozitul și comisionul Stripe nu au TVA. Conversiile valutare folosesc cursul fiecărei
+            săptămâni (setabil în „Setări"; implicit {r ? `1€=${r.fx.eurToRon} · 1$=${r.fx.usdToRon}` : '—'} lei).
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -1465,12 +1496,12 @@ function ProfitStats({ report, loading }: { report: ProfitReport | null; loading
               <TableBody>
                 <ProfitRow
                   label="Meta Ads"
-                  detail={r.meta.currency && r.meta.currency !== 'RON' ? `${money(r.meta.rawCents, r.meta.currency)} consum` : 'din tab Ads & ROAS'}
+                  detail={r.meta.currency && r.meta.currency !== 'RON' ? `convertit din ${r.meta.currency} (curs săptămânal)` : 'din tab Ads & ROAS'}
                   cents={r.meta.ronCents}
                 />
                 <ProfitRow
                   label="Suno"
-                  detail={`${r.suno.requests.toLocaleString('ro-RO')} requesturi × ${r.suno.usdPerRequest}$`}
+                  detail={`${r.suno.requests.toLocaleString('ro-RO')} requesturi × ${r.suno.usdPerRequest}$ (curs săptămânal)`}
                   cents={r.suno.ronCents}
                 />
                 {r.recurring.map((line) => (
@@ -1480,7 +1511,7 @@ function ProfitStats({ report, loading }: { report: ProfitReport | null; loading
                     detail={
                       <span className="inline-flex items-center gap-1.5">
                         <Badge variant="muted" className="text-[10px]">{line.cadence === 'monthly' ? 'lunar' : 'anual'}</Badge>
-                        {line.currency !== 'RON' ? money(line.amountCents, line.currency) : null}
+                        {line.currency !== 'RON' ? <span className="text-[11px]">convertit din {line.currency}</span> : null}
                       </span>
                     }
                     cents={line.ronCents}
@@ -1573,6 +1604,7 @@ function ProfitSettings({ onSaved }: { onSaved: () => void }) {
   const [saving, setSaving] = useState(false);
   const months = useMemo(() => profitMonths(), []);
   const years = useMemo(() => profitFiscalYears(), []);
+  const weeks = useMemo(() => profitWeeks(), []);
 
   useEffect(() => {
     if (cfgQ.data) setCfg(JSON.parse(JSON.stringify(cfgQ.data)));
@@ -1581,6 +1613,17 @@ function ProfitSettings({ onSaved }: { onSaved: () => void }) {
   if (!cfg) return <Skeleton className="h-96 w-full" />;
 
   const patch = (p: Partial<ProfitConfigData>) => setCfg((c) => (c ? { ...c, ...p } : c));
+  const setWeekFx = (key: string, field: 'eurToRon' | 'usdToRon', val: number | null) =>
+    setCfg((c) => {
+      if (!c) return c;
+      const fxWeekly = { ...c.fxWeekly };
+      const cur = fxWeekly[key] ?? { eurToRon: 0, usdToRon: 0 };
+      const next = { ...cur, [field]: val ?? 0 };
+      // Săptămâna fără niciun curs setat → o eliminăm (cade pe cursul implicit).
+      if ((next.eurToRon ?? 0) <= 0 && (next.usdToRon ?? 0) <= 0) delete fxWeekly[key];
+      else fxWeekly[key] = next;
+      return { ...c, fxWeekly };
+    });
   const patchItem = (id: string, p: Partial<ProfitExpenseItem>) =>
     setCfg((c) => (c ? { ...c, items: c.items.map((it) => (it.id === id ? { ...it, ...p } : it)) } : c));
   const setItemAmount = (id: string, key: string, val: number | null) =>
@@ -1637,15 +1680,71 @@ function ProfitSettings({ onSaved }: { onSaved: () => void }) {
       {/* Parametri globali */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Coins className="h-4 w-4 text-primary" /> Cursuri & rate</CardTitle>
-          <CardDescription>Folosite la conversia cheltuielilor în RON și la TVA / impozit.</CardDescription>
+          <CardTitle className="flex items-center gap-2"><Coins className="h-4 w-4 text-primary" /> Rate & cursuri implicite</CardTitle>
+          <CardDescription>Cursurile implicite se folosesc pentru orice săptămână necompletată mai jos.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <NumField label="Curs EUR → RON" value={cfg.fx.eurToRon} onChange={(v) => patch({ fx: { ...cfg.fx, eurToRon: v ?? 0 } })} />
-          <NumField label="Curs USD → RON" value={cfg.fx.usdToRon} onChange={(v) => patch({ fx: { ...cfg.fx, usdToRon: v ?? 0 } })} />
+          <NumField label="Curs EUR → RON (implicit)" value={cfg.fx.eurToRon} onChange={(v) => patch({ fx: { ...cfg.fx, eurToRon: v ?? 0 } })} />
+          <NumField label="Curs USD → RON (implicit)" value={cfg.fx.usdToRon} onChange={(v) => patch({ fx: { ...cfg.fx, usdToRon: v ?? 0 } })} />
           <NumField label="Suno $ / request" value={cfg.sunoUsdPerRequest} onChange={(v) => patch({ sunoUsdPerRequest: v ?? 0 })} step="0.01" />
           <NumField label="TVA %" value={cfg.vatRatePct} onChange={(v) => patch({ vatRatePct: v ?? 0 })} />
           <NumField label="Impozit micro %" value={cfg.microTaxRatePct} onChange={(v) => patch({ microTaxRatePct: v ?? 0 })} step="0.1" />
+        </CardContent>
+      </Card>
+
+      {/* Cursuri valutare săptămânale */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Coins className="h-4 w-4 text-primary" /> Cursuri valutare săptămânale</CardTitle>
+          <CardDescription>
+            Cursul fiecărei săptămâni (luni→duminică) se aplică tuturor zilelor ei la conversia cheltuielilor în lei.
+            Lasă gol o săptămână ca să folosească cursul implicit de mai sus.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Săptămâna</TableHead>
+                  <TableHead className="text-right">EUR → RON</TableHead>
+                  <TableHead className="text-right">USD → RON</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {weeks.map((w) => {
+                  const fxw = cfg.fxWeekly[w.key];
+                  return (
+                    <TableRow key={w.key}>
+                      <TableCell className="whitespace-nowrap font-medium capitalize">{w.label}</TableCell>
+                      <TableCell className="text-right">
+                        <Input
+                          className="w-24 ml-auto text-right"
+                          inputMode="decimal"
+                          type="number"
+                          step="0.01"
+                          placeholder={String(cfg.fx.eurToRon)}
+                          value={fxw?.eurToRon ? String(fxw.eurToRon) : ''}
+                          onChange={(e) => setWeekFx(w.key, 'eurToRon', parseNum(e.target.value))}
+                        />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Input
+                          className="w-24 ml-auto text-right"
+                          inputMode="decimal"
+                          type="number"
+                          step="0.01"
+                          placeholder={String(cfg.fx.usdToRon)}
+                          value={fxw?.usdToRon ? String(fxw.usdToRon) : ''}
+                          onChange={(e) => setWeekFx(w.key, 'usdToRon', parseNum(e.target.value))}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 

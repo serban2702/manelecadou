@@ -208,8 +208,16 @@ export interface ProfitExpenseItem {
   builtin?: string | null;
 }
 
+export interface FxRate {
+  eurToRon: number;
+  usdToRon: number;
+}
+
 export interface ProfitConfigData {
-  fx: { eurToRon: number; usdToRon: number };
+  /** Curs implicit (fallback) pentru săptămânile fără override în `fxWeekly`. */
+  fx: FxRate;
+  /** Curs per săptămână — cheia e lunea ISO (`YYYY-MM-DD`). */
+  fxWeekly: Record<string, FxRate>;
   sunoUsdPerRequest: number;
   vatRatePct: number;
   microTaxRatePct: number;

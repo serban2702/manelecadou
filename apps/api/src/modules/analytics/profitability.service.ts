@@ -27,6 +27,7 @@ const DAYS_PER_YEAR = 365;
 
 export const DEFAULT_PROFIT_CONFIG: ProfitConfigData = {
   fx: { eurToRon: 4.97, usdToRon: 4.6 },
+  fxWeekly: {},
   sunoUsdPerRequest: 0.06,
   vatRatePct: 21,
   microTaxRatePct: 1,
@@ -85,12 +86,29 @@ function diffDays(a: string, b: string): number {
   return Math.round((db - da) / 86_400_000);
 }
 
-/** Câte zile din [fromDay,toDay] cad în [periodStart,periodEnd] (toate inclusiv). */
-function overlapDays(fromDay: string, toDay: string, periodStart: string, periodEnd: string): number {
-  const s = fromDay > periodStart ? fromDay : periodStart;
-  const e = toDay < periodEnd ? toDay : periodEnd;
-  if (s > e) return 0;
-  return diffDays(s, e) + 1;
+/** Toate zilele calendaristice din [fromDay,toDay] inclusiv, ca `YYYY-MM-DD`. */
+function eachDay(fromDay: string, toDay: string): string[] {
+  if (toDay < fromDay) return [];
+  const days: string[] = [];
+  let t = Date.UTC(+fromDay.slice(0, 4), +fromDay.slice(5, 7) - 1, +fromDay.slice(8, 10));
+  const end = Date.UTC(+toDay.slice(0, 4), +toDay.slice(5, 7) - 1, +toDay.slice(8, 10));
+  // Plasă de siguranță: max ~3 ani de zile (evită bucle accidentale pe range-uri uriașe).
+  let guard = 0;
+  while (t <= end && guard < 1100) {
+    days.push(new Date(t).toISOString().slice(0, 10));
+    t += 86_400_000;
+    guard++;
+  }
+  return days;
+}
+
+/** Lunea (ISO) săptămânii care conține `day`, ca `YYYY-MM-DD`. Cheia pentru `fxWeekly`. */
+function mondayOf(day: string): string {
+  const d = new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10)));
+  const dow = d.getUTCDay(); // 0=duminică, 1=luni, …
+  const offset = dow === 0 ? 6 : dow - 1;
+  d.setUTCDate(d.getUTCDate() - offset);
+  return d.toISOString().slice(0, 10);
 }
 
 function fxToRon(currency: string, fx: { eurToRon: number; usdToRon: number }): number {
@@ -164,11 +182,27 @@ export class ProfitabilityService {
           };
         })
       : [];
+    const fxWeekly: Record<string, { eurToRon: number; usdToRon: number }> = {};
+    if (d.fxWeekly && typeof d.fxWeekly === 'object') {
+      for (const [k, v] of Object.entries(d.fxWeekly)) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(k) || !v || typeof v !== 'object') continue;
+        const eur = num((v as { eurToRon?: unknown }).eurToRon, 0);
+        const usd = num((v as { usdToRon?: unknown }).usdToRon, 0);
+        // Păstrăm doar săptămânile cu cel puțin un curs setat (>0).
+        if (eur > 0 || usd > 0) {
+          fxWeekly[k] = {
+            eurToRon: eur > 0 ? eur : DEFAULT_PROFIT_CONFIG.fx.eurToRon,
+            usdToRon: usd > 0 ? usd : DEFAULT_PROFIT_CONFIG.fx.usdToRon,
+          };
+        }
+      }
+    }
     return {
       fx: {
         eurToRon: num(d.fx?.eurToRon, DEFAULT_PROFIT_CONFIG.fx.eurToRon),
         usdToRon: num(d.fx?.usdToRon, DEFAULT_PROFIT_CONFIG.fx.usdToRon),
       },
+      fxWeekly,
       sunoUsdPerRequest: num(d.sunoUsdPerRequest, DEFAULT_PROFIT_CONFIG.sunoUsdPerRequest),
       vatRatePct: num(d.vatRatePct, DEFAULT_PROFIT_CONFIG.vatRatePct),
       microTaxRatePct: num(d.microTaxRatePct, DEFAULT_PROFIT_CONFIG.microTaxRatePct),
@@ -187,30 +221,59 @@ export class ProfitabilityService {
     const toDayStr = opts?.toDay && /^\d{4}-\d{2}-\d{2}$/.test(opts.toDay) ? opts.toDay : toDay(range.to);
     const days = Math.max(0, diffDays(fromDay, toDayStr) + 1);
 
+    // Zilele calendaristice ale intervalului + funcția de curs pe zi: cursul
+    // săptămânii (lunea ISO) din `fxWeekly`, cu fallback pe cursul global `fx`.
+    const allDays = eachDay(fromDay, toDayStr);
+    const rateFor = (day: string, currency: 'RON' | 'EUR' | 'USD'): number => {
+      if (currency === 'RON') return 1;
+      const wk = cfg.fxWeekly[mondayOf(day)] ?? cfg.fx;
+      return currency === 'EUR' ? wk.eurToRon : wk.usdToRon;
+    };
+
     // --- 1) Venituri (paid, non-test, all-site) în bani RON ---
     const revenueRonCents = await this.revenueRonCents(range);
 
-    // --- 2) Meta spend pe interval (zile calendaristice), convertit RON ---
-    const metaRaw = await this.metaSpend(fromDay, toDayStr);
-    const metaRate = metaRaw.currency ? fxToRon(metaRaw.currency, cfg.fx) : 1;
-    const metaRonCents = Math.round(metaRaw.cents * metaRate);
+    // --- 2) Meta spend pe interval, convertit RON cu cursul fiecărei zile ---
+    const metaDaily = await this.metaSpendByDay(fromDay, toDayStr);
+    let metaRawCents = 0;
+    let metaRonAcc = 0;
+    let metaCurrency: string | null = null;
+    for (const d of metaDaily) {
+      metaRawCents += d.cents;
+      if (d.currency) metaCurrency = d.currency;
+      metaRonAcc += d.cents * rateFor(d.date, (d.currency as 'RON' | 'EUR' | 'USD') ?? 'RON');
+    }
+    const metaRonCents = Math.round(metaRonAcc);
 
-    // --- 3) Suno: 0.06$ × nr requesturi, convertit RON ---
-    const sunoRequests = await this.sunoRequestCount(range);
-    const sunoRonCents = Math.round(sunoRequests * cfg.sunoUsdPerRequest * cfg.fx.usdToRon * 100);
+    // --- 3) Suno: 0.06$ × requesturi (per zi, cu cursul USD al săptămânii) ---
+    const sunoDaily = await this.sunoRequestsByDay(range);
+    let sunoRequests = 0;
+    let sunoRonAcc = 0;
+    for (const d of sunoDaily) {
+      sunoRequests += d.n;
+      sunoRonAcc += d.n * cfg.sunoUsdPerRequest * rateFor(d.day, 'USD');
+    }
+    const sunoRonCents = Math.round(sunoRonAcc * 100);
 
-    // --- 4) Cheltuieli recurente, pro-rata pe zile, convertite RON ---
+    // --- 4) Cheltuieli recurente, pro-rata pe zile, cu cursul săptămânii fiecărei zile ---
     const recurring: ProfitRecurringLine[] = cfg.items.map((it) => {
-      const amountUnits = this.proratedAmount(it, fromDay, toDayStr); // în moneda item
-      const rate = fxToRon(it.currency, cfg.fx);
+      const divisor = it.cadence === 'monthly' ? DAYS_PER_MONTH : DAYS_PER_YEAR;
+      let unit = 0; // sumă în moneda proprie (pentru transparență)
+      let ron = 0;
+      for (const day of allDays) {
+        const daily = this.valueForPeriod(it, day) / divisor;
+        if (daily === 0) continue;
+        unit += daily;
+        ron += daily * rateFor(day, it.currency);
+      }
       return {
         id: it.id,
         label: it.label,
         cadence: it.cadence,
         currency: it.currency,
         builtin: it.builtin ?? null,
-        amountCents: Math.round(amountUnits * 100),
-        ronCents: Math.round(amountUnits * rate * 100),
+        amountCents: Math.round(unit * 100),
+        ronCents: Math.round(ron * 100),
       };
     });
     const recurringTotalRonCents = recurring.reduce((a, r) => a + r.ronCents, 0);
@@ -236,7 +299,7 @@ export class ProfitabilityService {
       fx: cfg.fx,
       stripeConfigured: stripeFee.configured,
       revenueRonCents,
-      meta: { ronCents: metaRonCents, rawCents: metaRaw.cents, currency: metaRaw.currency },
+      meta: { ronCents: metaRonCents, rawCents: metaRawCents, currency: metaCurrency },
       suno: { ronCents: sunoRonCents, requests: sunoRequests, usdPerRequest: cfg.sunoUsdPerRequest },
       recurring,
       recurringTotalRonCents,
@@ -289,73 +352,53 @@ export class ProfitabilityService {
     return parseInt(rows[0]?.revenue ?? '0', 10) || 0;
   }
 
-  private async metaSpend(fromDay: string, toDay: string): Promise<{ cents: number; currency: string | null }> {
-    const row = await this.adSpend
+  private async metaSpendByDay(
+    fromDay: string,
+    toDay: string,
+  ): Promise<Array<{ date: string; cents: number; currency: string | null }>> {
+    const rows = await this.adSpend
       .createQueryBuilder('a')
-      .select('COALESCE(SUM(a.spendCents),0)::bigint', 'cents')
+      .select('a.date', 'date')
+      .addSelect('COALESCE(SUM(a.spendCents),0)::bigint', 'cents')
       .addSelect('MAX(a.currency)', 'currency')
       .where('a.platform = :p', { p: 'meta' })
       .andWhere('a.date BETWEEN :from AND :to', { from: fromDay, to: toDay })
-      .getRawOne<{ cents: string; currency: string | null }>();
-    return { cents: parseInt(row?.cents ?? '0', 10) || 0, currency: row?.currency ?? null };
+      .groupBy('a.date')
+      .getRawMany<{ date: string | Date; cents: string; currency: string | null }>();
+    return rows.map((r) => ({
+      date: typeof r.date === 'string' ? r.date.slice(0, 10) : r.date.toISOString().slice(0, 10),
+      cents: parseInt(r.cents ?? '0', 10) || 0,
+      currency: r.currency ?? null,
+    }));
   }
 
-  private async sunoRequestCount(range: { from: Date; to: Date }): Promise<number> {
-    return this.sunoLogs
-      .createQueryBuilder('s')
-      .where('s.createdAt BETWEEN :from AND :to', { from: range.from, to: range.to })
-      .getCount();
+  private async sunoRequestsByDay(range: { from: Date; to: Date }): Promise<Array<{ day: string; n: number }>> {
+    const rows = (await this.sunoLogs.query(
+      `SELECT to_char((s."createdAt" AT TIME ZONE 'Europe/Bucharest')::date, 'YYYY-MM-DD') AS day,
+              COUNT(*)::int AS n
+       FROM suno_logs s
+       WHERE s."createdAt" BETWEEN $1 AND $2
+       GROUP BY 1`,
+      [range.from.toISOString(), range.to.toISOString()],
+    )) as Array<{ day: string; n: number }>;
+    return rows.map((r) => ({ day: r.day, n: Number(r.n) || 0 }));
   }
 
   // ============== HELPERS — PRO-RATA ==============
 
-  /**
-   * Suma pro-rata a unei cheltuieli recurente pe intervalul [fromDay,toDay], în
-   * moneda proprie. Lunar: Σ (sumă_lună / 30.5 × zile_din_lună). Anual (an fiscal
-   * mai→aprilie): Σ (sumă_an / 365 × zile_din_an).
-   */
-  private proratedAmount(item: ProfitExpenseItem, fromDay: string, toDay: string): number {
-    if (toDay < fromDay) return 0;
-    const valueFor = (key: string): number => {
-      const override = item.amounts[key];
-      if (override != null && Number.isFinite(override)) return override;
-      return item.defaultAmount != null && Number.isFinite(item.defaultAmount) ? item.defaultAmount : 0;
-    };
-
-    let total = 0;
+  /** Valoarea (în moneda item) aplicabilă zilei `day`: override-ul perioadei sau defaultAmount. */
+  private valueForPeriod(item: ProfitExpenseItem, day: string): number {
+    let key: string;
     if (item.cadence === 'monthly') {
-      // Iterăm lunile calendaristice care ating intervalul.
-      let y = +fromDay.slice(0, 4);
-      let m = +fromDay.slice(5, 7); // 1..12
-      const endY = +toDay.slice(0, 4);
-      const endM = +toDay.slice(5, 7);
-      while (y < endY || (y === endY && m <= endM)) {
-        const key = `${y}-${String(m).padStart(2, '0')}`;
-        const periodStart = `${key}-01`;
-        const periodEnd = toDay2(y, m, daysInMonth(y, m));
-        const od = overlapDays(fromDay, toDay, periodStart, periodEnd);
-        if (od > 0) total += (valueFor(key) / DAYS_PER_MONTH) * od;
-        m += 1;
-        if (m > 12) { m = 1; y += 1; }
-      }
+      key = day.slice(0, 7); // YYYY-MM
     } else {
-      // An fiscal: eticheta = anul de start (mai). Iterăm anii fiscali care ating intervalul.
-      const fiscalYearOf = (day: string): number => {
-        const yy = +day.slice(0, 4);
-        const mm = +day.slice(5, 7);
-        return mm >= 5 ? yy : yy - 1;
-      };
-      const startFy = fiscalYearOf(fromDay);
-      const endFy = fiscalYearOf(toDay);
-      for (let fy = startFy; fy <= endFy; fy++) {
-        const key = String(fy);
-        const periodStart = `${fy}-05-01`;
-        const periodEnd = `${fy + 1}-04-30`;
-        const od = overlapDays(fromDay, toDay, periodStart, periodEnd);
-        if (od > 0) total += (valueFor(key) / DAYS_PER_YEAR) * od;
-      }
+      const yy = +day.slice(0, 4);
+      const mm = +day.slice(5, 7);
+      key = String(mm >= 5 ? yy : yy - 1); // an fiscal mai→apr
     }
-    return total;
+    const override = item.amounts[key];
+    if (override != null && Number.isFinite(override)) return override;
+    return item.defaultAmount != null && Number.isFinite(item.defaultAmount) ? item.defaultAmount : 0;
   }
 
   // ============== HELPERS — STRIPE FEES ==============
@@ -439,12 +482,3 @@ export class ProfitabilityService {
   }
 }
 
-/** Câte zile are luna `m` (1..12) din anul `y`. */
-function daysInMonth(y: number, m: number): number {
-  return new Date(Date.UTC(y, m, 0)).getUTCDate();
-}
-
-/** `YYYY-MM-DD` pentru ziua `d` a lunii `m` (1..12) din anul `y`. */
-function toDay2(y: number, m: number, d: number): string {
-  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-}

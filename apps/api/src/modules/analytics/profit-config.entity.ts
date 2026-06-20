@@ -31,10 +31,21 @@ export interface ProfitExpenseItem {
   builtin?: string | null;
 }
 
+/** Curs de schimb (în RON) pentru EUR și USD. */
+export interface FxRate {
+  eurToRon: number;
+  usdToRon: number;
+}
+
 /** Toată configurarea raportului de profitabilitate (un singur blob editabil din admin). */
 export interface ProfitConfigData {
-  /** Cursuri de schimb folosite la conversia cheltuielilor în RON. */
-  fx: { eurToRon: number; usdToRon: number };
+  /** Curs implicit (fallback), folosit pentru orice săptămână fără override în `fxWeekly`. */
+  fx: FxRate;
+  /**
+   * Cursuri valutare PER SĂPTĂMÂNĂ. Cheia = lunea săptămânii ISO (`YYYY-MM-DD`).
+   * Cursul săptămânii se aplică tuturor zilelor ei la conversia cheltuielilor în RON.
+   */
+  fxWeekly: Record<string, FxRate>;
   /** Cost Suno per request de generare, în USD (default 0.06). */
   sunoUsdPerRequest: number;
   /** Cota TVA aplicată peste cheltuieli (procent, ex. 21). */
