@@ -109,6 +109,18 @@ const COMMON_EMAIL_DOMAINS = [
   'icloud.com', 'live.com', 'msn.com', 'aol.com', 'protonmail.com',
 ];
 
+/** TLD-uri reale frecvente la clienții noștri (RO + diaspora DE/AT/IT/ES/FR/UK).
+ *  Un email pe un astfel de TLD NU e typo, chiar dacă providerul (outlook, yahoo)
+ *  există și pe .com — outlook.de = Outlook Germania, hotmail.it = Hotmail Italia etc. */
+// NB: „co" intenționat ABSENT — „gmail.co"/„yahoo.co" sunt aproape mereu typo
+// pentru „.com" la clienții noștri (Gmail/Yahoo nici nu livrează pe .co), deci
+// le lăsăm să fie corectate. TLD-ul .co real e neglijabil în baza de clienți.
+const VALID_EMAIL_TLDS = new Set([
+  'com', 'ro', 'de', 'at', 'ch', 'it', 'es', 'fr', 'uk', 'eu', 'nl', 'be',
+  'pl', 'hu', 'gr', 'bg', 'md', 'net', 'org', 'io', 'me', 'info',
+  'pt', 'dk', 'se', 'no', 'ie', 'cz', 'sk',
+]);
+
 /**
  * Auto-corectează DOAR partea de domeniu (după @) a unui email când e o greșeală
  * evidentă de scriere a unui provider cunoscut (ex. „gamil.com"→„gmail.com",
@@ -145,6 +157,19 @@ function autoCorrectEmail(raw: string): { email: string; corrected: boolean; ori
     }
   }
   if (best && bestD > 0 && bestD <= 3 && best[0] === domain[0]) {
+    // GARDĂ ccTLD (BUG observat 2026-06-20 conv 82fb935a): dacă numele providerului
+    // (SLD) e DEJA corect și singura diferență față de candidat e TLD-ul, iar TLD-ul
+    // userului e unul valid (.de, .ro, .it...), e un domeniu REAL pe alt TLD național
+    // (outlook.de = Outlook Germania), NU un typo. NU-l corecta — altfel un client din
+    // diaspora rămâne blocat (în conv 82fb935a userul a repetat „.de nu .com" de 6 ori).
+    const userSld = domain.slice(0, domain.lastIndexOf('.'));
+    const userTld = domain.slice(domain.lastIndexOf('.') + 1);
+    const bestSld = best.slice(0, best.lastIndexOf('.'));
+    const bestTld = best.slice(best.lastIndexOf('.') + 1);
+    if (userSld === bestSld && userTld !== bestTld && VALID_EMAIL_TLDS.has(userTld)) {
+      const email = `${local}@${domain}`;
+      return { email, corrected: email !== original, original };
+    }
     const email = `${local}@${best}`;
     return { email, corrected: true, original };
   }
@@ -1237,6 +1262,15 @@ REGULI STRICTE:
     emailAutoCorrected; doar confirmă scurt „Am notat: x@gmail.com" și continuă. Corectează
     DOAR domeniul (după @), niciodată partea dinainte de @. Excepție: dacă domeniul e gol
     sau imposibil de ghicit („nume@.com", „nume@") — atunci da, cere-i să-l rescrie.
+    ⚠️ TLD-uri NAȚIONALE SUNT VALIDE: „outlook.de", „hotmail.it", „yahoo.de", „gmx.de" etc.
+    sunt adrese REALE (clienți din diaspora DE/AT/IT/FR/UK). Sistemul NU le mai schimbă în
+    „.com". NU presupune NICIODATĂ că „.de"/„.it"/„.fr" e o greșeală.
+    ⚠️ USERUL E AUTORITATEA FINALĂ PE PROPRIUL EMAIL: dacă userul TE CORECTEAZĂ sau insistă
+    pe o adresă („e .de nu .com", „nu e acesta", „ți-am spus .de"), folosește EXACT ce scrie
+    el — apelează wizard_update / change_email_and_resend cu adresa LUI fix cum a dat-o și
+    confirmă-i cu adresa LUI. NU repeta la nesfârșit aceeași confirmare cu domeniul vechi
+    (BUG observat 2026-06-20 conv 82fb935a: AI a repetat „Am notat ...@outlook.com ✓" de 8
+    ori peste un user care cerea clar „.de" — l-a enervat și a părut că halucinează).
 27. PROBLEME TEHNICE (melodie negenerată, eroare la plată, link mort, plată dublă):
     1) apelează \`inspect_customer_data\` ca să înțelegi INTERN ce s-a întâmplat;
     2) apelează \`alert_admins\` cu un rezumat clar al problemei + ce ai găsit în diagnostic;
