@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
+  Banknote,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -18,13 +19,18 @@ import {
   Globe,
   Megaphone,
   MousePointerClick,
+  Pencil,
+  PiggyBank,
+  Plus,
   RefreshCw,
   Smartphone,
   Target,
   Timer,
+  Trash2,
   TrendingUp,
   UserCircle2,
   Users,
+  Wallet,
 } from 'lucide-react';
 import {
   Area,
@@ -44,6 +50,10 @@ import {
 import {
   AnalyticsApi,
   type AdSpendPlatform,
+  type AdPayment,
+  type AdPaymentInput,
+  type AdPaymentType,
+  type AdPaymentReconciliation,
   type MarketingDimension,
   type MarketingBreakdownRow,
   type MarketingSummary,
@@ -57,6 +67,25 @@ import { DateRangePicker, type DateRangeValue } from '@/components/ui/date-range
 import { Empty } from '@/components/ui/empty';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Table,
   TableBody,
@@ -1377,6 +1406,8 @@ function AdsTab({ range }: { range: { from: string; to: string } }) {
         />
       </div>
 
+      <AdPaymentsSection range={range} days={days} />
+
       {r && r.totalSpendCents === 0 && !report.isLoading ? (
         <Empty
           title="Nicio cheltuială în interval"
@@ -1396,6 +1427,334 @@ function AdsTab({ range }: { range: { from: string; to: string } }) {
         );
       })}
     </div>
+  );
+}
+
+// ============== Plăți & alimentări Meta (cash-flow real, input manual) ==============
+
+const AD_PAYMENT_TYPE_META: Record<AdPaymentType, { label: string; sign: string }> = {
+  fund_loading: { label: 'Alimentare cont', sign: '+' },
+  payment: { label: 'Plată factură / card', sign: '+' },
+  refund: { label: 'Rambursare', sign: '−' },
+};
+
+/** "500" / "500,50" / "500.50" → cents. null dacă invalid. */
+function centsFromAmount(s: string): number | null {
+  const n = parseFloat(s.replace(',', '.').trim());
+  if (!isFinite(n) || n < 0) return null;
+  return Math.round(n * 100);
+}
+
+function AdPaymentsSection({
+  range,
+  days,
+}: {
+  range: { from: string; to: string };
+  days: { fromDay: string; toDay: string };
+}) {
+  const { toast } = useToast();
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<AdPayment | null>(null);
+  const res = useAsync(
+    () => AnalyticsApi.adPayments(range, days, 'meta'),
+    [range, days, refreshKey],
+  );
+  const recon: AdPaymentReconciliation | undefined = res.data?.reconciliation;
+  const payments = res.data?.payments ?? [];
+  const cur = recon?.currency ?? 'RON';
+
+  const openAdd = () => {
+    setEditing(null);
+    setDialogOpen(true);
+  };
+  const openEdit = (p: AdPayment) => {
+    setEditing(p);
+    setDialogOpen(true);
+  };
+
+  const onDelete = async (p: AdPayment) => {
+    const ok = await confirmDialog({
+      title: 'Ștergi această plată?',
+      description: `${AD_PAYMENT_TYPE_META[p.type].label} · ${money(p.amountCents, p.currency)} · ${p.date}`,
+      variant: 'destructive',
+      confirmText: 'Șterge',
+    });
+    if (!ok) return;
+    try {
+      await AnalyticsApi.adPaymentDelete(p.id);
+      toast({ variant: 'success', title: 'Plată ștearsă' });
+      setRefreshKey((k) => k + 1);
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Eroare', description: (e as Error).message });
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Wallet className="h-4 w-4 text-primary" />
+              Plăți & alimentări Meta
+            </CardTitle>
+            <CardDescription>
+              Banii reali plătiți de tine către Meta (alimentări + facturi), față de consumul raportat. Introduse manual — Marketing API nu expune plățile.
+            </CardDescription>
+          </div>
+          <Button size="sm" onClick={openAdd}>
+            <Plus className="mr-2 h-4 w-4" /> Adaugă plată
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <KpiCard
+            label="Plătit / încărcat (interval)"
+            value={recon ? money(recon.paidInRangeCents, cur) : undefined}
+            icon={<Banknote />}
+            tone="primary"
+            loading={res.isLoading}
+          />
+          <KpiCard
+            label="Consumat Meta (interval)"
+            value={recon ? money(recon.spentInRangeCents, cur) : undefined}
+            icon={<Megaphone />}
+            tone="destructive"
+            loading={res.isLoading}
+          />
+          <KpiCard
+            label="Net interval"
+            value={recon ? money(recon.netInRangeCents, cur) : undefined}
+            sub={recon ? (recon.netInRangeCents >= 0 ? 'ai băgat peste consum' : 'ai consumat din sold') : undefined}
+            icon={recon && recon.netInRangeCents >= 0 ? <ArrowUpRight /> : <ArrowDownRight />}
+            tone={recon && recon.netInRangeCents >= 0 ? 'success' : 'warning'}
+            loading={res.isLoading}
+          />
+          <KpiCard
+            label="Sold rămas (estimat)"
+            value={recon ? money(recon.balanceCents, cur) : undefined}
+            sub={recon ? (recon.balanceReliable ? 'plătit − consumat, all-time' : 'incomplet — adaugă istoricul') : undefined}
+            icon={<PiggyBank />}
+            tone={recon && recon.balanceCents >= 0 ? 'info' : 'destructive'}
+            loading={res.isLoading}
+          />
+        </div>
+
+        {recon?.mixedCurrencies ? (
+          <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/5 p-2.5 text-xs text-muted-foreground">
+            <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
+            <span>
+              Ai plăți în mai multe monede. Reconcilierea de mai sus e calculată doar în <strong>{cur}</strong> (moneda contului Meta); plățile în alte monede apar în listă, dar nu intră în totaluri.
+            </span>
+          </div>
+        ) : null}
+
+        {res.isLoading ? (
+          <Skeleton className="h-32 w-full" />
+        ) : payments.length === 0 ? (
+          <Empty
+            title="Nicio plată înregistrată"
+            description="Adaugă prima alimentare sau factură către Meta ca să vezi reconcilierea cu consumul raportat."
+          />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Data</TableHead>
+                <TableHead>Tip</TableHead>
+                <TableHead className="text-right">Sumă</TableHead>
+                <TableHead>Referință</TableHead>
+                <TableHead className="w-[1%]" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {payments.map((p) => {
+                const m = AD_PAYMENT_TYPE_META[p.type];
+                return (
+                  <TableRow key={p.id}>
+                    <TableCell className="tabular-nums text-muted-foreground whitespace-nowrap">{p.date}</TableCell>
+                    <TableCell>
+                      <Badge variant={p.type === 'refund' ? 'outline' : 'secondary'}>{m.label}</Badge>
+                    </TableCell>
+                    <TableCell className={cn('text-right tabular-nums font-medium whitespace-nowrap', p.type === 'refund' && 'text-warning')}>
+                      {m.sign} {money(p.amountCents, p.currency)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {p.reference || '—'}
+                      {p.note ? <span className="block text-xs opacity-70">{p.note}</span> : null}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1 justify-end">
+                        <Button variant="ghost" size="icon-sm" onClick={() => openEdit(p)}>
+                          <Pencil />
+                        </Button>
+                        <Button variant="ghost" size="icon-sm" className="text-destructive" onClick={() => onDelete(p)}>
+                          <Trash2 />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+
+      <AdPaymentDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        editing={editing}
+        defaultCurrency={cur}
+        onSaved={() => {
+          setDialogOpen(false);
+          setRefreshKey((k) => k + 1);
+        }}
+      />
+    </Card>
+  );
+}
+
+function AdPaymentDialog({
+  open,
+  onOpenChange,
+  editing,
+  defaultCurrency,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  editing: AdPayment | null;
+  defaultCurrency: string;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [type, setType] = useState<AdPaymentType>('fund_loading');
+  const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState(defaultCurrency);
+  const [date, setDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  const [reference, setReference] = useState('');
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    if (editing) {
+      setType(editing.type);
+      setAmount(String(editing.amountCents / 100));
+      setCurrency(editing.currency);
+      setDate(editing.date);
+      setReference(editing.reference ?? '');
+      setNote(editing.note ?? '');
+    } else {
+      setType('fund_loading');
+      setAmount('');
+      setCurrency(defaultCurrency);
+      setDate(format(new Date(), 'yyyy-MM-dd'));
+      setReference('');
+      setNote('');
+    }
+  }, [open, editing, defaultCurrency]);
+
+  const cents = centsFromAmount(amount);
+  const valid = cents != null && cents > 0 && /^\d{4}-\d{2}-\d{2}$/.test(date) && currency.trim().length >= 2;
+
+  const onSubmit = async () => {
+    if (cents == null || cents <= 0) return;
+    setSaving(true);
+    const body: AdPaymentInput = {
+      platform: 'meta',
+      type,
+      amountCents: cents,
+      currency: currency.trim().toUpperCase(),
+      date,
+      reference: reference.trim() || null,
+      note: note.trim() || null,
+    };
+    try {
+      if (editing) await AnalyticsApi.adPaymentUpdate(editing.id, body);
+      else await AnalyticsApi.adPaymentCreate(body);
+      toast({ variant: 'success', title: editing ? 'Plată actualizată' : 'Plată adăugată' });
+      onSaved();
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Eroare', description: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{editing ? 'Editează plata' : 'Adaugă plată Meta'}</DialogTitle>
+          <DialogDescription>
+            Banii reali plătiți către Meta. Suma în unitatea monedei (ex. 500 = 500 {currency.toUpperCase()}).
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Tip</Label>
+            <Select value={type} onValueChange={(v) => setType(v as AdPaymentType)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="fund_loading">Alimentare cont (prepaid)</SelectItem>
+                <SelectItem value="payment">Plată factură / card</SelectItem>
+                <SelectItem value="refund">Rambursare (scade)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2 space-y-1.5">
+              <Label>Sumă</Label>
+              <Input
+                inputMode="decimal"
+                placeholder="500"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Monedă</Label>
+              <Input value={currency} onChange={(e) => setCurrency(e.target.value)} maxLength={8} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Data</Label>
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>
+              Referință <span className="font-normal text-muted-foreground">(opțional)</span>
+            </Label>
+            <Input
+              placeholder="Nr. factură Meta, ultimele 4 cifre card…"
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              maxLength={128}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>
+              Notă <span className="font-normal text-muted-foreground">(opțional)</span>
+            </Label>
+            <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>
+            Anulează
+          </Button>
+          <Button onClick={onSubmit} disabled={!valid || saving}>
+            {saving ? 'Se salvează…' : editing ? 'Salvează' : 'Adaugă'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

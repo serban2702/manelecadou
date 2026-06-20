@@ -133,6 +133,24 @@ export class AnalyticsApi {
   static adSpendSync(days = 7): Promise<{ ok: boolean; scope: string; results: AdSpendSyncResult[] }> {
     return http.post(`/admin/analytics/ad-spend/sync?days=${days}`, {});
   }
+  static adPayments(
+    range: AnalyticsRange,
+    days?: { fromDay: string; toDay: string },
+    platform: 'meta' | 'tiktok' = 'meta',
+  ): Promise<AdPaymentsResponse> {
+    return http.get(
+      `/admin/analytics/ad-payments${qs(range, { platform, ...(days ?? {}) })}`,
+    );
+  }
+  static adPaymentCreate(body: AdPaymentInput): Promise<AdPayment> {
+    return http.post(`/admin/analytics/ad-payments`, body);
+  }
+  static adPaymentUpdate(id: string, body: Partial<AdPaymentInput>): Promise<AdPayment> {
+    return http.put(`/admin/analytics/ad-payments/${encodeURIComponent(id)}`, body);
+  }
+  static adPaymentDelete(id: string): Promise<{ ok: boolean }> {
+    return http.delete(`/admin/analytics/ad-payments/${encodeURIComponent(id)}`);
+  }
   static marketingSummary(range: AnalyticsRange, excludeBots = true, excludeTests = true): Promise<MarketingSummary> {
     return http.get(
       `/admin/analytics/marketing-summary${qs(range, {
@@ -273,6 +291,54 @@ export interface AdSpendSyncResult {
   siteId: string;
   meta: { ok: boolean; rows: number; error?: string };
   tiktok: { ok: boolean; rows: number; error?: string };
+}
+
+// ============== AD PAYMENTS (registru manual plăți către platforme de ads) ==============
+
+export type AdPaymentType = 'fund_loading' | 'payment' | 'refund';
+
+export interface AdPayment {
+  id: string;
+  siteId: string | null;
+  platform: 'meta' | 'tiktok';
+  type: AdPaymentType;
+  amountCents: number;
+  currency: string;
+  date: string;
+  reference: string | null;
+  note: string | null;
+  createdByEmail: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Body pentru create/update (sumă în cents, dată YYYY-MM-DD). */
+export interface AdPaymentInput {
+  platform?: 'meta' | 'tiktok';
+  type: AdPaymentType;
+  amountCents: number;
+  currency: string;
+  date: string;
+  reference?: string | null;
+  note?: string | null;
+}
+
+export interface AdPaymentReconciliation {
+  currency: string;
+  mixedCurrencies: boolean;
+  paidInRangeCents: number;
+  spentInRangeCents: number;
+  netInRangeCents: number;
+  totalPaidCents: number;
+  totalSpentCents: number;
+  balanceCents: number;
+  balanceReliable: boolean;
+  byType: Record<AdPaymentType, number>;
+}
+
+export interface AdPaymentsResponse {
+  payments: AdPayment[];
+  reconciliation: AdPaymentReconciliation;
 }
 
 export interface AnalyticsSessionRow {

@@ -1,11 +1,13 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   NotFoundException,
   Param,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -14,11 +16,12 @@ import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { AdminGuard } from '../../common/admin.guard';
 import { OptionalJwtAuthGuard } from '../../common/jwt.guard';
-import { CurrentSiteId } from '../../common/decorators';
+import { CurrentSiteId, CurrentUser, AuthedRequestUser } from '../../common/decorators';
 import { AnalyticsService } from './analytics.service';
 import { AdSpendService } from './ad-spend.service';
+import { AdPaymentService } from './ad-payment.service';
 import { SitesService } from '../sites/sites.service';
-import { TrackBatchDto, TrackEventDto } from './dto';
+import { TrackBatchDto, TrackEventDto, AdPaymentCreateDto, AdPaymentUpdateDto } from './dto';
 
 function clientIp(req: Request): string | null {
   const fwd = (req.headers['x-forwarded-for'] as string) || '';
@@ -108,6 +111,7 @@ export class AnalyticsAdminController {
   constructor(
     private readonly analytics: AnalyticsService,
     private readonly adSpend: AdSpendService,
+    private readonly adPayments: AdPaymentService,
     private readonly sites: SitesService,
   ) {}
 
@@ -140,6 +144,52 @@ export class AnalyticsAdminController {
     if (!site) throw new NotFoundException('Site negăsit');
     const result = await this.adSpend.syncSite(site, days);
     return { ok: true, scope: 'site', results: [result] };
+  }
+
+  // ============== AD PAYMENTS (registru manual plăți + reconciliere) ==============
+
+  /** Registrul de plăți (cash-flow real către platformă) + reconciliere față de
+   *  consumul raportat (`ad-spend`). Deocamdată doar Meta. */
+  @Get('ad-payments')
+  async adPaymentsList(
+    @Query() q: { from?: string; to?: string; fromDay?: string; toDay?: string; platform?: string },
+    @CurrentSiteId() siteId: string | null,
+  ) {
+    const platform = q.platform === 'tiktok' ? 'tiktok' : 'meta';
+    const [payments, reconciliation] = await Promise.all([
+      this.adPayments.list(siteId, platform),
+      this.adPayments.reconciliation(rangeFromQuery(q), siteId, platform, {
+        fromDay: q.fromDay,
+        toDay: q.toDay,
+      }),
+    ]);
+    return { payments, reconciliation };
+  }
+
+  @Post('ad-payments')
+  @HttpCode(201)
+  adPaymentCreate(
+    @Body() dto: AdPaymentCreateDto,
+    @CurrentSiteId() siteId: string | null,
+    @CurrentUser() user: AuthedRequestUser | null,
+  ) {
+    return this.adPayments.create(siteId, dto, user?.email ?? null);
+  }
+
+  @Put('ad-payments/:id')
+  adPaymentUpdate(
+    @Param('id') id: string,
+    @Body() dto: AdPaymentUpdateDto,
+    @CurrentSiteId() siteId: string | null,
+  ) {
+    return this.adPayments.update(id, siteId, dto);
+  }
+
+  @Delete('ad-payments/:id')
+  @HttpCode(200)
+  async adPaymentDelete(@Param('id') id: string, @CurrentSiteId() siteId: string | null) {
+    await this.adPayments.remove(id, siteId);
+    return { ok: true };
   }
 
   @Get('overview')

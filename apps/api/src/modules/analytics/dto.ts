@@ -222,3 +222,78 @@ export class TrackBatchDto {
   @Type(() => TrackEventDto)
   events!: TrackEventDto[];
 }
+
+// ============== AD PAYMENTS (registru manual plăți către platforme de ads) ==============
+
+export const AD_PAYMENT_TYPES = ['fund_loading', 'payment', 'refund'] as const;
+export const AD_PAYMENT_PLATFORMS = ['meta', 'tiktok'] as const;
+
+export class AdPaymentCreateDto {
+  @IsOptional()
+  @IsIn(AD_PAYMENT_PLATFORMS as unknown as string[])
+  platform?: 'meta' | 'tiktok';
+
+  @IsIn(AD_PAYMENT_TYPES as unknown as string[])
+  type!: 'fund_loading' | 'payment' | 'refund';
+
+  /** Suma în cents (cele mai mici unități ale monedei). Max 10.000.000 unități. */
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000_000_0)
+  amountCents!: number;
+
+  @IsString()
+  @Length(2, 8)
+  currency!: string;
+
+  /** Ziua plății, format YYYY-MM-DD. */
+  @IsString()
+  @Length(10, 10)
+  date!: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 128)
+  reference?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 1000)
+  note?: string | null;
+}
+
+export class AdPaymentUpdateDto {
+  @IsOptional()
+  @IsIn(AD_PAYMENT_PLATFORMS as unknown as string[])
+  platform?: 'meta' | 'tiktok';
+
+  @IsOptional()
+  @IsIn(AD_PAYMENT_TYPES as unknown as string[])
+  type?: 'fund_loading' | 'payment' | 'refund';
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000_000_0)
+  amountCents?: number;
+
+  @IsOptional()
+  @IsString()
+  @Length(2, 8)
+  currency?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(10, 10)
+  date?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 128)
+  reference?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 1000)
+  note?: string | null;
+}
