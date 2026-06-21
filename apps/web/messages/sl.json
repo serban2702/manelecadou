@@ -1009,7 +1009,8 @@
     "paymentIncompleteTitle": "Plačilo ni bilo dokončano",
     "paymentIncompleteSub": "Tvoje naročilo je shranjeno. Nadaljuj s plačilom, da ustvarimo pesem in ti jo pošljemo po e-pošti.",
     "retryPaymentCta": "Nadaljuj s plačilom",
-    "retryPaymentCtaPrice": "Nadaljuj s plačilom — {amount}"
+    "retryPaymentCtaPrice": "Nadaljuj s plačilom — {amount}",
+    "promoApplied": "Popust −{percent}% samodejno uporabljen s kodo {code}"
   },
   "cursorHint": {
     "default": "Pritisni tukaj"

@@ -1007,7 +1007,8 @@
     "paymentIncompleteTitle": "Plata nu a fost finalizată",
     "paymentIncompleteSub": "Comanda ta e salvată. Reia plata ca să-ți compunem maneaua și să ți-o trimitem pe email.",
     "retryPaymentCta": "Reia plata",
-    "retryPaymentCtaPrice": "Reia plata — {amount}"
+    "retryPaymentCtaPrice": "Reia plata — {amount}",
+    "promoApplied": "Reducere −{percent}% aplicată automat cu codul {code}"
   },
   "cursorHint": {
     "default": "Apasă aici"

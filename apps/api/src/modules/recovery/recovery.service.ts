@@ -283,14 +283,14 @@ export class RecoveryService {
         const siteUrl = branding?.siteUrl || 'https://manelecadou.ro';
         const siteName = site?.name || 'Manele Cadou';
 
-        // CTA: pagina manelei dacă avem generare, altfel studio.
+        // Ținta CTA: pagina manelei dacă avem generare, altfel studio.
         let recipientName: string | null = null;
-        let ctaUrl = `${siteUrl}/studio`;
+        let genId: string | null = null;
         if (state.generationId) {
           const gen = await this.generations.findOne({ where: { id: state.generationId } });
           if (gen) {
             recipientName = gen.recipientName || null;
-            ctaUrl = `${siteUrl}/m/${gen.id}`;
+            genId = gen.id;
           }
         }
 
@@ -307,6 +307,14 @@ export class RecoveryService {
         });
         promoCode.source = 'recovery';
         await this.promoCodes.save(promoCode);
+
+        // CTA cu reducerea pre-aplicată: pe pagina manelei (`/m/<id>`) userul
+        // reia plata cu codul aplicat automat, chiar fără sesiunea owner; `off`
+        // e doar pentru afișarea „−X%" în pagină (sursa reducerii rămâne codul).
+        const promoQs = `promo=${encodeURIComponent(promoCode.code)}&off=${target.percent}`;
+        const ctaUrl = genId
+          ? `${siteUrl}/m/${genId}?${promoQs}`
+          : `${siteUrl}/studio?${promoQs}`;
 
         const unsubscribeUrl = `${siteUrl}/unsubscribe?token=${state.optOutToken}`;
         const out = recoveryEmailTemplate({

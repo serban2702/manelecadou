@@ -273,7 +273,15 @@ export class GenerationsController {
       // → expunem audioUrl complet. Eliminăm vechiul block care arunca „Not your
       // generation" pe demo neplătit — admin trimite linkul către cine vrea.
       const pub = await this.svc.findOnePublic(id);
-      if (!pub || pub.status !== 'succeeded') {
+      // Vizibile public prin link direct:
+      //  • orice generare 'succeeded' (share link normal)
+      //  • comenzi 'full' neplătite rămase 'pending' (recovery / reluare plată
+      //    dintr-un alt device sau browser, fără sesiunea owner) → pagina arată
+      //    secțiunea de reluare a plății. Audio-ul nu există încă, deci payload-ul
+      //    public (nume + stil, fără mesaj/dedicație/owner ids) nu scurge nimic.
+      const awaitingPayment =
+        pub?.status === 'pending' && pub.type === 'full' && pub.paidUnlocked === false;
+      if (!pub || (pub.status !== 'succeeded' && !awaitingPayment)) {
         throw new NotFoundException('Generation indisponibilă');
       }
       // best-effort view tracking; ignorăm eșecul (nu blochează request-ul)

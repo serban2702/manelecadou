@@ -1007,7 +1007,8 @@
     "paymentIncompleteTitle": "Η πληρωμή δεν ολοκληρώθηκε",
     "paymentIncompleteSub": "Η παραγγελία σου αποθηκεύτηκε. Συνέχισε την πληρωμή για να φτιάξουμε το τραγούδι και να σου το στείλουμε με email.",
     "retryPaymentCta": "Συνέχισε την πληρωμή",
-    "retryPaymentCtaPrice": "Συνέχισε την πληρωμή — {amount}"
+    "retryPaymentCtaPrice": "Συνέχισε την πληρωμή — {amount}",
+    "promoApplied": "Έκπτωση −{percent}% εφαρμόζεται αυτόματα με κωδικό {code}"
   },
   "cursorHint": {
     "default": "Πάτα εδώ"

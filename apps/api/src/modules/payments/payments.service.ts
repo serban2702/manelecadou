@@ -261,6 +261,15 @@ export class PaymentsService {
     if (!stripe) throw new ServiceUnavailableException('Stripe not configured');
     const site = input.site;
 
+    // Email pentru validarea promo (cod restricționat pe email) și precompletarea
+    // Stripe Checkout. La reluarea plății dintr-un alt device/browser (link de
+    // recovery), sesiunea owner lipsește → îl rezolvăm din owner-ul generării.
+    let resolvedEmail = input.email ?? undefined;
+    if (!resolvedEmail && input.generationId) {
+      resolvedEmail =
+        (await this.generations.resolveOwnerEmail(input.generationId)) ?? undefined;
+    }
+
     // Admin chat poate suprascrie suma calculată cu un custom. Min 50 cents = limita Stripe.
     const hasOverride = typeof input.overrideAmount === 'number' && input.overrideAmount > 0;
     const baseTotal = hasOverride
@@ -273,7 +282,7 @@ export class PaymentsService {
     let promoCodeId: string | undefined;
     let appliedDiscountCents = 0;
     if (input.promoCode) {
-      const v = await this.promo.validate(input.promoCode, input.email, baseTotal, site.id);
+      const v = await this.promo.validate(input.promoCode, resolvedEmail, baseTotal, site.id);
       if (v.ok && v.appliedDiscountCents) {
         appliedDiscountCents = v.appliedDiscountCents;
         promoCodeId = v.promoCodeId;
@@ -289,7 +298,7 @@ export class PaymentsService {
     // pay-first), redempt-uim codul și returnăm URL-ul de success.
     if (appliedDiscountCents >= baseTotal && promoCodeId) {
       return this.createFreeCheckout({
-        input,
+        input: { ...input, email: resolvedEmail },
         baseTotal,
         promoCodeId,
         promoCode: input.promoCode!,
@@ -383,6 +392,9 @@ export class PaymentsService {
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       locale: stripeUiLocale(site.locale),
+      // Precompletat la reluarea plății (recovery) — altfel undefined și Stripe
+      // cere email-ul în UI ca de obicei.
+      customer_email: resolvedEmail,
       line_items: lineItems,
       discounts,
       success_url: `${siteUrl}${successPath}`,

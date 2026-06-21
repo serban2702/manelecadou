@@ -1009,7 +1009,8 @@
     "paymentIncompleteTitle": "Ödeme tamamlanamadı",
     "paymentIncompleteSub": "Siparişin kaydedildi. Şarkını hazırlayıp e-posta ile göndermemiz için ödemeyi tekrar başlat.",
     "retryPaymentCta": "Ödemeyi tekrar başlat",
-    "retryPaymentCtaPrice": "Ödemeyi tekrar başlat — {amount}"
+    "retryPaymentCtaPrice": "Ödemeyi tekrar başlat — {amount}",
+    "promoApplied": "{code} koduyla −%{percent} indirim otomatik uygulandı"
   },
   "cursorHint": {
     "default": "Buraya bas"

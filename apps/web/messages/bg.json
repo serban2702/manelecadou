@@ -1007,7 +1007,8 @@
     "paymentIncompleteTitle": "Плащането не беше завършено",
     "paymentIncompleteSub": "Поръчката ти е запазена. Поднови плащането, за да създадем песента и да ти я изпратим по имейл.",
     "retryPaymentCta": "Поднови плащането",
-    "retryPaymentCtaPrice": "Поднови плащането — {amount}"
+    "retryPaymentCtaPrice": "Поднови плащането — {amount}",
+    "promoApplied": "Отстъпка −{percent}% се прилага автоматично с код {code}"
   },
   "cursorHint": {
     "default": "Натисни тук"

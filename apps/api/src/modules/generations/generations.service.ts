@@ -183,6 +183,29 @@ export class GenerationsService {
   }
 
   /**
+   * Emailul ownerului unei generări (user logat sau guest), rezolvat din
+   * owner ids. Folosit la reluarea plății dintr-un alt device/browser fără
+   * sesiunea owner (ex. link de recovery) ca un cod promo restricționat pe
+   * email să se poată valida. Întoarce `null` dacă nu există owner cu email.
+   */
+  async resolveOwnerEmail(generationId: string): Promise<string | null> {
+    const gen = await this.repo.findOne({
+      where: { id: generationId },
+      select: { id: true, ownerUserId: true, ownerGuestId: true },
+    });
+    if (!gen) return null;
+    if (gen.ownerUserId) {
+      const u = await this.users.findOne({ where: { id: gen.ownerUserId } });
+      if (u?.email) return u.email;
+    }
+    if (gen.ownerGuestId) {
+      const g = await this.guests.findOne({ where: { id: gen.ownerGuestId } });
+      if (g?.email) return g.email;
+    }
+    return null;
+  }
+
+  /**
    * Lista variantelor REDABILE pe pagina publică /m/<id>, în ordinea afișării:
    * piesa principală (main + bonus) + toate variațiile-copil succeeded. Dedup pe
    * path normalizat (o variație promovată în principală nu apare de două ori).

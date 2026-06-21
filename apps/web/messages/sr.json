@@ -1009,7 +1009,8 @@
     "paymentIncompleteTitle": "Plaćanje nije završeno",
     "paymentIncompleteSub": "Tvoja narudžbina je sačuvana. Nastavi plaćanje da napravimo pesmu i pošaljemo ti je na imejl.",
     "retryPaymentCta": "Nastavi plaćanje",
-    "retryPaymentCtaPrice": "Nastavi plaćanje — {amount}"
+    "retryPaymentCtaPrice": "Nastavi plaćanje — {amount}",
+    "promoApplied": "Popust −{percent}% automatski primenjen sa kodom {code}"
   },
   "cursorHint": {
     "default": "Pritisni ovde"

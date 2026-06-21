@@ -277,7 +277,13 @@ function ShareGenerationViewInner() {
         />
       )}
 
-      {awaitingPayment && <PaymentRetrySection generation={g} />}
+      {awaitingPayment && (
+        <PaymentRetrySection
+          generation={g}
+          promoCode={search.get('promo')}
+          promoOff={search.get('off')}
+        />
+      )}
 
       {inProgress && (
         <GenerationProgress
@@ -863,7 +869,17 @@ function PaywallSection({ generationId }: { generationId: string }) {
  * corect), apoi redirect la Stripe. La success se întoarce pe
  * /m/<id>?success=1 și pornește generarea reală.
  */
-function PaymentRetrySection({ generation }: { generation: GenerationDto }) {
+function PaymentRetrySection({
+  generation,
+  promoCode,
+  promoOff,
+}: {
+  generation: GenerationDto;
+  // Cod promo + procent (din `?promo=…&off=…`, ex. link de recovery): se aplică
+  // automat la reluarea plății, fără ca userul să-l tasteze.
+  promoCode?: string | null;
+  promoOff?: string | null;
+}) {
   const t = useTranslations('mViewPage');
   const site = useSite();
   const [submitting, setSubmitting] = useState(false);
@@ -897,6 +913,7 @@ function PaymentRetrySection({ generation }: { generation: GenerationDto }) {
       const { url } = await api.createCheckoutSession({
         generationId: generation.id,
         packageTier: generation.packageTier,
+        promoCode: promoCode || undefined,
       });
       window.location.href = url;
     } catch (e) {
@@ -919,6 +936,15 @@ function PaymentRetrySection({ generation }: { generation: GenerationDto }) {
       <p className="ld" style={{ fontSize: 14, marginTop: 6, lineHeight: 1.5 }}>
         {t('paymentIncompleteSub')}
       </p>
+      {promoCode && promoOff && (
+        <div style={{
+          marginTop: 12, padding: '10px 12px', borderRadius: 10,
+          background: 'rgba(62,224,126,0.12)', border: '1px solid rgba(62,224,126,0.45)',
+          color: '#bff5d2', fontSize: 13, fontWeight: 600,
+        }}>
+          🎁 {t('promoApplied', { percent: promoOff, code: promoCode })}
+        </div>
+      )}
       <button
         type="button"
         onClick={retry}
