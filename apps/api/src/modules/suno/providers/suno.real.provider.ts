@@ -771,6 +771,10 @@ export class SunoRealProvider extends SunoProvider {
    *     după el (sau create [Intro] + [Verse 1] dacă lipsesc cu totul).
    */
   private ensureDedicationOpening(lyrics: string, i: SunoGenerateInput): string {
+    // Versurile furnizate explicit de client sunt SACRE: se cântă EXACT ce a
+    // pus/acceptat userul în chat, fără să injectăm sau să suprascriem
+    // deschiderea cu dedicația ("De la X, pentru Y, cu drag" + mesajul).
+    if (i.lyricsAreCustom) return lyrics;
     if (!i.dedication) return lyrics;
 
     const recipient = i.recipientName.trim();

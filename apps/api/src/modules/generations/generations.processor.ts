@@ -246,6 +246,9 @@ export class GenerationsProcessor extends WorkerHost {
         dedication: gen.dedication ?? undefined,
         voiceArtist: gen.voiceArtist,
         lyrics: sunoLyrics,
+        // Versurile puse/acceptate de client (customLyrics) sunt sacre: nu
+        // lăsăm provider-ul să mai adauge dedicația în deschidere.
+        lyricsAreCustom: !!gen.customLyrics?.trim(),
         generationId: gen.id,
         site: site ?? undefined,
         vocalGender,
@@ -318,6 +321,7 @@ export class GenerationsProcessor extends WorkerHost {
               dedication: gen.dedication ?? undefined,
               voiceArtist: gen.voiceArtist,
               lyrics: sunoLyrics,
+              lyricsAreCustom: !!gen.customLyrics?.trim(),
               generationId: gen.id,
               site: site ?? undefined,
               vocalGender,

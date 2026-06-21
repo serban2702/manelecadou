@@ -8,6 +8,13 @@ export interface SunoGenerateInput {
   dedication?: string;
   voiceArtist: string;
   lyrics?: string;
+  /**
+   * Versurile sunt furnizate EXPLICIT de client (customLyrics) — sunt SACRE.
+   * Când e true, NU injectăm/suprascriem deschiderea cu dedicația ("De la X,
+   * pentru Y, cu drag" + mesajul). Se cântă EXACT ce a pus/acceptat userul.
+   * Vezi `ensureDedicationOpening` în suno.real.provider.ts.
+   */
+  lyricsAreCustom?: boolean;
   /** Folosit pentru a corela rândul din suno_logs cu Generation. */
   generationId?: string;
   /** Site-ul care a comandat generarea — folosit pentru prompt overrides per-brand. */
