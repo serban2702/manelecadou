@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 import { SettingsService } from '../modules/settings/settings.service';
-import { buildChatParams } from './openai-params.helper';
+import { buildChatParams, isReasoningModel } from './openai-params.helper';
+
+export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
 
 export type ChatMessage =
   | { role: 'system'; content: string }
@@ -112,6 +114,7 @@ export class OpenAiClient {
     temperature?: number;
     maxIterations?: number;
     maxTokens?: number;
+    reasoningEffort?: ReasoningEffort;
   }): Promise<ChatWithToolsResult> {
     const aiChatModel = await this.settings.get('AI_CHAT_MODEL');
     const defaultModel = await this.settings.get('OPENAI_MODEL');
@@ -129,16 +132,27 @@ export class OpenAiClient {
       function: { name: t.name, description: t.description, parameters: t.parameters },
     }));
 
+    const reasoning = isReasoningModel(model);
+
     for (let i = 0; i < maxIter; i++) {
-      const res = await client.chat.completions.create({
+      // Construim params manual: modelele reasoning (o-series, gpt-5) acceptă DOAR
+      // temperature=1 (default) → orice altă valoare întoarce 400 și pică tot
+      // chat-ul. Pentru ele omitem temperature și trimitem reasoning_effort.
+      const params: Record<string, unknown> = {
         model,
-        messages: messages as unknown as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+        messages,
         tools: toolsParam,
         tool_choice: 'auto',
-        // Reasoning models ignoră temperature non-default.
-        ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
-        ...(opts.maxTokens !== undefined ? { max_completion_tokens: opts.maxTokens } : {}),
-      });
+      };
+      if (opts.maxTokens !== undefined) params.max_completion_tokens = opts.maxTokens;
+      if (reasoning) {
+        if (opts.reasoningEffort) params.reasoning_effort = opts.reasoningEffort;
+      } else if (opts.temperature !== undefined) {
+        params.temperature = opts.temperature;
+      }
+      const res = await client.chat.completions.create(
+        params as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
+      );
       if (res.usage) {
         totalPromptTok += res.usage.prompt_tokens;
         totalCompletionTok += res.usage.completion_tokens;

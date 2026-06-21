@@ -127,16 +127,36 @@ export const SETTINGS_SCHEMA: SettingCategory[] = [
       {
         key: 'AI_CHAT_MODEL',
         label: 'Model OpenAI pentru chat',
-        description: 'Modelul folosit pentru generare răspunsuri și tool calling. Recomandat: gpt-4o sau gpt-4o-mini.',
+        description:
+          'Modelul pentru răspunsuri + tool calling. Recomandat: gpt-5.4-mini (reasoning — mult mai bun la urmărirea comenzii, folosirea formularului și deciziile cu tool-uri). gpt-4o-mini e vechi și se încurcă pe conversații non-liniare (cere email de mai multe ori, nu detectează comanda existentă).',
         kind: 'select',
-        options: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-5', 'gpt-5-mini'],
+        options: ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5', 'gpt-5-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini'],
         hotReload: true,
-        placeholder: 'gpt-4o-mini',
+        placeholder: 'gpt-5.4-mini',
+      },
+      {
+        key: 'AI_CHAT_REASONING_EFFORT',
+        label: 'Reasoning effort (modele gpt-5 / o-series)',
+        description:
+          'Cât „gândește" modelul înainte să aleagă tool-ul / să răspundă. Mai mult = decizii mai bune (ce date lipsesc, ce tool să folosească) dar puțin mai lent. Ignorat de modelele non-reasoning (gpt-4o). Recomandat medium.',
+        kind: 'select',
+        options: ['minimal', 'low', 'medium', 'high'],
+        hotReload: true,
+        placeholder: 'medium',
+      },
+      {
+        key: 'AI_CHAT_MAX_TOKENS',
+        label: 'Buget tokeni per pas',
+        description:
+          'Tokeni maximi per pas al AI-ului. La modelele gpt-5 include reasoning-ul intern, deci prea mic = răspunsuri tăiate sau goale. Recomandat 6000.',
+        kind: 'number',
+        hotReload: true,
+        placeholder: '6000',
       },
       {
         key: 'AI_CHAT_TEMPERATURE',
-        label: 'Temperature',
-        description: 'Cât de creative sunt răspunsurile. 0 = factual, 1 = creativ. Recomandat 0.3-0.5 pentru support.',
+        label: 'Temperature (doar modele non-reasoning)',
+        description: 'Cât de creative sunt răspunsurile. 0 = factual, 1 = creativ. Recomandat 0.3-0.5. Ignorat de modelele gpt-5/o-series (rulează pe default).',
         kind: 'number',
         hotReload: true,
         placeholder: '0.4',

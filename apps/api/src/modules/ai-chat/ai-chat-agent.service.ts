@@ -639,12 +639,14 @@ export class AIChatAgentService {
       return;
     }
 
-    // Iau ultimele 60 mesaje (DESC + reverse) — `take: 50` cu ASC anterior lua
+    // Iau ultimele 100 mesaje (DESC + reverse) — `take: 50` cu ASC anterior lua
     // mesajele cele mai VECHI, ceea ce pentru convs lungi pierdea contextul recent.
+    // 100 acoperă întreaga conversație până la cap-ul de 120, ca AI-ul să „vadă" că
+    // userul a comandat deja / ce s-a discutat (gpt-5.4-mini duce ușor contextul).
     const recentDesc = await this.msg.find({
       where: { conversationId: conv.id },
       order: { createdAt: 'DESC' },
-      take: 60,
+      take: 100,
     });
     const last20 = recentDesc.reverse();
 
@@ -719,14 +721,29 @@ NU repeta identic un mesaj precedent, maxim UN mesaj, doar send_message (+ check
     const tempStr = await this.settings.get('AI_CHAT_TEMPERATURE');
     const temperature = tempStr ? parseFloat(tempStr) : 0.4;
 
+    // Buget de tokeni per pas. La modelele reasoning (gpt-5) reasoning-ul intern
+    // se scade din acest buget → 1400 era periculos de mic (răspunsuri tăiate /
+    // goale). Default generos; configurabil din admin.
+    const maxTokStr = await this.settings.get('AI_CHAT_MAX_TOKENS');
+    const maxTokParsed = parseInt(maxTokStr, 10);
+    const maxTokens = isFinite(maxTokParsed) && maxTokParsed > 0 ? maxTokParsed : 6000;
+
+    // Cât „gândește" modelul înainte de a alege tool / a răspunde. Ignorat de
+    // modelele non-reasoning (gpt-4o). Default medium — echilibru calitate/latență.
+    const effortRaw = (await this.settings.get('AI_CHAT_REASONING_EFFORT')).trim().toLowerCase();
+    const reasoningEffort = (['minimal', 'low', 'medium', 'high'].includes(effortRaw)
+      ? effortRaw
+      : 'medium') as 'minimal' | 'low' | 'medium' | 'high';
+
     const startedAt = Date.now();
     const result = await this.openai.chatWithTools({
       messages,
       tools,
       toolHandlers,
       temperature: isFinite(temperature) ? temperature : 0.4,
+      reasoningEffort,
       maxIterations: opts.followUp ? 3 : 8,
-      maxTokens: 1400,
+      maxTokens,
     });
     const durationMs = Date.now() - startedAt;
 
