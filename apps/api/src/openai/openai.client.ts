@@ -146,7 +146,14 @@ export class OpenAiClient {
       };
       if (opts.maxTokens !== undefined) params.max_completion_tokens = opts.maxTokens;
       if (reasoning) {
-        if (opts.reasoningEffort) params.reasoning_effort = opts.reasoningEffort;
+        // gpt-5/o-series rulează reasoning intern (default medium) — ăsta e
+        // câștigul față de gpt-4o-mini. ATENȚIE: `reasoning_effort` explicit NU e
+        // acceptat pe /v1/chat/completions ÎMPREUNĂ cu function tools (API → 400
+        // „use /v1/responses instead"). Deci îl trimitem doar când NU avem tools;
+        // cu tools modelul folosește effort-ul default.
+        if (opts.reasoningEffort && toolsParam.length === 0) {
+          params.reasoning_effort = opts.reasoningEffort;
+        }
       } else if (opts.temperature !== undefined) {
         params.temperature = opts.temperature;
       }

@@ -135,16 +135,6 @@ export const SETTINGS_SCHEMA: SettingCategory[] = [
         placeholder: 'gpt-5.4-mini',
       },
       {
-        key: 'AI_CHAT_REASONING_EFFORT',
-        label: 'Reasoning effort (modele gpt-5 / o-series)',
-        description:
-          'Cât „gândește" modelul înainte să aleagă tool-ul / să răspundă. Mai mult = decizii mai bune (ce date lipsesc, ce tool să folosească) dar puțin mai lent. Ignorat de modelele non-reasoning (gpt-4o). Recomandat medium.',
-        kind: 'select',
-        options: ['minimal', 'low', 'medium', 'high'],
-        hotReload: true,
-        placeholder: 'medium',
-      },
-      {
         key: 'AI_CHAT_MAX_TOKENS',
         label: 'Buget tokeni per pas',
         description:
