@@ -1055,15 +1055,6 @@ export default function AdminChatPage() {
                 </div>
                 {/* Enriched presence panel */}
                 <PresencePanel enriched={activeEnriched} fallbackOnline={thread.conversation.online} fallbackLastSeen={thread.conversation.lastSeenAt} fallbackIp={thread.conversation.ip} />
-                {/* Formular Generator live — vezi pasul + corectează câmpurile clientului */}
-                {activeEnriched?.formState && (
-                  <WizardLivePanel
-                    key={thread.conversation.id}
-                    formState={activeEnriched.formState}
-                    online={activeEnriched.online ?? thread.conversation.online}
-                    conversationId={thread.conversation.id}
-                  />
-                )}
                 {/* Notă privată admin (vizibilă doar aici) */}
                 {thread.conversation.adminNote && (
                   <button
@@ -1180,6 +1171,8 @@ export default function AdminChatPage() {
             conversationId={active}
             detectedLang={thread?.messages?.find((m) => m.authorRole === 'user')?.detectedLang}
             onInsertDraft={(text) => setDraft((d) => (d ? `${d} ${text}` : text))}
+            formState={activeEnriched?.formState ?? null}
+            online={activeEnriched?.online ?? thread?.conversation.online ?? false}
           />
         )}
       </div>
@@ -1949,6 +1942,89 @@ function WizardEditableField({
  * aplică instant pe inputul clientului dacă e online. Selecțiile (stil/voce/pachet)
  * sunt read-only — clientul le alege din liste, nu le scrie.
  */
+/** Opțiunile valide pentru un select (per-site din formState; fallback la GEN_* hardcodate). */
+function genFieldOptions(
+  field: 'style' | 'occ' | 'voice',
+  options: GeneratorFormState['options'],
+): Array<{ id: string; label: string; emoji?: string }> {
+  if (field === 'style') {
+    const src = options?.styles;
+    if (src?.length) return src.map((s) => ({ id: s.id, label: s.nm, emoji: s.em }));
+    return GEN_STYLES.map((s) => ({ id: s.id, label: s.name, emoji: s.emoji }));
+  }
+  if (field === 'occ') {
+    const src = options?.occasions;
+    if (src?.length) return src.map((o) => ({ id: o.id, label: o.nm, emoji: o.em }));
+    return GEN_OCCASIONS.map((o) => ({ id: o.id, label: o.name, emoji: o.emoji }));
+  }
+  const src = options?.voices;
+  if (src?.length) return src.map((v) => ({ id: v.id, label: v.nm }));
+  return GEN_VOICES.map((v) => ({ id: v.id, label: v.name }));
+}
+
+/** Un câmp de selecție editabil (stil/ocazie/voce) — schimbarea se aplică instant la client. */
+function WizardSelectField({
+  label,
+  field,
+  value,
+  options,
+  conversationId,
+}: {
+  label: string;
+  field: string;
+  value: string;
+  options: Array<{ id: string; label: string; emoji?: string }>;
+  conversationId: string;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  // Include valoarea curentă chiar dacă nu e în listă (site cu opțiuni diferite).
+  const opts =
+    value && !options.some((o) => o.id === value) ? [{ id: value, label: value }, ...options] : options;
+
+  async function onChange(v: string) {
+    if (!v || v === value) return;
+    setSaving(true);
+    try {
+      await ChatApi.patchFormField(conversationId, field, v);
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 2000);
+    } catch (e) {
+      alert(`Nu am putut salva: ${(e as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center justify-between mb-0.5 h-3.5">
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">{label}</span>
+        {saving ? (
+          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+        ) : justSaved ? (
+          <span className="text-[10px] text-success flex items-center gap-0.5">
+            <Check className="h-3 w-3" /> aplicat
+          </span>
+        ) : null}
+      </div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full h-7 text-xs rounded-md border border-input bg-background px-1.5 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {!value && <option value="">—</option>}
+        {opts.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.emoji ? `${o.emoji} ` : ''}
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function WizardLivePanel({
   formState,
   online,
@@ -1963,16 +2039,10 @@ function WizardLivePanel({
   const total = formState.totalSteps ?? 0;
   const stepNum = (formState.step ?? 0) + 1;
   const pct = total ? Math.min(100, Math.round((stepNum / total) * 100)) : 0;
-
-  const chips = [
-    { label: 'Stil', field: 'style' },
-    { label: 'Ocazie', field: 'occ' },
-    { label: 'Voce', field: 'voice' },
-    { label: 'Pachet', field: 'packageTier' },
-  ].filter((r) => get(r.field));
+  const pkg = get('packageTier');
 
   return (
-    <div className="mt-2 rounded-lg border border-primary/25 bg-primary/[0.04] p-2.5">
+    <div className="mt-3 rounded-lg border border-primary/25 bg-primary/[0.04] p-2.5">
       <div className="flex items-center justify-between mb-1.5 gap-2">
         <span className="text-xs font-semibold flex items-center gap-1.5 text-primary">
           <Wand2 className="h-3.5 w-3.5" /> Formular live pe site
@@ -1993,15 +2063,21 @@ function WizardLivePanel({
           <span>Userul nu e activ acum — corectura se salvează și se aplică doar dacă revine pe formular.</span>
         </div>
       )}
-      {chips.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {chips.map((r) => (
-            <span key={r.field} className="text-[11px] rounded bg-secondary/50 px-1.5 py-0.5">
-              <span className="text-muted-foreground">{r.label}:</span> {fmtGenValue(r.field, get(r.field))}
-            </span>
-          ))}
-        </div>
-      )}
+      <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 mb-1.5">
+        <WizardSelectField label="Stil" field="style" value={get('style')} options={genFieldOptions('style', formState.options)} conversationId={conversationId} />
+        <WizardSelectField label="Ocazie" field="occ" value={get('occ')} options={genFieldOptions('occ', formState.options)} conversationId={conversationId} />
+        <WizardSelectField label="Voce" field="voice" value={get('voice')} options={genFieldOptions('voice', formState.options)} conversationId={conversationId} />
+        {pkg && (
+          <div>
+            <div className="mb-0.5 h-3.5">
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">Pachet</span>
+            </div>
+            <div className="h-7 flex items-center text-xs px-2 rounded-md bg-secondary/40 text-muted-foreground" title="Pachetul nu se modifică din chat">
+              {fmtGenValue('packageTier', pkg)}
+            </div>
+          </div>
+        )}
+      </div>
       <div className="space-y-1.5">
         <WizardEditableField label="Nume destinatar" field="name" value={get('name')} conversationId={conversationId} online={online} />
         <WizardEditableField label="De la (dedicație)" field="dedic" value={get('dedic')} conversationId={conversationId} online={online} />
@@ -2754,10 +2830,14 @@ function ChatRightSidebar({
   conversationId,
   detectedLang,
   onInsertDraft,
+  formState,
+  online,
 }: {
   conversationId: string | null;
   detectedLang: string | null | undefined;
   onInsertDraft: (text: string) => void;
+  formState: GeneratorFormState | null;
+  online: boolean;
 }) {
   const [tab, setTab] = useState<'replies' | 'ai'>('replies');
 
@@ -2787,7 +2867,14 @@ function ChatRightSidebar({
       </div>
 
       {tab === 'replies' ? (
-        <QuickRepliesTab onInsert={onInsertDraft} />
+        <QuickRepliesTab
+          onInsert={onInsertDraft}
+          footer={
+            formState && conversationId ? (
+              <WizardLivePanel formState={formState} online={online} conversationId={conversationId} />
+            ) : null
+          }
+        />
       ) : (
         <AssistantPanel
           contextKind="chat"
@@ -2800,8 +2887,8 @@ function ChatRightSidebar({
   );
 }
 
-/** Listă quick replies + CRUD inline (add/edit/delete). */
-function QuickRepliesTab({ onInsert }: { onInsert: (text: string) => void }) {
+/** Listă quick replies + CRUD inline (add/edit/delete). `footer` = panou opțional sub listă. */
+function QuickRepliesTab({ onInsert, footer }: { onInsert: (text: string) => void; footer?: React.ReactNode }) {
   const { data: replies, refetch } = useAsync(() => ChatApi.listQuickReplies(), [], { refetchInterval: undefined });
   const [editing, setEditing] = useState<QuickReply | 'new' | null>(null);
 
@@ -2872,6 +2959,7 @@ function QuickRepliesTab({ onInsert }: { onInsert: (text: string) => void }) {
         <Plus className="h-3.5 w-3.5" />
         Adaugă răspuns
       </Button>
+      {footer}
       {editing && (
         <QuickReplyEditModal
           initial={editing === 'new' ? null : editing}

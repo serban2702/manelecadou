@@ -490,6 +490,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         stepName: prevForm?.stepName,
         totalSteps: prevForm?.totalSteps,
         data: { ...(prevForm?.data ?? {}), ...patch },
+        options: prevForm?.options,
         generationId: prevForm?.generationId ?? null,
         updatedAt: nowIso,
       };
@@ -925,9 +926,39 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       stepName: typeof r.stepName === 'string' ? r.stepName.slice(0, 60) : undefined,
       totalSteps: typeof r.totalSteps === 'number' && isFinite(r.totalSteps) ? Math.floor(r.totalSteps) : undefined,
       data,
+      options: this.normalizeFormOptions(r.options),
       generationId: typeof r.generationId === 'string' ? r.generationId.slice(0, 64) : null,
       updatedAt: (isNaN(at.getTime()) ? new Date() : at).toISOString(),
     };
+  }
+
+  /** Normalizează opțiunile de selecție (stil/ocazie/voce) trimise de client. */
+  private normalizeFormOptions(raw: unknown): GeneratorFormState['options'] {
+    if (!raw || typeof raw !== 'object') return undefined;
+    const r = raw as Record<string, unknown>;
+    const list = (v: unknown, withEm: boolean) => {
+      if (!Array.isArray(v)) return undefined;
+      const out = v
+        .slice(0, 40)
+        .map((it) => {
+          if (!it || typeof it !== 'object') return null;
+          const o = it as Record<string, unknown>;
+          if (typeof o.id !== 'string' || typeof o.nm !== 'string') return null;
+          const base: { id: string; nm: string; em?: string } = {
+            id: o.id.slice(0, 64),
+            nm: o.nm.slice(0, 80),
+          };
+          if (withEm && typeof o.em === 'string') base.em = o.em.slice(0, 8);
+          return base;
+        })
+        .filter((x): x is { id: string; nm: string; em?: string } => x !== null);
+      return out.length ? out : undefined;
+    };
+    const styles = list(r.styles, true);
+    const occasions = list(r.occasions, true);
+    const voices = list(r.voices, false)?.map((v) => ({ id: v.id, nm: v.nm }));
+    if (!styles && !occasions && !voices) return undefined;
+    return { styles, occasions, voices };
   }
 
   /** Timestamp ultimei persistări DB de presence per key — throttle anti-spam. */

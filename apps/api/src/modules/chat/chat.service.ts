@@ -1987,6 +1987,11 @@ export class ChatService implements OnModuleInit {
     dedic: 60,
     msg: 1200,
     customLyrics: 4000,
+    // Selecții — ID-uri scurte. Pachetul (packageTier) e intenționat exclus:
+    // owner-ul vrea editabile doar stil/ocazie/voce + textele, nu pachetul.
+    style: 64,
+    occ: 64,
+    voice: 64,
   };
 
   /**
@@ -2010,6 +2015,7 @@ export class ChatService implements OnModuleInit {
       stepName: prev?.stepName,
       totalSteps: prev?.totalSteps,
       data: { ...(prev?.data ?? {}), [field]: v },
+      options: prev?.options,
       generationId: prev?.generationId ?? null,
       updatedAt: new Date().toISOString(),
     };

@@ -107,6 +107,12 @@ export interface GeneratorFormState {
   totalSteps?: number;
   /** Câmpurile completate (style, occ, name, msg, voice, dedic, packageTier, customLyrics). */
   data?: Record<string, string | number | boolean>;
+  /** Opțiunile valide per-site pentru selecții (stil/ocazie/voce), trimise de client. */
+  options?: {
+    styles?: Array<{ id: string; nm: string; em?: string }>;
+    occasions?: Array<{ id: string; nm: string; em?: string }>;
+    voices?: Array<{ id: string; nm: string }>;
+  };
   generationId?: string | null;
   updatedAt: string;
 }

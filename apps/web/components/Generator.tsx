@@ -259,6 +259,16 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     () => (site.voices?.length ? siteVoicesToOptions(site.voices, site.locale) : VOICES),
     [site.voices, site.locale],
   );
+  // Opțiunile valide per-site pentru selecții — trimise spre admin (presence:form_state)
+  // ca să poată schimba stil/ocazie/voce din chat cu ID-uri corecte pentru acest site.
+  const formOptions = useMemo(
+    () => ({
+      styles: effectiveStyles.map((s) => ({ id: s.id, nm: s.nm, em: s.em })),
+      occasions: effectiveOccasions.map((o) => ({ id: o.id, nm: o.nm, em: o.em })),
+      voices: effectiveVoices.map((v) => ({ id: v.id, nm: v.nm })),
+    }),
+    [effectiveStyles, effectiveOccasions, effectiveVoices],
+  );
 
   // Pre-fill din query params (ex: din șmecher calculator)
   useEffect(() => {
@@ -428,6 +438,7 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
               packageTier: data.packageTier,
               customLyrics: data.customLyrics || undefined,
             },
+            options: formOptions,
             generationId,
             at: Date.now(),
           },
@@ -435,13 +446,13 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
       );
     }, 800); // debounce: colapsează tastarea; schimbarea de pas ajunge în <1s
     return () => clearTimeout(t);
-  }, [step, data, generationId, totalSteps, tGen]);
+  }, [step, data, generationId, totalSteps, tGen, formOptions]);
 
   // Adminul poate corecta din chat câmpurile completate de client (ex. un nume scris
   // greșit). Widget-ul de chat dispatch-uiește `mc:form_patch` la primirea pe WS;
   // aplicăm patch-ul în `data` (doar câmpuri de text liber, cheile coincid cu Data).
   useEffect(() => {
-    const EDITABLE = new Set<keyof Data>(['name', 'msg', 'dedic', 'customLyrics']);
+    const EDITABLE = new Set<keyof Data>(['name', 'msg', 'dedic', 'customLyrics', 'style', 'occ', 'voice']);
     const onPatch = (e: Event) => {
       const detail = (e as CustomEvent).detail as { patch?: Record<string, unknown> } | undefined;
       const patch = detail?.patch;

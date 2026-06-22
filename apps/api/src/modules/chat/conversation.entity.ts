@@ -58,6 +58,15 @@ export interface GeneratorFormState {
   totalSteps?: number;
   /** Subset din câmpurile completate (style, occ, name, voice, packageTier...). */
   data?: Record<string, string | number | boolean>;
+  /**
+   * Opțiunile valide per-site pentru selecții (trimise de client), ca adminul să
+   * poată schimba stil/ocazie/voce din chat cu ID-uri corecte indiferent de site.
+   */
+  options?: {
+    styles?: Array<{ id: string; nm: string; em?: string }>;
+    occasions?: Array<{ id: string; nm: string; em?: string }>;
+    voices?: Array<{ id: string; nm: string }>;
+  };
   /** Generation deja creată din formular (după submit demo / pay-first). */
   generationId?: string | null;
   updatedAt: string; // ISO — momentul ultimei modificări reale pe client
