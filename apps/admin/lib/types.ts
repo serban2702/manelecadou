@@ -98,6 +98,19 @@ export interface AdminGeneration {
 
 export type AiChatMode = 'manual' | 'suggest' | 'auto';
 
+/** Snapshot al formularului Generator de pe site (presence:form_state). */
+export interface GeneratorFormState {
+  /** Index 0-based al pasului curent. */
+  step: number;
+  /** Numele localizat al pasului, cum îl vede userul (ex. „Detalii"). */
+  stepName?: string;
+  totalSteps?: number;
+  /** Câmpurile completate (style, occ, name, msg, voice, dedic, packageTier, customLyrics). */
+  data?: Record<string, string | number | boolean>;
+  generationId?: string | null;
+  updatedAt: string;
+}
+
 export interface EnrichedPresence {
   online: boolean;
   connectedAt: string | null;
@@ -113,6 +126,8 @@ export interface EnrichedPresence {
     userAgent?: string;
   } | null;
   ip: string | null;
+  /** Starea formularului Generator de pe site — completat live de client. */
+  formState?: GeneratorFormState | null;
 }
 
 export interface AdminChatConversation {

@@ -419,11 +419,14 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
               style: data.style || undefined,
               occ: data.occ || undefined,
               name: data.name || undefined,
-              msg: data.msg ? data.msg.slice(0, 200) : undefined,
+              // Valori complete — adminul le vede în chat și poate corecta ce-a
+              // scris greșit clientul (nume / mesaj / versuri). Irina le trunchiază
+              // oricum la 80 char în system prompt, deci nu umflă tokenii.
+              msg: data.msg || undefined,
               voice: data.voice || undefined,
               dedic: data.dedic || undefined,
               packageTier: data.packageTier,
-              customLyrics: data.customLyrics ? true : undefined,
+              customLyrics: data.customLyrics || undefined,
             },
             generationId,
             at: Date.now(),
@@ -433,6 +436,32 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     }, 800); // debounce: colapsează tastarea; schimbarea de pas ajunge în <1s
     return () => clearTimeout(t);
   }, [step, data, generationId, totalSteps, tGen]);
+
+  // Adminul poate corecta din chat câmpurile completate de client (ex. un nume scris
+  // greșit). Widget-ul de chat dispatch-uiește `mc:form_patch` la primirea pe WS;
+  // aplicăm patch-ul în `data` (doar câmpuri de text liber, cheile coincid cu Data).
+  useEffect(() => {
+    const EDITABLE = new Set<keyof Data>(['name', 'msg', 'dedic', 'customLyrics']);
+    const onPatch = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { patch?: Record<string, unknown> } | undefined;
+      const patch = detail?.patch;
+      if (!patch || typeof patch !== 'object') return;
+      setData((d) => {
+        let changed = false;
+        const next = { ...d };
+        for (const [k, v] of Object.entries(patch)) {
+          if (!EDITABLE.has(k as keyof Data)) continue;
+          if (typeof v === 'string') {
+            (next as Record<string, unknown>)[k] = v;
+            changed = true;
+          }
+        }
+        return changed ? next : d;
+      });
+    };
+    window.addEventListener('mc:form_patch', onPatch);
+    return () => window.removeEventListener('mc:form_patch', onPatch);
+  }, []);
 
   const stepDone = (i: number): boolean => {
     const key = STEP_KEYS[i];

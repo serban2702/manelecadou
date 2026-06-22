@@ -36,7 +36,9 @@ import {
   Star,
   Tablet,
   Trash2,
+  TriangleAlert,
   User,
+  Wand2,
   Wifi,
   WifiOff,
   X,
@@ -52,10 +54,11 @@ import {
   type PresenceEvent,
   type TypingEvent,
 } from '@/lib/chat-socket';
-import type { AdminChatConversation, AdminChatMessage, AiChatMode, EnrichedPresence } from '@/lib/types';
+import type { AdminChatConversation, AdminChatMessage, AiChatMode, EnrichedPresence, GeneratorFormState } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/ui/empty';
+import { Input } from '@/components/ui/input';
 import { PageHeader } from '@/components/ui/page-header';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/cn';
@@ -1052,6 +1055,15 @@ export default function AdminChatPage() {
                 </div>
                 {/* Enriched presence panel */}
                 <PresencePanel enriched={activeEnriched} fallbackOnline={thread.conversation.online} fallbackLastSeen={thread.conversation.lastSeenAt} fallbackIp={thread.conversation.ip} />
+                {/* Formular Generator live — vezi pasul + corectează câmpurile clientului */}
+                {activeEnriched?.formState && (
+                  <WizardLivePanel
+                    key={thread.conversation.id}
+                    formState={activeEnriched.formState}
+                    online={activeEnriched.online ?? thread.conversation.online}
+                    conversationId={thread.conversation.id}
+                  />
+                )}
                 {/* Notă privată admin (vizibilă doar aici) */}
                 {thread.conversation.adminNote && (
                   <button
@@ -1825,6 +1837,181 @@ function PresenceDot({ online }: { online: boolean }) {
 function DeviceIcon({ type }: { type: 'mobile' | 'tablet' | 'desktop' }) {
   const Icon = type === 'mobile' ? Smartphone : type === 'tablet' ? Tablet : Monitor;
   return <Icon className="h-3 w-3 text-muted-foreground" />;
+}
+
+/** Mapează valoarea brută a unui câmp de selecție la label-ul lizibil (best-effort). */
+function fmtGenValue(field: string, raw: string): string {
+  if (!raw) return '';
+  if (field === 'style') return GEN_STYLES.find((s) => s.id === raw)?.name ?? raw;
+  if (field === 'occ') return GEN_OCCASIONS.find((o) => o.id === raw)?.name ?? raw;
+  if (field === 'voice') return GEN_VOICES.find((v) => v.id === raw)?.name ?? raw;
+  if (field === 'packageTier') {
+    return { basic: 'Basic', plus: 'Plus', premium: 'Premium' }[raw] ?? raw;
+  }
+  return raw;
+}
+
+/** Un câmp text editabil din formular — draft local + salvare către client. */
+function WizardEditableField({
+  label,
+  field,
+  value,
+  multiline,
+  conversationId,
+  online,
+}: {
+  label: string;
+  field: string;
+  value: string;
+  multiline?: boolean;
+  conversationId: string;
+  online: boolean;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [focused, setFocused] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  const dirty = draft !== value;
+
+  // Sincronizează cu starea live a clientului DOAR când câmpul nu e editat activ
+  // (altfel un heartbeat ar suprascrie ce tastează adminul).
+  useEffect(() => {
+    if (!focused) setDraft(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  async function save() {
+    if (!dirty || saving) return;
+    setSaving(true);
+    try {
+      await ChatApi.patchFormField(conversationId, field, draft);
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 2000);
+    } catch (e) {
+      alert(`Nu am putut salva: ${(e as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-0.5 h-3.5">
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">{label}</span>
+        {justSaved ? (
+          <span className="text-[10px] text-success flex items-center gap-0.5">
+            <Check className="h-3 w-3" /> aplicat
+          </span>
+        ) : dirty ? (
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="text-[10px] text-primary hover:underline flex items-center gap-0.5 disabled:opacity-50"
+            title={online ? 'Trimite corectura pe formularul clientului' : 'Userul e offline — se salvează pentru când revine'}
+          >
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+            {online ? 'Trimite' : 'Salvează'}
+          </button>
+        ) : null}
+      </div>
+      {multiline ? (
+        <Textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') save();
+          }}
+          rows={2}
+          className="text-xs min-h-0 py-1 resize-y"
+        />
+      ) : (
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save();
+          }}
+          className="h-7 text-xs"
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Formularul Generator de pe site, live — pasul curent + ce a completat clientul.
+ * Câmpurile de text (nume, dedicație, mesaj, versuri) sunt editabile: corectura se
+ * aplică instant pe inputul clientului dacă e online. Selecțiile (stil/voce/pachet)
+ * sunt read-only — clientul le alege din liste, nu le scrie.
+ */
+function WizardLivePanel({
+  formState,
+  online,
+  conversationId,
+}: {
+  formState: GeneratorFormState;
+  online: boolean;
+  conversationId: string;
+}) {
+  const data = formState.data ?? {};
+  const get = (k: string) => (data[k] == null ? '' : String(data[k]));
+  const total = formState.totalSteps ?? 0;
+  const stepNum = (formState.step ?? 0) + 1;
+  const pct = total ? Math.min(100, Math.round((stepNum / total) * 100)) : 0;
+
+  const chips = [
+    { label: 'Stil', field: 'style' },
+    { label: 'Ocazie', field: 'occ' },
+    { label: 'Voce', field: 'voice' },
+    { label: 'Pachet', field: 'packageTier' },
+  ].filter((r) => get(r.field));
+
+  return (
+    <div className="mt-2 rounded-lg border border-primary/25 bg-primary/[0.04] p-2.5">
+      <div className="flex items-center justify-between mb-1.5 gap-2">
+        <span className="text-xs font-semibold flex items-center gap-1.5 text-primary">
+          <Wand2 className="h-3.5 w-3.5" /> Formular live pe site
+        </span>
+        <span className="text-[11px] text-muted-foreground text-right truncate">
+          {total ? `pasul ${stepNum}/${total}` : `pasul ${stepNum}`}
+          {formState.stepName ? ` · ${formState.stepName}` : ''}
+        </span>
+      </div>
+      {total > 0 && (
+        <div className="w-full h-1 bg-secondary rounded-full mb-2 overflow-hidden">
+          <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      {!online && (
+        <div className="mb-2 text-[11px] text-amber-400/90 flex items-start gap-1">
+          <TriangleAlert className="h-3 w-3 mt-0.5 shrink-0" />
+          <span>Userul nu e activ acum — corectura se salvează și se aplică doar dacă revine pe formular.</span>
+        </div>
+      )}
+      {chips.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {chips.map((r) => (
+            <span key={r.field} className="text-[11px] rounded bg-secondary/50 px-1.5 py-0.5">
+              <span className="text-muted-foreground">{r.label}:</span> {fmtGenValue(r.field, get(r.field))}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="space-y-1.5">
+        <WizardEditableField label="Nume destinatar" field="name" value={get('name')} conversationId={conversationId} online={online} />
+        <WizardEditableField label="De la (dedicație)" field="dedic" value={get('dedic')} conversationId={conversationId} online={online} />
+        <WizardEditableField label="Mesaj personalizat" field="msg" value={get('msg')} multiline conversationId={conversationId} online={online} />
+        {get('customLyrics') && (
+          <WizardEditableField label="Versuri" field="customLyrics" value={get('customLyrics')} multiline conversationId={conversationId} online={online} />
+        )}
+      </div>
+    </div>
+  );
 }
 
 /** Panel detaliat de presence sub header — currentPath, device, chatOpen, timer. */

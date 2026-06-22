@@ -469,6 +469,57 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.forceToggleChat(target, true);
   }
 
+  /**
+   * Adminul corectează din chat un câmp din formularul Generator al clientului
+   * (ex. un nume scris greșit). Aplică patch-ul pe enriched in-memory (ceilalți
+   * admini + Irina îl văd instant), îl trimite la client — Generator-ul ascultă
+   * `mc:form_patch` și actualizează input-ul live — și re-broadcast presence la
+   * admini. Returnează dacă clientul e online acum.
+   */
+  patchFormState(
+    target: { userId: string | null; guestId: string | null },
+    patch: Record<string, string | number | boolean>,
+  ): boolean {
+    const nowIso = new Date().toISOString();
+    const key = presenceKey(target);
+    if (key) {
+      const prev = this.enriched.get(key);
+      const prevForm = prev?.formState ?? null;
+      const nextForm: GeneratorFormState = {
+        step: prevForm?.step ?? 0,
+        stepName: prevForm?.stepName,
+        totalSteps: prevForm?.totalSteps,
+        data: { ...(prevForm?.data ?? {}), ...patch },
+        generationId: prevForm?.generationId ?? null,
+        updatedAt: nowIso,
+      };
+      const next: EnrichedPresence = prev
+        ? { ...prev, formState: nextForm, lastSeenAt: nowIso }
+        : {
+            online: this.isOnline(target),
+            connectedAt: nowIso,
+            lastSeenAt: nowIso,
+            currentPath: null,
+            currentTitle: null,
+            chatOpen: false,
+            device: null,
+            ip: null,
+            formState: nextForm,
+          };
+      this.enriched.set(key, next);
+      this.broadcastPresence({
+        userId: target.userId,
+        guestId: target.guestId,
+        online: next.online,
+        enriched: next,
+      });
+    }
+    const evt = { patch, at: Date.now() };
+    if (target.userId) this.server.to(userRoom(target.userId)).emit('chat:form_patch', evt);
+    if (target.guestId) this.server.to(guestRoom(target.guestId)).emit('chat:form_patch', evt);
+    return this.isOnline(target);
+  }
+
   /** Deconectează imediat toate socket-urile unui user/guest (ex. după blocare). */
   disconnectTarget(target: { userId: string | null; guestId: string | null }): void {
     const room = target.userId
@@ -860,10 +911,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const data: Record<string, string | number | boolean> = {};
     if (r.data && typeof r.data === 'object') {
       // Cap pe număr de chei + lungime valori — payload-ul vine de pe client, nu de încredere.
-      for (const [k, v] of Object.entries(r.data as Record<string, unknown>).slice(0, 16)) {
+      // 4000 char/valoare ca să încapă mesajul + versurile complete (adminul le vede
+      // și le poate corecta live din chat).
+      for (const [k, v] of Object.entries(r.data as Record<string, unknown>).slice(0, 24)) {
         if (v == null || v === '') continue;
         data[k.slice(0, 40)] =
-          typeof v === 'string' ? v.slice(0, 200) : typeof v === 'number' || typeof v === 'boolean' ? v : true;
+          typeof v === 'string' ? v.slice(0, 4000) : typeof v === 'number' || typeof v === 'boolean' ? v : true;
       }
     }
     const at = typeof r.at === 'number' && isFinite(r.at) ? new Date(r.at) : new Date();

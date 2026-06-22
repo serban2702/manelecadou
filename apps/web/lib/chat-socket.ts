@@ -142,6 +142,14 @@ export function useChatSocket({ enabled = true, onMessage, onMessageUpdated, onM
     };
     window.addEventListener('mc:generator_state', onGeneratorState);
 
+    // Adminul a corectat un câmp din formular (din chat). Îl propagăm ca eveniment
+    // global — Generator.tsx ascultă `mc:form_patch` și actualizează input-ul live.
+    const onFormPatch = (p: { patch?: Record<string, unknown>; at?: number } | undefined) => {
+      if (!p || typeof p !== 'object' || !p.patch || typeof p.patch !== 'object') return;
+      window.dispatchEvent(new CustomEvent('mc:form_patch', { detail: p }));
+    };
+    socket.on('chat:form_patch', onFormPatch);
+
     socket.on('connect', () => {
       setConnected(true);
       sendHeartbeat();

@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
   forwardRef,
   Inject,
   OnModuleInit,
@@ -9,7 +10,7 @@ import {
 import { ModuleRef } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, MoreThan, Repository } from 'typeorm';
-import { Conversation, AiChatMode } from './conversation.entity';
+import { Conversation, AiChatMode, GeneratorFormState } from './conversation.entity';
 import { ChatMessage, ChatMessageType, ChatMessagePayload } from './message.entity';
 import { QuickReply } from './quick-reply.entity';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
@@ -818,7 +819,25 @@ export class ChatService implements OnModuleInit {
 
   /** Enriched presence (currentPath, device, chatOpen, connectedAt) pentru sidebar admin. */
   getEnrichedPresenceForConversation(c: Conversation) {
-    return this.gateway.getEnriched({ userId: c.userId, guestId: c.guestId });
+    const live = this.gateway.getEnriched({ userId: c.userId, guestId: c.guestId });
+    // Fallback DB pentru formularul Generator: dacă presence-ul in-memory s-a pierdut
+    // (restart API) sau încă n-a sosit prin WS, folosim ultima stare persistată — astfel
+    // panoul „Formular live" apare oricum la deschiderea conversației.
+    if (c.lastFormState && !live?.formState) {
+      if (live) return { ...live, formState: c.lastFormState };
+      return {
+        online: false,
+        connectedAt: null,
+        lastSeenAt: c.disconnectedAt ? c.disconnectedAt.toISOString() : null,
+        currentPath: c.lastClientPath ?? null,
+        currentTitle: null,
+        chatOpen: c.chatOpenOnClient ?? false,
+        device: c.lastDevice ?? null,
+        ip: c.lastIp ?? null,
+        formState: c.lastFormState,
+      };
+    }
+    return live;
   }
 
   async getConversation(id: string): Promise<Conversation> {
@@ -1955,6 +1974,56 @@ export class ChatService implements OnModuleInit {
     const online = this.gateway.isOnline({ userId: c.userId, guestId: c.guestId });
     this.gateway.forceToggleChat({ userId: c.userId, guestId: c.guestId }, open);
     return { ok: true, online, open };
+  }
+
+  /**
+   * Câmpuri editabile din formularul Generator de pe site. Cheile coincid EXACT
+   * cu `Data` din apps/web/components/Generator.tsx, ca patch-ul să se aplice
+   * direct prin `upd(field, value)` pe client. Doar text liber (ce poate fi scris
+   * greșit) — selecțiile (stil/voce/ocazie/pachet) rămân read-only în admin.
+   */
+  private static readonly FORM_FIELD_CAPS: Record<string, number> = {
+    name: 60,
+    dedic: 60,
+    msg: 1200,
+    customLyrics: 4000,
+  };
+
+  /**
+   * Adminul corectează din chat un câmp completat de client în formularul Generator
+   * (ex. un nume scris greșit). Persistăm pe `conversation.lastFormState` (fallback DB
+   * + context Irina) și împingem patch-ul la client prin WS — dacă userul e online pe
+   * formular, input-ul se actualizează live. Returnează dacă clientul e online acum.
+   */
+  async patchGeneratorForm(
+    conversationId: string,
+    field: string,
+    value: string | number | boolean,
+  ): Promise<{ ok: true; online: boolean; field: string; value: string }> {
+    const cap = ChatService.FORM_FIELD_CAPS[field];
+    if (cap == null) throw new BadRequestException(`Câmp needitabil: ${field}`);
+    const v = (typeof value === 'string' ? value : String(value ?? '')).slice(0, cap);
+    const c = await this.getConversation(conversationId);
+    const prev = c.lastFormState;
+    const nextForm: GeneratorFormState = {
+      step: prev?.step ?? 0,
+      stepName: prev?.stepName,
+      totalSteps: prev?.totalSteps,
+      data: { ...(prev?.data ?? {}), [field]: v },
+      generationId: prev?.generationId ?? null,
+      updatedAt: new Date().toISOString(),
+    };
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ lastFormState: nextForm })
+      .where('id = :id', { id: conversationId })
+      .execute();
+    const online = this.gateway.patchFormState(
+      { userId: c.userId, guestId: c.guestId },
+      { [field]: v },
+    );
+    return { ok: true, online, field, value: v };
   }
 
   /** Marchează toate mesajele admin → user dintr-o conversație ca delivered (folosit la listMyMessages). */

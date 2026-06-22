@@ -131,6 +131,17 @@ export class ChatApi {
     return http.post(`/admin/chat/conversations/${id}/force-open`, { open: false });
   }
   /**
+   * Corectează live un câmp completat de client în formularul Generator de pe site
+   * (nume / mesaj / dedicație / versuri). Se aplică pe inputul clientului dacă e online.
+   */
+  static patchFormField(
+    id: string,
+    field: string,
+    value: string,
+  ): Promise<{ ok: true; online: boolean; field: string; value: string }> {
+    return http.patch(`/admin/chat/conversations/${id}/form-field`, { field, value });
+  }
+  /**
    * Claim/release conversație.
    *  - undefined / lipsă body → auto-claim de adminul curent
    *  - 'release' → eliberează

@@ -317,6 +317,19 @@ export class AdminChatController {
     return this.svc.forceToggleChat(id, open);
   }
 
+  /**
+   * Corectează live un câmp completat de client în formularul Generator de pe site
+   * (nume / mesaj / dedicație / versuri). Persistă + împinge patch-ul pe WS la client.
+   */
+  @Patch('conversations/:id/form-field')
+  async patchFormField(
+    @Param('id') id: string,
+    @Body() body: { field: string; value: string | number | boolean },
+  ) {
+    if (!body?.field) throw new BadRequestException('Lipsește field');
+    return this.svc.patchGeneratorForm(id, body.field, body.value);
+  }
+
   /** Upload atașament (imagine / PDF) — multipart 'file', optional caption în body. */
   @Post('conversations/:id/attachments')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
