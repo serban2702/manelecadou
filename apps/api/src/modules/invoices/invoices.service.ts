@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { IsNull, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { Invoice, InvoiceClientSnapshot } from './invoice.entity';
@@ -43,7 +43,59 @@ export interface BillableRow {
   createdAt: Date;
   buyerName: string | null;
   buyerEmail: string | null;
+  /** Clientul cu care s-ar emite factura (respectă useDefaultClient + județ
+   *  normalizat). Editabil în modalul de emitere. */
+  client: InvoiceClientSnapshot;
+  /** 'failed' dacă a existat o încercare anterioară eșuată; 'none' altfel.
+   *  (Cele cu factură 'issued' nu apar în listă, prin definiție.) */
+  invoiceStatus: 'none' | 'failed';
   smartbillReady: boolean;
+}
+
+type StripeBilling = Awaited<ReturnType<PaymentsService['fetchStripeCustomerDetails']>>;
+
+/** Județele acceptate de SmartBill (denumiri standard, fără diacritice). */
+export const RO_COUNTIES = [
+  'Alba', 'Arad', 'Arges', 'Bacau', 'Bihor', 'Bistrita-Nasaud', 'Botosani',
+  'Brasov', 'Braila', 'Bucuresti', 'Buzau', 'Caras-Severin', 'Calarasi', 'Cluj',
+  'Constanta', 'Covasna', 'Dambovita', 'Dolj', 'Galati', 'Giurgiu', 'Gorj',
+  'Harghita', 'Hunedoara', 'Ialomita', 'Iasi', 'Ilfov', 'Maramures', 'Mehedinti',
+  'Mures', 'Neamt', 'Olt', 'Prahova', 'Satu Mare', 'Salaj', 'Sibiu', 'Suceava',
+  'Teleorman', 'Timis', 'Tulcea', 'Vaslui', 'Valcea', 'Vrancea',
+];
+
+/** Cod ISO 3166-2:RO (fără prefix RO-) → denumire SmartBill. */
+const ISO_TO_COUNTY: Record<string, string> = {
+  AB: 'Alba', AR: 'Arad', AG: 'Arges', BC: 'Bacau', BH: 'Bihor',
+  BN: 'Bistrita-Nasaud', BT: 'Botosani', BV: 'Brasov', BR: 'Braila',
+  B: 'Bucuresti', BZ: 'Buzau', CS: 'Caras-Severin', CL: 'Calarasi', CJ: 'Cluj',
+  CT: 'Constanta', CV: 'Covasna', DB: 'Dambovita', DJ: 'Dolj', GL: 'Galati',
+  GR: 'Giurgiu', GJ: 'Gorj', HR: 'Harghita', HD: 'Hunedoara', IL: 'Ialomita',
+  IS: 'Iasi', IF: 'Ilfov', MM: 'Maramures', MH: 'Mehedinti', MS: 'Mures',
+  NT: 'Neamt', OT: 'Olt', PH: 'Prahova', SM: 'Satu Mare', SJ: 'Salaj',
+  SB: 'Sibiu', SV: 'Suceava', TR: 'Teleorman', TM: 'Timis', TL: 'Tulcea',
+  VS: 'Vaslui', VL: 'Valcea', VN: 'Vrancea',
+};
+
+function stripDiacritics(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+/** Normalizează un județ (cod ISO „RO-CJ"/„CJ", nume cu/fără diacritice, variante)
+ *  la denumirea folosită de SmartBill. Null dacă input gol; verbatim dacă necunoscut. */
+export function normalizeCounty(raw?: string | null): string | null {
+  if (!raw) return null;
+  const v = stripDiacritics(String(raw).trim());
+  if (!v) return null;
+  const iso = v.toUpperCase().replace(/^RO[-\s]?/, '');
+  if (ISO_TO_COUNTY[iso]) return ISO_TO_COUNTY[iso];
+  const lower = v.toLowerCase();
+  const hit = RO_COUNTIES.find((c) => stripDiacritics(c).toLowerCase() === lower);
+  if (hit) return hit;
+  if (lower.includes('bucur') || lower === 'bucharest' || lower.startsWith('sector')) {
+    return 'Bucuresti';
+  }
+  return v;
 }
 
 @Injectable()
@@ -138,6 +190,17 @@ export class InvoicesService {
       const enriched = await Promise.all(slice.map((p) => this.enrichPayment(p)));
       out.push(...enriched);
     }
+    // Marcăm plățile cu o emitere anterioară eșuată (factură status='failed'),
+    // ca să se vadă în coloana „Facturat" din tab-ul „De facturat".
+    const ids = out.map((r) => r.paymentId);
+    if (ids.length) {
+      const failed = await this.invoices.find({
+        where: { paymentId: In(ids), status: 'failed' },
+        select: ['paymentId'],
+      });
+      const failedSet = new Set(failed.map((f) => f.paymentId));
+      for (const r of out) if (failedSet.has(r.paymentId)) r.invoiceStatus = 'failed';
+    }
     return out;
   }
 
@@ -154,6 +217,11 @@ export class InvoicesService {
       const u = await this.users.findOne({ where: { id: p.userId } });
       buyerName = u?.name ?? null;
     }
+    // Clientul pentru factură (respectă useDefaultClient + județ normalizat),
+    // reutilizând datele Stripe deja aduse ca să nu mai facem un fetch.
+    const client: InvoiceClientSnapshot = site
+      ? await this.defaultClientFor(p, site, { stripe, email })
+      : { country: 'Romania', isTaxPayer: false };
     return {
       paymentId: p.id,
       siteId: p.siteId,
@@ -162,6 +230,8 @@ export class InvoicesService {
       createdAt: p.createdAt,
       buyerName,
       buyerEmail: stripe?.email ?? email,
+      client,
+      invoiceStatus: 'none',
       smartbillReady: !!(site?.smartbill?.enabled && creds),
     };
   }
@@ -180,16 +250,21 @@ export class InvoicesService {
   private async defaultClientFor(
     p: Payment,
     site: Site,
+    pre?: { stripe: StripeBilling; email: string | null },
   ): Promise<InvoiceClientSnapshot> {
     const sb = site.smartbill ?? {};
     if (sb.useDefaultClient && sb.defaultClient?.name) {
-      return { country: 'Romania', isTaxPayer: false, ...sb.defaultClient };
+      return {
+        country: 'Romania',
+        isTaxPayer: false,
+        ...sb.defaultClient,
+        county: normalizeCounty(sb.defaultClient.county) ?? sb.defaultClient.county,
+      };
     }
     // Cumpărătorul real: nume + adresă din billing-ul Stripe, email din DB.
-    const [stripe, email] = await Promise.all([
-      this.stripeDetails(p.id),
-      this.buyerEmail(p),
-    ]);
+    const [stripe, email] = pre
+      ? [pre.stripe, pre.email]
+      : await Promise.all([this.stripeDetails(p.id), this.buyerEmail(p)]);
     let name = stripe?.name ?? '';
     if (!name && p.userId) {
       const u = await this.users.findOne({ where: { id: p.userId } });
@@ -206,7 +281,7 @@ export class InvoicesService {
       email: email ?? undefined,
       address: street || undefined,
       city: addr?.city ?? undefined,
-      county: addr?.state ?? undefined,
+      county: normalizeCounty(addr?.state) ?? undefined,
       country: this.mapCountry(addr?.country),
       isTaxPayer: false,
     };
@@ -293,7 +368,7 @@ export class InvoicesService {
         regCom: client.regCom || undefined,
         address: client.address || undefined,
         city: client.city || undefined,
-        county: client.county || undefined,
+        county: normalizeCounty(client.county) || client.county || undefined,
         country: client.country || 'Romania',
         // NU trimitem email pe factură (nu folosim email, nu trimitem facturile pe mail).
         isTaxPayer: client.isTaxPayer ?? false,

@@ -8,6 +8,7 @@ import { Download, FileText, Receipt, Trash2 } from 'lucide-react';
 import {
   InvoicesApi,
   type BillablePayment,
+  type EmitOverrides,
   type InvoiceClientData,
   type InvoiceDto,
   type InvoicePreview,
@@ -29,6 +30,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Table,
   TableBody,
   TableCell,
@@ -41,6 +49,25 @@ import { useToast } from '@/components/ui/use-toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { SiteBadge } from '@/components/site-badge';
 import { useSitesMap } from '@/lib/hooks/use-sites-map';
+
+/** Județele acceptate de SmartBill (denumiri standard, fără diacritice). */
+const RO_COUNTIES = [
+  'Alba', 'Arad', 'Arges', 'Bacau', 'Bihor', 'Bistrita-Nasaud', 'Botosani',
+  'Brasov', 'Braila', 'Bucuresti', 'Buzau', 'Caras-Severin', 'Calarasi', 'Cluj',
+  'Constanta', 'Covasna', 'Dambovita', 'Dolj', 'Galati', 'Giurgiu', 'Gorj',
+  'Harghita', 'Hunedoara', 'Ialomita', 'Iasi', 'Ilfov', 'Maramures', 'Mehedinti',
+  'Mures', 'Neamt', 'Olt', 'Prahova', 'Satu Mare', 'Salaj', 'Sibiu', 'Suceava',
+  'Teleorman', 'Timis', 'Tulcea', 'Vaslui', 'Valcea', 'Vrancea',
+];
+
+/** Tipuri de plată uzuale acceptate de SmartBill pe încasare. */
+const PAYMENT_TYPES = ['Card', 'Ordin de plata', 'Transfer bancar', 'Chitanta', 'Numerar', 'Mandat postal'];
+
+const NONE = '__none__';
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 function money(cents: number, currency: string): string {
   return new Intl.NumberFormat('ro-RO', { style: 'currency', currency: currency || 'RON' }).format(
@@ -108,6 +135,31 @@ function useRangeSelect<T>(
   return { selected, selectableIds, allSelected, toggle, toggleAll, clear, remove };
 }
 
+/** Dropdown cu județele SmartBill. Acceptă valoare goală sau una custom (din date
+ *  vechi care nu sunt în listă) — o adaugă temporar ca să nu se piardă. */
+function CountySelect({ value, onChange }: { value?: string; onChange: (v: string) => void }) {
+  const v = value?.trim() ?? '';
+  const options = v && !RO_COUNTIES.includes(v) ? [v, ...RO_COUNTIES] : RO_COUNTIES;
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs">Județ (SmartBill)</Label>
+      <Select value={v || NONE} onValueChange={(val) => onChange(val === NONE ? '' : val)}>
+        <SelectTrigger>
+          <SelectValue placeholder="— alege —" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NONE}>— fără județ —</SelectItem>
+          {options.map((c) => (
+            <SelectItem key={c} value={c}>
+              {c}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 export default function FacturarePage() {
   const { toast } = useToast();
   const { isAllSelected } = useSitesMap();
@@ -128,44 +180,15 @@ export default function FacturarePage() {
   const invSel = useRangeSelect<InvoiceDto>(issuedRows, (inv) => inv.id);
 
   const [previewFor, setPreviewFor] = useState<string | null>(null);
-  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [delBusy, setDelBusy] = useState(false);
+
+  const selectedRows = rows.filter((r) => billSel.selected.has(r.paymentId));
 
   const refetchAll = () => {
     billable.refetch();
     issued.refetch();
   };
-
-  async function emitBulk() {
-    const ids = [...billSel.selected];
-    if (ids.length === 0) return;
-    const ok = await confirmDialog({
-      title: `Emite ${ids.length} ${ids.length === 1 ? 'factură' : 'facturi'}?`,
-      description:
-        'Se vor emite în SmartBill cu datele implicite ale fiecărui site (clientul implicit dacă e activat). Pentru date custom, folosește „Previzualizează" per factură.',
-      confirmText: 'Emite toate',
-    });
-    if (!ok) return;
-    setBulkBusy(true);
-    try {
-      const res = await InvoicesApi.emitBulk(ids);
-      const okN = res.filter((r) => r.ok).length;
-      const failN = res.length - okN;
-      toast({
-        variant: failN ? 'destructive' : 'success',
-        title: `${okN} emise${failN ? `, ${failN} eșuate` : ''}`,
-        description: failN
-          ? res.filter((r) => !r.ok).map((r) => r.error).slice(0, 3).join(' | ')
-          : undefined,
-      });
-      billSel.clear();
-      refetchAll();
-    } catch (e) {
-      toast({ variant: 'destructive', title: 'Eroare', description: (e as Error).message });
-    } finally {
-      setBulkBusy(false);
-    }
-  }
 
   async function deleteBulk() {
     const ids = [...invSel.selected];
@@ -215,10 +238,10 @@ export default function FacturarePage() {
           {billSel.selected.size > 0 && (
             <div className="flex items-center gap-3 mb-3 p-3 rounded-md border border-border bg-secondary/20">
               <span className="text-sm">{billSel.selected.size} selectate</span>
-              <Button size="sm" onClick={emitBulk} disabled={bulkBusy}>
-                {bulkBusy ? 'Se emit…' : 'Emite selectate'}
+              <Button size="sm" onClick={() => setBulkOpen(true)}>
+                Emite selectate…
               </Button>
-              <Button size="sm" variant="ghost" onClick={billSel.clear} disabled={bulkBusy}>
+              <Button size="sm" variant="ghost" onClick={billSel.clear}>
                 Anulează
               </Button>
             </div>
@@ -247,8 +270,11 @@ export default function FacturarePage() {
                     <TableHead>Data plății</TableHead>
                     {isAllSelected && <TableHead>Site</TableHead>}
                     <TableHead>Cumpărător</TableHead>
+                    <TableHead>Țară</TableHead>
+                    <TableHead>Județ</TableHead>
+                    <TableHead>Oraș</TableHead>
                     <TableHead>Sumă</TableHead>
-                    <TableHead>SmartBill</TableHead>
+                    <TableHead>Facturat</TableHead>
                     <TableHead className="text-right">Acțiuni</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -266,7 +292,7 @@ export default function FacturarePage() {
                           aria-label="Selectează"
                         />
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                         {format(new Date(r.createdAt), "d MMM yyyy 'la' HH:mm", { locale: ro })}
                       </TableCell>
                       {isAllSelected && (
@@ -278,14 +304,19 @@ export default function FacturarePage() {
                         <div>{r.buyerName ?? '—'}</div>
                         <div className="text-muted-foreground">{r.buyerEmail ?? ''}</div>
                       </TableCell>
-                      <TableCell className="tabular-nums font-medium">
+                      <TableCell className="text-xs">{r.client?.country ?? '—'}</TableCell>
+                      <TableCell className="text-xs">{r.client?.county ?? '—'}</TableCell>
+                      <TableCell className="text-xs">{r.client?.city ?? '—'}</TableCell>
+                      <TableCell className="tabular-nums font-medium whitespace-nowrap">
                         {money(r.amountCents, r.currency)}
                       </TableCell>
                       <TableCell>
-                        {r.smartbillReady ? (
-                          <Badge variant="success">configurat</Badge>
+                        {r.invoiceStatus === 'failed' ? (
+                          <Badge variant="destructive" title="O emitere anterioară a eșuat">
+                            eșuat
+                          </Badge>
                         ) : (
-                          <Badge variant="outline">neconfigurat</Badge>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
                       <TableCell className="text-right">
@@ -304,7 +335,8 @@ export default function FacturarePage() {
               </Table>
               <p className="mt-2 text-[11px] text-muted-foreground">
                 Tip: ține <kbd className="rounded border border-border px-1 py-0.5">Shift</kbd> apăsat
-                la click pe o bifă ca să selectezi un interval întreg.
+                la click pe o bifă ca să selectezi un interval întreg. „Emite selectate…” deschide un
+                modal cu data, metoda de plată și datele fiecărui client.
               </p>
             </>
           )}
@@ -379,6 +411,18 @@ export default function FacturarePage() {
         </TabsContent>
       </Tabs>
 
+      {bulkOpen && selectedRows.length > 0 && (
+        <BulkEmitDialog
+          rows={selectedRows}
+          onClose={() => setBulkOpen(false)}
+          onDone={() => {
+            setBulkOpen(false);
+            billSel.clear();
+            refetchAll();
+          }}
+        />
+      )}
+
       {previewFor && (
         <PreviewDialog
           paymentId={previewFor}
@@ -391,6 +435,160 @@ export default function FacturarePage() {
         />
       )}
     </div>
+  );
+}
+
+function BulkEmitDialog({
+  rows,
+  onClose,
+  onDone,
+}: {
+  rows: BillablePayment[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { toast } = useToast();
+  const [issueDate, setIssueDate] = useState(todayIso());
+  const [paymentType, setPaymentType] = useState('Card');
+  const [clients, setClients] = useState<Record<string, InvoiceClientData>>(() =>
+    Object.fromEntries(rows.map((r) => [r.paymentId, { ...(r.client ?? {}) }])),
+  );
+  const [emitting, setEmitting] = useState(false);
+
+  const patch = (pid: string, p: Partial<InvoiceClientData>) =>
+    setClients((c) => ({ ...c, [pid]: { ...c[pid], ...p } }));
+
+  async function emitAll() {
+    const missing = rows.filter((r) => !clients[r.paymentId]?.name?.trim());
+    if (missing.length) {
+      toast({
+        variant: 'destructive',
+        title: `Nume client lipsă la ${missing.length} ${missing.length === 1 ? 'factură' : 'facturi'}`,
+        description: 'Completează numele/denumirea pentru fiecare client înainte de emitere.',
+      });
+      return;
+    }
+    setEmitting(true);
+    try {
+      const overrides: Record<string, EmitOverrides> = {};
+      for (const r of rows) {
+        overrides[r.paymentId] = { client: clients[r.paymentId], issueDate, paymentType };
+      }
+      const res = await InvoicesApi.emitBulk(
+        rows.map((r) => r.paymentId),
+        overrides,
+      );
+      const okN = res.filter((r) => r.ok).length;
+      const failN = res.length - okN;
+      toast({
+        variant: failN ? 'destructive' : 'success',
+        title: `${okN} emise${failN ? `, ${failN} eșuate` : ''}`,
+        description: failN
+          ? res.filter((r) => !r.ok).map((r) => r.error).slice(0, 3).join(' | ')
+          : undefined,
+      });
+      onDone();
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Eroare', description: (e as Error).message });
+    } finally {
+      setEmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="flex max-h-[88vh] max-w-3xl flex-col">
+        <DialogHeader>
+          <DialogTitle>
+            Emite {rows.length} {rows.length === 1 ? 'factură' : 'facturi'}
+          </DialogTitle>
+          <DialogDescription>
+            Data și metoda de plată se aplică tuturor. Verifică/editează datele fiecărui client —
+            județul e în formatul cerut de SmartBill.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid grid-cols-2 gap-3 border-b border-border pb-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Data emiterii (apare pe factură)</Label>
+            <Input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Metoda de plată</Label>
+            <Select value={paymentType} onValueChange={setPaymentType}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAYMENT_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="-mr-1 flex-1 space-y-3 overflow-y-auto pr-1">
+          {rows.map((r) => {
+            const c = clients[r.paymentId] ?? {};
+            return (
+              <div key={r.paymentId} className="rounded-lg border border-border bg-secondary/10 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span className="truncate">
+                    {format(new Date(r.createdAt), 'd MMM yyyy', { locale: ro })} · {r.buyerEmail ?? '—'}
+                  </span>
+                  <span className="tabular-nums font-medium text-foreground">
+                    {money(r.amountCents, r.currency)}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Nume / Denumire *</Label>
+                    <Input
+                      value={c.name ?? ''}
+                      onChange={(e) => patch(r.paymentId, { name: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Adresă</Label>
+                    <Input
+                      value={c.address ?? ''}
+                      onChange={(e) => patch(r.paymentId, { address: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Oraș</Label>
+                    <Input
+                      value={c.city ?? ''}
+                      onChange={(e) => patch(r.paymentId, { city: e.target.value })}
+                    />
+                  </div>
+                  <CountySelect value={c.county} onChange={(v) => patch(r.paymentId, { county: v })} />
+                  <div className="space-y-1">
+                    <Label className="text-xs">Țară</Label>
+                    <Input
+                      value={c.country ?? ''}
+                      onChange={(e) => patch(r.paymentId, { country: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <DialogFooter className="border-t border-border pt-3">
+          <Button variant="ghost" onClick={onClose} disabled={emitting}>
+            Renunță
+          </Button>
+          <Button onClick={emitAll} disabled={emitting}>
+            {emitting ? 'Se emit…' : `Emite toate (${rows.length})`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -519,6 +717,7 @@ function PreviewDialog({
   const [productName, setProductName] = useState('');
   const [price, setPrice] = useState('');
   const [issueDate, setIssueDate] = useState('');
+  const [paymentType, setPaymentType] = useState('Card');
   const [hydrated, setHydrated] = useState(false);
   const [emitting, setEmitting] = useState(false);
 
@@ -528,6 +727,7 @@ function PreviewDialog({
     setProductName(data.productName);
     setPrice(String(data.price));
     setIssueDate(data.issueDate);
+    setPaymentType(data.paymentType || 'Card');
     setHydrated(true);
   }
 
@@ -550,6 +750,7 @@ function PreviewDialog({
         productName,
         price: priceNum,
         issueDate,
+        paymentType,
       });
       toast({ variant: 'success', title: 'Factură emisă' });
       onEmitted();
@@ -575,21 +776,36 @@ function PreviewDialog({
         ) : (
           <div className="space-y-3">
             <div className="text-xs text-muted-foreground">
-              {data?.siteName} · serie <b>{data?.seriesName || '—'}</b> · CIF {data?.companyVatCode || '—'} ·
-              încasare {data?.paymentType}
+              {data?.siteName} · serie <b>{data?.seriesName || '—'}</b> · CIF {data?.companyVatCode || '—'}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <LabeledInput label="Nume / Denumire client *" value={client.name ?? ''} onChange={(v) => patch({ name: v })} />
               <LabeledInput label="Adresă" value={client.address ?? ''} onChange={(v) => patch({ address: v })} />
               <LabeledInput label="Oraș" value={client.city ?? ''} onChange={(v) => patch({ city: v })} />
-              <LabeledInput label="Județ" value={client.county ?? ''} onChange={(v) => patch({ county: v })} />
+              <CountySelect value={client.county} onChange={(v) => patch({ county: v })} />
+              <LabeledInput label="Țară" value={client.country ?? ''} onChange={(v) => patch({ country: v })} />
             </div>
 
             <div className="grid grid-cols-2 gap-3 border-t border-border pt-3">
               <LabeledInput label="Denumire produs" value={productName} onChange={setProductName} />
               <LabeledInput label="Preț (RON, TVA inclus)" type="number" value={price} onChange={setPrice} />
               <LabeledInput label="Data emiterii" type="date" value={issueDate} onChange={setIssueDate} />
+              <div className="space-y-1">
+                <Label className="text-xs">Metoda de plată</Label>
+                <Select value={paymentType} onValueChange={setPaymentType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         )}

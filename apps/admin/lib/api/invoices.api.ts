@@ -20,6 +20,10 @@ export interface BillablePayment {
   createdAt: string;
   buyerName: string | null;
   buyerEmail: string | null;
+  /** Clientul cu care s-ar emite factura (editabil în modalul de emitere). */
+  client?: InvoiceClientData;
+  /** 'failed' dacă o emitere anterioară a eșuat; 'none' altfel. */
+  invoiceStatus?: 'none' | 'failed';
   smartbillReady: boolean;
 }
 
