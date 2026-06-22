@@ -1122,6 +1122,41 @@ export class PaymentsService {
       return { ok: false, error: (err as Error).message };
     }
   }
+
+  /**
+   * Marchează manual o plată ca 'refunded' DOAR ca status, fără să apeleze
+   * Stripe (niciun refund real) și fără să atingă facturarea. Util pentru plăți
+   * vechi rambursate pe alt canal (transfer bancar / direct din Stripe dashboard)
+   * pe care vrem doar să le reflectăm corect în sistem.
+   */
+  async markRefunded(
+    paymentId: string,
+    options: { reason?: string } = {},
+  ): Promise<{ ok: true; status: 'refunded' } | { ok: false; error: string }> {
+    const payment = await this.repo.findOne({ where: { id: paymentId } });
+    if (!payment) return { ok: false, error: 'payment_not_found' };
+    if (payment.status === 'refunded') return { ok: false, error: 'already_refunded' };
+    if (payment.status !== 'paid') {
+      return { ok: false, error: `cannot mark refunded a payment with status='${payment.status}'` };
+    }
+
+    const reason = options.reason?.trim();
+    await this.repo.update(
+      { id: paymentId },
+      {
+        status: 'refunded',
+        failureReason: reason
+          ? `Refunded manual: ${reason}`
+          : 'Marcată refunded manual din admin (fără Stripe)',
+        failureCode: 'manual_refund',
+      },
+    );
+
+    this.logger.log(
+      `Payment ${paymentId} marcată refunded manual (fără Stripe). Motiv: ${reason ?? '—'}`,
+    );
+    return { ok: true, status: 'refunded' };
+  }
 }
 
 function extractIntentFailureReason(pi: Stripe.PaymentIntent): { reason: string; code: string } {

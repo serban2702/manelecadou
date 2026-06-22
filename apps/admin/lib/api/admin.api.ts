@@ -477,6 +477,13 @@ export class AdminApi {
   > {
     return http.post(`/admin/payments/${id}/refund`, body);
   }
+  /** Marchează plata ca 'refunded' doar ca status (fără Stripe, fără storno). */
+  static paymentMarkRefunded(
+    id: string,
+    body: { reason?: string } = {},
+  ): Promise<{ ok: true; status: 'refunded' } | { ok: false; error: string }> {
+    return http.post(`/admin/payments/${id}/mark-refunded`, body);
+  }
 }
 
 // ============== SEO Pages ==============

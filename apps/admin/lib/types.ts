@@ -233,6 +233,8 @@ export interface AdminPayment {
     nextRetryAt: string | null;
     retryCount: number;
   } | null;
+  /** Factura asociată plății (UNIQUE pe paymentId). null dacă nu s-a emis. */
+  invoice?: { id: string; status: 'issued' | 'failed' } | null;
 }
 
 export interface AdminError {

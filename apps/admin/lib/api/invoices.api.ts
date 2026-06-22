@@ -109,4 +109,14 @@ export class InvoicesApi {
     a.remove();
     window.URL.revokeObjectURL(url);
   }
+  /** Șterge o factură doar din aplicație (DB + PDF). Fără storno SmartBill. */
+  static remove(invoiceId: string): Promise<{ ok: true; id: string; paymentId: string }> {
+    return http.delete(`/admin/invoices/${invoiceId}`);
+  }
+  /** Șterge mai multe facturi deodată (doar din aplicație). */
+  static removeBulk(
+    ids: string[],
+  ): Promise<{ deleted: number; errors: { id: string; error: string }[] }> {
+    return http.post('/admin/invoices/delete-bulk', { ids });
+  }
 }

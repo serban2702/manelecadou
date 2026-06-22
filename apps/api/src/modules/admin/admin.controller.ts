@@ -375,6 +375,20 @@ export class AdminController {
       linkedGens.map((g) => [g.paymentId as string, g]),
     );
 
+    // Factura asociată (dacă există) — pentru coloana „Facturat" din lista de
+    // plăți. Raw query pe conexiunea existentă (ca la attribution mai jos) ca să
+    // nu injectăm un repository nou aici. O plată are cel mult o factură (UNIQUE).
+    const invRows: Array<{ paymentId: string; id: string; status: string }> =
+      paymentIdList.length
+        ? await this.payments.query(
+            `SELECT "paymentId", id, status FROM invoices WHERE "paymentId" = ANY($1::uuid[])`,
+            [paymentIdList],
+          )
+        : [];
+    const invoiceByPaymentId = new Map(
+      invRows.map((r) => [r.paymentId, { id: r.id, status: r.status as 'issued' | 'failed' }]),
+    );
+
     // Attribution: pentru fiecare plată găsim cea mai recentă sesiune analytics
     // a aceluiași user/guest ÎNAINTE sau în clipa creării plății. E sursa care
     // a adus userul pe site înainte să plătească (last-touch attribution).
@@ -512,6 +526,7 @@ export class AdminController {
             ? guestEmail.get(p.guestId) ?? null
             : null,
         attribution: attr,
+        invoice: invoiceByPaymentId.get(p.id) ?? null,
         generation: g
           ? {
               id: g.id,
@@ -543,6 +558,12 @@ export class AdminController {
       amountCents: body?.amountCents,
       reason: body?.reason,
     });
+  }
+
+  /** Marchează plata ca 'refunded' doar ca status (fără Stripe, fără storno). */
+  @Post('payments/:id/mark-refunded')
+  async markPaymentRefunded(@Param('id') id: string, @Body() body: { reason?: string }) {
+    return this.paymentsService.markRefunded(id, { reason: body?.reason });
   }
 
   // ===== Action endpoints =====

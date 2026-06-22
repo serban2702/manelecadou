@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -69,5 +70,17 @@ export class InvoicesController {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     createReadStream(path).pipe(res);
+  }
+
+  /** Șterge mai multe facturi deodată (doar din aplicație, fără storno). */
+  @Post('delete-bulk')
+  deleteBulk(@Body() body: { ids: string[] }) {
+    return this.svc.deleteMany(body?.ids ?? []);
+  }
+
+  /** Șterge o factură doar din aplicație (rând DB + PDF). Fără storno SmartBill. */
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.svc.deleteOne(id);
   }
 }

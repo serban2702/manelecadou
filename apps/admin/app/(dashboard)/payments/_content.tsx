@@ -182,7 +182,10 @@ function PaymentCard({
             {format(new Date(p.createdAt), "d MMM yyyy 'la' HH:mm", { locale: ro })}
           </div>
         </div>
-        <Badge variant={STATUS_VARIANT[p.status] ?? 'muted'}>{p.status}</Badge>
+        <div className="flex items-center gap-1.5">
+          {p.invoice && <InvoiceBadge invoice={p.invoice} />}
+          <Badge variant={STATUS_VARIANT[p.status] ?? 'muted'}>{p.status}</Badge>
+        </div>
       </div>
 
       <div className="mt-2 text-xs text-muted-foreground truncate">{p.email ?? '— fără email'}</div>
@@ -244,6 +247,17 @@ function OpenReplayCell({ sessionId }: { sessionId?: string | null }) {
       <span className="truncate">{sessionId}</span>
     </a>
   );
+}
+
+/** Badge pentru starea de facturare a unei plăți (coloana „Facturat"). */
+function InvoiceBadge({
+  invoice,
+}: {
+  invoice?: { id: string; status: 'issued' | 'failed' } | null;
+}) {
+  if (!invoice) return <span className="text-muted-foreground">—</span>;
+  if (invoice.status === 'failed') return <Badge variant="destructive">eșuat</Badge>;
+  return <Badge variant="success">facturat</Badge>;
 }
 
 export default function PaymentsPage() {
@@ -426,6 +440,7 @@ export default function PaymentsPage() {
               <TableHead>Campanie → Creativ</TableHead>
               <TableHead>OpenReplay</TableHead>
               <TableHead>Comandă</TableHead>
+              <TableHead>Facturat</TableHead>
               <TableHead>ID</TableHead>
             </TableRow>
           </TableHeader>
@@ -512,6 +527,9 @@ export default function PaymentsPage() {
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
+                </TableCell>
+                <TableCell>
+                  <InvoiceBadge invoice={p.invoice} />
                 </TableCell>
                 <TableCell>
                   <code className="text-xs text-muted-foreground">{p.id.slice(0, 8)}</code>

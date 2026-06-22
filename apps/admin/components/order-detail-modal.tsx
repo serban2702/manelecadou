@@ -6,6 +6,7 @@ import { AdminApi, type OrderDetail, type AdminVariation } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
 import { Empty } from '@/components/ui/empty';
 import { TabsContent } from '@/components/ui/tabs';
 import { ResponsiveTabs, type ResponsiveTab } from '@/components/ui/responsive-tabs';
@@ -139,7 +140,7 @@ function OrderTabs({ data, refetch }: { data: OrderDetail; refetch: () => Promis
     <ResponsiveTabs value={tab} onValueChange={setTab} tabs={tabs}>
       <TabsContent value="overview"><OverviewTab data={data} /></TabsContent>
       <TabsContent value="form"><FormTab data={data} /></TabsContent>
-      <TabsContent value="payment"><PaymentTab data={data} /></TabsContent>
+      <TabsContent value="payment"><PaymentTab data={data} refetch={refetch} /></TabsContent>
       <TabsContent value="audio"><AudioTab data={data} /></TabsContent>
       {data.generation && (
         <TabsContent value="studio"><StudioTab data={data} refetch={refetch} /></TabsContent>
@@ -392,15 +393,38 @@ function FormTab({ data }: { data: OrderDetail }) {
 
 // ============== TAB: Payment ==============
 
-function PaymentTab({ data }: { data: OrderDetail }) {
+function PaymentTab({ data, refetch }: { data: OrderDetail; refetch: () => Promise<void> }) {
   const p = data.payment;
   const g = data.generation;
+  const { toast } = useToast();
+  const [marking, setMarking] = useState(false);
+  const [refundReason, setRefundReason] = useState('');
+  const [refundBusy, setRefundBusy] = useState(false);
   // Lazy: cerem datele de facturare Stripe doar când userul intră pe tab.
   const { data: stripeDetails, loading: stripeLoading } = useAsync(
     () => (p ? AdminApi.paymentStripeDetails(p.id) : Promise.resolve(null)),
     [p?.id],
   );
   if (!p) return <Empty title="Demo gratuit — fără plată" />;
+
+  async function markRefunded() {
+    if (!p) return;
+    setRefundBusy(true);
+    try {
+      const res = await AdminApi.paymentMarkRefunded(p.id, {
+        reason: refundReason.trim() || undefined,
+      });
+      if (!res.ok) throw new Error(res.error);
+      toast({ variant: 'success', title: 'Plată marcată ca refunded' });
+      setMarking(false);
+      setRefundReason('');
+      await refetch();
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Eroare', description: errorMessage(e) });
+    } finally {
+      setRefundBusy(false);
+    }
+  }
 
   // URL public spre manea. Preferăm domeniul site-ului (https://<domain>/m/<id>)
   // pentru ca link-ul să meargă direct la brand-ul corect, nu la admin.
@@ -458,9 +482,25 @@ function PaymentTab({ data }: { data: OrderDetail }) {
         <Kv k="Stripe Session" v={p.providerSessionId ?? '—'} mono />
         <Kv k="Creată" v={fmtDateTime(p.createdAt)} />
         <Kv k="Update" v={fmtDateTime(p.updatedAt)} />
-        {p.failureCode && <Kv k="Cod eșec" v={<code className="text-rose-300">{p.failureCode}</code>} />}
+        {p.failureCode && (
+          <Kv
+            k={p.status === 'refunded' ? 'Cod refund' : 'Cod eșec'}
+            v={
+              <code className={p.status === 'refunded' ? 'text-amber-300' : 'text-rose-300'}>
+                {p.failureCode}
+              </code>
+            }
+          />
+        )}
         {p.failureReason && (
-          <Kv k="Motiv eșec" v={<span className="text-rose-200">{p.failureReason}</span>} />
+          <Kv
+            k={p.status === 'refunded' ? 'Detalii refund' : 'Motiv eșec'}
+            v={
+              <span className={p.status === 'refunded' ? 'text-amber-200' : 'text-rose-200'}>
+                {p.failureReason}
+              </span>
+            }
+          />
         )}
         {p.openReplaySessionId && (
           <Kv
@@ -477,6 +517,55 @@ function PaymentTab({ data }: { data: OrderDetail }) {
             }
           />
         )}
+
+        <div className="mt-3 border-t border-white/10 pt-3">
+          {p.status === 'refunded' ? (
+            <p className="text-[11px] text-muted-foreground">
+              Marcată ca <span className="text-amber-300">refunded</span> — doar statusul a fost setat
+              manual. Nu s-a inițiat refund prin Stripe, iar factura (dacă există) e neatinsă.
+            </p>
+          ) : p.status === 'paid' ? (
+            marking ? (
+              <div className="space-y-2">
+                <p className="text-[11px] text-muted-foreground">
+                  Setezi <strong>doar statusul</strong> la{' '}
+                  <span className="text-amber-300">refunded</span>. Fără refund prin Stripe, fără
+                  storno la factură.
+                </p>
+                <Input
+                  value={refundReason}
+                  onChange={(e) => setRefundReason(e.target.value)}
+                  placeholder="Motiv (opțional) — ex: rambursat prin transfer bancar"
+                  className="text-xs"
+                />
+                <div className="flex gap-2">
+                  <Button variant="destructive" size="sm" loading={refundBusy} onClick={markRefunded}>
+                    Confirmă „refunded”
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={refundBusy}
+                    onClick={() => {
+                      setMarking(false);
+                      setRefundReason('');
+                    }}
+                  >
+                    Anulează
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => setMarking(true)}>
+                Marchează ca refunded
+              </Button>
+            )
+          ) : (
+            <p className="text-[11px] text-muted-foreground">
+              Marcarea „refunded” e disponibilă doar pentru plăți cu status <code>paid</code>.
+            </p>
+          )}
+        </div>
       </Card>
 
       <Card title="Date facturare (Stripe)" icon={<CreditCard className="h-4 w-4" />}>

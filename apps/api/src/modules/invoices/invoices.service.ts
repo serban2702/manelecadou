@@ -408,6 +408,48 @@ export class InvoicesService {
     return { path: abs, filename: name };
   }
 
+  /**
+   * Șterge o factură DOAR din aplicație (rândul din DB + PDF-ul local). NU
+   * anulează/stornează nimic în SmartBill — e o curățenie locală (ex. facturi
+   * de test sau emise greșit la început). După ștergere, plata redevine
+   * „facturabilă" (reapare în listBillable) și poate fi re-emisă.
+   */
+  async deleteOne(invoiceId: string): Promise<{ ok: true; id: string; paymentId: string }> {
+    const inv = await this.invoices.findOne({ where: { id: invoiceId } });
+    if (!inv) throw new NotFoundException('Factura nu există');
+    if (inv.pdfPath) {
+      try {
+        await fs.unlink(join(this.uploadsDir(), inv.pdfPath));
+      } catch (err) {
+        // PDF lipsă sau deja șters — nu blocăm ștergerea rândului.
+        this.logger.warn(`PDF ${inv.pdfPath} nu a putut fi șters: ${(err as Error).message}`);
+      }
+    }
+    await this.invoices.delete({ id: invoiceId });
+    this.logger.log(
+      `Factura ${invoiceId} ștearsă din aplicație (fără storno). Plata ${inv.paymentId} redevine facturabilă.`,
+    );
+    return { ok: true, id: invoiceId, paymentId: inv.paymentId };
+  }
+
+  /** Șterge mai multe facturi deodată (doar din aplicație). */
+  async deleteMany(
+    ids: string[],
+  ): Promise<{ deleted: number; errors: { id: string; error: string }[] }> {
+    const unique = Array.from(new Set((ids ?? []).filter(Boolean)));
+    let deleted = 0;
+    const errors: { id: string; error: string }[] = [];
+    for (const id of unique) {
+      try {
+        await this.deleteOne(id);
+        deleted += 1;
+      } catch (err) {
+        errors.push({ id, error: (err as Error).message });
+      }
+    }
+    return { deleted, errors };
+  }
+
   /** Test rapid al credențialelor SmartBill ale unui site. */
   async testConnection(siteId: string): Promise<{ ok: boolean; series: string[]; message?: string }> {
     const site = await this.sites.findById(siteId);
