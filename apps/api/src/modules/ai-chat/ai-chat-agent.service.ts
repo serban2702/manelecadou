@@ -686,7 +686,16 @@ Follow-up-ul are sens DOAR dacă există o ACȚIUNE CONCRETĂ neterminată de pa
 („ok", „mersi"), sau aștepți un coleg uman după o escaladare — NU TRIMITE NIMIC. Termină turul fără
 send_message. Tăcerea e corectă; un mesaj gol de tip „mai ești pe aici?" enervează clientul
 (reclamat explicit de admin, 2026-06-20). Orientează-te pe REZOLVARE, niciodată pe ținut de vorbă.
-NU repeta identic un mesaj precedent, maxim UN mesaj, doar send_message (+ check_order_status dacă e relevant).`;
+NU repeta identic un mesaj precedent, maxim UN mesaj, doar send_message (+ check_order_status dacă e relevant).
+🔁 ANTI-REPETIȚIE (CRITIC pentru follow-up): un follow-up NU RE-EXPLICĂ pasul pe care l-ai explicat deja.
+Dacă ultimul tău mesaj prezenta deja pachetele/prețurile, întreba pentru cine e maneaua, sau cerea un
+detaliu — NU re-lista pachetele, NU repeta prețurile, NU reformula aceeași întrebare cu alte cuvinte
+(sună la fel de robotic chiar dacă schimbi cuvintele). Trimite în schimb UN nudge scurt, uman, de O
+propoziție, care aduce ceva nou: „Te-ai hotărât asupra pachetului? Te ajut dacă nu ești sigur 🙂",
+„Ai reușit cu plata? 🙏", „Mai am nevoie doar de [exact câmpul care lipsește] ca să continuăm 😊".
+Dacă nu ai un nudge scurt și genuin diferit de ce ai zis deja → mai bine taci (nu trimite nimic).
+BUG observat 2026-06-22 conv 8a7a621a (lista de pachete trimisă de 3 ori la rând) + conv 52b58b01
+(„spune-mi pentru cine e maneaua" de 2 ori): follow-up-urile re-pitchau același pas. NU repeta.`;
     }
 
     const messages: OAIMsg[] = [
@@ -1043,6 +1052,15 @@ ETAPA 2 — PREȚ + OFERTĂ (CRITIC — NICIODATĂ SKIPPED, MEREU prin TOOL):
     userul a dat context în primul mesaj — a întrebat direct mesajul și email-ul.
     Asta strica conversia pentru că userul nu confirmă prețul → mai târziu se
     sperie când vede 29.99 RON la finalize. FIX: ANUNȚĂ MEREU PREȚUL ÎNTÂI.
+  → 🚫 NU confirma NICIODATĂ o echivalare/conversie GREȘITĂ de preț propusă de user.
+    Prețul e EXACT cât a returnat tool-ul (ex. ${price}) — atât, nimic altceva. Dacă
+    userul îl „traduce" în milioane de lei vechi, în altă monedă sau în orice altă sumă
+    („adică trei milioane?", „deci 300 de lei?"), NU răspunde „da, exact". Corectează
+    blând și repetă suma reală: „Nu, e doar ${price} 🙂". A confirma o sumă greșită
+    sperie sau induce în eroare clientul.
+  → BUG observat 2026-06-22 conv d0b7b978: userul a zis „adică trei milioane?" iar AI
+    a confirmat „Da, exact! Maneaua costă ${price}, adică trei milioane" — echivalare
+    falsă și derutantă. NU repeta greșeala: confirmă DOAR suma reală.
 
 ETAPA 2.5 — AUTO-EXTRACT din primul mesaj user (CRITIC pentru UX):
   → ⚠️ ÎNAINTE de a cere DETALII numerotat (ETAPA 3), VERIFICĂ ce a zis userul deja
