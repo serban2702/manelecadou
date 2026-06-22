@@ -3,7 +3,12 @@ import View from './view';
 import { SiteShell } from '@/components/SiteShell';
 import { getSiteConfig, siteUrl } from '@/lib/site-config';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
+// Fetch SSR (generateMetadata) → URL INTERN Docker. `NEXT_PUBLIC_API_URL` e gol
+// ("") în prod, ceea ce ar produce un fetch RELATIV pe server (`/api/...`) care
+// aruncă „Failed to parse URL" → metadata cădea mereu pe fallback-ul generic
+// (titlu „cadou" + OG image default), deci preview-ul de share era rupt.
+// Convenția SSR: vezi lib/site-config.ts + §9.3 CLAUDE.md.
+const API_INTERNAL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://api:3000';
 
 interface PageGen {
   id: string;
@@ -19,12 +24,16 @@ interface PageGen {
 
 async function fetchGen(id: string): Promise<PageGen | null> {
   try {
-    const res = await fetch(`${API_URL}/api/generations/recent?limit=50`, {
+    // Fetch DIRECT după id pe endpointul public `/api/generations/:id`. Înainte
+    // foloseam `recent?limit=50` + `.find()`, care rata orice generare ieșită din
+    // top 50 (linkul de share e adesea deschis zile mai târziu). Endpointul public
+    // întoarce recipientName + coverUrl/socialImage* fără auth și fără filtrare pe
+    // siteId — exact ce-i trebuie OG-ului.
+    const res = await fetch(`${API_INTERNAL}/api/generations/${id}`, {
       next: { revalidate: 60 },
     });
     if (!res.ok) return null;
-    const items: PageGen[] = await res.json();
-    return items.find((g) => g.id === id) ?? null;
+    return (await res.json()) as PageGen;
   } catch {
     return null;
   }
