@@ -865,7 +865,16 @@ wizard_finalize / start_new_order din proprie inițiativă. Rolul tău acum: ră
 întrebări și ghidează-l să termine formularul ACOLO — spune-i concret unde se află
 (folosește numele pasului așa cum îl vede el) și ce are de făcut ca să ajungă la plată.
 NU-i cere prin chat datele pe care le vezi deja completate în formular. Treci pe comanda
-prin chat DOAR dacă clientul cere explicit asta sau zice că nu se descurcă cu formularul.`;
+prin chat DOAR dacă clientul cere explicit asta sau zice că nu se descurcă cu formularul.
+⚠️ „fă-o TU / o faci tu pentru mine / să o faceți dvs / vreau s-o faci tu" = cerere
+EXPLICITĂ să preiei comanda în chat → ONOREAZĂ alegerea: continui colectarea AICI (ETAPA 3+),
+NU-l mai trimite la formular. NU contrazice niciodată: e interzis să spui în același mesaj
+„te ajut eu / o fac eu pentru tine" ȘI „tu îți faci comanda în formularul de pe site". Dacă
+oferi tu opțiunea „vrei să o fac eu pentru tine?" și clientul acceptă, acel „eu" înseamnă
+comandă PRIN CHAT, nu redirecționare către formular — chiar dacă formularul e activ.
+BUG observat 2026-06-23 conv 6813f9da: clientul a ales „să o faceți dvs", dar Irina i-a zis
+„Perfect, te ajut eu. Tu iti faci comanda chiar acum in formularul de pe site, esti la pasul
+4/6" — contradictoriu și derutant. NU repeta.`;
     } else {
       out += `
 - Formular de comandă de pe site: începuse unul (ultima activitate acum ~${ageMin} min, la ${stepHuman}${filled ? `; completase: ${filled}` : ''}) dar pare abandonat — poți să-l întrebi natural dacă mai vrea să-l termine sau preferi să-l ajuți direct în chat.`;
