@@ -1574,6 +1574,27 @@ export class ChatService implements OnModuleInit {
 
     // Construiește mesajul
     const isOk = status === 'succeeded';
+
+    // GUARD anti-duplicat livrare (2026-06-26, audit conv 1392a489 / af0b5a7d / c38bcca7):
+    // notifyGenerationCompleted poate fi apelat de MAI MULTE ori pentru aceeași piesă
+    // (BullMQ re-procesează jobul, regenerare overwrite pe același id, auto-retry care
+    // reușește etc.) → clientul primea „🎵 Melodia ta e gata!" cu ACELAȘI link /m/<id>
+    // de 2-4 ori la rând. Dacă în ultimele 3 minute a fost deja livrat un song_preview
+    // pentru ACEST generationId pe această conversație, NU mai trimitem încă unul.
+    // Fereastra de 3 min lasă o regenerare reală (5-10 min) să anunțe varianta nouă.
+    if (isOk) {
+      const alreadyDelivered = await this.msg
+        .createQueryBuilder('m')
+        .where('m."conversationId" = :cid', { cid: conv.id })
+        .andWhere(`m."messageType" = 'song_preview'`)
+        .andWhere(`m.payload->>'generationId' = :gid`, { gid: generationId })
+        .andWhere('m."createdAt" > :since', { since: new Date(Date.now() - 3 * 60 * 1000) })
+        .getOne();
+      if (alreadyDelivered) {
+        return;
+      }
+    }
+
     const body = isOk
       ? `🎵 Melodia ta e gata! O poți asculta și descărca aici: ${this.buildGenerationUrl(conv, generationId)}`
       : `⚠️ A apărut o eroare la generarea melodiei. Operatorul nostru se ocupă imediat — te ținem la curent.`;

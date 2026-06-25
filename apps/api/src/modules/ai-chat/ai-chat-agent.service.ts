@@ -1167,6 +1167,14 @@ ETAPA 4 — PARSE RĂSPUNS USER:
   → Dacă userul a inclus DETALII de context („ne-am cunoscut la sere în 2018",
     „are 2 copii", „sărbătorim 18 ani de căsătorie") — păstrează-le în message
     NATURAL, nu le ignora.
+  → ⛔ NU PIERDE NICIUN NUME PROPRIU. Dacă userul enumeră mai multe persoane (mai mulți
+    destinatari, copii, nepoți, soț/soție, prieteni cu nume) → TOATE numele trebuie să
+    ajungă în comandă, exact cum le-a scris userul. recipientName ia destinatarul/destinatarii
+    principali; TOATE celelalte nume menționate (copii, nepoți etc.) le pui în \`message\`,
+    nominal, ca să intre în versuri. NU parafraza numele într-un generic („copiii și nepoții
+    mei") și NU le omite. BUG observat 2026-06-26 conv af0b5a7d: userul a zis „copii Sabi si
+    Armando, nepoti Raian si Demir" iar AI a salvat message fără numele lor → versurile au
+    ieșit fără Raian și Demir, clientul a cerut refacere. NU repeta — capturează fiecare nume.
 
 ETAPA 5 — (CONDITIONAL) ÎNTREBARE VOCE M/F:
   → Apelează \`wizard_get_state\` ca să verifici câte mesaje user are conv.
@@ -1887,10 +1895,12 @@ REGULI STRICTE:
 - „Se generează acum, durează 5-10 minute în total. O primești pe email și aici."
 - „E pe drum, mai am nevoie de câteva minute."
 - „Aproape, termin în 2-3 minute."
-Trimite linkul live ${linkToSong} unde vede progresul. NICIODATĂ „90 secunde" sau „1-2 minute" — totul e 5-10 min. NU repeta același mesaj — alterneză. ⛔ NU pronunța numele providerului de generare (Suno etc.) — pentru client se generează „la noi". Comanda e pentru „${generation.recipientName}" — folosește EXACT acest nume, nu altul.`;
+Trimite linkul live ${linkToSong} unde vede progresul. NICIODATĂ „90 secunde" sau „1-2 minute" — totul e 5-10 min. NU repeta același mesaj — alterneză. ⛔ NU pronunța numele providerului de generare (Suno etc.) — pentru client se generează „la noi". Comanda e pentru „${generation.recipientName}" — folosește EXACT acest nume, nu altul.
+⛔ Dacă userul DOAR confirmă/mulțumește („ok", „bine", „mersi", „am înțeles") FĂRĂ o întrebare nouă, iar tu i-ai spus DEJA că se generează → NU mai trimite încă un update de status. Melodia ajunge automat aici și pe email când e gata. Răspunde foarte scurt o singură dată (ex. „Te anunț imediat ce e gata 🙂") sau, dacă deja ai zis asta, nu mai trimite nimic. BUG observat 2026-06-26 conv de41034b: userul zicea „Ok", iar Irina retrimitea „E mult de lucru azi, se mai întârzie..." reformulat de 3 ori la rând — spam inutil. NU repeta.`;
     } else if (healthCategory === 'in_progress_slow') {
       instruction = `Plata e ok, rulează de ${ageMinutes} min — peste media de 5 min dar încă sub limita de 10. E probabil mult de lucru azi. Răspunde ÎNCURAJATOR și ONEST: „E mult de lucru azi, se mai întârzie un pic dar țin de termen — maximum 10 minute total. Pe ea e."
-NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno etc.). Trimite linkul ${linkToSong} ca să verifice live.`;
+NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno etc.). Trimite linkul ${linkToSong} ca să verifice live.
+⛔ Dacă userul DOAR confirmă/mulțumește („ok", „bine", „mersi") fără întrebare nouă și i-ai spus deja că se generează → NU mai trimite încă un update reformulat. Răspunde foarte scurt o dată sau deloc; melodia ajunge automat când e gata. (Vezi BUG conv de41034b.)`;
     } else if (healthCategory === 'tech_error') {
       instruction = `EROARE TEHNICĂ. Sistemul de generare e jos / generarea a eșuat / blocat peste 10 min (retry=${retryCount}${nextRetryAt ? ', reîncercare automată planificată' : ''}, age=${ageMinutes} min). ⛔ NU pronunța numele providerului (Suno etc.) — spune „sistemul nostru de generare". Răspunde EMPATIC și ONEST:
 „Am o problemă tehnică la generare - se întâmplă rar. Echipa a fost anunțată și rezolvăm chiar acum, revin imediat ce e gata ❤️"
