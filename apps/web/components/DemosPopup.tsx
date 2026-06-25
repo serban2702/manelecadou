@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { api, type SiteDemoDto } from '@/lib/api';
 import { useSite } from '@/lib/site-context';
 import { getPagePath } from '@/lib/page-slugs';
+import { useWizardReachedPackage } from '@/lib/wizard';
 import { ManeaPlayer } from './ManeaPlayer';
 
 /**
@@ -19,6 +20,9 @@ export function DemosPopup({ open, onClose }: { open: boolean; onClose: () => vo
   const t = useTranslations('demosPopup');
   const site = useSite();
   const asculta = getPagePath(site.locale, 'asculta');
+  // La pasul de pachet/plată nu mai oferim ieșirea către /asculta — userul
+  // rămâne în pop-up (cerință: aproape de plată, „doar pop-up", fără navigare).
+  const reachedPackage = useWizardReachedPackage();
 
   // Lock scroll când e deschis. Cleanup la unmount + la close.
   useEffect(() => {
@@ -152,27 +156,29 @@ export function DemosPopup({ open, onClose }: { open: boolean; onClose: () => vo
             </div>
           )}
 
-          <div
-            style={{
-              marginTop: 18,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 8,
-              alignItems: 'center',
-            }}
-          >
-            <Link
-              href={asculta}
-              onClick={onClose}
+          {!reachedPackage && (
+            <div
               style={{
-                fontSize: 13,
-                color: 'rgba(255,245,220,0.7)',
-                textDecoration: 'underline',
+                marginTop: 18,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                alignItems: 'center',
               }}
             >
-              {t('viewAll')}
-            </Link>
-          </div>
+              <Link
+                href={asculta}
+                onClick={onClose}
+                style={{
+                  fontSize: 13,
+                  color: 'rgba(255,245,220,0.7)',
+                  textDecoration: 'underline',
+                }}
+              >
+                {t('viewAll')}
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     </div>

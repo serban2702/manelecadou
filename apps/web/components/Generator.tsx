@@ -17,6 +17,7 @@ import { track } from '@/lib/tracking';
 import { formatPrice } from '@/lib/site-shared';
 import { claimPlayback, releasePlayback } from '@/lib/audio-registry';
 import { PACKAGES, DEFAULT_PACKAGE_TIER, type PackageTier } from '@/lib/packages';
+import { saveWizard, readWizard, clearWizard } from '@/lib/wizard';
 import OfferCountdown from './OfferCountdown';
 
 type Data = {
@@ -350,6 +351,33 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     }
   }, [session.email, emailDraftTouched, emailDraft]);
 
+  // Restaurare wizard din localStorage la revenirea pe pagină (ex: userul era la
+  // pasul de plată, s-a dus pe /asculta să asculte un demo și s-a întors).
+  // Readucem pasul EXACT + tot ce a completat. NU rulează când venim din cancel
+  // Stripe (are restore propriu via API mai sus, pe genId) sau când există un
+  // deep-link ?style/?occ (intenție clară de start nou cu acel stil).
+  const persistRestoredRef = useRef(false);
+  useEffect(() => {
+    if (persistRestoredRef.current) return;
+    persistRestoredRef.current = true;
+    if (search.get('paymentCanceled') === '1' && search.get('genId')) return;
+    if (search.get('style') || search.get('occ')) return;
+    const snap = readWizard();
+    if (!snap) return;
+    // Merge peste EMPTY ca să tolerăm câmpuri adăugate în versiuni viitoare.
+    setData((d) => ({ ...d, ...(snap.data as Partial<Data>) }));
+    if (snap.generationId) setGenerationId(snap.generationId);
+    if (typeof snap.emailDraft === 'string' && snap.emailDraft.trim()) {
+      setEmailDraft(snap.emailDraft);
+      setEmailDraftTouched(true); // nu lăsa prefill-ul de sesiune să-l suprascrie
+    }
+    // Clamp pasul la range-ul valid (totalSteps poate diferi între site-uri).
+    if (typeof snap.step === 'number' && snap.step > 0) {
+      setStep(Math.min(Math.max(0, Math.floor(snap.step)), totalSteps - 1));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const onEmailDraftChange = useCallback((v: string) => {
     setEmailDraftTouched(true);
     setEmailDraft(v);
@@ -419,12 +447,16 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
       const fallback = totalSteps === 5 ? STEP_NAMES_PAYFIRST_FALLBACK : STEP_NAMES_FALLBACK;
       const stepNames =
         Array.isArray(stepNamesRaw) && stepNamesRaw.length === totalSteps ? stepNamesRaw : fallback;
+      const sk = STEP_KEYS[step];
       window.dispatchEvent(
         new CustomEvent('mc:generator_state', {
           detail: {
             step,
             stepName: stepNames[step],
             totalSteps,
+            // Butoanele „ascultă" din site deschid pop-up (nu navighează) cât
+            // timp userul e la pasul de pachet/plată — vezi useWizardReachedPackage.
+            reachedPackage: sk === 'package' || sk === 'pay',
             data: {
               style: data.style || undefined,
               occ: data.occ || undefined,
@@ -473,6 +505,25 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     window.addEventListener('mc:form_patch', onPatch);
     return () => window.removeEventListener('mc:form_patch', onPatch);
   }, []);
+
+  // Persistă progresul wizardului în localStorage (debounced) ca să-l putem
+  // restaura dacă userul pleacă de pe pagină și se întoarce. Salvăm doar dacă
+  // există progres real (a trecut de pasul 0 sau a completat ceva) — altfel un
+  // simplu vizitator de homepage ar lăsa un coș gol în storage.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const meaningful =
+      step > 0 ||
+      !!(data.style || data.occ || data.name || data.msg || data.voice || data.customLyrics || data.dedic);
+    if (!meaningful) return;
+    const sk = STEP_KEYS[step];
+    const reachedPackage = sk === 'package' || sk === 'pay';
+    const t = setTimeout(() => {
+      saveWizard({ step, data, generationId, emailDraft, reachedPackage, at: Date.now() });
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, data, generationId, emailDraft]);
 
   const stepDone = (i: number): boolean => {
     const key = STEP_KEYS[i];
@@ -624,6 +675,9 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
         setGenerationId(r.generationId);
         url = r.url;
       }
+      // Coșul pleacă spre Stripe — curățăm starea persistată. La cancel, restore-ul
+      // pe genId (efectul de sus) repopulează datele și save-ul le re-persistă.
+      clearWizard();
       window.location.href = url;
     } catch (e) {
       setError(

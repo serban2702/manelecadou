@@ -13,16 +13,16 @@ import {
   NowPlaying,
 } from '@/components/sections';
 import { Generator } from '@/components/Generator';
-import { DemosPopup } from '@/components/DemosPopup';
 import { Ic } from '@/components/icons';
 import { useSite } from '@/lib/site-context';
 import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
+import { openDemosModal, useWizardReachedPackage } from '@/lib/wizard';
 
 export default function HomePage() {
   const [playing, setPlaying] = useState<string | null>(null);
   const onPlay = (id: string) => setPlaying((p) => (p === id ? null : id));
-  const [demosOpen, setDemosOpen] = useState(false);
+  const reachedPackage = useWizardReachedPackage();
   const tHero = useTranslations('hero');
   const tHome = useTranslations('home');
   const tCommon = useTranslations('common');
@@ -68,7 +68,7 @@ export default function HomePage() {
               {tCommon('ctaMakeManea', { price: formatPrice(site, site.basePriceCents) })}
             </Link>
             <button
-              onClick={() => setDemosOpen(true)}
+              onClick={() => openDemosModal()}
               className="btn btn-ghost"
               style={{ textDecoration: 'none', fontFamily: 'inherit', cursor: 'pointer' }}
               data-hint="true"
@@ -170,13 +170,22 @@ export default function HomePage() {
             <NowPlaying playing={playing} onClose={() => setPlaying(null)} />
           )}
           <div style={{ textAlign: 'center', marginTop: 18 }}>
-            <Link href={asculta} className="btn btn-ghost" style={{ textDecoration: 'none' }}>
-              {tHome('listen.viewAll')}
-            </Link>
+            {reachedPackage ? (
+              <button
+                onClick={() => openDemosModal()}
+                className="btn btn-ghost"
+                style={{ textDecoration: 'none', fontFamily: 'inherit', cursor: 'pointer' }}
+              >
+                {tHome('listen.viewAll')}
+              </button>
+            ) : (
+              <Link href={asculta} className="btn btn-ghost" style={{ textDecoration: 'none' }}>
+                {tHome('listen.viewAll')}
+              </Link>
+            )}
           </div>
         </section>
       </div>
-      <DemosPopup open={demosOpen} onClose={() => setDemosOpen(false)} />
     </SiteShell>
   );
 }

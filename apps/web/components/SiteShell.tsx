@@ -10,10 +10,12 @@ import { RouletteWheel } from './RouletteWheel';
 import { LangSwitcher } from './LangSwitcher';
 import { CountrySwitcher } from './CountrySwitcher';
 import { MyGenerationsCounter } from './MyGenerationsCounter';
+import { DemosPopup } from './DemosPopup';
 import { useSession } from '@/lib/providers';
 import { useSite } from '@/lib/site-context';
 import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
+import { openDemosModal, useWizardReachedPackage } from '@/lib/wizard';
 
 // `hideStickyCta` rămâne în signature pentru retrocompatibilitate cu paginile
 // care îl pasează (legal, login, cont etc.), dar nu mai are efect — sticky
@@ -31,8 +33,21 @@ export function SiteShell({ children, hideStickyCta: _ignored }: { children: Rea
   const [cookieOpen, setCookieOpen] = useState(false);
   const [rouletteOpen, setRouletteOpen] = useState(false);
 
+  // Pop-up global de demo-uri (ascultare). Orice buton „ascultă" din site îl
+  // deschide prin evenimentul `mc:open_demos` (vezi openDemosModal). Cât timp
+  // wizardul e la pasul de pachet/plată, linkurile către /asculta deschid acest
+  // pop-up în loc să navigheze, ca userul aproape de plată să nu părăsească comanda.
+  const [demosOpen, setDemosOpen] = useState(false);
+  const wizardReachedPackage = useWizardReachedPackage();
+  useEffect(() => {
+    const onOpen = () => setDemosOpen(true);
+    window.addEventListener('mc:open_demos', onOpen);
+    return () => window.removeEventListener('mc:open_demos', onOpen);
+  }, []);
+
+  const asculaHref = getPagePath(site.locale, 'asculta');
   const NAV = [
-    { href: getPagePath(site.locale, 'asculta'), label: tNav('asculta') },
+    { href: asculaHref, label: tNav('asculta'), isDemo: true },
     { href: getPagePath(site.locale, 'studio'), label: tNav('studio') },
     { href: getPagePath(site.locale, 'istoric'), label: tNav('istoric') },
     { href: getPagePath(site.locale, 'top'), label: tNav('top') },
@@ -90,15 +105,31 @@ export function SiteShell({ children, hideStickyCta: _ignored }: { children: Rea
             </div>
           </Link>
           <nav className="hdr-nav">
-            {NAV.map((n) => (
-              <Link
-                key={n.href}
-                href={n.href}
-                className={pathname === n.href ? 'act' : undefined}
-              >
-                {n.label}
-              </Link>
-            ))}
+            {NAV.map((n) =>
+              n.isDemo && wizardReachedPackage ? (
+                // La pasul de pachet/plată: „Ascultă" deschide pop-up-ul, nu
+                // navighează (păstrăm href pentru middle-click / accesibilitate).
+                <a
+                  key={n.href}
+                  href={n.href}
+                  className={pathname === n.href ? 'act' : undefined}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    openDemosModal();
+                  }}
+                >
+                  {n.label}
+                </a>
+              ) : (
+                <Link
+                  key={n.href}
+                  href={n.href}
+                  className={pathname === n.href ? 'act' : undefined}
+                >
+                  {n.label}
+                </Link>
+              ),
+            )}
           </nav>
           <div className="hdr-right" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <MyGenerationsCounter />
@@ -143,6 +174,8 @@ export function SiteShell({ children, hideStickyCta: _ignored }: { children: Rea
 
       <LiveFeed />
       <ChatWidget />
+      {/* Pop-up global de demo-uri — deschis prin `mc:open_demos` de oriunde. */}
+      <DemosPopup open={demosOpen} onClose={() => setDemosOpen(false)} />
       {rouletteOpen && <RouletteWheel onClose={() => setRouletteOpen(false)} />}
       {!HIDE_COOKIE_BANNER && cookieOpen && <Cookie onClose={closeCookie} />}
 
