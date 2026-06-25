@@ -45,6 +45,11 @@ export const EVENT_TYPES = [
   // privacy / consent
   'consent_given',
   'consent_denied',
+  // engagement pe piesa livrată (pagina /m/[id]) — câți useri apasă pe astea
+  'song_play',
+  'song_download',
+  'song_share',
+  'image_download',
 ] as const;
 
 export type AnalyticsEventType = (typeof EVENT_TYPES)[number];

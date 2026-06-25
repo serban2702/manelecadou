@@ -6,6 +6,10 @@ import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import {
   Activity,
+  Download,
+  Image as ImageIcon,
+  Play,
+  Share2,
   AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
@@ -185,6 +189,7 @@ export default function AnalyticsPage() {
           { value: 'profitability', label: 'Profitabilitate' },
           { value: 'marketing', label: 'Marketing' },
           { value: 'overview', label: 'Overview' },
+          { value: 'engagement', label: 'Engagement' },
           { value: 'users', label: 'Users & Sesiuni' },
           { value: 'tech', label: 'Tech & Geo' },
           { value: 'bots', label: 'Boți' },
@@ -203,6 +208,9 @@ export default function AnalyticsPage() {
         </TabsContent>
         <TabsContent value="overview">
           <OverviewTab range={rangeISO} />
+        </TabsContent>
+        <TabsContent value="engagement">
+          <EngagementTab range={rangeISO} />
         </TabsContent>
         <TabsContent value="users">
           <UsersSessionsTab range={rangeISO} />
@@ -966,6 +974,57 @@ function sourceMeta(source: string): { emoji: string; label: string } {
 }
 
 // ============== USERS ==============
+
+// ============== ENGAGEMENT (play / download / share pe piesa livrată) ==============
+
+function EngagementTab({ range }: { range: { from: string; to: string } }) {
+  const eng = useAsync(() => AnalyticsApi.engagement(range), [range.from, range.to]);
+  const d = eng.data;
+  const byType = (t: string) => d?.events.find((e) => e.type === t);
+  const play = byType('song_play');
+  const download = byType('song_download');
+  const share = byType('song_share');
+  const imageDl = byType('image_download');
+
+  const num = (n?: number) => (n ?? 0).toLocaleString('ro-RO');
+  const people = (e?: { uniqueSessions: number }) =>
+    e ? `${num(e.uniqueSessions)} persoane` : undefined;
+
+  const CHANNEL_LABEL: Record<string, string> = {
+    native: '📤 Trimite (nativ)',
+    facebook: '📘 Facebook',
+    whatsapp: '💬 WhatsApp',
+    twitter: '𝕏 Twitter',
+    copy_link: '🔗 Copiază link',
+    other: 'Altele',
+  };
+
+  return (
+    <div className="space-y-5">
+      <p className="text-sm text-muted-foreground">
+        Acțiuni pe piesa livrată (pagina melodiei). <b>Total</b> = câte click-uri în interval ·{' '}
+        <b>persoane</b> = sesiuni distincte.
+      </p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <KpiCard label="Ascultări (play)" value={num(play?.count)} icon={<Play />} tone="info" loading={eng.isLoading} sub={people(play)} />
+        <KpiCard label="Descărcări MP3" value={num(download?.count)} icon={<Download />} tone="primary" loading={eng.isLoading} sub={people(download)} />
+        <KpiCard label="Share-uri" value={num(share?.count)} icon={<Share2 />} tone="success" loading={eng.isLoading} sub={people(share)} />
+        <KpiCard label="Descărcări poză" value={num(imageDl?.count)} icon={<ImageIcon />} tone="warning" loading={eng.isLoading} sub={people(imageDl)} />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <BreakdownCard
+          title="Share pe canal"
+          description="Cum își trimit clienții melodia mai departe"
+          loading={eng.isLoading}
+          rows={(d?.shareChannels ?? []).map((c) => ({
+            label: CHANNEL_LABEL[c.channel] ?? c.channel,
+            value: c.count,
+          }))}
+        />
+      </div>
+    </div>
+  );
+}
 
 function UsersSessionsTab({ range }: { range: { from: string; to: string } }) {
   const usersQ = useAsync(() => AnalyticsApi.users(range), [range]);

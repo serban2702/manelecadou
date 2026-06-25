@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ic } from './icons';
 import { resolveMediaUrl } from '@/lib/api';
 import { claimPlayback, releasePlayback } from '@/lib/audio-registry';
+import { track as trackEvent } from '@/lib/tracker';
 
 type Stopper = () => void;
 
@@ -22,10 +23,18 @@ interface Props {
    *  player-ul EXACT când userul a apăsat Play (deci e o continuare a unui
    *  gest user, nu un autoplay agresiv — browsers nu blochează). */
   autoPlay?: boolean;
+  /** Când e setat, raportăm play (prima dată) + download la analytics-ul intern.
+   *  Doar pentru piesa LIVRATĂ din /m/[id] — NU pentru sample-uri/demo-uri. */
+  trackContext?: { generationId?: string; variant?: string };
 }
 
-export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = false, maxDurationSec, startSec, autoPlay }: Props) {
+export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = false, maxDurationSec, startSec, autoPlay, trackContext }: Props) {
   const audioUrl = resolveMediaUrl(rawAudioUrl) ?? rawAudioUrl;
+  // Ref ca handler-ele wavesurfer (create o singură dată) să vadă mereu ultimul
+  // context + să raporteze play-ul O SINGURĂ dată per montare.
+  const trackCtxRef = useRef(trackContext);
+  trackCtxRef.current = trackContext;
+  const playTrackedRef = useRef(false);
   const previewLimited = typeof maxDurationSec === 'number' && maxDurationSec > 0;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const wsRef = useRef<any>(null);
@@ -103,6 +112,11 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
         ws.on('play', () => {
           claimPlayback(stopFn);
           setIsPlaying(true);
+          const ctx = trackCtxRef.current;
+          if (ctx && !playTrackedRef.current) {
+            playTrackedRef.current = true;
+            trackEvent({ type: 'song_play', props: { generationId: ctx.generationId, variant: ctx.variant } });
+          }
         });
         ws.on('pause', () => {
           releasePlayback(stopFn);
@@ -272,6 +286,10 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
           href={audioUrl}
           download
           title="Descarcă MP3"
+          onClick={() => {
+            const ctx = trackCtxRef.current;
+            if (ctx) trackEvent({ type: 'song_download', props: { generationId: ctx.generationId, variant: ctx.variant } });
+          }}
           style={{
             color: 'rgba(255,245,220,0.6)',
             padding: 6,

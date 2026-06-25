@@ -297,6 +297,12 @@ export class AnalyticsAdminController {
     return this.analytics.devices(rangeFromQuery(q), siteId);
   }
 
+  /** Engagement pe piesa livrată: play / download / share / download poză. */
+  @Get('engagement')
+  engagement(@Query() q: { from?: string; to?: string }, @CurrentSiteId() siteId: string | null) {
+    return this.analytics.engagement(rangeFromQuery(q), siteId);
+  }
+
   @Get('users')
   users(@Query() q: { from?: string; to?: string }, @CurrentSiteId() siteId: string | null) {
     return this.analytics.userCohorts(rangeFromQuery(q), siteId);

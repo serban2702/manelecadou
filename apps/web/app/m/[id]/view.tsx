@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { api, ApiError, resolveMediaUrl, type GenerationDto, type CollageAspect, type CollageDto } from '@/lib/api';
 import type { PackageTier } from '@/lib/packages';
 import { track } from '@/lib/tracking';
+import { track as trackEvent } from '@/lib/tracker';
 import { ManeaPlayer } from '@/components/ManeaPlayer';
 import { VideoPlayer } from '@/components/VideoPlayer';
 import { STYLES, VOICES, OCC } from '@/lib/seed-data';
@@ -316,6 +317,7 @@ function ShareGenerationViewInner() {
               audioUrl={resolveMediaUrl(v.audioUrl)!}
               title={single ? t('version1') : `${versionWord} ${i + 1}`}
               subtitle={isPaid ? t('full') : t('demo30')}
+              trackContext={{ generationId: g.id, variant: v.kind }}
             />
           </div>
         ));
@@ -399,6 +401,7 @@ function ShareGenerationViewInner() {
 
       {g.status === 'succeeded' && (
         <ShareSection
+          generationId={g.id}
           recipientName={g.recipientName ?? 'cadou'}
           imageUrl={resolveMediaUrl(g.socialImageUploaded ?? g.socialImageSelected ?? g.coverUrl)}
         />
@@ -971,9 +974,13 @@ function PaymentRetrySection({
  * Buton share: Web Share API pe mobile, fallback grid pentru desktop
  * (Facebook, WhatsApp, X/Twitter, Copy link).
  */
-function ShareSection({ recipientName, imageUrl }: { recipientName: string; imageUrl?: string | null }) {
+function ShareSection({ generationId, recipientName, imageUrl }: { generationId: string; recipientName: string; imageUrl?: string | null }) {
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
+
+  // Raportăm fiecare share la analytics-ul intern (vizibil în admin → Engagement).
+  const trackShare = (channel: string) =>
+    trackEvent({ type: 'song_share', props: { generationId, channel } });
 
   function getUrl() {
     if (typeof window === 'undefined') return '';
@@ -1007,6 +1014,7 @@ function ShareSection({ recipientName, imageUrl }: { recipientName: string; imag
     try {
       await navigator.share(payload);
       setShared(true);
+      trackShare('native');
       setTimeout(() => setShared(false), 2000);
       return true;
     } catch {
@@ -1018,6 +1026,7 @@ function ShareSection({ recipientName, imageUrl }: { recipientName: string; imag
     try {
       await navigator.clipboard.writeText(getUrl());
       setCopied(true);
+      trackShare('copy_link');
       setTimeout(() => setCopied(false), 2000);
     } catch {/* ignore */}
   }
@@ -1053,6 +1062,7 @@ function ShareSection({ recipientName, imageUrl }: { recipientName: string; imag
           href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(getUrl())}`}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => trackShare('facebook')}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             padding: '10px 12px', borderRadius: 8,
@@ -1066,6 +1076,7 @@ function ShareSection({ recipientName, imageUrl }: { recipientName: string; imag
           href={`https://wa.me/?text=${encodeURIComponent(getText() + ' ' + getUrl())}`}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => trackShare('whatsapp')}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             padding: '10px 12px', borderRadius: 8,
@@ -1079,6 +1090,7 @@ function ShareSection({ recipientName, imageUrl }: { recipientName: string; imag
           href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(getText())}&url=${encodeURIComponent(getUrl())}`}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => trackShare('twitter')}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             padding: '10px 12px', borderRadius: 8,
@@ -1260,6 +1272,7 @@ function SocialImageSection({
           <a
             href={resolveMediaUrl(selected)!}
             download
+            onClick={() => trackEvent({ type: 'image_download', props: { generationId: generation.id, kind: 'social' } })}
             className="btn btn-ghost"
             style={{ flex: '1 1 140px', textAlign: 'center', textDecoration: 'none' }}
           >
@@ -1370,7 +1383,7 @@ function ImageVideoPanel({
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gold)', marginBottom: 8 }}>🎬 Videoclipul tău</div>
         <VideoPlayer src={resolved} poster={resolveMediaUrl(imageUrl) ?? undefined} />
         <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-          <a href={resolved} download className="btn btn-gold" style={{ flex: '1 1 140px', textAlign: 'center', textDecoration: 'none' }}>
+          <a href={resolved} download onClick={() => trackEvent({ type: 'image_download', props: { generationId: g.id, kind: 'video' } })} className="btn btn-gold" style={{ flex: '1 1 140px', textAlign: 'center', textDecoration: 'none' }}>
             ⬇ Descarcă
           </a>
           <button type="button" onClick={() => { setJob(null); setPolling(false); }} className="btn btn-ghost" style={{ flex: '1 1 140px' }}>
@@ -1631,7 +1644,7 @@ function CollageSection({
         <div style={headerStyle}>🎞️ Colajul tău video</div>
         <VideoPlayer src={resolved} />
         <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-          <a href={resolved} download className="btn btn-gold" style={{ flex: '1 1 140px', textAlign: 'center', textDecoration: 'none' }}>
+          <a href={resolved} download onClick={() => trackEvent({ type: 'image_download', props: { generationId: g.id, kind: 'video' } })} className="btn btn-gold" style={{ flex: '1 1 140px', textAlign: 'center', textDecoration: 'none' }}>
             ⬇ Descarcă
           </a>
           {isOwner && (

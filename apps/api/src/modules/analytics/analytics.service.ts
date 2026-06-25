@@ -760,6 +760,55 @@ export class AnalyticsService {
     return rows.map((r) => ({ device: r.device, sessions: Number(r.sessions) }));
   }
 
+  /**
+   * Engagement pe piesa livrată: câți useri apasă pe play / download / share /
+   * download poză pe pagina /m/[id]. `count` = total click-uri, `uniqueSessions`
+   * = persoane distincte. Pentru share, defalcăm și pe canal (props.channel:
+   * native/facebook/whatsapp/twitter/copy_link).
+   */
+  async engagement(range: RangeQuery, siteId: string | null = null) {
+    const r = this.fmtRange(range);
+    const TYPES = ['song_play', 'song_download', 'song_share', 'image_download'];
+    const rows = await this.applySite(
+      this.events
+        .createQueryBuilder('e')
+        .select('e.type', 'type')
+        .addSelect('COUNT(*)::int', 'count')
+        .addSelect('COUNT(DISTINCT e.sessionKey)::int', 'uniqueSessions')
+        .where('e.type IN (:...types)', { types: TYPES })
+        .andWhere('e.createdAt BETWEEN :from AND :to', r),
+      'e',
+      siteId,
+    )
+      .groupBy('e.type')
+      .getRawMany<{ type: string; count: number; uniqueSessions: number }>();
+
+    const shareRows = await this.applySite(
+      this.events
+        .createQueryBuilder('e')
+        .select(`COALESCE(e.props->>'channel', 'other')`, 'channel')
+        .addSelect('COUNT(*)::int', 'count')
+        .where(`e.type = 'song_share'`)
+        .andWhere('e.createdAt BETWEEN :from AND :to', r),
+      'e',
+      siteId,
+    )
+      .groupBy('channel')
+      .orderBy('count', 'DESC')
+      .getRawMany<{ channel: string; count: number }>();
+
+    const byType = new Map(rows.map((x) => [x.type, x]));
+    const order = ['song_play', 'song_download', 'song_share', 'image_download'];
+    return {
+      events: order.map((type) => ({
+        type,
+        count: Number(byType.get(type)?.count ?? 0),
+        uniqueSessions: Number(byType.get(type)?.uniqueSessions ?? 0),
+      })),
+      shareChannels: shareRows.map((x) => ({ channel: x.channel, count: Number(x.count) })),
+    };
+  }
+
   async userCohorts(range: RangeQuery, siteId: string | null = null) {
     const r = this.fmtRange(range);
     const newUsersQb = this.users

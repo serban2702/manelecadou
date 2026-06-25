@@ -34,6 +34,13 @@ export class AnalyticsApi {
   static devices(range: AnalyticsRange): Promise<Array<{ device: string; sessions: number }>> {
     return http.get(`/admin/analytics/devices${qs(range)}`);
   }
+  /** Engagement pe piesa livrată: play / download / share / download poză. */
+  static engagement(range: AnalyticsRange): Promise<{
+    events: Array<{ type: string; count: number; uniqueSessions: number }>;
+    shareChannels: Array<{ channel: string; count: number }>;
+  }> {
+    return http.get(`/admin/analytics/engagement${qs(range)}`);
+  }
   static users(range: AnalyticsRange): Promise<{
     newUsersTimeSeries: Array<{ bucket: string; count: number }>;
     returningUsers: number;
