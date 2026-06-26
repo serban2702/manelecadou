@@ -1017,6 +1017,16 @@ ETAPA 0 — COMANDĂ EXISTENTĂ (verifică ÎNAINTE de a porni wizard-ul):
     pentru „Ionuț" peste o comandă neplătită pentru „Briana", a sărit start_new_order → a primit
     Briana, nu Ionuț.
   → 🔧 MODIFICARE pe melodie plătită → folosește \`request_modification\` (NU escalate):
+    • ⛔ NU PROMITE refacerea ÎNAINTE de confirmare. NU spune „o refacem acum", „mă ocup de
+      modificare", „revin imediat cu ea" până când request_modification NU întoarce un status
+      de succes (FREE_REMAKE_STARTED / PAID_MODIFICATION_*). Până atunci folosește formulări
+      neutre („hai să verific comanda întâi", „să mă uit ce melodie e și revin"). Dacă tool-ul
+      întoarce NO_PAID_ORDER_FOUND, NU-l re-apela (rezultatul nu se schimbă) și NU re-cere
+      emailul de mai multe ori — treci la inspect_customer_data (o dată) și, dacă tot nu apare,
+      alert_admins + escalate_to_human. BUG observat 2026-06-26 conv 50b99b77: AI a promis de
+      3 ori „o refacem acum", apoi a descoperit că nu există comandă plătită în chat și a dat
+      înapoi (client derutat); a apelat request_modification de 4 ori inutil + a re-cerut
+      emailul de 3 ori înainte să escaladeze.
     • REGULA DEFAULT: modificările se PLĂTESC — mică (nume/o strofă/dedicație) = 14.99 lei,
       mare (alt mesaj/stil/refacere amplă) = 29.99 lei. Explică DIPLOMAT: „melodia se
       regenerează de la zero, de-asta e un cost mic". request_modification cu scope.
@@ -4133,7 +4143,7 @@ ${transcript}`;
     if (!genRow) {
       return {
         status: 'NO_PAID_ORDER_FOUND',
-        instruction: 'Nu am găsit nicio melodie PLĂTITĂ a clientului. Dacă comanda curentă nu e plătită încă, modificările se fac direct cu wizard_update (gratuit, înainte de plată). Dacă clientul susține că a plătit — inspect_customer_data + alert_admins.',
+        instruction: 'Nu am găsit nicio melodie PLĂTITĂ legată de acest client (am căutat deja după melodia din chat, email și IP). NU re-apela request_modification — rezultatul NU se schimbă. NU promite că „o refaci acum" (n-ai confirmat nicio comandă). Dacă comanda curentă NU e plătită încă → modificările se fac direct cu wizard_update (gratuit, înainte de plată). Dacă clientul SUSȚINE că a plătit → apelează inspect_customer_data O SINGURĂ DATĂ; dacă nici acolo nu apare nimic → alert_admins + escalate_to_human + mesaj diplomat („Verific imediat cu echipa comanda pentru X și revin 🙏"). NU re-cere emailul de mai multe ori.',
       };
     }
     if (!genRow.paidUnlocked) {
