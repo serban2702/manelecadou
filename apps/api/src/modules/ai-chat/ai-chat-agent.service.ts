@@ -1048,6 +1048,15 @@ ETAPA 0 — COMANDĂ EXISTENTĂ (verifică ÎNAINTE de a porni wizard-ul):
       Tool-ul REFUZĂ refacerea gratuită dacă changes e vag — descrie complet și concret.
     • Dacă refacerea gratuită a fost deja folosită → DOAR contra cost, indiferent de motiv;
       dacă pare tot greșeala noastră flagrantă → alert_admins ca un coleg să decidă.
+  → 💸 OBIECȚIE DE BUGET după ce ai cotat prețul: Basic (${price}) e pachetul cel mai
+    ieftin — NU există variantă mai ieftină sub el. Dacă userul spune că are buget mic / „am
+    doar X", NU-l urca la Plus/Premium (sunt MAI scumpe) și NU-i sugera o „variantă mai
+    ieftină" inexistentă. Liniștește-l că Basic e deja cea mai accesibilă opțiune și că
+    linkul e cel de mai sus. Dacă bugetul menționat e în ALTĂ monedă (ex. „am 16€"),
+    convertește mental: ${price} e o sumă mică, aproape orice buget rezonabil o acoperă —
+    nu trata din reflex ca „insuficient". BUG observat 2026-06-28 conv 1f2bf005: user a zis
+    „am doar 16€" (≈80 lei, mai mult decât orice pachet) iar AI i-a oferit Plus la 49.99
+    (mai scump) + a sugerat o „variantă mai ieftină" care nu există.
   → 🔗 LINK DE PLATĂ PIERDUT/EXPIRAT: dacă userul zice „nu am primit linkul", „nu-l găsesc",
     „a expirat", „dă-mi link-ul" → apelează \`resend_payment_link\` (re-emite cardul de plată).
     NU-i spune doar „e mai sus în chat" dacă el zice că nu-l vede.
@@ -4244,6 +4253,55 @@ ${transcript}`;
     const amount = args.scope === 'large' ? MODIFICATION_PRICE_LARGE_CENTS : MODIFICATION_PRICE_SMALL_CENTS;
     const site = await this.sites.findById(ctx.conv.siteId);
     if (!site) return { error: 'site_not_found' };
+
+    // GUARD anti-link-dublu: dacă userul detaliază aceeași modificare în mai multe mesaje,
+    // NU emite un al 2-lea card de plată — comasează schimbările pe linkul existent (același
+    // generationId, neplătit, < 30 min) și trimite userul la el. BUG observat 2026-06-28 conv
+    // 1f2bf005: user a cerut o modificare, apoi a adăugat un detaliu → 2 linkuri de 14.99 RON
+    // separate pentru aceeași refacere, iar al 2-lea changes îl pierdea pe primul.
+    try {
+      const existingRows: { id: string; payload: ChatMessagePayload; createdAt: Date }[] =
+        await this.conv.manager.query(
+          `SELECT id, payload, "createdAt" FROM chat_messages
+           WHERE "conversationId" = $1 AND "messageType" = 'payment_link'
+             AND "createdAt" > now() - interval '30 minutes'
+             AND payload->>'modificationForGenerationId' = $2
+             AND COALESCE(payload->>'status','') != 'paid'
+             AND payload->>'checkoutUrl' IS NOT NULL
+           ORDER BY "createdAt" DESC LIMIT 1`,
+          [conv.id, genRow.id],
+        );
+      const existing = existingRows[0];
+      if (existing) {
+        const prevChanges = String(existing.payload?.modificationChanges ?? '').trim();
+        const mergedChanges = prevChanges && !prevChanges.includes(changes)
+          ? `${prevChanges}\n+ ${changes}`.slice(0, 2000)
+          : changes;
+        await this.conv.manager.query(
+          `UPDATE chat_messages SET payload = jsonb_set(payload, '{modificationChanges}', to_jsonb($1::text)) WHERE id = $2`,
+          [mergedChanges, existing.id],
+        );
+        if (state.modification) {
+          state.modification.changes = mergedChanges;
+          state.updatedAt = new Date().toISOString();
+          await this.conv
+            .createQueryBuilder()
+            .update(Conversation)
+            .set({ wizardState: state })
+            .where('id = :id', { id: conv.id })
+            .execute();
+        }
+        return {
+          ok: true,
+          status: 'MODIFICATION_LINK_REUSED',
+          amountCents: amount,
+          instruction: `Există DEJA un link de plată pentru modificare mai sus în chat (același cost). NU trimite un link nou. Am adăugat noile detalii peste modificarea existentă — toate schimbările cerute se aplică la o singură refacere, după o singură plată. Spune-i userului cald că am notat și acest detaliu și că totul se face din linkul de plată deja trimis (un singur cost). NU scrie URL în text.`,
+        };
+      }
+    } catch (e) {
+      this.logger.warn(`modification link reuse check failed: ${(e as Error).message}`);
+    }
+
     try {
       const checkout = await this.payments.createCheckoutSession({
         userId: conv.userId,
