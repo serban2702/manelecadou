@@ -2605,6 +2605,26 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         };
       }
 
+      // Treapta 0.5 — bloc pe parafrază aproape identică cu ULTIMUL mesaj AI (un singur
+      // precedent foarte similar). BUG observat 2026-06-29 conv 4b04409a: 2 mesaje de stall
+      // consecutive aproape identice („...verifica acum, revin imediat ce e gata" vs
+      // „...rezolvam chiar acum, revin imediat ce e gata", Jaccard ≈0.80) au trecut amândouă —
+      // tier-1 de mai jos cere 2 precedente similare, deci a 2-a parafrază scăpa. Aici blocăm
+      // din prima un mesaj ~identic cu ultimul mesaj AI, FĂRĂ escaladare: îi cerem să verifice
+      // statusul real și să spună ceva NOU sau să tacă (tipic la generări blocate, când userul
+      // dă „Ok" iar AI reformulează la nesfârșit aceeași asigurare „revin imediat").
+      const lastAiNorm = recentNorm[0];
+      if (lastAiNorm && textOverlap(lastAiNorm, normalized) >= 0.78) {
+        this.logger.warn(`NEAR_DUP blocked on conv=${ctx.conv.id.slice(0, 8)} — parafrază ~identică cu ultimul mesaj AI.`);
+        return {
+          sent: false,
+          messageType: 'duplicate_text',
+          status: 'NEAR_DUPLICATE_BLOCKED',
+          instruction:
+            'STAI — mesajul ăsta e o parafrază aproape identică cu ULTIMUL mesaj pe care l-ai trimis. NU repeta aceeași asigurare reformulată, sună robotic. Dacă aștepți o generare blocată și ai anunțat deja echipa / ai escaladat, NU mai trimite încă un „revin imediat" — userul a primit deja mesajul. Verifică statusul real (check_order_status): ori spui ceva CONCRET nou (linkul melodiei dacă e gata, un timp estimat clar diferit), ori NU mai trimite niciun mesaj acum.',
+        };
+      }
+
       const similarCount = recentNorm.filter((prev) => textOverlap(prev, normalized) > 0.7).length;
 
       // Treapta 1 — avertisment blând (nu escalează). Doar dacă nu e deja buclă gravă.
