@@ -2621,6 +2621,33 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       };
     }
 
+    // GUARD anti RE-INTRODUCERE (BUG observat 2026-06-30 conv 509d4b72): Irina și-a
+    // retrimis salutul de deschidere „Buna, sunt Irina!👋 Vrei să te ajut..." la finalul
+    // unei conversații ACTIVE (după ce un coleg uman intervenise deja la 12:49). Salutul de
+    // întâmpinare aparține EXCLUSIV deschiderii conversației (îl trimite maybeGreetUser, o
+    // singură dată, atomic pe greetingSentAt). Aici modelul l-a regenerat ca finalContent
+    // plain (fără tool call) → calea de fallback din runAgent (handleSendMessage) l-a trimis,
+    // iar dedup-ul pe ultimele 4 mesaje AI nu l-a prins (salutul original era al 5-lea în
+    // istoric). Blocăm orice mesaj prin care Irina se RE-prezintă („sunt Irina") dacă există
+    // deja măcar un mesaj admin pe conversație — o re-prezentare în mijlocul discuției sună
+    // ca un bot resetat. Acoperă toate căile care trec prin handleSendMessage (send_message
+    // tool, fallback finalContent, follow-up).
+    if (/\bsunt\s+irina\b/i.test(trimmed)) {
+      const priorAdmin = await this.msg.count({
+        where: { conversationId: ctx.conv.id, authorRole: 'admin' },
+      });
+      if (priorAdmin > 0) {
+        this.logger.warn(`RE_GREETING blocked on conv=${ctx.conv.id.slice(0, 8)} — Irina încerca să se re-prezinte pe o conversație activă.`);
+        return {
+          sent: false,
+          messageType: 'duplicate_text',
+          status: 'RE_GREETING_BLOCKED',
+          instruction:
+            'STAI — te-ai prezentat deja la începutul conversației. NU te re-prezenta („Buna, sunt Irina...") în mijlocul discuției, sună ca un bot resetat. Continuă conversația de unde a rămas: răspunde concret la ultimul mesaj al userului. Dacă nu ai nimic util concret de adăugat (ex. aștepți un coleg uman după o escaladare), NU trimite niciun mesaj.',
+        };
+      }
+    }
+
     // Anti-buclă cross-run cu DOUĂ trepte (înmuiat 2026-06-13 după review conv 90d57971:
     // detecția veche escalada la om din prima la 2 mesaje similare, dar de multe ori NU
     // era buclă reală — userul dădea info nouă iar AI doar trebuia să avanseze, nu să
