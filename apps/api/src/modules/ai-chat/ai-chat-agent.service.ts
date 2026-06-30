@@ -801,6 +801,33 @@ BUG observat 2026-06-22 conv 8a7a621a (lista de pachete trimisă de 3 ori la râ
           (result.finalContent && result.finalContent.trim().length > 0)
             ? result.finalContent.trim().slice(0, 800)
             : 'Înțeleg, lasă-mă o secundă să verific și revin imediat.';
+        // GUARD anti-duplicat pe safety net. Safety net-ul persistă finalContent-ul DIRECT
+        // (msg.save de mai jos), ocolind complet dedup-ul din handleSendMessage (EXACT_DUP /
+        // NEAR_DUP). Tipic: userul dă un „Bine/Ok" pasiv, send_message al AI-ului e blocat ca
+        // duplicat → sentRealMessages=0 → safety net retrimite EXACT același finalContent
+        // („Gata, e aici 🎵 /m/...") byte-identic. BUG observat 2026-06-29 conv c06295c2:
+        // mesaj „Gata, e aici" identic trimis de 2 ori la rând (al 2-lea pe ack pasiv „Bine"),
+        // fără rând send_message în audit — confirmare că a venit prin safety net.
+        // Dacă finalContent-ul e identic / ~identic cu un mesaj AI recent → NU retrimite:
+        // userul a primit deja conținutul, un al 2-lea mesaj identic e doar spam robotic.
+        try {
+          const recentAi = await this.msg.find({
+            where: { conversationId: conv.id, authorRole: 'admin', aiGenerated: true },
+            order: { createdAt: 'DESC' },
+            take: 4,
+          });
+          const fbNorm = fallback.toLowerCase().replace(/\s+/g, ' ');
+          const isDup = recentAi.some((m) => {
+            const prev = m.body.toLowerCase().replace(/\s+/g, ' ');
+            return prev === fbNorm || textOverlap(prev, fbNorm) >= 0.78;
+          });
+          if (isDup) {
+            this.logger.warn(`AI auto safety-net SUPPRESSED for conv=${conv.id.slice(0, 8)} — finalContent duplicat cu un mesaj AI recent.`);
+            return;
+          }
+        } catch {
+          /* dacă query-ul pică, lăsăm fallback-ul normal să plece */
+        }
         this.logger.warn(`AI auto fallback for conv=${conv.id.slice(0, 8)} — agent folosise ${result.iterations} iter fără send_message`);
         // Reset hard limit pentru fallback (bypassăm contextul actual)
         const m = this.msg.create({
