@@ -1946,10 +1946,31 @@ REGULI STRICTE:
       healthCategory = 'failed';
     }
 
+    // A fost deja livrat linkul melodiei într-un mesaj AI recent? Dacă da, NU-l retrimite
+    // la un simplu „ok/bine/mersi". BUG observat 2026-06-29 conv c06295c2: după ce a livrat
+    // linkul, userul a zis „Bine" → check_order_status a re-întors instrucțiunea „ok" care
+    // cerea MEREU „Trimite linkul Gata e aici" → AI a retrimis mesajul byte-identic. Branch-urile
+    // in_progress aveau deja gardul ăsta (conv de41034b), branch-ul ok nu-l avea.
+    let linkAlreadyDelivered = false;
+    if (linkToSong) {
+      try {
+        const recentAi = await this.msg.find({
+          where: { conversationId: ctx.conv.id, authorRole: 'admin', aiGenerated: true, messageType: 'text' as ChatMessage['messageType'] },
+          order: { createdAt: 'DESC' },
+          take: 4,
+        });
+        linkAlreadyDelivered = recentAi.some((m) => m.body.includes(linkToSong));
+      } catch {
+        /* ignore */
+      }
+    }
+
     // Instrucțiune pentru AI bazată pe healthCategory — diferențiat clar
     let instruction: string;
     if (healthCategory === 'ok') {
-      instruction = `Manea pentru ${generation.recipientName} e gata. Trimite userului link-ul ${linkToSong} cu un mesaj cald („Gata, e aici 🎵 - ${linkToSong}"). Menționează scurt că a primit-o și pe email. ⚠️ Comanda LIVRATĂ e pentru „${generation.recipientName}" (numele REAL din comandă) — NU spune alt nume. BUG observat 2026-06-20 conv eae31c0f: AI alterna haotic între 2 nume pe ACEEAȘI piesă. Dacă userul insistă că a vrut pentru ALTCINEVA → NU nega, NU inventa: recunoaște clar că piesa livrată e pentru ${generation.recipientName} și oferă-i o comandă nouă (start_new_order) sau request_modification pentru destinatarul corect.`;
+      instruction = linkAlreadyDelivered
+        ? `Manea pentru ${generation.recipientName} e gata și i-ai trimis DEJA linkul ${linkToSong} într-un mesaj recent. ⛔ NU retrimite același link / același mesaj „Gata, e aici" — sună robotic și e spam. Dacă userul DOAR confirmă/mulțumește („ok", „bine", „mersi", „am înțeles") FĂRĂ o întrebare nouă → răspunde foarte scurt o singură dată (ex. „Cu drag! 🙂 Dacă mai vrei ceva, sunt aici.") sau, dacă deja ai zis asta, NU mai trimite nimic. Dacă pune o întrebare NOUĂ (ex. cum o pune pe TikTok, vrea o modificare) → răspunde la acea întrebare concret, NU relivra linkul. Comanda e pentru „${generation.recipientName}" — folosește EXACT acest nume.`
+        : `Manea pentru ${generation.recipientName} e gata. Trimite userului link-ul ${linkToSong} cu un mesaj cald („Gata, e aici 🎵 - ${linkToSong}"). Menționează scurt că a primit-o și pe email. ⚠️ Comanda LIVRATĂ e pentru „${generation.recipientName}" (numele REAL din comandă) — NU spune alt nume. BUG observat 2026-06-20 conv eae31c0f: AI alterna haotic între 2 nume pe ACEEAȘI piesă. Dacă userul insistă că a vrut pentru ALTCINEVA → NU nega, NU inventa: recunoaște clar că piesa livrată e pentru ${generation.recipientName} și oferă-i o comandă nouă (start_new_order) sau request_modification pentru destinatarul corect.`;
     } else if (healthCategory === 'in_progress') {
       instruction = `Plata e ok, se generează acum maneaua pentru ${generation.recipientName} (rulează de ${ageMinutes} min, normal 5-10 min total). Răspunde NATURAL și variat — alterneză:
 - „Se generează acum, durează 5-10 minute în total. O primești pe email și aici."
