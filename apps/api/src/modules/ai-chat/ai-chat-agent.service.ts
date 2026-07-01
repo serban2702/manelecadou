@@ -722,6 +722,7 @@ BUG observat 2026-06-22 conv 8a7a621a (lista de pachete trimisă de 3 ori la râ
       requireApprovalForPayment:
         (await this.settings.get('AI_CHAT_REQUIRE_APPROVAL_FOR_PAYMENT')).toLowerCase() !== 'false',
       alertSentThisTurn: false,
+      followUp: opts.followUp === true,
     };
 
     const tools = this.toolDefinitions();
@@ -1338,6 +1339,11 @@ de empatie via \`send_empathy\` (NU prin send_message), apoi continuă cu flow-u
     „Multa sanatate sa-i dea Dumnezeu! Frumos cadou pentru recuperare."
 
 Hard cap: max 2 mesaje empatie per conv. Dacă \`send_empathy\` returnează limit_reached → skip.
+⚠️ NU presupune CINE a decedat: destinatarul melodiei NU e neapărat cel pierdut. Ex. (conv
+ddcbe197): melodia e PENTRU tatăl (viu, care a plecat), în memoria FIULUI decedat — deci NU
+spune „păstrezi memoria lui <destinatar>". Când persoana pierdută e ALTA decât destinatarul,
+folosește o condoleanță neutră („Îmi pare nespus de rău pentru pierderea suferită ❤️") și lasă
+detaliul precis (cine, pentru cine) pe seama versurilor. Un singur mesaj de empatie, nu repeta.
 
 ═══════════════════════════════════════════════════════════════════════
 REDUCERE LA CERERE USER (max 20%):
@@ -2700,6 +2706,27 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         };
       }
 
+      // Treapta 0.7 — nudge de plată repetat (semantic, NU lexical). BUG observat
+      // 2026-07-01 conv ddcbe197: după ce linkul de plată era trimis + explicat, userul a
+      // dat un „Mulțumesc" pasiv, iar Irina a re-explicat pașii de plată de 2 ori la rând
+      // („mai e doar plata... apasă pe link... 5-10 minute"). Formulările diferă lexical
+      // destul cât să scape de Jaccard (~0.48), dar semantic e ACELAȘI nudge. Dacă ultimul
+      // mesaj AI era deja un nudge de plată complet (link + plată + acțiune/durată) ȘI cel
+      // curent e tot un nudge de plată → blocăm. NU pe follow-up: acolo un reminder spațiat
+      // după tăcerea userului e legitim.
+      const isPayNudge = (t: string) =>
+        /\blink/i.test(t) && /pl[aă]t/i.test(t) && /(genera|minut|apa[sș]|ape[sș]|d[aă]\s+click|dai\s+click)/i.test(t);
+      if (!ctx.followUp && lastAiNorm && isPayNudge(normalized) && isPayNudge(lastAiNorm)) {
+        this.logger.warn(`PAY_NUDGE_REPEAT blocked on conv=${ctx.conv.id.slice(0, 8)} — al 2-lea nudge de plată consecutiv.`);
+        return {
+          sent: false,
+          messageType: 'duplicate_text',
+          status: 'PAYMENT_NUDGE_REPEAT_BLOCKED',
+          instruction:
+            'STAI — i-ai spus deja userului să apese pe linkul de plată și pașii (generare 5-10 min, primește pe email + în chat). NU repeta același îndemn la plată reformulat, sună robotic. Linkul e deja în chat. Dacă userul a zis doar „mulțumesc/ok/bine", NU mai trimite nimic acum. Răspunde DOAR dacă are o întrebare NOUĂ sau o nelămurire concretă — și atunci la obiect, nu re-explica tot procesul de plată.',
+        };
+      }
+
       const similarCount = recentNorm.filter((prev) => textOverlap(prev, normalized) > 0.7).length;
 
       // Treapta 1 — avertisment blând (nu escalează). Doar dacă nu e deja buclă gravă.
@@ -3900,6 +3927,32 @@ ${transcript}`;
     const cleaned = text.trim().slice(0, 400);
     if (!cleaned) return { sent: false, status: 'EMPTY_TEXT' };
 
+    // GUARD anti-dup empatie (BUG observat 2026-07-01 conv ddcbe197): send_empathy NU trecea
+    // prin dedup-ul din handleSendMessage, deci Irina a trimis DE 2 ORI aproape identic „Imi
+    // pare nespus de rau pentru pierderea suferita. Imi pare bine ca vrei sa pastrezi
+    // memoria/amintirea lui..." unei mame îndoliate (fiul mort de 45 zile) — condoleanțe
+    // repetate cuvânt cu cuvânt sună robotic exact unde doare cel mai tare. Blocăm un mesaj de
+    // empatie ~identic cu unul dintre ultimele mesaje AI, FĂRĂ să consumăm cota de 2/conv.
+    const empNorm = cleaned.toLowerCase().replace(/\s+/g, ' ');
+    const recentAiForEmpathy = await this.msg.find({
+      where: { conversationId: ctx.conv.id, aiGenerated: true },
+      order: { createdAt: 'DESC' },
+      take: 4,
+    });
+    const dupEmpathy = recentAiForEmpathy.some((m) => {
+      const prev = m.body.toLowerCase().replace(/\s+/g, ' ');
+      return prev === empNorm || textOverlap(prev, empNorm) >= 0.7;
+    });
+    if (dupEmpathy) {
+      this.logger.warn(`EMPATHY_DUP blocked on conv=${ctx.conv.id.slice(0, 8)} — mesaj de empatie ~identic cu unul recent.`);
+      return {
+        sent: false,
+        status: 'EMPATHY_DUPLICATE_BLOCKED',
+        instruction:
+          'STAI — ai transmis deja condoleanțe/empatie foarte asemănător recent. NU repeta același mesaj de compasiune, sună robotic (mai ales la o pierdere). Un singur gest de empatie e suficient. Continuă cald cu flow-ul normal: răspunde CONCRET la ce a adăugat userul (detaliile despre persoană / mesajul dorit) și avansează spre versuri / finalizare.',
+      };
+    }
+
     await this.humanDelay(cleaned, ctx.mode);
     const m = this.msg.create({
       conversationId: ctx.conv.id,
@@ -4569,4 +4622,8 @@ interface AgentCtx {
    *  apelat generate_lyrics de 2x la rând cu revisionNotes ~identice → a ars draft 2
    *  și 3 instant și a lovit LYRICS_LIMIT prematur.) */
   lyricsSentThisTurn?: boolean;
+  /** Rulare de tip follow-up (reminder spațiat după tăcerea userului) vs. run normal
+   *  declanșat de un mesaj al userului. Unele guard-uri anti-repetiție se relaxează pe
+   *  follow-up (un reminder spațiat e legitim, spre deosebire de 2 nudge-uri la rând). */
+  followUp?: boolean;
 }
