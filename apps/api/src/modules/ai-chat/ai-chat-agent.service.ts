@@ -1052,6 +1052,14 @@ ETAPA 0 — COMANDĂ EXISTENTĂ (verifică ÎNAINTE de a porni wizard-ul):
     primească maneaua persoanei greșite. BUG observat 2026-06-20 conv eae31c0f: user a cerut
     pentru „Ionuț" peste o comandă neplătită pentru „Briana", a sărit start_new_order → a primit
     Briana, nu Ionuț.
+    ⛔ NU declanșa start_new_order (și NU recota prețul) pe o simplă REMEMORARE la trecut,
+    ambiguă: „tu mi-ai făcut melodia și pentru sora mea X", „mi-ai compus una pentru Y". Astea
+    NU sunt o cerere clară de melodie nouă — userul povestește, nu comandă. start_new_order
+    ȘTERGE comanda în curs (golește wizard-ul), deci pe input ambiguu, ÎNTREABĂ scurt întâi:
+    „Vrei ÎNCĂ o melodie nouă pentru X, sau te referi la cea pe care o aștepți deja?" — pornește
+    comanda nouă DOAR după un „da" explicit. BUG observat 2026-07-02 conv ddcbe197: pe o
+    rememorare la trecut Irina a apelat start_new_order de 2 ori → a golit comanda neplătită pt
+    Nicu, apoi nu mai putea retrimite linkul (userul a rămas blocat).
   → 🔧 MODIFICARE pe melodie plătită → folosește \`request_modification\` (NU escalate):
     • ⛔ NU PROMITE refacerea ÎNAINTE de confirmare. NU spune „o refacem acum", „mă ocup de
       modificare", „revin imediat cu ea" până când request_modification NU întoarce un status
@@ -2716,7 +2724,13 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       // după tăcerea userului e legitim.
       const isPayNudge = (t: string) =>
         /\blink/i.test(t) && /pl[aă]t/i.test(t) && /(genera|minut|apa[sș]|ape[sș]|d[aă]\s+click|dai\s+click)/i.test(t);
-      if (!ctx.followUp && lastAiNorm && isPayNudge(normalized) && isPayNudge(lastAiNorm)) {
+      // Verificăm ULTIMELE 2 mesaje AI, nu doar cel imediat anterior. BUG observat
+      // 2026-07-02 conv ddcbe197: Irina a intercalat un mesaj non-nudge („Ca să-ți trimit
+      // linkul, mai am nevoie de 2 lucruri") care reseta garda de la Treapta 0.7 → apoi a
+      // re-nudge-uit plata de încă 2 ori. Fereastra de 2 prinde nudge-ul semantic chiar
+      // dacă e separat de un mesaj de alt tip.
+      const recentWasPayNudge = recentNorm.slice(0, 2).some((t) => isPayNudge(t));
+      if (!ctx.followUp && recentWasPayNudge && isPayNudge(normalized)) {
         this.logger.warn(`PAY_NUDGE_REPEAT blocked on conv=${ctx.conv.id.slice(0, 8)} — al 2-lea nudge de plată consecutiv.`);
         return {
           sent: false,
@@ -4039,10 +4053,40 @@ ${transcript}`;
     if (!conv) return { error: 'conversation gone' };
     const state = this.getOrInitWizardState(conv);
     if (!state.generationId) {
-      return {
-        status: 'NO_ORDER_TO_RESEND',
-        instruction: 'Nu există o comandă finalizată în această conversație. Dacă userul vrea să comande, continuă wizard-ul normal (wizard_get_state → finalize).',
-      };
+      // Recuperare din DB: wizardState poate fi golit (ex. start_new_order pe un input
+      // ambiguu la trecut) deși comanda reală + cardul de plată există încă. BUG observat
+      // 2026-07-02 conv ddcbe197: după 2× start_new_order care au șters generationId,
+      // userul a cerut explicit „Trimitemi linkul" pt Nicu → resend întorcea
+      // NO_ORDER_TO_RESEND și Irina a nudge-uit „plata nu s-a făcut" în loc să re-emită
+      // linkul. Folosim aceeași sursă unică de adevăr ca check_order_status.
+      const recovered = await this.resolveCustomerGeneration(conv, { requirePaid: false });
+      if (recovered && recovered.generation.paidUnlocked) {
+        return {
+          status: 'ORDER_ALREADY_PAID',
+          instruction: 'Comanda e deja plătită — nu mai e nimic de plătit. check_order_status pentru statusul melodiei.',
+        };
+      }
+      if (!recovered) {
+        return {
+          status: 'NO_ORDER_TO_RESEND',
+          instruction: 'Nu există o comandă finalizată în această conversație. Dacă userul vrea să comande, continuă wizard-ul normal (wizard_get_state → finalize).',
+        };
+      }
+      state.generationId = recovered.generation.id;
+      if (!state.data.recipientName && recovered.generation.recipientName) {
+        state.data.recipientName = recovered.generation.recipientName;
+      }
+      if (!state.data.packageTier && recovered.generation.packageTier) {
+        state.data.packageTier = normalizeTier(recovered.generation.packageTier);
+      }
+      if (state.step === 'collecting') state.step = 'payment_sent';
+      state.updatedAt = new Date().toISOString();
+      await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ wizardState: state })
+        .where('id = :id', { id: conv.id })
+        .execute();
     }
     if (state.step === 'paid' || state.step === 'generating' || state.step === 'completed') {
       return {
