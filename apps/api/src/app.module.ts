@@ -42,6 +42,7 @@ import { OutboundEmailModule } from './modules/outbound-email/outbound-email.mod
 import { MetaCapiModule } from './modules/meta-capi/meta-capi.module';
 import { SiteDemosModule } from './modules/site-demos/site-demos.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
+import { BillingCustomersModule } from './modules/billing-customers/billing-customers.module';
 import { MarketingModule } from './modules/marketing/marketing.module';
 import { CollageModule } from './modules/collage/collage.module';
 import { RecoveryModule } from './modules/recovery/recovery.module';
@@ -96,6 +97,7 @@ import { RecoveryModule } from './modules/recovery/recovery.module';
     AiChatModule,
     SiteDemosModule,
     InvoicesModule,
+    BillingCustomersModule,
     MarketingModule,
     CollageModule,
     RecoveryModule,

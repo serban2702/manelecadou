@@ -13,6 +13,7 @@ import { Invoice, InvoiceClientSnapshot } from './invoice.entity';
 import { Payment } from '../payments/payment.entity';
 import { User } from '../users/user.entity';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
+import { BillingCustomer } from '../billing-customers/billing-customer.entity';
 import { Site, SiteSmartbill } from '../sites/site.entity';
 import { SitesService } from '../sites/sites.service';
 import { PaymentsService } from '../payments/payments.service';
@@ -107,6 +108,8 @@ export class InvoicesService {
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(GuestSession) private readonly guests: Repository<GuestSession>,
+    @InjectRepository(BillingCustomer)
+    private readonly billingCustomers: Repository<BillingCustomer>,
     private readonly sites: SitesService,
     private readonly smartbill: SmartbillClient,
     private readonly paymentsSvc: PaymentsService,
@@ -270,13 +273,17 @@ export class InvoicesService {
       const u = await this.users.findOne({ where: { id: p.userId } });
       name = u?.name ?? '';
     }
-    // Fallback pe clientul implicit dacă nu avem nume de la cumpărător.
-    if (!name && sb.defaultClient?.name) {
+    // Override salvat manual pe client (editat în pagina „Clienți"). E sursa de
+    // adevăr și se aplică la toate facturile viitoare ale acestui cumpărător.
+    const override = await this.findBillingOverride(site.id, email);
+    // Fallback pe clientul implicit dacă nu avem nici nume de la cumpărător, nici
+    // un profil salvat cu nume.
+    if (!name && !override?.name && sb.defaultClient?.name) {
       return { country: 'Romania', isTaxPayer: false, ...sb.defaultClient };
     }
     const addr = stripe?.address ?? null;
     const street = [addr?.line1, addr?.line2].filter(Boolean).join(', ');
-    return {
+    const derived: InvoiceClientSnapshot = {
       name,
       email: email ?? undefined,
       address: street || undefined,
@@ -285,6 +292,35 @@ export class InvoicesService {
       country: this.mapCountry(addr?.country),
       isTaxPayer: false,
     };
+    if (!override) return derived;
+    // Suprascriem doar câmpurile salvate ne-goale; restul rămân din Stripe/DB.
+    const pick = (v: string | null): string | undefined => {
+      const t = (v ?? '').trim();
+      return t || undefined;
+    };
+    return {
+      ...derived,
+      name: pick(override.name) ?? derived.name,
+      vatCode: pick(override.vatCode) ?? derived.vatCode,
+      regCom: pick(override.regCom) ?? derived.regCom,
+      address: pick(override.address) ?? derived.address,
+      city: pick(override.city) ?? derived.city,
+      county: normalizeCounty(override.county) ?? derived.county,
+      country: pick(override.country) ?? derived.country,
+      isTaxPayer: override.isTaxPayer ?? derived.isTaxPayer,
+    };
+  }
+
+  /** Profilul de facturare salvat pentru (siteId, email), dacă există. */
+  private async findBillingOverride(
+    siteId: string | null,
+    email: string | null,
+  ): Promise<BillingCustomer | null> {
+    const normEmail = (email ?? '').trim().toLowerCase();
+    if (!siteId || !normEmail) return null;
+    return this.billingCustomers.findOne({
+      where: { siteId, email: normEmail },
+    });
   }
 
   /** Datele de preview pentru o plată (înainte de emitere). */

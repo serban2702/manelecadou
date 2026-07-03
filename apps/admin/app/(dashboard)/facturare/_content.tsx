@@ -49,21 +49,11 @@ import { useToast } from '@/components/ui/use-toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { SiteBadge } from '@/components/site-badge';
 import { useSitesMap } from '@/lib/hooks/use-sites-map';
-
-/** Județele acceptate de SmartBill (denumiri standard, fără diacritice). */
-const RO_COUNTIES = [
-  'Alba', 'Arad', 'Arges', 'Bacau', 'Bihor', 'Bistrita-Nasaud', 'Botosani',
-  'Brasov', 'Braila', 'Bucuresti', 'Buzau', 'Caras-Severin', 'Calarasi', 'Cluj',
-  'Constanta', 'Covasna', 'Dambovita', 'Dolj', 'Galati', 'Giurgiu', 'Gorj',
-  'Harghita', 'Hunedoara', 'Ialomita', 'Iasi', 'Ilfov', 'Maramures', 'Mehedinti',
-  'Mures', 'Neamt', 'Olt', 'Prahova', 'Satu Mare', 'Salaj', 'Sibiu', 'Suceava',
-  'Teleorman', 'Timis', 'Tulcea', 'Vaslui', 'Valcea', 'Vrancea',
-];
+import { CountySelect } from '@/components/county-select';
+import { BillingCustomersApi } from '@/lib/api/billing-customers.api';
 
 /** Tipuri de plată uzuale acceptate de SmartBill pe încasare. */
 const PAYMENT_TYPES = ['Card', 'Ordin de plata', 'Transfer bancar', 'Chitanta', 'Numerar', 'Mandat postal'];
-
-const NONE = '__none__';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -133,31 +123,6 @@ function useRangeSelect<T>(
     });
 
   return { selected, selectableIds, allSelected, toggle, toggleAll, clear, remove };
-}
-
-/** Dropdown cu județele SmartBill. Acceptă valoare goală sau una custom (din date
- *  vechi care nu sunt în listă) — o adaugă temporar ca să nu se piardă. */
-function CountySelect({ value, onChange }: { value?: string; onChange: (v: string) => void }) {
-  const v = value?.trim() ?? '';
-  const options = v && !RO_COUNTIES.includes(v) ? [v, ...RO_COUNTIES] : RO_COUNTIES;
-  return (
-    <div className="space-y-1">
-      <Label className="text-xs">Județ (SmartBill)</Label>
-      <Select value={v || NONE} onValueChange={(val) => onChange(val === NONE ? '' : val)}>
-        <SelectTrigger>
-          <SelectValue placeholder="— alege —" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={NONE}>— fără județ —</SelectItem>
-          {options.map((c) => (
-            <SelectItem key={c} value={c}>
-              {c}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
 }
 
 export default function FacturarePage() {
@@ -454,6 +419,7 @@ function BulkEmitDialog({
     Object.fromEntries(rows.map((r) => [r.paymentId, { ...(r.client ?? {}) }])),
   );
   const [emitting, setEmitting] = useState(false);
+  const [saveToClients, setSaveToClients] = useState(true);
 
   const patch = (pid: string, p: Partial<InvoiceClientData>) =>
     setClients((c) => ({ ...c, [pid]: { ...c[pid], ...p } }));
@@ -480,6 +446,27 @@ function BulkEmitDialog({
       );
       const okN = res.filter((r) => r.ok).length;
       const failN = res.length - okN;
+      // Persistă datele pe profilul fiecărui client emis cu succes (best-effort).
+      if (saveToClients) {
+        const okIds = new Set(res.filter((r) => r.ok).map((r) => r.paymentId));
+        await Promise.all(
+          rows
+            .filter((r) => okIds.has(r.paymentId) && r.buyerEmail && r.siteId)
+            .map((r) => {
+              const c = clients[r.paymentId] ?? {};
+              return BillingCustomersApi.upsert(r.siteId!, r.buyerEmail!, {
+                name: c.name,
+                vatCode: c.vatCode,
+                regCom: c.regCom,
+                address: c.address,
+                city: c.city,
+                county: c.county,
+                country: c.country,
+                isTaxPayer: c.isTaxPayer,
+              }).catch(() => undefined);
+            }),
+        );
+      }
       toast({
         variant: failN ? 'destructive' : 'success',
         title: `${okN} emise${failN ? `, ${failN} eșuate` : ''}`,
@@ -529,6 +516,11 @@ function BulkEmitDialog({
             </Select>
           </div>
         </div>
+
+        <label className="flex cursor-pointer select-none items-center gap-2 border-b border-border pb-3 text-xs text-muted-foreground">
+          <Checkbox checked={saveToClients} onCheckedChange={(v) => setSaveToClients(!!v)} />
+          Salvează datele pe fiecare client (se aplică la facturile lor viitoare)
+        </label>
 
         <div className="-mr-1 flex-1 space-y-3 overflow-y-auto pr-1">
           {rows.map((r) => {
@@ -720,6 +712,7 @@ function PreviewDialog({
   const [paymentType, setPaymentType] = useState('Card');
   const [hydrated, setHydrated] = useState(false);
   const [emitting, setEmitting] = useState(false);
+  const [saveToClient, setSaveToClient] = useState(true);
 
   // Hidratează formularul o singură dată după ce vine preview-ul.
   if (data && !hydrated) {
@@ -752,6 +745,24 @@ function PreviewDialog({
         issueDate,
         paymentType,
       });
+      // Persistă datele pe profilul clientului (se aplică la facturile viitoare).
+      const email = data?.client?.email || client.email;
+      if (saveToClient && email && data?.siteId) {
+        try {
+          await BillingCustomersApi.upsert(data.siteId, email, {
+            name: client.name,
+            vatCode: client.vatCode,
+            regCom: client.regCom,
+            address: client.address,
+            city: client.city,
+            county: client.county,
+            country: client.country,
+            isTaxPayer: client.isTaxPayer,
+          });
+        } catch {
+          /* best-effort — nu blocăm emiterea reușită dacă salvarea profilului pică */
+        }
+      }
       toast({ variant: 'success', title: 'Factură emisă' });
       onEmitted();
     } catch (e) {
@@ -808,6 +819,13 @@ function PreviewDialog({
               </div>
             </div>
           </div>
+        )}
+
+        {hydrated && (
+          <label className="flex cursor-pointer select-none items-center gap-2 text-xs text-muted-foreground">
+            <Checkbox checked={saveToClient} onCheckedChange={(v) => setSaveToClient(!!v)} />
+            Salvează aceste date pe client (se aplică la facturile lui viitoare)
+          </label>
         )}
 
         <DialogFooter>
