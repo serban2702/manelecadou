@@ -75,8 +75,23 @@ const VOICE_DEFAULTS = {
  *  cere același lucru repetat). */
 function textOverlap(a: string, b: string): number {
   if (!a || !b) return 0;
-  const wa = new Set(a.split(/\s+/).filter((w) => w.length >= 3));
-  const wb = new Set(b.split(/\s+/).filter((w) => w.length >= 3));
+  // Tokenizare robustă: scoatem diacriticele (ș→s, ă→a) și tratăm punctuația ca
+  // separator. BUG observat 2026-07-03 conv 1b24bd10: două mesaje ~identice
+  // („Am notat emailul... numele persoanei" vs „...persoana...") aveau Jaccard doar
+  // ~0.33 pentru că „maneaua." ≠ „maneaua?" și diacriticele rupeau tokenii — parafraza
+  // robotică scăpa de toate gardurile de dup/buclă care depind de textOverlap.
+  const tokenize = (s: string): Set<string> =>
+    new Set(
+      s
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .split(/\s+/)
+        .filter((w) => w.length >= 3),
+    );
+  const wa = tokenize(a);
+  const wb = tokenize(b);
   if (wa.size === 0 || wb.size === 0) return 0;
   let intersect = 0;
   for (const w of wa) if (wb.has(w)) intersect++;
@@ -2726,6 +2741,26 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           status: 'NEAR_DUPLICATE_BLOCKED',
           instruction:
             'STAI — mesajul ăsta e o parafrază aproape identică cu ULTIMUL mesaj pe care l-ai trimis. NU repeta aceeași asigurare reformulată, sună robotic. Dacă aștepți o generare blocată și ai anunțat deja echipa / ai escaladat, NU mai trimite încă un „revin imediat" — userul a primit deja mesajul. Verifică statusul real (check_order_status): ori spui ceva CONCRET nou (linkul melodiei dacă e gata, un timp estimat clar diferit), ori NU mai trimite niciun mesaj acum.',
+        };
+      }
+
+      // Treapta 0.6 — dublă confirmare a emailului (semantic, NU lexical). BUG observat
+      // 2026-07-03 conv 1b24bd10: după ce userul a dat emailul, Irina a trimis „Am notat
+      // emailul, Mihaela. Acum am nevoie doar de numele persoanei..." apoi, în același tur,
+      // o parafrază „Am notat emailul, Mihaela. Cum se numește persoana...". Emailul se
+      // confirmă O SINGURĂ dată — un al 2-lea „am notat emailul" e mereu robotic, dar
+      // formulările diferă lexical destul cât să scape de NEAR_DUP (Jaccard ~0.43). Dacă
+      // ultimul mesaj AI confirma deja primirea emailului ȘI cel curent tot îl confirmă →
+      // blocăm: cere direct câmpul lipsă, fără să re-mulțumești pentru email.
+      const isEmailAck = (t: string) => /\bnotat\b/i.test(t) && /e-?mail/i.test(t);
+      if (lastAiNorm && isEmailAck(lastAiNorm) && isEmailAck(normalized)) {
+        this.logger.warn(`EMAIL_ACK_REPEAT blocked on conv=${ctx.conv.id.slice(0, 8)} — a 2-a confirmare a emailului.`);
+        return {
+          sent: false,
+          messageType: 'duplicate_text',
+          status: 'EMAIL_ACK_REPEAT_BLOCKED',
+          instruction:
+            'STAI — ai confirmat deja userului că i-ai notat emailul. NU repeta „am notat emailul", sună robotic. Dacă mai ai nevoie de un câmp (numele persoanei / mesajul / pachetul), cere-l DIRECT și scurt, fără să re-mulțumești pentru email. Dacă ai deja tot ce-ți trebuie, treci la pasul următor (versuri / pachet / finalize). Dacă tocmai ai cerut numele persoanei, NU-l re-cere — așteaptă răspunsul userului.',
         };
       }
 
