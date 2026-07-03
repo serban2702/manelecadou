@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BillingCustomer } from './billing-customer.entity';
+import { resolveLocalityForSmartbill } from '../../common/ro-locality.util';
 
 /** Câmpurile editabile ale unui profil de client (autosave inline). */
 export interface BillingCustomerPatch {
@@ -54,6 +55,7 @@ interface AggRow {
   derived_address: string | null;
   derived_city: string | null;
   derived_county: string | null;
+  derived_postal: string | null;
   derived_country: string | null;
   derived_phone: string | null;
 }
@@ -99,6 +101,8 @@ export class BillingCustomersService {
         FILTER (WHERE p."billingCity" IS NOT NULL AND p."billingCity" <> ''))[1] AS derived_city,
       (ARRAY_AGG(p."billingCounty" ORDER BY p."createdAt" DESC)
         FILTER (WHERE p."billingCounty" IS NOT NULL AND p."billingCounty" <> ''))[1] AS derived_county,
+      (ARRAY_AGG(p."billingPostalCode" ORDER BY p."createdAt" DESC)
+        FILTER (WHERE p."billingPostalCode" IS NOT NULL AND p."billingPostalCode" <> ''))[1] AS derived_postal,
       (ARRAY_AGG(p."billingCountry" ORDER BY p."createdAt" DESC)
         FILTER (WHERE p."billingCountry" IS NOT NULL AND p."billingCountry" <> ''))[1] AS derived_country,
       (ARRAY_AGG(p."billingPhone" ORDER BY p."createdAt" DESC)
@@ -177,6 +181,14 @@ export class BillingCustomersService {
     const items: BillingCustomerRow[] = rows.map((r) => {
       const key = `${r.site_id}|${r.email}`;
       const saved = savedByKey.get(key) ?? null;
+      // Județ = DOAR RO valid (sau București → „Sector N"); localitate străină/invalidă
+      // → județ gol. Consistent cu ce se trimite pe factură.
+      const loc = resolveLocalityForSmartbill({
+        city: r.derived_city,
+        county: r.derived_county,
+        address: r.derived_address,
+        postalCode: r.derived_postal,
+      });
       return {
         siteId: r.site_id,
         email: r.email,
@@ -184,8 +196,8 @@ export class BillingCustomersService {
         vatCode: saved?.vatCode ?? null,
         regCom: saved?.regCom ?? null,
         address: saved?.address ?? r.derived_address ?? null,
-        city: saved?.city ?? r.derived_city ?? null,
-        county: saved?.county ?? r.derived_county ?? null,
+        city: saved?.city ?? loc.city ?? null,
+        county: saved?.county ?? loc.county ?? null,
         country: saved?.country ?? mapCountryName(r.derived_country) ?? null,
         phone: saved?.phone ?? r.derived_phone ?? null,
         isTaxPayer: saved?.isTaxPayer ?? false,

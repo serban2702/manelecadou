@@ -18,6 +18,7 @@ import { Site, SiteSmartbill } from '../sites/site.entity';
 import { SitesService } from '../sites/sites.service';
 import { PaymentsService } from '../payments/payments.service';
 import { decryptSecret } from '../../common/crypto.util';
+import { normalizeCounty, resolveLocalityForSmartbill } from '../../common/ro-locality.util';
 import {
   SmartbillClient,
   SmartbillCredentials,
@@ -53,104 +54,11 @@ export interface BillableRow {
   smartbillReady: boolean;
 }
 
-/** Județele acceptate de SmartBill (denumiri standard, fără diacritice). */
-export const RO_COUNTIES = [
-  'Alba', 'Arad', 'Arges', 'Bacau', 'Bihor', 'Bistrita-Nasaud', 'Botosani',
-  'Brasov', 'Braila', 'Bucuresti', 'Buzau', 'Caras-Severin', 'Calarasi', 'Cluj',
-  'Constanta', 'Covasna', 'Dambovita', 'Dolj', 'Galati', 'Giurgiu', 'Gorj',
-  'Harghita', 'Hunedoara', 'Ialomita', 'Iasi', 'Ilfov', 'Maramures', 'Mehedinti',
-  'Mures', 'Neamt', 'Olt', 'Prahova', 'Satu Mare', 'Salaj', 'Sibiu', 'Suceava',
-  'Teleorman', 'Timis', 'Tulcea', 'Vaslui', 'Valcea', 'Vrancea',
-];
-
-/** Cod ISO 3166-2:RO (fără prefix RO-) → denumire SmartBill. */
-const ISO_TO_COUNTY: Record<string, string> = {
-  AB: 'Alba', AR: 'Arad', AG: 'Arges', BC: 'Bacau', BH: 'Bihor',
-  BN: 'Bistrita-Nasaud', BT: 'Botosani', BV: 'Brasov', BR: 'Braila',
-  B: 'Bucuresti', BZ: 'Buzau', CS: 'Caras-Severin', CL: 'Calarasi', CJ: 'Cluj',
-  CT: 'Constanta', CV: 'Covasna', DB: 'Dambovita', DJ: 'Dolj', GL: 'Galati',
-  GR: 'Giurgiu', GJ: 'Gorj', HR: 'Harghita', HD: 'Hunedoara', IL: 'Ialomita',
-  IS: 'Iasi', IF: 'Ilfov', MM: 'Maramures', MH: 'Mehedinti', MS: 'Mures',
-  NT: 'Neamt', OT: 'Olt', PH: 'Prahova', SM: 'Satu Mare', SJ: 'Salaj',
-  SB: 'Sibiu', SV: 'Suceava', TR: 'Teleorman', TM: 'Timis', TL: 'Tulcea',
-  VS: 'Vaslui', VL: 'Valcea', VN: 'Vrancea',
-};
-
-function stripDiacritics(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '');
-}
-
-/** Normalizează un județ (cod ISO „RO-CJ"/„CJ", nume cu/fără diacritice, variante)
- *  la denumirea folosită de SmartBill. Null dacă input gol; verbatim dacă necunoscut. */
-export function normalizeCounty(raw?: string | null): string | null {
-  if (!raw) return null;
-  const v = stripDiacritics(String(raw).trim());
-  if (!v) return null;
-  const iso = v.toUpperCase().replace(/^RO[-\s]?/, '');
-  if (ISO_TO_COUNTY[iso]) return ISO_TO_COUNTY[iso];
-  const lower = v.toLowerCase();
-  const hit = RO_COUNTIES.find((c) => stripDiacritics(c).toLowerCase() === lower);
-  if (hit) return hit;
-  if (lower.includes('bucur') || lower === 'bucharest' || lower.startsWith('sector')) {
-    return 'Bucuresti';
-  }
-  return v;
-}
-
 /** Denumirea liniei de produs pe factură (neplătitor TVA, cotă 0%). */
 export const DEFAULT_PRODUCT_NAME = 'Melodie personalizată generată cu AI';
 
 /** Tipul de plată implicit trimis la SmartBill (plățile vin din Stripe/card online). */
 export const DEFAULT_PAYMENT_TYPE = 'Card online';
-
-/** Numărul sectorului București (1-6) din oraș/adresă (text „Sector N"/„S N") sau
- *  din codul poștal (0Nxxxx — a doua cifră = sectorul). Null dacă nedeterminabil. */
-function detectBucharestSector(opts: {
-  city?: string | null;
-  address?: string | null;
-  postalCode?: string | null;
-}): number | null {
-  const text = stripDiacritics(`${opts.city ?? ''} ${opts.address ?? ''}`).toLowerCase();
-  const m = text.match(/sector(?:ul)?\s*0*([1-6])(?!\d)/);
-  if (m) return Number(m[1]);
-  const abbr = stripDiacritics(opts.city ?? '').trim().toLowerCase().match(/^s\s*0*([1-6])$/);
-  if (abbr) return Number(abbr[1]);
-  const pc = (opts.postalCode ?? '').replace(/\s/g, '');
-  if (/^0[1-6]\d{4}$/.test(pc)) return Number(pc[1]);
-  return null;
-}
-
-/**
- * Normalizează localitatea + județul pentru SmartBill. Pentru București, SmartBill
- * cere județ = „Bucuresti" și localitate = „Sector N". Sectorul e extras din oraș/
- * adresă sau din codul poștal (0Nxxxx). Dacă nu e București, doar normalizează județul.
- */
-export function resolveLocalityForSmartbill(raw: {
-  city?: string | null;
-  county?: string | null;
-  address?: string | null;
-  postalCode?: string | null;
-}): { city: string | null; county: string | null } {
-  const normCounty = normalizeCounty(raw.county);
-  const cityTxt = stripDiacritics(raw.city ?? '').toLowerCase();
-  const pc = (raw.postalCode ?? '').replace(/\s/g, '');
-  const combined = stripDiacritics(`${raw.city ?? ''} ${raw.address ?? ''}`).toLowerCase();
-  const looksBucharest =
-    normCounty === 'Bucuresti' ||
-    cityTxt.includes('bucur') ||
-    cityTxt.includes('bucharest') ||
-    /sector/.test(combined) ||
-    /^s\s*0*[1-6]$/.test(cityTxt.trim()) ||
-    /^0[1-6]\d{4}$/.test(pc);
-  if (!looksBucharest) {
-    return { city: raw.city ?? null, county: normCounty ?? raw.county ?? null };
-  }
-  const sector = detectBucharestSector(raw);
-  return {
-    county: 'Bucuresti',
-    city: sector ? `Sector ${sector}` : raw.city ?? 'Bucuresti',
-  };
-}
 
 @Injectable()
 export class InvoicesService {
@@ -311,7 +219,7 @@ export class InvoicesService {
         country: 'Romania',
         isTaxPayer: false,
         ...sb.defaultClient,
-        county: normalizeCounty(sb.defaultClient.county) ?? sb.defaultClient.county,
+        county: normalizeCounty(sb.defaultClient.county) ?? undefined,
       };
     }
     let name = p.customerName ?? '';
@@ -469,8 +377,9 @@ export class InvoicesService {
       address: client.address,
     });
     // Salvăm în snapshot forma finală, ca să reflecte exact ce s-a trimis pe factură.
+    // La județ: DOAR RO valid (sau București) — altfel gol; niciodată verbatim.
     client.city = locality.city ?? client.city;
-    client.county = locality.county ?? client.county;
+    client.county = locality.county ?? undefined;
 
     const input: SmartbillInvoiceInput = {
       companyVatCode: sb.companyVatCode,
@@ -488,7 +397,7 @@ export class InvoicesService {
         regCom: client.regCom || undefined,
         address: client.address || undefined,
         city: locality.city || client.city || undefined,
-        county: locality.county || normalizeCounty(client.county) || client.county || undefined,
+        county: locality.county || undefined,
         country: client.country || 'Romania',
         // NU trimitem email pe factură (nu folosim email, nu trimitem facturile pe mail).
         isTaxPayer: client.isTaxPayer ?? false,
