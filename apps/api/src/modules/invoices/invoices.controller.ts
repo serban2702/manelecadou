@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  NotFoundException,
   Param,
   Post,
   Res,
@@ -51,7 +52,8 @@ export class InvoicesController {
     return this.svc.emit(body.paymentId, body.overrides ?? {});
   }
 
-  /** Emite mai multe facturi (cu override-uri opționale per plată). */
+  /** Pornește emiterea în bloc (async). Întoarce imediat { jobId, total } — nu așteaptă
+   *  procesarea (poate dura minute), ca să nu cadă pe timeout-ul HTTP. */
   @Post('emit-bulk')
   emitBulk(
     @Body()
@@ -60,7 +62,15 @@ export class InvoicesController {
       overridesByPayment?: Record<string, EmitOverrides>;
     },
   ) {
-    return this.svc.emitBulk(body.paymentIds ?? [], body.overridesByPayment ?? {});
+    return this.svc.startBulkEmit(body.paymentIds ?? [], body.overridesByPayment ?? {});
+  }
+
+  /** Starea unui job de emitere în bloc (pentru polling: câte s-au emis / eșuat). */
+  @Get('emit-bulk/:jobId')
+  emitBulkStatus(@Param('jobId') jobId: string) {
+    const job = this.svc.getBulkEmitJob(jobId);
+    if (!job) throw new NotFoundException('Job negăsit sau expirat');
+    return job;
   }
 
   /** Descarcă PDF-ul facturii. */

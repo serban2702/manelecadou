@@ -8,11 +8,13 @@ import { Download, FileText, Receipt, Trash2 } from 'lucide-react';
 import {
   InvoicesApi,
   type BillablePayment,
+  type BulkEmitJob,
   type EmitOverrides,
   type InvoiceClientData,
   type InvoiceDto,
   type InvoicePreview,
 } from '@/lib/api/invoices.api';
+import { cn } from '@/lib/cn';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -561,9 +563,58 @@ function BulkEmitDialog({
   );
   const [emitting, setEmitting] = useState(false);
   const [saveToClients, setSaveToClients] = useState(true);
+  // Job async de emitere + progres (polling). Null = încă la formular.
+  const [progress, setProgress] = useState<BulkEmitJob | null>(null);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelledRef = useRef(false);
+
+  useEffect(
+    () => () => {
+      cancelledRef.current = true;
+      if (pollRef.current) clearTimeout(pollRef.current);
+    },
+    [],
+  );
 
   const patch = (pid: string, p: Partial<InvoiceClientData>) =>
     setClients((c) => ({ ...c, [pid]: { ...c[pid], ...p } }));
+
+  function startPolling(jobId: string) {
+    let errors = 0;
+    const tick = async () => {
+      if (cancelledRef.current) return;
+      try {
+        const job = await InvoicesApi.emitBulkStatus(jobId);
+        errors = 0;
+        if (cancelledRef.current) return;
+        setProgress(job);
+        if (job.status === 'done') {
+          setEmitting(false);
+          toast({
+            variant: job.failed ? 'destructive' : 'success',
+            title: `${job.ok} emise${job.failed ? `, ${job.failed} eșuate` : ''} din ${job.total}`,
+            description: job.failed
+              ? job.results.filter((r) => !r.ok).map((r) => r.error).slice(0, 3).join(' | ')
+              : undefined,
+          });
+          return; // stop polling
+        }
+      } catch {
+        errors += 1;
+        if (errors >= 5) {
+          setEmitting(false);
+          toast({
+            variant: 'destructive',
+            title: 'Am pierdut legătura cu jobul',
+            description: 'Emiterea poate continua pe server. Reîmprospătează lista.',
+          });
+          return;
+        }
+      }
+      pollRef.current = setTimeout(tick, 1500);
+    };
+    void tick();
+  }
 
   async function emitAll() {
     const missing = rows.filter((r) => !clients[r.paymentId]?.name?.trim());
@@ -581,18 +632,11 @@ function BulkEmitDialog({
       for (const r of rows) {
         overrides[r.paymentId] = { client: clients[r.paymentId], issueDate, paymentType };
       }
-      const res = await InvoicesApi.emitBulk(
-        rows.map((r) => r.paymentId),
-        overrides,
-      );
-      const okN = res.filter((r) => r.ok).length;
-      const failN = res.length - okN;
-      // Persistă datele pe profilul fiecărui client emis cu succes (best-effort).
+      // Salvează profilele clienților (best-effort, în paralel cu emiterea).
       if (saveToClients) {
-        const okIds = new Set(res.filter((r) => r.ok).map((r) => r.paymentId));
-        await Promise.all(
+        void Promise.all(
           rows
-            .filter((r) => okIds.has(r.paymentId) && r.buyerEmail && r.siteId)
+            .filter((r) => r.buyerEmail && r.siteId)
             .map((r) => {
               const c = clients[r.paymentId] ?? {};
               return BillingCustomersApi.upsert(r.siteId!, r.buyerEmail!, {
@@ -608,120 +652,205 @@ function BulkEmitDialog({
             }),
         );
       }
-      toast({
-        variant: failN ? 'destructive' : 'success',
-        title: `${okN} emise${failN ? `, ${failN} eșuate` : ''}`,
-        description: failN
-          ? res.filter((r) => !r.ok).map((r) => r.error).slice(0, 3).join(' | ')
-          : undefined,
+      const { jobId, total } = await InvoicesApi.emitBulk(
+        rows.map((r) => r.paymentId),
+        overrides,
+      );
+      setProgress({
+        id: jobId,
+        total,
+        done: 0,
+        ok: 0,
+        failed: 0,
+        status: 'running',
+        results: [],
+        startedAt: Date.now(),
+        finishedAt: null,
       });
-      onDone();
+      startPolling(jobId);
     } catch (e) {
-      toast({ variant: 'destructive', title: 'Eroare', description: (e as Error).message });
-    } finally {
       setEmitting(false);
+      toast({ variant: 'destructive', title: 'Eroare la pornire', description: (e as Error).message });
     }
   }
 
+  const running = !!progress && progress.status === 'running';
+  const finished = !!progress && progress.status === 'done';
+
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog
+      open
+      onOpenChange={(o) => {
+        // Cât timp rulează, nu închidem accidental (Escape / click în afară).
+        if (!o && !running) (finished ? onDone : onClose)();
+      }}
+    >
       <DialogContent className="flex max-h-[88vh] max-w-3xl flex-col">
         <DialogHeader>
           <DialogTitle>
             Emite {rows.length} {rows.length === 1 ? 'factură' : 'facturi'}
           </DialogTitle>
           <DialogDescription>
-            Data și metoda de plată se aplică tuturor. Verifică/editează datele fiecărui client —
-            județul e în formatul cerut de SmartBill.
+            {progress
+              ? 'Emiterea rulează pe server, factură cu factură. Poți lăsa fereastra deschisă — progresul se actualizează singur.'
+              : 'Data și metoda de plată se aplică tuturor. Verifică/editează datele fiecărui client — județul e în formatul cerut de SmartBill.'}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-3 border-b border-border pb-3">
-          <div className="space-y-1">
-            <Label className="text-xs">Data emiterii (apare pe factură)</Label>
-            <Input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Metoda de plată</Label>
-            <Select value={paymentType} onValueChange={setPaymentType}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PAYMENT_TYPES.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <label className="flex cursor-pointer select-none items-center gap-2 border-b border-border pb-3 text-xs text-muted-foreground">
-          <Checkbox checked={saveToClients} onCheckedChange={(v) => setSaveToClients(!!v)} />
-          Salvează datele pe fiecare client (se aplică la facturile lor viitoare)
-        </label>
-
-        <div className="-mr-1 flex-1 space-y-3 overflow-y-auto pr-1">
-          {rows.map((r) => {
-            const c = clients[r.paymentId] ?? {};
-            return (
-              <div key={r.paymentId} className="rounded-lg border border-border bg-secondary/10 p-3">
-                <div className="mb-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                  <span className="truncate">
-                    {format(new Date(r.createdAt), 'd MMM yyyy', { locale: ro })} · {r.buyerEmail ?? '—'}
-                  </span>
-                  <span className="tabular-nums font-medium text-foreground">
-                    {money(r.amountCents, r.currency)}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Nume / Denumire *</Label>
-                    <Input
-                      value={c.name ?? ''}
-                      onChange={(e) => patch(r.paymentId, { name: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Adresă</Label>
-                    <Input
-                      value={c.address ?? ''}
-                      onChange={(e) => patch(r.paymentId, { address: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Oraș</Label>
-                    <Input
-                      value={c.city ?? ''}
-                      onChange={(e) => patch(r.paymentId, { city: e.target.value })}
-                    />
-                  </div>
-                  <CountySelect value={c.county} onChange={(v) => patch(r.paymentId, { county: v })} />
-                  <div className="space-y-1">
-                    <Label className="text-xs">Țară</Label>
-                    <Input
-                      value={c.country ?? ''}
-                      onChange={(e) => patch(r.paymentId, { country: e.target.value })}
-                    />
-                  </div>
-                </div>
+        {progress ? (
+          <BulkProgress progress={progress} rows={rows} />
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 border-b border-border pb-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Data emiterii (apare pe factură)</Label>
+                <Input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
               </div>
-            );
-          })}
-        </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Metoda de plată</Label>
+                <Select value={paymentType} onValueChange={setPaymentType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <label className="flex cursor-pointer select-none items-center gap-2 border-b border-border pb-3 text-xs text-muted-foreground">
+              <Checkbox checked={saveToClients} onCheckedChange={(v) => setSaveToClients(!!v)} />
+              Salvează datele pe fiecare client (se aplică la facturile lor viitoare)
+            </label>
+
+            <div className="-mr-1 flex-1 space-y-3 overflow-y-auto pr-1">
+              {rows.map((r) => {
+                const c = clients[r.paymentId] ?? {};
+                return (
+                  <div key={r.paymentId} className="rounded-lg border border-border bg-secondary/10 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <span className="truncate">
+                        {format(new Date(r.createdAt), 'd MMM yyyy', { locale: ro })} · {r.buyerEmail ?? '—'}
+                      </span>
+                      <span className="tabular-nums font-medium text-foreground">
+                        {money(r.amountCents, r.currency)}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Nume / Denumire *</Label>
+                        <Input
+                          value={c.name ?? ''}
+                          onChange={(e) => patch(r.paymentId, { name: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Adresă</Label>
+                        <Input
+                          value={c.address ?? ''}
+                          onChange={(e) => patch(r.paymentId, { address: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Oraș</Label>
+                        <Input
+                          value={c.city ?? ''}
+                          onChange={(e) => patch(r.paymentId, { city: e.target.value })}
+                        />
+                      </div>
+                      <CountySelect value={c.county} onChange={(v) => patch(r.paymentId, { county: v })} />
+                      <div className="space-y-1">
+                        <Label className="text-xs">Țară</Label>
+                        <Input
+                          value={c.country ?? ''}
+                          onChange={(e) => patch(r.paymentId, { country: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         <DialogFooter className="border-t border-border pt-3">
-          <Button variant="ghost" onClick={onClose} disabled={emitting}>
-            Renunță
-          </Button>
-          <Button onClick={emitAll} disabled={emitting}>
-            {emitting ? 'Se emit…' : `Emite toate (${rows.length})`}
-          </Button>
+          {finished ? (
+            <Button onClick={onDone}>Închide</Button>
+          ) : running ? (
+            <Button variant="ghost" onClick={onClose}>
+              Lasă în fundal
+            </Button>
+          ) : (
+            <>
+              <Button variant="ghost" onClick={onClose}>
+                Renunță
+              </Button>
+              <Button onClick={emitAll} disabled={emitting}>
+                {emitting ? 'Se pornește…' : `Emite toate (${rows.length})`}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Panoul de progres pentru emiterea în bloc (live + sumar la final). */
+function BulkProgress({ progress, rows }: { progress: BulkEmitJob; rows: BillablePayment[] }) {
+  const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+  const emailByPid = new Map(rows.map((r) => [r.paymentId, r.buyerEmail ?? r.paymentId]));
+  const errors = progress.results.filter((r) => !r.ok);
+  return (
+    <div className="flex-1 space-y-4 overflow-y-auto py-2">
+      <div className="flex items-baseline justify-between">
+        <div className="text-2xl font-semibold tabular-nums">
+          {progress.done} <span className="text-base font-normal text-muted-foreground">/ {progress.total}</span>
+        </div>
+        <div className="text-sm">
+          <span className="text-emerald-500">{progress.ok} emise</span>
+          {progress.failed > 0 && <span className="text-destructive"> · {progress.failed} eșuate</span>}
+        </div>
+      </div>
+
+      <div className="h-2.5 w-full overflow-hidden rounded-full bg-secondary">
+        <div
+          className={cn(
+            'h-full rounded-full transition-all duration-500',
+            progress.failed > 0 ? 'bg-amber-500' : 'bg-primary',
+          )}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+
+      <div className="text-xs text-muted-foreground">
+        {progress.status === 'running'
+          ? `Se emit facturile pe SmartBill… ${pct}% (câteva secunde per factură).`
+          : `Gata. ${progress.ok} emise cu succes${progress.failed ? `, ${progress.failed} eșuate` : ''}.`}
+      </div>
+
+      {errors.length > 0 && (
+        <div className="space-y-1 rounded-md border border-destructive/30 bg-destructive/10 p-3">
+          <div className="text-xs font-medium text-destructive">
+            {errors.length} {errors.length === 1 ? 'factură eșuată' : 'facturi eșuate'}:
+          </div>
+          <ul className="max-h-40 space-y-1 overflow-y-auto text-[11px] text-muted-foreground">
+            {errors.slice(0, 20).map((e) => (
+              <li key={e.paymentId} className="truncate">
+                <span className="text-foreground">{emailByPid.get(e.paymentId)}</span> — {e.error}
+              </li>
+            ))}
+            {errors.length > 20 && <li>…și încă {errors.length - 20}</li>}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 

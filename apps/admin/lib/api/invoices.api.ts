@@ -80,6 +80,19 @@ export interface BulkEmitResult {
   invoiceId?: string;
 }
 
+/** Starea unui job de emitere în bloc (async + polling). */
+export interface BulkEmitJob {
+  id: string;
+  total: number;
+  done: number;
+  ok: number;
+  failed: number;
+  status: 'running' | 'done';
+  results: BulkEmitResult[];
+  startedAt: number;
+  finishedAt: number | null;
+}
+
 export class InvoicesApi {
   static billable(): Promise<BillablePayment[]> {
     return http.get('/admin/invoices/billable');
@@ -96,11 +109,17 @@ export class InvoicesApi {
   static emit(paymentId: string, overrides?: EmitOverrides): Promise<InvoiceDto> {
     return http.post('/admin/invoices/emit', { paymentId, overrides });
   }
+  /** Pornește emiterea în bloc (async). Întoarce imediat jobId + total. */
   static emitBulk(
     paymentIds: string[],
     overridesByPayment?: Record<string, EmitOverrides>,
-  ): Promise<BulkEmitResult[]> {
+  ): Promise<{ jobId: string; total: number }> {
     return http.post('/admin/invoices/emit-bulk', { paymentIds, overridesByPayment });
+  }
+
+  /** Starea jobului de emitere în bloc (polling). */
+  static emitBulkStatus(jobId: string): Promise<BulkEmitJob> {
+    return http.get(`/admin/invoices/emit-bulk/${jobId}`);
   }
   static async downloadPdf(invoiceId: string, filename: string): Promise<void> {
     const blob = await http.get<Blob>(`/admin/invoices/${invoiceId}/pdf`, { responseType: 'blob' });

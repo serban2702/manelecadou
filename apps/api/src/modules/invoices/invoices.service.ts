@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { In, IsNull, Repository } from 'typeorm';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { Invoice, InvoiceClientSnapshot } from './invoice.entity';
 import { Payment } from '../payments/payment.entity';
 import { User } from '../users/user.entity';
@@ -37,6 +38,27 @@ export interface EmitOverrides {
   observations?: string;
 }
 
+/** Rezultatul emiterii unei singure facturi într-un job bulk. */
+export interface BulkEmitResult {
+  paymentId: string;
+  ok: boolean;
+  error?: string;
+  invoiceId?: string;
+}
+
+/** Starea unui job de emitere în bloc (async + polling). */
+export interface BulkEmitJob {
+  id: string;
+  total: number;
+  done: number;
+  ok: number;
+  failed: number;
+  status: 'running' | 'done';
+  results: BulkEmitResult[];
+  startedAt: number;
+  finishedAt: number | null;
+}
+
 export interface BillableRow {
   paymentId: string;
   siteId: string | null;
@@ -63,6 +85,9 @@ export const DEFAULT_PAYMENT_TYPE = 'Card online';
 @Injectable()
 export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name);
+
+  /** Joburi de emitere în bloc, in-memory (single-instance API). */
+  private readonly bulkJobs = new Map<string, BulkEmitJob>();
 
   constructor(
     @InjectRepository(Invoice) private readonly invoices: Repository<Invoice>,
@@ -474,27 +499,75 @@ export class InvoicesService {
     }
   }
 
-  /** Emite mai multe facturi, throttle-uit la ~1.2 req combinat/sec (rate limit
-   *  SmartBill = 3 req/sec, fiecare factură = create + PDF). */
-  async emitBulk(
+  /**
+   * Emiterea în bloc rulează ASINCRON (poate dura minute pentru zeci de facturi:
+   * fiecare = create + PDF + throttle SmartBill), ca să nu cadă pe timeout-ul HTTP.
+   * `startBulkEmit` întoarce imediat un jobId; frontend-ul face polling pe
+   * `getBulkEmitJob` până la finalizare, cu progres live (câte s-au emis / eșuat).
+   */
+  startBulkEmit(
     paymentIds: string[],
     overridesByPayment: Record<string, EmitOverrides> = {},
-  ): Promise<Array<{ paymentId: string; ok: boolean; error?: string; invoiceId?: string }>> {
-    const out: Array<{ paymentId: string; ok: boolean; error?: string; invoiceId?: string }> = [];
-    for (let i = 0; i < paymentIds.length; i++) {
-      const pid = paymentIds[i];
+  ): { jobId: string; total: number } {
+    this.pruneBulkJobs();
+    const ids = Array.from(new Set((paymentIds ?? []).filter(Boolean)));
+    const job: BulkEmitJob = {
+      id: randomUUID(),
+      total: ids.length,
+      done: 0,
+      ok: 0,
+      failed: 0,
+      status: 'running',
+      results: [],
+      startedAt: Date.now(),
+      finishedAt: null,
+    };
+    this.bulkJobs.set(job.id, job);
+    // Fire-and-forget — procesarea continuă pe server chiar dacă adminul închide tabul.
+    void this.runBulkEmit(job, ids, overridesByPayment);
+    return { jobId: job.id, total: job.total };
+  }
+
+  /** Loop-ul efectiv de emitere, actualizând progresul jobului după fiecare factură.
+   *  Throttle ~1.2 req combinat/sec (rate limit SmartBill = 3/sec, fiecare = create + PDF). */
+  private async runBulkEmit(
+    job: BulkEmitJob,
+    ids: string[],
+    overridesByPayment: Record<string, EmitOverrides>,
+  ): Promise<void> {
+    for (let i = 0; i < ids.length; i++) {
+      const pid = ids[i];
       try {
         const inv = await this.emit(pid, overridesByPayment[pid] ?? {});
-        out.push({ paymentId: pid, ok: true, invoiceId: inv.id });
+        job.ok += 1;
+        job.results.push({ paymentId: pid, ok: true, invoiceId: inv.id });
       } catch (err) {
-        out.push({ paymentId: pid, ok: false, error: (err as Error).message });
+        job.failed += 1;
+        job.results.push({ paymentId: pid, ok: false, error: (err as Error).message });
       }
-      // throttle între facturi (sare după ultima)
-      if (i < paymentIds.length - 1) {
+      job.done += 1;
+      if (i < ids.length - 1) {
         await new Promise((r) => setTimeout(r, 800));
       }
     }
-    return out;
+    job.status = 'done';
+    job.finishedAt = Date.now();
+    this.logger.log(
+      `Bulk emit ${job.id}: ${job.ok} emise, ${job.failed} eșuate din ${job.total}.`,
+    );
+  }
+
+  /** Starea unui job de emitere în bloc (pentru polling din admin). */
+  getBulkEmitJob(jobId: string): BulkEmitJob | null {
+    return this.bulkJobs.get(jobId) ?? null;
+  }
+
+  /** Curăță joburile terminate mai vechi de 30 min (in-memory, single-instance). */
+  private pruneBulkJobs(): void {
+    const cutoff = Date.now() - 30 * 60 * 1000;
+    for (const [id, j] of this.bulkJobs) {
+      if (j.finishedAt && j.finishedAt < cutoff) this.bulkJobs.delete(id);
+    }
   }
 
   /** Returnează calea absolută + numele fișierului PDF pentru download. */
