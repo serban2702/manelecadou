@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ro } from 'date-fns/locale';
-import { Check, Loader2, RotateCcw, Search, Users, X } from 'lucide-react';
+import { RotateCcw, Search, Users, X } from 'lucide-react';
 import {
   BillingCustomersApi,
   type BillingCustomerRow,
@@ -37,6 +37,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { SiteBadge } from '@/components/site-badge';
 import { useSitesMap } from '@/lib/hooks/use-sites-map';
 import { CountySelect } from '@/components/county-select';
+import { EditableCell, SaveIndicator, type SaveStatus } from '@/components/inline-edit';
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 
@@ -51,8 +52,6 @@ function money(cents: number, currency = 'RON'): string {
 function rowKey(r: { siteId: string | null; email: string }): string {
   return `${r.siteId}|${r.email}`;
 }
-
-type SaveStatus = 'saving' | 'saved' | 'error';
 
 export default function ClientiPage() {
   const { toast } = useToast();
@@ -424,66 +423,3 @@ export default function ClientiPage() {
   );
 }
 
-function SaveIndicator({ status }: { status?: SaveStatus }) {
-  if (status === 'saving')
-    return (
-      <span className="inline-flex items-center gap-1 text-muted-foreground">
-        <Loader2 className="h-3 w-3 animate-spin" /> salvez…
-      </span>
-    );
-  if (status === 'saved')
-    return (
-      <span className="inline-flex items-center gap-1 text-emerald-500">
-        <Check className="h-3 w-3" /> salvat
-      </span>
-    );
-  if (status === 'error')
-    return <span className="text-destructive">eroare</span>;
-  return null;
-}
-
-function EditableCell({
-  value,
-  onCommit,
-  placeholder,
-  disabled,
-  mono,
-}: {
-  value: string | null;
-  onCommit: (v: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
-  mono?: boolean;
-}) {
-  const [draft, setDraft] = useState(value ?? '');
-  // Re-sincronizează doar când valoarea committed se schimbă din exterior
-  // (nu la fiecare tastă — dep-ul e `value`, nu `draft`).
-  useEffect(() => {
-    setDraft(value ?? '');
-  }, [value]);
-
-  return (
-    <Input
-      value={draft}
-      disabled={disabled}
-      placeholder={placeholder}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => {
-        if ((draft ?? '') !== (value ?? '')) onCommit(draft);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.currentTarget.blur();
-        } else if (e.key === 'Escape') {
-          setDraft(value ?? '');
-          // blur pe frame-ul următor ca să nu declanșeze onBlur cu draft vechi
-          requestAnimationFrame(() => (e.target as HTMLInputElement).blur());
-        }
-      }}
-      className={cn(
-        'h-8 border-transparent bg-transparent px-2 text-xs hover:border-border focus:border-border focus:bg-background',
-        mono && 'font-mono',
-      )}
-    />
-  );
-}

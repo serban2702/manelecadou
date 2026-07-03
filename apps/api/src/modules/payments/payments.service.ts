@@ -653,6 +653,21 @@ export class PaymentsService {
       update.buyerGender = inferBuyerGender({ name: custName, email: custEmail });
       if (isPaid) update.paidAt = new Date();
 
+      // Adresă de facturare din Stripe — persistată pe plată (sursă pentru
+      // /facturare + /clienti, ca să nu reinterogăm Stripe per rând).
+      const cdAddr = (session.customer_details?.address ?? null) as
+        | { line1?: string | null; line2?: string | null; city?: string | null; state?: string | null; postal_code?: string | null; country?: string | null }
+        | null;
+      const cdStreet = [cdAddr?.line1, cdAddr?.line2].filter(Boolean).join(', ');
+      if (cdStreet) update.billingAddress = cdStreet.slice(0, 512);
+      if (cdAddr?.city) update.billingCity = cdAddr.city.slice(0, 128);
+      if (cdAddr?.state) update.billingCounty = cdAddr.state.slice(0, 128);
+      if (cdAddr?.postal_code) update.billingPostalCode = cdAddr.postal_code.slice(0, 32);
+      if (cdAddr?.country) update.billingCountry = cdAddr.country.slice(0, 8);
+      const cdPhone = (session.customer_details?.phone ?? '').trim() || null;
+      if (cdPhone) update.billingPhone = cdPhone.slice(0, 64);
+      update.billingSyncedAt = new Date();
+
       // Recuperăm exchange_rate din balance_transaction (pentru rapoarte RON
       // pe site-uri cu valută diferită).
       if (isPaid && session.payment_intent) {
@@ -1068,6 +1083,64 @@ export class PaymentsService {
       this.logger.warn(`fetchStripeCustomerDetails failed: ${(err as Error).message}`);
       return null;
     }
+  }
+
+  /** Câte plăți mai au nevoie de backfill al adresei de facturare. */
+  async countBillingBackfillCandidates(force = false): Promise<number> {
+    const qb = this.repo
+      .createQueryBuilder('p')
+      .where('p.status = :s', { s: 'paid' })
+      .andWhere('p."providerSessionId" IS NOT NULL');
+    if (!force) qb.andWhere('p."billingSyncedAt" IS NULL');
+    return qb.getCount();
+  }
+
+  /**
+   * Backfill one-time al adresei de facturare pe plățile vechi: aduce din Stripe
+   * numele + adresa cumpărătorului și le persistă pe `payments`. Throttled ca să
+   * nu lovim rate-limit-ul Stripe. Rulează în fundal (poate dura ~30s la câteva
+   * sute de plăți). Idempotent: sare peste cele deja sincronizate (dacă !force).
+   */
+  async backfillBillingDetails(opts?: {
+    limit?: number;
+    force?: boolean;
+  }): Promise<{ processed: number; updated: number; failed: number }> {
+    const limit = Math.min(Math.max(opts?.limit ?? 1000, 1), 5000);
+    const qb = this.repo
+      .createQueryBuilder('p')
+      .where('p.status = :s', { s: 'paid' })
+      .andWhere('p."providerSessionId" IS NOT NULL');
+    if (!opts?.force) qb.andWhere('p."billingSyncedAt" IS NULL');
+    const rows = await qb.orderBy('p."createdAt"', 'DESC').take(limit).getMany();
+
+    let updated = 0;
+    let failed = 0;
+    for (const p of rows) {
+      try {
+        const d = await this.fetchStripeCustomerDetails(p.id);
+        const upd: Partial<Payment> = { billingSyncedAt: new Date() };
+        if (d?.name && !p.customerName) upd.customerName = d.name.slice(0, 160);
+        if (d?.email && !p.customerEmail) upd.customerEmail = d.email.slice(0, 320);
+        const a = d?.address ?? null;
+        const street = [a?.line1, a?.line2].filter(Boolean).join(', ');
+        if (street) upd.billingAddress = street.slice(0, 512);
+        if (a?.city) upd.billingCity = a.city.slice(0, 128);
+        if (a?.state) upd.billingCounty = a.state.slice(0, 128);
+        if (a?.postalCode) upd.billingPostalCode = a.postalCode.slice(0, 32);
+        if (a?.country) upd.billingCountry = a.country.slice(0, 8);
+        if (d?.phone) upd.billingPhone = d.phone.slice(0, 64);
+        await this.repo.update({ id: p.id }, upd);
+        updated += 1;
+      } catch (err) {
+        this.logger.warn(`backfill billing ${p.id} failed: ${(err as Error).message}`);
+        failed += 1;
+      }
+      await new Promise((r) => setTimeout(r, 120)); // throttle Stripe (~8/sec)
+    }
+    this.logger.log(
+      `backfillBillingDetails: processed=${rows.length} updated=${updated} failed=${failed}`,
+    );
+    return { processed: rows.length, updated, failed };
   }
 
   /**

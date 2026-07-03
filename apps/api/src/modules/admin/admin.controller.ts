@@ -566,6 +566,18 @@ export class AdminController {
     return this.paymentsService.markRefunded(id, { reason: body?.reason });
   }
 
+  /**
+   * Backfill one-time al adresei de facturare (nume + adresă) din Stripe pe
+   * plățile vechi. Rulează în fundal (throttled). Întoarce imediat câți candidați
+   * există. După ce termină, /facturare și /clienti au date instant, fără Stripe.
+   */
+  @Post('payments/backfill-billing')
+  async backfillBilling(@Body() body: { limit?: number; force?: boolean } = {}) {
+    const candidates = await this.paymentsService.countBillingBackfillCandidates(!!body.force);
+    void this.paymentsService.backfillBillingDetails({ limit: body.limit, force: body.force });
+    return { started: true, candidates };
+  }
+
   // ===== Action endpoints =====
 
   @Post('generations/:id/force-unlock')

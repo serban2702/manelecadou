@@ -53,8 +53,6 @@ export interface BillableRow {
   smartbillReady: boolean;
 }
 
-type StripeBilling = Awaited<ReturnType<PaymentsService['fetchStripeCustomerDetails']>>;
-
 /** Județele acceptate de SmartBill (denumiri standard, fără diacritice). */
 export const RO_COUNTIES = [
   'Alba', 'Arad', 'Arges', 'Bacau', 'Bihor', 'Bistrita-Nasaud', 'Botosani',
@@ -210,20 +208,16 @@ export class InvoicesService {
   private async enrichPayment(p: Payment): Promise<BillableRow> {
     const site = p.siteId ? await this.sites.findById(p.siteId) : null;
     const creds = this.resolveCreds(site?.smartbill);
-    // Numele real al plătitorului vine din billing-ul Stripe; emailul din DB.
-    const [stripe, email] = await Promise.all([
-      this.stripeDetails(p.id),
-      this.buyerEmail(p),
-    ]);
-    let buyerName = stripe?.name ?? null;
+    // Emailul + numele vin din coloanele plății (Stripe persistat la webhook/backfill)
+    // sau din DB — FĂRĂ fetch Stripe per rând (era cauza lentorii la /facturare).
+    const email = p.customerEmail ?? (await this.buyerEmail(p));
+    let buyerName = p.customerName ?? null;
     if (!buyerName && p.userId) {
       const u = await this.users.findOne({ where: { id: p.userId } });
       buyerName = u?.name ?? null;
     }
-    // Clientul pentru factură (respectă useDefaultClient + județ normalizat),
-    // reutilizând datele Stripe deja aduse ca să nu mai facem un fetch.
     const client: InvoiceClientSnapshot = site
-      ? await this.defaultClientFor(p, site, { stripe, email })
+      ? await this.defaultClientFor(p, site)
       : { country: 'Romania', isTaxPayer: false };
     return {
       paymentId: p.id,
@@ -232,7 +226,7 @@ export class InvoicesService {
       currency: p.currency,
       createdAt: p.createdAt,
       buyerName,
-      buyerEmail: stripe?.email ?? email,
+      buyerEmail: email,
       client,
       invoiceStatus: 'none',
       smartbillReady: !!(site?.smartbill?.enabled && creds),
@@ -249,13 +243,14 @@ export class InvoicesService {
     });
   }
 
-  /** Construiește datele clientului implicite pentru o plată (preview). */
+  /** Construiește datele clientului implicite pentru o plată (preview/emit),
+   *  din coloanele plății (adresa Stripe persistată) + override salvat. */
   private async defaultClientFor(
     p: Payment,
     site: Site,
-    pre?: { stripe: StripeBilling; email: string | null },
   ): Promise<InvoiceClientSnapshot> {
     const sb = site.smartbill ?? {};
+    const email = p.customerEmail ?? (await this.buyerEmail(p));
     if (sb.useDefaultClient && sb.defaultClient?.name) {
       return {
         country: 'Romania',
@@ -264,36 +259,44 @@ export class InvoicesService {
         county: normalizeCounty(sb.defaultClient.county) ?? sb.defaultClient.county,
       };
     }
-    // Cumpărătorul real: nume + adresă din billing-ul Stripe, email din DB.
-    const [stripe, email] = pre
-      ? [pre.stripe, pre.email]
-      : await Promise.all([this.stripeDetails(p.id), this.buyerEmail(p)]);
-    let name = stripe?.name ?? '';
+    let name = p.customerName ?? '';
     if (!name && p.userId) {
       const u = await this.users.findOne({ where: { id: p.userId } });
       name = u?.name ?? '';
     }
-    // Override salvat manual pe client (editat în pagina „Clienți"). E sursa de
-    // adevăr și se aplică la toate facturile viitoare ale acestui cumpărător.
-    const override = await this.findBillingOverride(site.id, email);
-    // Fallback pe clientul implicit dacă nu avem nici nume de la cumpărător, nici
-    // un profil salvat cu nume.
-    if (!name && !override?.name && sb.defaultClient?.name) {
-      return { country: 'Romania', isTaxPayer: false, ...sb.defaultClient };
-    }
-    const addr = stripe?.address ?? null;
-    const street = [addr?.line1, addr?.line2].filter(Boolean).join(', ');
+    // Baza derivată din coloanele plății (adresă Stripe persistată la webhook/backfill).
     const derived: InvoiceClientSnapshot = {
       name,
       email: email ?? undefined,
-      address: street || undefined,
-      city: addr?.city ?? undefined,
-      county: normalizeCounty(addr?.state) ?? undefined,
-      country: this.mapCountry(addr?.country),
+      address: p.billingAddress ?? undefined,
+      city: p.billingCity ?? undefined,
+      county: normalizeCounty(p.billingCounty) ?? undefined,
+      country: this.mapCountry(p.billingCountry),
       isTaxPayer: false,
     };
+    // Fallback Stripe (o singură dată, doar la emitere/preview) pentru plăți vechi
+    // nesincronizate încă și fără date utile — ca să nu blocheze emiterea.
+    if (!p.billingSyncedAt && !derived.address && !derived.city && !derived.name) {
+      const stripe = await this.stripeDetails(p.id);
+      if (stripe) {
+        const a = stripe.address;
+        const street = [a?.line1, a?.line2].filter(Boolean).join(', ');
+        if (stripe.name) derived.name = stripe.name;
+        if (street) derived.address = street;
+        if (a?.city) derived.city = a.city ?? undefined;
+        if (a?.state) derived.county = normalizeCounty(a.state) ?? a.state ?? undefined;
+        if (a?.country) derived.country = this.mapCountry(a.country);
+      }
+    }
+    // Override salvat manual pe client (editat în „Clienți"/„Facturare"). E sursa de
+    // adevăr și se aplică la toate facturile viitoare ale acestui cumpărător.
+    const override = await this.findBillingOverride(site.id, email);
+    // Fallback pe clientul implicit dacă nu avem nici nume, nici override cu nume.
+    if (!derived.name && !override?.name && sb.defaultClient?.name) {
+      return { country: 'Romania', isTaxPayer: false, ...sb.defaultClient };
+    }
     if (!override) return derived;
-    // Suprascriem doar câmpurile salvate ne-goale; restul rămân din Stripe/DB.
+    // Suprascriem doar câmpurile salvate ne-goale; restul rămân din plată.
     const pick = (v: string | null): string | undefined => {
       const t = (v ?? '').trim();
       return t || undefined;

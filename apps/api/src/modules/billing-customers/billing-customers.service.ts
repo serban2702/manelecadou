@@ -51,6 +51,20 @@ interface AggRow {
   paid_total_ron: string | number;
   last_order_at: Date | string | null;
   derived_name: string | null;
+  derived_address: string | null;
+  derived_city: string | null;
+  derived_county: string | null;
+  derived_country: string | null;
+  derived_phone: string | null;
+}
+
+/** Cod țară ISO → denumire prietenoasă (doar pentru afișare). */
+function mapCountryName(code: string | null): string | null {
+  if (!code) return null;
+  const c = code.trim();
+  if (!c) return null;
+  if (c.toUpperCase() === 'RO' || c.toLowerCase() === 'romania') return 'Romania';
+  return c;
 }
 
 @Injectable()
@@ -78,7 +92,17 @@ export class BillingCustomersService {
       COALESCE(SUM(p."amountRonCents") FILTER (WHERE p.status = 'paid'), 0) AS paid_total_ron,
       MAX(p."createdAt") AS last_order_at,
       (ARRAY_AGG(p."customerName" ORDER BY p."createdAt" DESC)
-        FILTER (WHERE p."customerName" IS NOT NULL AND p."customerName" <> ''))[1] AS derived_name
+        FILTER (WHERE p."customerName" IS NOT NULL AND p."customerName" <> ''))[1] AS derived_name,
+      (ARRAY_AGG(p."billingAddress" ORDER BY p."createdAt" DESC)
+        FILTER (WHERE p."billingAddress" IS NOT NULL AND p."billingAddress" <> ''))[1] AS derived_address,
+      (ARRAY_AGG(p."billingCity" ORDER BY p."createdAt" DESC)
+        FILTER (WHERE p."billingCity" IS NOT NULL AND p."billingCity" <> ''))[1] AS derived_city,
+      (ARRAY_AGG(p."billingCounty" ORDER BY p."createdAt" DESC)
+        FILTER (WHERE p."billingCounty" IS NOT NULL AND p."billingCounty" <> ''))[1] AS derived_county,
+      (ARRAY_AGG(p."billingCountry" ORDER BY p."createdAt" DESC)
+        FILTER (WHERE p."billingCountry" IS NOT NULL AND p."billingCountry" <> ''))[1] AS derived_country,
+      (ARRAY_AGG(p."billingPhone" ORDER BY p."createdAt" DESC)
+        FILTER (WHERE p."billingPhone" IS NOT NULL AND p."billingPhone" <> ''))[1] AS derived_phone
     FROM payments p
     LEFT JOIN users u ON u.id = p."userId"
     LEFT JOIN guest_sessions g ON g.id = p."guestId"
@@ -159,11 +183,11 @@ export class BillingCustomersService {
         name: saved?.name ?? r.derived_name ?? null,
         vatCode: saved?.vatCode ?? null,
         regCom: saved?.regCom ?? null,
-        address: saved?.address ?? null,
-        city: saved?.city ?? null,
-        county: saved?.county ?? null,
-        country: saved?.country ?? null,
-        phone: saved?.phone ?? null,
+        address: saved?.address ?? r.derived_address ?? null,
+        city: saved?.city ?? r.derived_city ?? null,
+        county: saved?.county ?? r.derived_county ?? null,
+        country: saved?.country ?? mapCountryName(r.derived_country) ?? null,
+        phone: saved?.phone ?? r.derived_phone ?? null,
         isTaxPayer: saved?.isTaxPayer ?? false,
         notes: saved?.notes ?? null,
         savedId: saved?.id ?? null,

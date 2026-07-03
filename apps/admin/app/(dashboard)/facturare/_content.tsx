@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAsync } from '@/lib/hooks/use-async';
 import { format } from 'date-fns';
 import { ro } from 'date-fns/locale';
@@ -51,6 +51,9 @@ import { SiteBadge } from '@/components/site-badge';
 import { useSitesMap } from '@/lib/hooks/use-sites-map';
 import { CountySelect } from '@/components/county-select';
 import { BillingCustomersApi } from '@/lib/api/billing-customers.api';
+import { EditableCell, SaveIndicator, type SaveStatus } from '@/components/inline-edit';
+
+const BILL_PAGE_SIZE = 50;
 
 /** Tipuri de plată uzuale acceptate de SmartBill pe încasare. */
 const PAYMENT_TYPES = ['Card', 'Ordin de plata', 'Transfer bancar', 'Chitanta', 'Numerar', 'Mandat postal'];
@@ -129,16 +132,31 @@ export default function FacturarePage() {
   const { toast } = useToast();
   const { isAllSelected } = useSitesMap();
 
-  // Fără auto-refetch pe billable: fiecare încărcare interoghează Stripe per plată
-  // pentru numele real al plătitorului. E un flux manual (o dată/zi), refresh la nevoie.
+  // Datele de facturare se citesc acum din coloanele plății (adresa Stripe
+  // persistată la webhook/backfill), nu se mai interoghează Stripe per rând.
   const billable = useAsync(() => InvoicesApi.billable(), []);
   const issued = useAsync(() => InvoicesApi.issued(), [], { refetchInterval: 30_000 });
 
-  const rows = billable.data ?? [];
+  // Copie locală editabilă a rândurilor de facturat (autosave inline pe client).
+  const [rows, setRows] = useState<BillablePayment[]>([]);
+  const rowsRef = useRef<BillablePayment[]>([]);
+  rowsRef.current = rows;
+  useEffect(() => {
+    if (billable.data) setRows(billable.data);
+  }, [billable.data]);
+
   const issuedRows = issued.data ?? [];
 
+  // Paginare client-side (lista e acum rapidă, dar 200+ rânduri cu input-uri = DOM greu).
+  const [page, setPage] = useState(0);
+  const totalPages = Math.max(1, Math.ceil(rows.length / BILL_PAGE_SIZE));
+  const pageRows = rows.slice(page * BILL_PAGE_SIZE, page * BILL_PAGE_SIZE + BILL_PAGE_SIZE);
+  useEffect(() => {
+    if (page > 0 && page >= totalPages) setPage(0);
+  }, [page, totalPages]);
+
   const billSel = useRangeSelect<BillablePayment>(
-    rows,
+    pageRows,
     (r) => r.paymentId,
     (r) => r.smartbillReady,
   );
@@ -147,6 +165,8 @@ export default function FacturarePage() {
   const [previewFor, setPreviewFor] = useState<string | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [delBusy, setDelBusy] = useState(false);
+  const [saveByEmail, setSaveByEmail] = useState<Record<string, SaveStatus>>({});
+  const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const selectedRows = rows.filter((r) => billSel.selected.has(r.paymentId));
 
@@ -154,6 +174,41 @@ export default function FacturarePage() {
     billable.refetch();
     issued.refetch();
   };
+
+  // Salvează un câmp de client (identificat prin email) pe profilul de facturare.
+  // Se aplică la TOATE rândurile aceluiași email (comenzi nefacturate) + persistă
+  // pentru /clienti și facturile viitoare.
+  async function commitClient(row: BillablePayment, patch: Partial<InvoiceClientData>) {
+    const email = row.buyerEmail;
+    if (!email || !row.siteId) {
+      toast({
+        variant: 'destructive',
+        title: 'Nu pot salva',
+        description: 'Plata nu are email sau site asociat.',
+      });
+      return;
+    }
+    const prev = rowsRef.current;
+    setRows((rs) =>
+      rs.map((r) =>
+        r.buyerEmail === email ? { ...r, client: { ...(r.client ?? {}), ...patch } } : r,
+      ),
+    );
+    setSaveByEmail((s) => ({ ...s, [email]: 'saving' }));
+    try {
+      await BillingCustomersApi.upsert(row.siteId, email, patch);
+      setSaveByEmail((s) => ({ ...s, [email]: 'saved' }));
+      clearTimeout(saveTimers.current[email]);
+      saveTimers.current[email] = setTimeout(
+        () => setSaveByEmail((s) => { const n = { ...s }; delete n[email]; return n; }),
+        1600,
+      );
+    } catch (e) {
+      setRows(prev);
+      setSaveByEmail((s) => ({ ...s, [email]: 'error' }));
+      toast({ variant: 'destructive', title: 'Salvare eșuată', description: (e as Error).message });
+    }
+  }
 
   async function deleteBulk() {
     const ids = [...invSel.selected];
@@ -214,7 +269,7 @@ export default function FacturarePage() {
 
           {billable.loading ? (
             <Skeleton className="h-72 w-full" />
-          ) : rows.length === 0 ? (
+          ) : (billable.data?.length ?? 0) === 0 ? (
             <Empty
               icon={<Receipt className="h-5 w-5" />}
               title="Nimic de facturat"
@@ -222,86 +277,170 @@ export default function FacturarePage() {
             />
           ) : (
             <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-10">
-                      <Checkbox
-                        checked={billSel.allSelected}
-                        onCheckedChange={billSel.toggleAll}
-                        aria-label="Selectează tot"
-                      />
-                    </TableHead>
-                    <TableHead>Data plății</TableHead>
-                    {isAllSelected && <TableHead>Site</TableHead>}
-                    <TableHead>Cumpărător</TableHead>
-                    <TableHead>Țară</TableHead>
-                    <TableHead>Județ</TableHead>
-                    <TableHead>Oraș</TableHead>
-                    <TableHead>Sumă</TableHead>
-                    <TableHead>Facturat</TableHead>
-                    <TableHead className="text-right">Acțiuni</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((r, idx) => (
-                    <TableRow
-                      key={r.paymentId}
-                      data-state={billSel.selected.has(r.paymentId) ? 'selected' : undefined}
-                    >
-                      <TableCell>
+              <div className="overflow-x-auto rounded-md border border-border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">
                         <Checkbox
-                          checked={billSel.selected.has(r.paymentId)}
-                          disabled={!r.smartbillReady}
-                          onClick={(e) => billSel.toggle(idx, e.shiftKey)}
-                          aria-label="Selectează"
+                          checked={billSel.allSelected}
+                          onCheckedChange={billSel.toggleAll}
+                          aria-label="Selectează tot"
                         />
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                        {format(new Date(r.createdAt), "d MMM yyyy 'la' HH:mm", { locale: ro })}
-                      </TableCell>
-                      {isAllSelected && (
-                        <TableCell>
-                          <SiteBadge siteId={r.siteId} />
-                        </TableCell>
-                      )}
-                      <TableCell className="text-xs">
-                        <div>{r.buyerName ?? '—'}</div>
-                        <div className="text-muted-foreground">{r.buyerEmail ?? ''}</div>
-                      </TableCell>
-                      <TableCell className="text-xs">{r.client?.country ?? '—'}</TableCell>
-                      <TableCell className="text-xs">{r.client?.county ?? '—'}</TableCell>
-                      <TableCell className="text-xs">{r.client?.city ?? '—'}</TableCell>
-                      <TableCell className="tabular-nums font-medium whitespace-nowrap">
-                        {money(r.amountCents, r.currency)}
-                      </TableCell>
-                      <TableCell>
-                        {r.invoiceStatus === 'failed' ? (
-                          <Badge variant="destructive" title="O emitere anterioară a eșuat">
-                            eșuat
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="outline"
-                          size="xs"
-                          disabled={!r.smartbillReady}
-                          onClick={() => setPreviewFor(r.paymentId)}
-                        >
-                          Previzualizează
-                        </Button>
-                      </TableCell>
+                      </TableHead>
+                      <TableHead className="whitespace-nowrap">Data</TableHead>
+                      {isAllSelected && <TableHead>Site</TableHead>}
+                      <TableHead className="min-w-[180px]">Cumpărător</TableHead>
+                      <TableHead className="min-w-[150px]">Nume / Denumire</TableHead>
+                      <TableHead className="min-w-[120px]">CUI / CNP</TableHead>
+                      <TableHead className="min-w-[160px]">Adresă</TableHead>
+                      <TableHead className="min-w-[110px]">Oraș</TableHead>
+                      <TableHead className="min-w-[140px]">Județ</TableHead>
+                      <TableHead className="min-w-[100px]">Țară</TableHead>
+                      <TableHead className="whitespace-nowrap text-right">Sumă</TableHead>
+                      <TableHead>Facturat</TableHead>
+                      <TableHead className="text-right">Acțiuni</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              <p className="mt-2 text-[11px] text-muted-foreground">
-                Tip: ține <kbd className="rounded border border-border px-1 py-0.5">Shift</kbd> apăsat
-                la click pe o bifă ca să selectezi un interval întreg. „Emite selectate…” deschide un
-                modal cu data, metoda de plată și datele fiecărui client.
+                  </TableHeader>
+                  <TableBody>
+                    {pageRows.map((r, idx) => {
+                      const c = r.client ?? {};
+                      const status = r.buyerEmail ? saveByEmail[r.buyerEmail] : undefined;
+                      return (
+                        <TableRow
+                          key={r.paymentId}
+                          data-state={billSel.selected.has(r.paymentId) ? 'selected' : undefined}
+                        >
+                          <TableCell className="align-top">
+                            <Checkbox
+                              checked={billSel.selected.has(r.paymentId)}
+                              disabled={!r.smartbillReady}
+                              onClick={(e) => billSel.toggle(idx, e.shiftKey)}
+                              aria-label="Selectează"
+                            />
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap align-top text-[11px] text-muted-foreground">
+                            {format(new Date(r.createdAt), 'd MMM yyyy', { locale: ro })}
+                          </TableCell>
+                          {isAllSelected && (
+                            <TableCell className="align-top">
+                              <SiteBadge siteId={r.siteId} />
+                            </TableCell>
+                          )}
+                          <TableCell className="align-top text-xs">
+                            <div className="truncate">{r.buyerEmail ?? '—'}</div>
+                            <div className="text-[10px] text-muted-foreground">
+                              <SaveIndicator status={status} />
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <EditableCell
+                              value={c.name ?? r.buyerName ?? ''}
+                              placeholder="Nume complet"
+                              onCommit={(v) => commitClient(r, { name: v })}
+                            />
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <EditableCell
+                              value={c.vatCode ?? ''}
+                              placeholder="—"
+                              mono
+                              onCommit={(v) => commitClient(r, { vatCode: v })}
+                            />
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <EditableCell
+                              value={c.address ?? ''}
+                              placeholder="Stradă, nr."
+                              onCommit={(v) => commitClient(r, { address: v })}
+                            />
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <EditableCell
+                              value={c.city ?? ''}
+                              placeholder="Oraș"
+                              onCommit={(v) => commitClient(r, { city: v })}
+                            />
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <CountySelect
+                              value={c.county ?? ''}
+                              showLabel={false}
+                              className="h-8 border-transparent bg-transparent text-xs hover:border-border data-[state=open]:border-border"
+                              onChange={(v) => commitClient(r, { county: v })}
+                            />
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <EditableCell
+                              value={c.country ?? ''}
+                              placeholder="Romania"
+                              onCommit={(v) => commitClient(r, { country: v })}
+                            />
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-right align-middle font-medium tabular-nums">
+                            {money(r.amountCents, r.currency)}
+                          </TableCell>
+                          <TableCell className="align-middle">
+                            {r.invoiceStatus === 'failed' ? (
+                              <Badge variant="destructive" title="O emitere anterioară a eșuat">
+                                eșuat
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right align-middle">
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              disabled={!r.smartbillReady}
+                              onClick={() => setPreviewFor(r.paymentId)}
+                            >
+                              Emite
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {totalPages > 1 && (
+                <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                  <span>
+                    {page * BILL_PAGE_SIZE + 1}–{Math.min((page + 1) * BILL_PAGE_SIZE, rows.length)} din{' '}
+                    {rows.length}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      disabled={page === 0}
+                      onClick={() => setPage((p) => Math.max(0, p - 1))}
+                    >
+                      ← Înapoi
+                    </Button>
+                    <span>
+                      Pagina <b className="text-foreground">{page + 1}</b> din {totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      disabled={page + 1 >= totalPages}
+                      onClick={() => setPage((p) => p + 1)}
+                    >
+                      Înainte →
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                Editează datele clientului direct în tabel — se salvează automat pe client (după email)
+                și se aplică la toate comenzile lui nefacturate + la pagina Clienți. Ține{' '}
+                <kbd className="rounded border border-border px-1 py-0.5">Shift</kbd> apăsat la click pe o
+                bifă pentru selecție în interval; „Emite selectate…” deschide modalul de emitere.
               </p>
             </>
           )}

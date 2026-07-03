@@ -125,6 +125,36 @@ export class Payment {
   @Column({ type: 'varchar', length: 8, nullable: true })
   buyerGender!: string | null;
 
+  // ===== Adresă de facturare (Stripe customer_details.address, la webhook) =====
+  // Persistată pe plată ca să NU mai interogăm Stripe per rând la /facturare și ca
+  // /clienti să aibă date reale. Backfill one-time pentru plățile vechi
+  // (PaymentsService.backfillBillingDetails). Safe additive (synchronize: true).
+
+  /** Stradă + număr (line1 + line2 din Stripe). */
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  billingAddress!: string | null;
+
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  billingCity!: string | null;
+
+  /** Județ / regiune (Stripe address.state — poate fi cod ISO „CJ" sau nume). */
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  billingCounty!: string | null;
+
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  billingPostalCode!: string | null;
+
+  /** Cod țară ISO (ex. „RO"). */
+  @Column({ type: 'varchar', length: 8, nullable: true })
+  billingCountry!: string | null;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  billingPhone!: string | null;
+
+  /** Când am sincronizat ultima dată datele de facturare din Stripe (backfill/webhook). */
+  @Column({ type: 'timestamptz', nullable: true })
+  billingSyncedAt!: Date | null;
+
   /** Momentul confirmării plății (status → 'paid'). Distinct de createdAt (inițiere checkout). */
   @Column({ type: 'timestamptz', nullable: true })
   paidAt!: Date | null;
