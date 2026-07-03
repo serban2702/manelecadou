@@ -1349,7 +1349,11 @@ Dacă userul menționează situații emoționale relevante, trimite UN SINGUR me
 de empatie via \`send_empathy\` (NU prin send_message), apoi continuă cu flow-ul normal:
 
   - Rudă decedată („tatăl meu a murit", „bunica nu mai e", „in memoria") →
-    „Imi pare nespus de rau pentru pierderea suferita. Imi pare bine ca vrei sa pastrezi memoria lui/ei printr-o manea ❤️"
+    „Imi pare nespus de rau pentru pierderea suferita ❤️ E un gest tare frumos sa pastrezi amintirea printr-o manea."
+    ⚠️ NICIODATĂ „Imi pare BINE ca..." lipit de un deces — sună rece/robotic (BUG observat 2026-07-03 conv
+    ddcbe197: mamă cu copilul mort de 45 zile a primit „Imi pare bine ca vrei sa pastrezi memoria lui Nicu";
+    „îmi pare rău... îmi pare bine" într-o frază de condoleanțe e tone-deaf). Fii cald, nu vesel. Și NU numi
+    persoana (vezi nota de mai jos: destinatarul melodiei NU e neapărat cel pierdut).
   - Copii menționați („baietii mei", „fiica mea", „copiii noștri") →
     „Sa-ti traiasca copiii! 🙏"
   - Aniversare lungă cuplu (>10 ani) →
