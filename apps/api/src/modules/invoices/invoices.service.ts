@@ -97,6 +97,58 @@ export function normalizeCounty(raw?: string | null): string | null {
   return v;
 }
 
+/** Denumirea liniei de produs pe factură (neplătitor TVA, cotă 0%). */
+export const DEFAULT_PRODUCT_NAME = 'Melodie personalizată generată cu AI';
+
+/** Numărul sectorului București (1-6) din oraș/adresă (text „Sector N"/„S N") sau
+ *  din codul poștal (0Nxxxx — a doua cifră = sectorul). Null dacă nedeterminabil. */
+function detectBucharestSector(opts: {
+  city?: string | null;
+  address?: string | null;
+  postalCode?: string | null;
+}): number | null {
+  const text = stripDiacritics(`${opts.city ?? ''} ${opts.address ?? ''}`).toLowerCase();
+  const m = text.match(/sector(?:ul)?\s*0*([1-6])(?!\d)/);
+  if (m) return Number(m[1]);
+  const abbr = stripDiacritics(opts.city ?? '').trim().toLowerCase().match(/^s\s*0*([1-6])$/);
+  if (abbr) return Number(abbr[1]);
+  const pc = (opts.postalCode ?? '').replace(/\s/g, '');
+  if (/^0[1-6]\d{4}$/.test(pc)) return Number(pc[1]);
+  return null;
+}
+
+/**
+ * Normalizează localitatea + județul pentru SmartBill. Pentru București, SmartBill
+ * cere județ = „Bucuresti" și localitate = „Sector N". Sectorul e extras din oraș/
+ * adresă sau din codul poștal (0Nxxxx). Dacă nu e București, doar normalizează județul.
+ */
+export function resolveLocalityForSmartbill(raw: {
+  city?: string | null;
+  county?: string | null;
+  address?: string | null;
+  postalCode?: string | null;
+}): { city: string | null; county: string | null } {
+  const normCounty = normalizeCounty(raw.county);
+  const cityTxt = stripDiacritics(raw.city ?? '').toLowerCase();
+  const pc = (raw.postalCode ?? '').replace(/\s/g, '');
+  const combined = stripDiacritics(`${raw.city ?? ''} ${raw.address ?? ''}`).toLowerCase();
+  const looksBucharest =
+    normCounty === 'Bucuresti' ||
+    cityTxt.includes('bucur') ||
+    cityTxt.includes('bucharest') ||
+    /sector/.test(combined) ||
+    /^s\s*0*[1-6]$/.test(cityTxt.trim()) ||
+    /^0[1-6]\d{4}$/.test(pc);
+  if (!looksBucharest) {
+    return { city: raw.city ?? null, county: normCounty ?? raw.county ?? null };
+  }
+  const sector = detectBucharestSector(raw);
+  return {
+    county: 'Bucuresti',
+    city: sector ? `Sector ${sector}` : raw.city ?? 'Bucuresti',
+  };
+}
+
 @Injectable()
 export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name);
@@ -265,12 +317,19 @@ export class InvoicesService {
       name = u?.name ?? '';
     }
     // Baza derivată din coloanele plății (adresă Stripe persistată la webhook/backfill).
+    // Pentru București: județ „Bucuresti" + localitate „Sector N" (din cod poștal/adresă).
+    const loc = resolveLocalityForSmartbill({
+      city: p.billingCity,
+      county: p.billingCounty,
+      address: p.billingAddress,
+      postalCode: p.billingPostalCode,
+    });
     const derived: InvoiceClientSnapshot = {
       name,
       email: email ?? undefined,
       address: p.billingAddress ?? undefined,
-      city: p.billingCity ?? undefined,
-      county: normalizeCounty(p.billingCounty) ?? undefined,
+      city: loc.city ?? undefined,
+      county: loc.county ?? undefined,
       country: this.mapCountry(p.billingCountry),
       isTaxPayer: false,
     };
@@ -283,8 +342,16 @@ export class InvoicesService {
         const street = [a?.line1, a?.line2].filter(Boolean).join(', ');
         if (stripe.name) derived.name = stripe.name;
         if (street) derived.address = street;
-        if (a?.city) derived.city = a.city ?? undefined;
-        if (a?.state) derived.county = normalizeCounty(a.state) ?? a.state ?? undefined;
+        if (a?.city || a?.state) {
+          const l2 = resolveLocalityForSmartbill({
+            city: a?.city,
+            county: a?.state,
+            address: street,
+            postalCode: a?.postalCode,
+          });
+          derived.city = l2.city ?? undefined;
+          derived.county = l2.county ?? undefined;
+        }
         if (a?.country) derived.country = this.mapCountry(a.country);
       }
     }
@@ -343,7 +410,7 @@ export class InvoicesService {
       price: Math.round((p.amount / 100) * 100) / 100,
       currency: p.currency,
       paymentType: sb.paymentType || 'Card',
-      productName: sb.productName || 'Melodie personalizată',
+      productName: sb.productName || DEFAULT_PRODUCT_NAME,
       measuringUnit: sb.measuringUnit || 'buc',
       seriesName: sb.seriesName || '',
       companyVatCode: sb.companyVatCode || '',
@@ -386,10 +453,21 @@ export class InvoicesService {
       typeof overrides.price === 'number' && overrides.price > 0
         ? overrides.price
         : Math.round((p.amount / 100) * 100) / 100;
-    const productName = overrides.productName || sb.productName || 'Melodie personalizată';
+    const productName = overrides.productName || sb.productName || DEFAULT_PRODUCT_NAME;
     const measuringUnit = sb.measuringUnit || 'buc';
     const paymentType = overrides.paymentType || sb.paymentType || 'Card';
     const issueDate = overrides.issueDate || this.todayIso();
+
+    // Localitate + județ pentru SmartBill (București → județ „Bucuresti" + „Sector N").
+    // Sectorul se poate extrage și din adresa/localitatea editată manual.
+    const locality = resolveLocalityForSmartbill({
+      city: client.city,
+      county: client.county,
+      address: client.address,
+    });
+    // Salvăm în snapshot forma finală, ca să reflecte exact ce s-a trimis pe factură.
+    client.city = locality.city ?? client.city;
+    client.county = locality.county ?? client.county;
 
     const input: SmartbillInvoiceInput = {
       companyVatCode: sb.companyVatCode,
@@ -406,8 +484,8 @@ export class InvoicesService {
         vatCode: client.vatCode || undefined,
         regCom: client.regCom || undefined,
         address: client.address || undefined,
-        city: client.city || undefined,
-        county: normalizeCounty(client.county) || client.county || undefined,
+        city: locality.city || client.city || undefined,
+        county: locality.county || normalizeCounty(client.county) || client.county || undefined,
         country: client.country || 'Romania',
         // NU trimitem email pe factură (nu folosim email, nu trimitem facturile pe mail).
         isTaxPayer: client.isTaxPayer ?? false,
