@@ -55,8 +55,10 @@ import { EditableCell, SaveIndicator, type SaveStatus } from '@/components/inlin
 
 const BILL_PAGE_SIZE = 50;
 
-/** Tipuri de plată uzuale acceptate de SmartBill pe încasare. */
-const PAYMENT_TYPES = ['Card', 'Ordin de plata', 'Transfer bancar', 'Chitanta', 'Numerar', 'Mandat postal'];
+/** Tipuri de plată uzuale acceptate de SmartBill pe încasare. „Card online" e default-ul
+ *  (plățile vin din Stripe). */
+const PAYMENT_TYPES = ['Card online', 'Card', 'Ordin de plata', 'Transfer bancar', 'Chitanta', 'Numerar', 'Mandat postal'];
+const DEFAULT_PAYMENT_TYPE = 'Card online';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -553,7 +555,7 @@ function BulkEmitDialog({
 }) {
   const { toast } = useToast();
   const [issueDate, setIssueDate] = useState(todayIso());
-  const [paymentType, setPaymentType] = useState('Card');
+  const [paymentType, setPaymentType] = useState(DEFAULT_PAYMENT_TYPE);
   const [clients, setClients] = useState<Record<string, InvoiceClientData>>(() =>
     Object.fromEntries(rows.map((r) => [r.paymentId, { ...(r.client ?? {}) }])),
   );
@@ -848,7 +850,7 @@ function PreviewDialog({
   const [productName, setProductName] = useState('');
   const [price, setPrice] = useState('');
   const [issueDate, setIssueDate] = useState('');
-  const [paymentType, setPaymentType] = useState('Card');
+  const [paymentType, setPaymentType] = useState(DEFAULT_PAYMENT_TYPE);
   const [hydrated, setHydrated] = useState(false);
   const [emitting, setEmitting] = useState(false);
   const [saveToClient, setSaveToClient] = useState(true);
@@ -859,7 +861,7 @@ function PreviewDialog({
     setProductName(data.productName);
     setPrice(String(data.price));
     setIssueDate(data.issueDate);
-    setPaymentType(data.paymentType || 'Card');
+    setPaymentType(data.paymentType || DEFAULT_PAYMENT_TYPE);
     setHydrated(true);
   }
 

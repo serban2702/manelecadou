@@ -100,6 +100,9 @@ export function normalizeCounty(raw?: string | null): string | null {
 /** Denumirea liniei de produs pe factură (neplătitor TVA, cotă 0%). */
 export const DEFAULT_PRODUCT_NAME = 'Melodie personalizată generată cu AI';
 
+/** Tipul de plată implicit trimis la SmartBill (plățile vin din Stripe/card online). */
+export const DEFAULT_PAYMENT_TYPE = 'Card online';
+
 /** Numărul sectorului București (1-6) din oraș/adresă (text „Sector N"/„S N") sau
  *  din codul poștal (0Nxxxx — a doua cifră = sectorul). Null dacă nedeterminabil. */
 function detectBucharestSector(opts: {
@@ -409,7 +412,7 @@ export class InvoicesService {
       amountCents: p.amount,
       price: Math.round((p.amount / 100) * 100) / 100,
       currency: p.currency,
-      paymentType: sb.paymentType || 'Card',
+      paymentType: sb.paymentType || DEFAULT_PAYMENT_TYPE,
       productName: sb.productName || DEFAULT_PRODUCT_NAME,
       measuringUnit: sb.measuringUnit || 'buc',
       seriesName: sb.seriesName || '',
@@ -455,7 +458,7 @@ export class InvoicesService {
         : Math.round((p.amount / 100) * 100) / 100;
     const productName = overrides.productName || sb.productName || DEFAULT_PRODUCT_NAME;
     const measuringUnit = sb.measuringUnit || 'buc';
-    const paymentType = overrides.paymentType || sb.paymentType || 'Card';
+    const paymentType = overrides.paymentType || sb.paymentType || DEFAULT_PAYMENT_TYPE;
     const issueDate = overrides.issueDate || this.todayIso();
 
     // Localitate + județ pentru SmartBill (București → județ „Bucuresti" + „Sector N").
