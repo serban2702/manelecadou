@@ -153,14 +153,14 @@ export class InvoicesService {
     return { email: sb.email, token };
   }
 
-  /** Plățile facturabile: paid, sumă > 0, fără factură emisă cu succes. */
+  /** Plățile facturabile: paid, sumă > 0, fără factură emisă și nemarcate manual. */
   async listBillable(siteId: string | null): Promise<BillableRow[]> {
     const qb = this.payments
       .createQueryBuilder('p')
       .leftJoin(
         Invoice,
         'inv',
-        "inv.paymentId = p.id AND inv.status = 'issued'",
+        "inv.paymentId = p.id AND inv.status IN ('issued', 'manual')",
       )
       .where('p.status = :status', { status: 'paid' })
       .andWhere('p.amount > 0')
@@ -497,6 +497,66 @@ export class InvoicesService {
       inv = await this.invoices.save(inv);
       throw new BadRequestException(inv.errorText);
     }
+  }
+
+  /**
+   * Marchează o plată ca „facturată" FĂRĂ să emită ceva real pe SmartBill. Creează
+   * un rând Invoice cu status='manual' (fără serie/număr/PDF), doar ca să dispară din
+   * „De facturat". Reversibil: ștergerea marcajului readuce plata în listă.
+   */
+  async markManual(paymentId: string): Promise<Invoice> {
+    const existing = await this.invoices.findOne({ where: { paymentId } });
+    if (existing && existing.status === 'issued') {
+      throw new BadRequestException('Plata are deja o factură emisă real');
+    }
+    const p = await this.payments.findOne({ where: { id: paymentId } });
+    if (!p) throw new NotFoundException('Plata nu există');
+    if (p.status !== 'paid') throw new BadRequestException('Plata nu e finalizată');
+    if (!p.siteId) throw new BadRequestException('Plata nu are site asociat');
+
+    let inv = existing ?? this.invoices.create({ paymentId });
+    inv.siteId = p.siteId;
+    inv.status = 'manual';
+    // Snapshot minim (nume/email din plată), fără apel Stripe/SmartBill.
+    inv.clientSnapshot = {
+      name: p.customerName ?? undefined,
+      email: p.customerEmail ?? undefined,
+      isTaxPayer: false,
+    };
+    inv.productSnapshot = {
+      name: 'Marcată ca facturată (fără factură reală)',
+      measuringUnit: 'buc',
+      quantity: 1,
+      price: Math.round((p.amount / 100) * 100) / 100,
+    };
+    inv.amountCents = p.amount;
+    inv.currency = p.currency || 'RON';
+    inv.companyVatCode = null;
+    inv.series = null;
+    inv.number = null;
+    inv.paymentType = null;
+    inv.pdfPath = null;
+    inv.smartbillResponse = null;
+    inv.errorText = null;
+    inv.issuedAt = new Date();
+    inv = await this.invoices.save(inv);
+    this.logger.log(`Plata ${paymentId} marcată ca facturată manual (fără emitere reală).`);
+    return inv;
+  }
+
+  /** Marchează mai multe plăți ca facturate manual (rapid, doar DB, fără SmartBill). */
+  async markManualBulk(paymentIds: string[]): Promise<BulkEmitResult[]> {
+    const ids = Array.from(new Set((paymentIds ?? []).filter(Boolean)));
+    const out: BulkEmitResult[] = [];
+    for (const pid of ids) {
+      try {
+        const inv = await this.markManual(pid);
+        out.push({ paymentId: pid, ok: true, invoiceId: inv.id });
+      } catch (err) {
+        out.push({ paymentId: pid, ok: false, error: (err as Error).message });
+      }
+    }
+    return out;
   }
 
   /**

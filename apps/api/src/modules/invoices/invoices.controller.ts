@@ -73,6 +73,18 @@ export class InvoicesController {
     return job;
   }
 
+  /** Marchează o plată ca facturată FĂRĂ emitere reală pe SmartBill (reversibil). */
+  @Post('mark-manual')
+  markManual(@Body() body: { paymentId: string }) {
+    return this.svc.markManual(body.paymentId);
+  }
+
+  /** Marchează mai multe plăți ca facturate manual (fără SmartBill). */
+  @Post('mark-manual-bulk')
+  markManualBulk(@Body() body: { paymentIds: string[] }) {
+    return this.svc.markManualBulk(body.paymentIds ?? []);
+  }
+
   /** Descarcă PDF-ul facturii. */
   @Get(':id/pdf')
   async pdf(@Param('id') id: string, @Res() res: Response) {

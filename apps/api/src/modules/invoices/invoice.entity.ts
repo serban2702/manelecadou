@@ -7,7 +7,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export type InvoiceStatus = 'issued' | 'failed';
+export type InvoiceStatus = 'issued' | 'failed' | 'manual';
 
 /** Snapshot al clientului folosit la emitere (editabil în preview). */
 export interface InvoiceClientSnapshot {

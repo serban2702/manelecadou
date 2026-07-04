@@ -48,7 +48,7 @@ export interface InvoiceDto {
   id: string;
   siteId: string | null;
   paymentId: string;
-  status: 'issued' | 'failed';
+  status: 'issued' | 'failed' | 'manual';
   series: string | null;
   number: string | null;
   companyVatCode: string | null;
@@ -120,6 +120,16 @@ export class InvoicesApi {
   /** Starea jobului de emitere în bloc (polling). */
   static emitBulkStatus(jobId: string): Promise<BulkEmitJob> {
     return http.get(`/admin/invoices/emit-bulk/${jobId}`);
+  }
+
+  /** Marchează o plată ca facturată FĂRĂ emitere reală pe SmartBill (reversibil). */
+  static markManual(paymentId: string): Promise<InvoiceDto> {
+    return http.post('/admin/invoices/mark-manual', { paymentId });
+  }
+
+  /** Marchează mai multe plăți ca facturate manual. */
+  static markManualBulk(paymentIds: string[]): Promise<BulkEmitResult[]> {
+    return http.post('/admin/invoices/mark-manual-bulk', { paymentIds });
   }
   static async downloadPdf(invoiceId: string, filename: string): Promise<void> {
     const blob = await http.get<Blob>(`/admin/invoices/${invoiceId}/pdf`, { responseType: 'blob' });

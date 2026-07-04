@@ -179,6 +179,52 @@ export default function FacturarePage() {
     issued.refetch();
   };
 
+  // Marchează o plată ca facturată FĂRĂ emitere reală (dispare din „De facturat").
+  async function markOne(r: BillablePayment) {
+    const ok = await confirmDialog({
+      title: 'Marchezi ca facturată?',
+      description:
+        'Plata dispare din „De facturat" fără să se emită vreo factură reală pe SmartBill. O poți readuce ștergând marcajul din tab-ul „Emise".',
+      confirmText: 'Marchează',
+    });
+    if (!ok) return;
+    try {
+      await InvoicesApi.markManual(r.paymentId);
+      setRows((rs) => rs.filter((x) => x.paymentId !== r.paymentId));
+      billSel.remove(r.paymentId);
+      toast({ variant: 'success', title: 'Marcată ca facturată' });
+      refetchAll();
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Eroare', description: (e as Error).message });
+    }
+  }
+
+  // Marchează în bloc plățile selectate ca facturate (fără SmartBill).
+  async function markSelected() {
+    const ids = [...billSel.selected];
+    if (ids.length === 0) return;
+    const ok = await confirmDialog({
+      title: `Marchezi ${ids.length} ca ${ids.length === 1 ? 'facturată' : 'facturate'}?`,
+      description:
+        'Dispar din „De facturat" fără să se emită facturi reale pe SmartBill. Reversibil din „Emise".',
+      confirmText: 'Marchează',
+    });
+    if (!ok) return;
+    try {
+      const res = await InvoicesApi.markManualBulk(ids);
+      const okN = res.filter((x) => x.ok).length;
+      const failN = res.length - okN;
+      toast({
+        variant: failN ? 'destructive' : 'success',
+        title: `${okN} marcate${failN ? `, ${failN} eșuate` : ''}`,
+      });
+      billSel.clear();
+      refetchAll();
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Eroare', description: (e as Error).message });
+    }
+  }
+
   // Salvează un câmp de client (identificat prin email) pe profilul de facturare.
   // Se aplică la TOATE rândurile aceluiași email (comenzi nefacturate) + persistă
   // pentru /clienti și facturile viitoare.
@@ -264,6 +310,9 @@ export default function FacturarePage() {
               <span className="text-sm">{billSel.selected.size} selectate</span>
               <Button size="sm" onClick={() => setBulkOpen(true)}>
                 Emite selectate…
+              </Button>
+              <Button size="sm" variant="outline" onClick={markSelected}>
+                Marchează ca facturate
               </Button>
               <Button size="sm" variant="ghost" onClick={billSel.clear}>
                 Anulează
@@ -394,14 +443,24 @@ export default function FacturarePage() {
                             )}
                           </TableCell>
                           <TableCell className="text-right align-middle">
-                            <Button
-                              variant="outline"
-                              size="xs"
-                              disabled={!r.smartbillReady}
-                              onClick={() => setPreviewFor(r.paymentId)}
-                            >
-                              Emite
-                            </Button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                variant="outline"
+                                size="xs"
+                                disabled={!r.smartbillReady}
+                                onClick={() => setPreviewFor(r.paymentId)}
+                              >
+                                Emite
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                onClick={() => markOne(r)}
+                                title="Marchează ca facturată (fără factură reală pe SmartBill)"
+                              >
+                                Marchează
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -926,6 +985,10 @@ function IssuedRow({
       <TableCell>
         {inv.status === 'issued' ? (
           <Badge variant="success">emisă</Badge>
+        ) : inv.status === 'manual' ? (
+          <Badge variant="secondary" title="Marcată manual — fără factură reală pe SmartBill">
+            marcată
+          </Badge>
         ) : (
           <Badge variant="destructive" title={inv.errorText ?? ''}>
             eșuată
@@ -939,6 +1002,8 @@ function IssuedRow({
               <Download />
               {busy ? '…' : 'PDF'}
             </Button>
+          ) : inv.status === 'manual' ? (
+            <span className="text-[11px] italic text-muted-foreground">fără factură reală</span>
           ) : inv.status === 'failed' && inv.errorText ? (
             <span
               className="max-w-[200px] truncate text-xs text-destructive"
