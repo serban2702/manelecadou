@@ -430,8 +430,15 @@ export default function FacturarePage() {
                               onCommit={(v) => commitClient(r, { country: v })}
                             />
                           </TableCell>
-                          <TableCell className="whitespace-nowrap text-right align-middle font-medium tabular-nums">
-                            {money(r.amountCents, r.currency)}
+                          <TableCell className="whitespace-nowrap text-right align-middle tabular-nums">
+                            <div className="font-medium">
+                              {money(r.invoiceAmountCents, r.invoiceCurrency)}
+                            </div>
+                            {r.currency !== r.invoiceCurrency && (
+                              <div className="text-[10px] font-normal text-muted-foreground">
+                                din {money(r.amountCents, r.currency)}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="align-middle">
                             {r.invoiceStatus === 'failed' ? (
@@ -797,7 +804,12 @@ function BulkEmitDialog({
                         {format(new Date(r.createdAt), 'd MMM yyyy', { locale: ro })} · {r.buyerEmail ?? '—'}
                       </span>
                       <span className="tabular-nums font-medium text-foreground">
-                        {money(r.amountCents, r.currency)}
+                        {money(r.invoiceAmountCents, r.invoiceCurrency)}
+                        {r.currency !== r.invoiceCurrency && (
+                          <span className="ml-1 font-normal text-muted-foreground">
+                            (din {money(r.amountCents, r.currency)})
+                          </span>
+                        )}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-2">

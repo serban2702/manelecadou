@@ -62,8 +62,13 @@ export interface BulkEmitJob {
 export interface BillableRow {
   paymentId: string;
   siteId: string | null;
+  /** Suma plătită de client (moneda plății — ex. EUR). */
   amountCents: number;
   currency: string;
+  /** Suma cu care se emite factura: în RON (echiv. încasat din Stripe) pentru
+   *  plățile în valută, altfel egală cu suma plății. */
+  invoiceAmountCents: number;
+  invoiceCurrency: string;
   createdAt: Date;
   buyerName: string | null;
   buyerEmail: string | null;
@@ -140,6 +145,28 @@ export class InvoicesService {
     return new Date().toISOString().slice(0, 10);
   }
 
+  /**
+   * Suma + moneda cu care se emite factura. Plățile în valută (ex. EUR) se
+   * facturează în RON pe suma efectiv încasată în RON din Stripe (clientul plătește
+   * în EUR, tu emiți factura în lei). Dacă nu se poate afla RON-ul, se păstrează
+   * moneda originală (adminul poate edita prețul manual în modal).
+   */
+  private async invoiceMoney(
+    p: Payment,
+  ): Promise<{ currency: string; price: number; amountCents: number }> {
+    const round2 = (cents: number) => Math.round((cents / 100) * 100) / 100;
+    const cur = (p.currency || 'RON').toUpperCase();
+    if (cur === 'RON') {
+      return { currency: 'RON', price: round2(p.amount), amountCents: p.amount };
+    }
+    const ron = await this.paymentsSvc.resolveRonAmount(p.id).catch(() => null);
+    if (ron && ron.amountRonCents > 0) {
+      return { currency: 'RON', price: round2(ron.amountRonCents), amountCents: ron.amountRonCents };
+    }
+    // Fallback: moneda originală (nu am putut afla RON-ul din Stripe).
+    return { currency: cur, price: round2(p.amount), amountCents: p.amount };
+  }
+
   /** Configul SmartBill al unui site cu tokenul DECRIPTAT. Null dacă neconfigurat. */
   private resolveCreds(sb: SiteSmartbill | undefined): SmartbillCredentials | null {
     if (!sb?.email || !sb.token) return null;
@@ -207,11 +234,14 @@ export class InvoicesService {
     const client: InvoiceClientSnapshot = site
       ? await this.defaultClientFor(p, site)
       : { country: 'Romania', isTaxPayer: false };
+    const money = await this.invoiceMoney(p);
     return {
       paymentId: p.id,
       siteId: p.siteId,
       amountCents: p.amount,
       currency: p.currency,
+      invoiceAmountCents: money.amountCents,
+      invoiceCurrency: money.currency,
       createdAt: p.createdAt,
       buyerName,
       buyerEmail: email,
@@ -338,13 +368,15 @@ export class InvoicesService {
     if (!site) throw new NotFoundException('Site negăsit');
     const sb = site.smartbill ?? {};
     const client = await this.defaultClientFor(p, site);
+    // Factura în RON pe suma încasată în RON (pentru plăți în valută).
+    const money = await this.invoiceMoney(p);
     return {
       paymentId: p.id,
       siteId: p.siteId,
       siteName: site.name,
-      amountCents: p.amount,
-      price: Math.round((p.amount / 100) * 100) / 100,
-      currency: p.currency,
+      amountCents: money.amountCents,
+      price: money.price,
+      currency: money.currency,
       paymentType: sb.paymentType || DEFAULT_PAYMENT_TYPE,
       productName: sb.productName || DEFAULT_PRODUCT_NAME,
       measuringUnit: sb.measuringUnit || 'buc',
@@ -385,10 +417,13 @@ export class InvoicesService {
       throw new BadRequestException('Numele clientului e obligatoriu');
     }
 
+    // Factura în RON pe suma încasată în RON (pentru plăți în valută). Adminul poate
+    // suprascrie prețul manual din modal (overrides.price, tot în RON).
+    const money = await this.invoiceMoney(p);
     const price =
       typeof overrides.price === 'number' && overrides.price > 0
         ? overrides.price
-        : Math.round((p.amount / 100) * 100) / 100;
+        : money.price;
     const productName = overrides.productName || sb.productName || DEFAULT_PRODUCT_NAME;
     const measuringUnit = sb.measuringUnit || 'buc';
     const paymentType = overrides.paymentType || sb.paymentType || DEFAULT_PAYMENT_TYPE;
@@ -411,7 +446,7 @@ export class InvoicesService {
       seriesName: sb.seriesName,
       issueDate,
       dueDate: issueDate,
-      currency: p.currency || 'RON',
+      currency: money.currency,
       language: 'RO',
       precision: 2,
       isDraft: false,
@@ -431,7 +466,7 @@ export class InvoicesService {
         {
           name: productName,
           measuringUnitName: measuringUnit,
-          currency: p.currency || 'RON',
+          currency: money.currency,
           quantity: 1,
           price,
           isTaxIncluded: true,
@@ -456,8 +491,8 @@ export class InvoicesService {
     inv.companyVatCode = sb.companyVatCode;
     inv.clientSnapshot = client;
     inv.productSnapshot = { name: productName, measuringUnit, quantity: 1, price };
-    inv.amountCents = p.amount;
-    inv.currency = p.currency || 'RON';
+    inv.amountCents = Math.round(price * 100);
+    inv.currency = money.currency;
     inv.paymentType = paymentType;
 
     try {

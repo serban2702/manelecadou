@@ -15,8 +15,12 @@ export interface InvoiceClientData {
 export interface BillablePayment {
   paymentId: string;
   siteId: string | null;
+  /** Suma plătită de client (moneda plății — ex. EUR). */
   amountCents: number;
   currency: string;
+  /** Suma cu care se emite factura (RON pentru plăți în valută). */
+  invoiceAmountCents: number;
+  invoiceCurrency: string;
   createdAt: string;
   buyerName: string | null;
   buyerEmail: string | null;

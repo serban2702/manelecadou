@@ -1085,6 +1085,63 @@ export class PaymentsService {
     }
   }
 
+  /**
+   * Suma brută încasată în RON pentru o plată (moneda contului Stripe = RON).
+   * Pentru plățile în valută (ex. EUR pe doroparaggelia.gr), clientul plătește în
+   * EUR dar Stripe îți virează în RON — factura se emite pe suma în RON efectiv
+   * încasată (`balance_transaction.amount`, brut, înainte de comision). O persistă
+   * pe `amountRonCents` + `exchangeRateToRon` ca să nu reinterogăm. Null dacă nu se
+   * poate determina (fără Stripe/sesiune/balance_transaction).
+   */
+  async resolveRonAmount(
+    paymentId: string,
+  ): Promise<{ amountRonCents: number; exchangeRate: number | null } | null> {
+    const p = await this.repo.findOne({ where: { id: paymentId } });
+    if (!p) return null;
+    if ((p.currency || 'RON').toUpperCase() === 'RON') {
+      return { amountRonCents: p.amount, exchangeRate: 1 };
+    }
+    if (p.amountRonCents != null && p.amountRonCents > 0) {
+      return {
+        amountRonCents: p.amountRonCents,
+        exchangeRate: p.exchangeRateToRon ? Number(p.exchangeRateToRon) : null,
+      };
+    }
+    if (!p.providerSessionId) return null;
+    const stripe = await this.getStripe();
+    if (!stripe) return null;
+    try {
+      const sid = p.providerSessionId;
+      let bt: Stripe.BalanceTransaction | null = null;
+      if (sid.startsWith('pi_')) {
+        const pi = await stripe.paymentIntents.retrieve(sid, {
+          expand: ['latest_charge.balance_transaction'],
+        });
+        bt = ((pi.latest_charge as Stripe.Charge | null)?.balance_transaction as Stripe.BalanceTransaction) ?? null;
+      } else {
+        const session = await stripe.checkout.sessions.retrieve(sid, {
+          expand: ['payment_intent.latest_charge.balance_transaction'],
+        });
+        const pi = session.payment_intent as Stripe.PaymentIntent | null;
+        bt = ((pi?.latest_charge as Stripe.Charge | null)?.balance_transaction as Stripe.BalanceTransaction) ?? null;
+      }
+      if (!bt || typeof bt.amount !== 'number' || bt.amount <= 0) return null;
+      const ronCents = bt.amount; // brut, în moneda de settlement (RON)
+      const rate = bt.exchange_rate != null ? Number(bt.exchange_rate) : null;
+      await this.repo.update(paymentId, {
+        amountRonCents: ronCents,
+        exchangeRateToRon: rate != null ? String(rate) : null,
+        ...(typeof bt.fee === 'number'
+          ? { stripeFeeCents: bt.fee, stripeFeeCurrency: (bt.currency ?? 'ron').toUpperCase() }
+          : {}),
+      });
+      return { amountRonCents: ronCents, exchangeRate: rate };
+    } catch (err) {
+      this.logger.warn(`resolveRonAmount ${paymentId}: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
   /** Câte plăți mai au nevoie de backfill al adresei de facturare. */
   async countBillingBackfillCandidates(force = false): Promise<number> {
     const qb = this.repo
