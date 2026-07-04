@@ -251,14 +251,28 @@ export class InvoicesService {
     };
   }
 
-  /** Facturile emise (sau eșuate), pentru tab-ul „Emise". */
-  async listIssued(siteId: string | null): Promise<Invoice[]> {
+  /** Facturile emise (sau eșuate/marcate), pentru tab-ul „Emise". Îmbogățite cu
+   *  emailul cumpărătorului (din plată — customerEmail, altfel din snapshot). */
+  async listIssued(
+    siteId: string | null,
+  ): Promise<Array<Invoice & { buyerEmail: string | null }>> {
     const where = siteId ? { siteId } : {};
-    return this.invoices.find({
+    const invoices = await this.invoices.find({
       where,
       order: { createdAt: 'DESC' },
       take: 500,
     });
+    if (invoices.length === 0) return [];
+    const paymentIds = Array.from(new Set(invoices.map((i) => i.paymentId)));
+    const payments = await this.payments.find({
+      where: { id: In(paymentIds) },
+      select: ['id', 'customerEmail'],
+    });
+    const emailByPayment = new Map(payments.map((p) => [p.id, p.customerEmail]));
+    return invoices.map((inv) => ({
+      ...inv,
+      buyerEmail: emailByPayment.get(inv.paymentId) ?? inv.clientSnapshot?.email ?? null,
+    }));
   }
 
   /** Construiește datele clientului implicite pentru o plată (preview/emit),

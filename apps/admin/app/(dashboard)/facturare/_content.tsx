@@ -54,6 +54,7 @@ import { useSitesMap } from '@/lib/hooks/use-sites-map';
 import { CountySelect } from '@/components/county-select';
 import { BillingCustomersApi } from '@/lib/api/billing-customers.api';
 import { EditableCell, SaveIndicator, type SaveStatus } from '@/components/inline-edit';
+import { toCsv, downloadCsv, csvMoney } from '@/lib/csv';
 
 const BILL_PAGE_SIZE = 50;
 
@@ -134,7 +135,8 @@ function useRangeSelect<T>(
 
 export default function FacturarePage() {
   const { toast } = useToast();
-  const { isAllSelected } = useSitesMap();
+  const { isAllSelected, byId } = useSitesMap();
+  const siteName = (id: string | null) => (id ? byId.get(id)?.name ?? byId.get(id)?.slug ?? id : '');
 
   // Datele de facturare se citesc acum din coloanele plății (adresa Stripe
   // persistată la webhook/backfill), nu se mai interoghează Stripe per rând.
@@ -260,6 +262,52 @@ export default function FacturarePage() {
     }
   }
 
+  function exportBillableCsv() {
+    const headers = [
+      'Data', 'Email', 'Nume / Denumire', 'CUI / CNP', 'Adresă', 'Oraș', 'Județ',
+      'Țară', 'Sumă plătită', 'Monedă', 'Sumă factură (RON)', 'Site',
+    ];
+    const data = rows.map((r) => [
+      format(new Date(r.createdAt), 'yyyy-MM-dd HH:mm'),
+      r.buyerEmail ?? '',
+      r.client?.name ?? r.buyerName ?? '',
+      r.client?.vatCode ?? '',
+      r.client?.address ?? '',
+      r.client?.city ?? '',
+      r.client?.county ?? '',
+      r.client?.country ?? '',
+      csvMoney(r.amountCents),
+      r.currency,
+      csvMoney(r.invoiceAmountCents),
+      siteName(r.siteId),
+    ]);
+    downloadCsv(`de-facturat-${todayIso()}.csv`, toCsv(headers, data));
+    toast({ variant: 'success', title: `${rows.length} rânduri exportate` });
+  }
+
+  function exportIssuedCsv() {
+    const headers = [
+      'Serie', 'Număr', 'Email', 'Client', 'Sumă', 'Monedă', 'Data', 'Status', 'Site',
+    ];
+    const statusLabel = (s: string) =>
+      s === 'issued' ? 'emisă' : s === 'manual' ? 'marcată' : 'eșuată';
+    const data = issuedRows.map((inv) => [
+      inv.series ?? '',
+      inv.number ?? '',
+      inv.buyerEmail ?? inv.clientSnapshot?.email ?? '',
+      inv.clientSnapshot?.name ?? '',
+      csvMoney(inv.amountCents),
+      inv.currency,
+      inv.issuedAt
+        ? format(new Date(inv.issuedAt), 'yyyy-MM-dd')
+        : format(new Date(inv.createdAt), 'yyyy-MM-dd'),
+      statusLabel(inv.status),
+      siteName(inv.siteId),
+    ]);
+    downloadCsv(`facturi-emise-${todayIso()}.csv`, toCsv(headers, data));
+    toast({ variant: 'success', title: `${issuedRows.length} facturi exportate` });
+  }
+
   async function deleteBulk() {
     const ids = [...invSel.selected];
     if (ids.length === 0) return;
@@ -330,6 +378,11 @@ export default function FacturarePage() {
             />
           ) : (
             <>
+              <div className="mb-2 flex justify-end">
+                <Button variant="outline" size="xs" onClick={exportBillableCsv}>
+                  <Download /> Export CSV
+                </Button>
+              </div>
               <div className="overflow-x-auto rounded-md border border-border">
                 <Table>
                   <TableHeader>
@@ -540,6 +593,11 @@ export default function FacturarePage() {
             />
           ) : (
             <>
+              <div className="mb-2 flex justify-end">
+                <Button variant="outline" size="xs" onClick={exportIssuedCsv}>
+                  <Download /> Export CSV
+                </Button>
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -553,6 +611,7 @@ export default function FacturarePage() {
                     <TableHead>Serie / Număr</TableHead>
                     {isAllSelected && <TableHead>Site</TableHead>}
                     <TableHead>Client</TableHead>
+                    <TableHead>Email</TableHead>
                     <TableHead>Sumă</TableHead>
                     <TableHead>Data</TableHead>
                     <TableHead>Status</TableHead>
@@ -990,6 +1049,9 @@ function IssuedRow({
         </TableCell>
       )}
       <TableCell className="text-xs">{inv.clientSnapshot?.name ?? '—'}</TableCell>
+      <TableCell className="text-xs text-muted-foreground">
+        {inv.buyerEmail ?? inv.clientSnapshot?.email ?? '—'}
+      </TableCell>
       <TableCell className="tabular-nums">{money(inv.amountCents, inv.currency)}</TableCell>
       <TableCell className="text-xs text-muted-foreground">
         {inv.issuedAt ? format(new Date(inv.issuedAt), 'd MMM yyyy', { locale: ro }) : '—'}

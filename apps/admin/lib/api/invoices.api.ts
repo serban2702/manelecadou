@@ -52,6 +52,8 @@ export interface InvoiceDto {
   id: string;
   siteId: string | null;
   paymentId: string;
+  /** Emailul cumpărătorului (din plată sau snapshot). */
+  buyerEmail?: string | null;
   status: 'issued' | 'failed' | 'manual';
   series: string | null;
   number: string | null;
