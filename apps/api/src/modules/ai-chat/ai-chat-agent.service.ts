@@ -2791,6 +2791,30 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         };
       }
 
+      // Treapta 0.75 — reconfirmare recap înainte de finalize (semantic, NU lexical). BUG
+      // observat 2026-07-04 conv e6aab1fa: după ce userul confirmase deja („Da"), Irina a
+      // trimis de 3 ori la rând un recap care se încheie cu „E corect... îți trimit linkul de
+      // plată?" (o dată prins de EXACT_DUP), în loc să apeleze `wizard_finalize`. Fiecare
+      // detaliu mic nou (email, apoi stilul) declanșa o recapitulare completă + reîntrebare,
+      // exact ce ETAPA 5.8 / BUG 2026-06-29 conv 7dec1ea6 interzic — dar formulările diferă
+      // lexical destul cât să scape de NEAR_DUP/similarCount. Dacă un mesaj AI recent (ultimele
+      // 2) era deja o întrebare de tip „e corect, îți trimit linkul?" ȘI cel curent e tot așa →
+      // blocăm și forțăm finalize. handleWizardFinalize verifică singur câmpurile lipsă, deci e
+      // sigur chiar dacă mai lipsește ceva. NU pe follow-up.
+      const isSendLinkConfirm = (t: string) =>
+        /\?/.test(t) && /\blink/i.test(t) && /\btrimit/i.test(t) && /\b(corect|ok|bine|a[șs]a)\b/i.test(t);
+      const recentWasSendLinkConfirm = recentNorm.slice(0, 2).some((t) => isSendLinkConfirm(t));
+      if (!ctx.followUp && recentWasSendLinkConfirm && isSendLinkConfirm(normalized)) {
+        this.logger.warn(`RECAP_RECONFIRM blocked on conv=${ctx.conv.id.slice(0, 8)} — a 2-a reconfirmare „e corect, trimit linkul?".`);
+        return {
+          sent: false,
+          messageType: 'duplicate_text',
+          status: 'RECAP_RECONFIRM_BLOCKED',
+          instruction:
+            'STAI — ai întrebat DEJA „E corect, îți trimit linkul?" și userul a confirmat (sau ți-a dat un detaliu mic în plus, ex. email/stil). NU recapitula din nou și NU re-întreba dacă e ok — sună robotic și întârzie plata. Un detaliu mic adăugat de user NU cere o recapitulare completă nouă + reconfirmare: notează-l scurt și treci DIRECT la acțiune. Apelează ACUM `wizard_finalize` ca să trimiți linkul de plată (tool-ul verifică singur dacă mai lipsește ceva). NU mai trimite un mesaj de tip „recap + e corect?".',
+        };
+      }
+
       const similarCount = recentNorm.filter((prev) => textOverlap(prev, normalized) > 0.7).length;
 
       // Treapta 1 — avertisment blând (nu escalează). Doar dacă nu e deja buclă gravă.
