@@ -1087,6 +1087,10 @@ ETAPA 0 — COMANDĂ EXISTENTĂ (verifică ÎNAINTE de a porni wizard-ul):
     rememorare la trecut Irina a apelat start_new_order de 2 ori → a golit comanda neplătită pt
     Nicu, apoi nu mai putea retrimite linkul (userul a rămas blocat).
   → 🔧 MODIFICARE pe melodie plătită → folosește \`request_modification\` (NU escalate):
+    • ⚠️ DACĂ modificarea schimbă NUMELE din melodie (ex. a ieșit „Cor" în loc de „Corina"):
+      pune OBLIGATORIU numele corect complet în parametrul \`newRecipientName\`. Fără el,
+      versurile se regenerează cu numele VECHI (greșit) și clientul plătește degeaba — BUG
+      2026-07-06 conv 4581c882: numele nu s-a corectat pe 3 refaceri fiindcă nu era pasat structurat.
     • ⛔ NU PROMITE refacerea ÎNAINTE de confirmare. NU spune „o refacem acum", „mă ocup de
       modificare", „revin imediat cu ea" până când request_modification NU întoarce un status
       de succes (FREE_REMAKE_STARTED / PAID_MODIFICATION_*). Până atunci folosește formulări
@@ -1786,6 +1790,7 @@ REGULI STRICTE:
           type: 'object',
           properties: {
             changes: { type: 'string', description: 'Ce trebuie schimbat, concret și complet (max 1000 caractere). Pentru refacere gratuită: TOATE detaliile, confirmate de client (recapitulate înainte).' },
+            newRecipientName: { type: 'string', description: 'OBLIGATORIU dacă modificarea schimbă numele/destinatarul melodiei (ex. „Cor" era greșit, trebuie „Corina"). Pune AICI numele CORECT complet, exact cum trebuie să apară în versuri. Fără el, versurile se regenerează cu numele VECHI (greșit) — refacerea numelui NU se aplică. Lasă gol doar dacă modificarea NU atinge numele.' },
             scope: { type: 'string', enum: ['small', 'large'], description: 'Amploarea modificării (small=14.99, large=29.99). Obligatoriu pentru modificările plătite.' },
             isOurError: { type: 'boolean', description: 'true DOAR dacă e clar greșeala noastră (am livrat altceva decât a cerut clientul).' },
             isRetentionOffer: { type: 'boolean', description: 'true DOAR ca gest comercial unic pentru a salva un client nemulțumit/pe punctul să plece. Nu se oferă proactiv ca opțiune standard.' },
@@ -1836,6 +1841,7 @@ REGULI STRICTE:
       request_modification: async (args) =>
         this.handleRequestModification(ctx, {
           changes: String(args.changes ?? ''),
+          newRecipientName: typeof args.newRecipientName === 'string' ? args.newRecipientName : undefined,
           scope: args.scope === 'large' ? 'large' : 'small',
           isOurError: args.isOurError === true,
           isRetentionOffer: args.isRetentionOffer === true,
@@ -4426,10 +4432,37 @@ ${transcript}`;
    *  punctul să plece (isRetentionOffer). Refuzăm gratuitul pe descrieri vagi —
    *  AI-ul trebuie să fi adunat și confirmat TOT contextul (politică owner 2026-06-10:
    *  „altă dată nu i-o mai regenerăm decât pe bani"). */
+  /**
+   * Injectează modificarea cerută în `message`-ul folosit la regenerare, ca DIRECTIVĂ
+   * DOMINANTĂ (nu simplă notă la coadă). Writer-ul de versuri regenerează din câmpurile
+   * structurate + message; dacă corectura e îngropată la final, o diluează (BUG 2026-07-06
+   * conv 4581c882 — tempo „mai alert" + nume „Corina" ignorate). Punem corecțiile PRIMELE,
+   * imperativ, cu prioritate absolută asupra versiunii anterioare.
+   */
+  private buildModificationMessage(
+    baseMessage: string,
+    changes: string,
+    label: string,
+    newRecipientName: string | null,
+  ): string {
+    const nameLine = newRecipientName
+      ? `\n- Numele CORECT al destinatarului este „${newRecipientName}". Folosește EXACT acest nume în versuri; ignoră orice alt nume din varianta veche.`
+      : '';
+    return [
+      `⚠️ ${label} — CORECȚII OBLIGATORII, cu PRIORITATE ABSOLUTĂ asupra versiunii anterioare.`,
+      `Aplică EXACT schimbările de mai jos și păstrează tot restul la fel:`,
+      `- ${changes}${nameLine}`,
+      ``,
+      `Context original al comenzii (pentru referință, dar corecțiile de mai sus au prioritate):`,
+      baseMessage,
+    ].join('\n');
+  }
+
   private async handleRequestModification(
     ctx: AgentCtx,
     args: {
       changes: string;
+      newRecipientName?: string;
       scope: 'small' | 'large';
       isOurError: boolean;
       isRetentionOffer?: boolean;
@@ -4441,6 +4474,11 @@ ${transcript}`;
     if (!ctx.conv.siteId) return { error: 'no_site' };
     const changes = args.changes.trim().slice(0, 1000);
     if (!changes) return { error: 'changes_required', instruction: 'Întreabă userul CE anume vrea schimbat, concret.' };
+    // Numele corectat, dacă modificarea schimbă destinatarul. Îl aplicăm pe câmpul
+    // structurat recipientName la regenerare — altfel writer-ul păstrează numele VECHI
+    // (BUG confirmat 2026-07-06 conv 4581c882: „Cor"→„Corina" cerut de 4× nu s-a aplicat
+    // pe 3 regenerări fiindcă recipientName rămânea „...Cor" iar corectura era doar în message).
+    const newRecipientName = (args.newRecipientName ?? '').trim().slice(0, 120) || null;
     const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
     if (!conv) return { error: 'conversation gone' };
     const state = this.getOrInitWizardState(conv);
@@ -4525,11 +4563,13 @@ ${transcript}`;
         const remakeLabel = args.isOurError
           ? 'CORECTURĂ (refacere gratuită — greșeala noastră)'
           : 'REFACERE GRATUITĂ UNICĂ (gest comercial — clientul nemulțumit)';
-        const newMessage = `${genRow.message}\n\n${remakeLabel}: ${changes}`;
+        const newMessage = this.buildModificationMessage(genRow.message, changes, remakeLabel, newRecipientName);
         const regen = await this.generations.adminRegenerate(genRow.id, {
           target: 'overwrite',
           lyricsMode: 'rewrite',
-          edits: { message: newMessage },
+          // Numele corectat merge pe câmpul structurat recipientName (semnalul dominant
+          // al writer-ului), nu doar în text — altfel refacerea numelui nu se aplică.
+          edits: { message: newMessage, ...(newRecipientName ? { recipientName: newRecipientName } : {}) },
         });
         await this.conv.manager.query(
           `UPDATE generations SET "freeRemakeUsedAt" = NOW() WHERE id = $1`,
@@ -4600,8 +4640,15 @@ ${transcript}`;
           `UPDATE chat_messages SET payload = jsonb_set(payload, '{modificationChanges}', to_jsonb($1::text)) WHERE id = $2`,
           [mergedChanges, existing.id],
         );
+        if (newRecipientName) {
+          await this.conv.manager.query(
+            `UPDATE chat_messages SET payload = jsonb_set(payload, '{modificationNewRecipientName}', to_jsonb($1::text)) WHERE id = $2`,
+            [newRecipientName, existing.id],
+          );
+        }
         if (state.modification) {
           state.modification.changes = mergedChanges;
+          if (newRecipientName) state.modification.newRecipientName = newRecipientName;
           state.updatedAt = new Date().toISOString();
           await this.conv
             .createQueryBuilder()
@@ -4632,7 +4679,7 @@ ${transcript}`;
       });
       const currency = site.currency.toUpperCase();
       const description = `Modificare manea pentru ${genRow.recipientName} (${args.scope === 'large' ? 'amplă' : 'mică'})`;
-      state.modification = { generationId: genRow.id, changes, scope: args.scope, paymentId: checkout.paymentId };
+      state.modification = { generationId: genRow.id, changes, scope: args.scope, paymentId: checkout.paymentId, newRecipientName };
       state.updatedAt = new Date().toISOString();
       await this.conv
         .createQueryBuilder()
@@ -4657,6 +4704,7 @@ ${transcript}`;
           paymentId: checkout.paymentId,
           modificationForGenerationId: genRow.id,
           modificationChanges: changes,
+          ...(newRecipientName ? { modificationNewRecipientName: newRecipientName } : {}),
         },
         aiGenerated: true,
         detectedLang: site.locale,

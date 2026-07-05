@@ -96,6 +96,8 @@ export interface WizardState {
     changes: string;
     scope: 'small' | 'large';
     paymentId?: string;
+    /** Numele corectat al destinatarului, dacă modificarea îl schimbă. */
+    newRecipientName?: string | null;
   } | null;
   /** Generări pentru care s-a trimis deja alertă email către admini (dedupe tech_error). */
   alertedGenerationIds?: string[];

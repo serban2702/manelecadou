@@ -1127,6 +1127,10 @@ export class ChatService implements OnModuleInit {
           const p = (m.payload ?? {}) as Record<string, unknown>;
           const modGenId = typeof p.modificationForGenerationId === 'string' ? p.modificationForGenerationId : null;
           const modChanges = typeof p.modificationChanges === 'string' ? p.modificationChanges : '';
+          const modNewName =
+            typeof p.modificationNewRecipientName === 'string' && p.modificationNewRecipientName.trim()
+              ? p.modificationNewRecipientName.trim().slice(0, 120)
+              : null;
           if (!modGenId) continue;
           try {
             const { GenerationsService } = await import('../generations/generations.service');
@@ -1136,10 +1140,24 @@ export class ChatService implements OnModuleInit {
               [modGenId],
             );
             const baseMessage = rows[0]?.message ?? '';
+            // Corecțiile PRIMELE, imperativ, cu prioritate absolută asupra versiunii vechi —
+            // altfel writer-ul diluează modificarea (BUG 2026-07-06 conv 4581c882). Numele
+            // corectat merge și pe câmpul structurat recipientName (semnalul dominant).
+            const nameLine = modNewName
+              ? `\n- Numele CORECT al destinatarului este „${modNewName}". Folosește EXACT acest nume; ignoră orice alt nume din varianta veche.`
+              : '';
+            const newMessage = [
+              `⚠️ MODIFICĂRI PLĂTITE DE CLIENT — CORECȚII OBLIGATORII, cu PRIORITATE ABSOLUTĂ asupra versiunii anterioare.`,
+              `Aplică EXACT schimbările de mai jos și păstrează tot restul la fel:`,
+              `- ${modChanges}${nameLine}`,
+              ``,
+              `Context original al comenzii (pentru referință, dar corecțiile de mai sus au prioritate):`,
+              baseMessage,
+            ].join('\n');
             const regen = await generations.adminRegenerate(modGenId, {
               target: 'overwrite',
               lyricsMode: 'rewrite',
-              edits: { message: `${baseMessage}\n\nMODIFICĂRI PLĂTITE DE CLIENT: ${modChanges}` },
+              edits: { message: newMessage, ...(modNewName ? { recipientName: modNewName } : {}) },
             });
             if (conv.wizardState) {
               conv.wizardState.generationId = regen.id;
