@@ -2644,6 +2644,23 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
 
     const isFirst = ctx.sentRealMessages === 0 && !ctx.suggestionMsgId;
 
+    // GUARD anti-avans peste confirmarea prețului: dacă în ACEST tur ai cotat prețul
+    // (quote_price_with_offer a trimis „Maneaua costa X. Sunteti de acord?"), NU mai
+    // trimite un al 2-lea mesaj care sare la colectarea datelor (email/nume). ETAPA 2 e
+    // OBLIGATORIU: întâi confirmarea „da/ok" a userului, ABIA APOI ceri detalii. BUG
+    // observat 2026-07-04 conv 8033ee7c: după quote a trimis instant „Perfect! Pe ce
+    // adresa de email sa-ti trimit melodia?" presupunând acordul, deși userul nu
+    // confirmase nimic — sperie clientul și pune 2 întrebări deodată.
+    if (ctx.priceQuotedThisTurn) {
+      return {
+        sent: false,
+        messageType: 'noop',
+        status: 'AWAIT_PRICE_CONFIRMATION',
+        instruction:
+          'STAI — tocmai ai cotat prețul și ai întrebat „Sunteti de acord?". TERMINĂ TURUL și AȘTEAPTĂ ca userul să confirme („da/ok/de acord") ÎNAINTE de a cere emailul sau orice alt detaliu. NU presupune acordul, NU trimite „Perfect! Pe ce adresa de email...". NU mai apela niciun tool.',
+      };
+    }
+
     // Hard limit: max 2 mesaje per run (suggest sau auto) — al 2-lea doar pentru
     // combinații naturale gen confirmare scurtă + întrebare. Anti-spam păstrat.
     if (ctx.suggestionMsgId || ctx.sentRealMessages >= 2) {
@@ -3600,6 +3617,7 @@ ${transcript}`;
       // Bump priceQuotedCount și în suggest mode — altfel guard-ul anti-recotare
       // (tool + send_message inline) nu se declanșează pe conv-urile în suggest.
       await this.markPriceQuoted(ctx.conv.id);
+      ctx.priceQuotedThisTurn = true;
       this.gateway.emitAiSuggestion({ conversation: ctx.conv, message: saved });
       return { sent: false, status: 'SUGGESTION_PERSISTED', appliedCode: appliedCode?.code ?? null };
     }
@@ -3616,6 +3634,7 @@ ${transcript}`;
       .execute();
     this.gateway.emitMessage({ message: saved, conversation: ctx.conv });
     ctx.sentRealMessages++;
+    ctx.priceQuotedThisTurn = true;
 
     return {
       sent: true,
@@ -4740,6 +4759,12 @@ interface AgentCtx {
    *  apelat generate_lyrics de 2x la rând cu revisionNotes ~identice → a ars draft 2
    *  și 3 instant și a lovit LYRICS_LIMIT prematur.) */
   lyricsSentThisTurn?: boolean;
+  /** A cotat prețul (quote_price_with_offer) în acest run? După quote, mesajul e
+   *  „Maneaua costa X. Sunteti de acord?" și turul TREBUIE să se oprească — ETAPA 2
+   *  cere confirmarea „da/ok" a userului ÎNAINTE de a cere email/detalii. Blochează
+   *  orice send_message ulterior în același tur. (2026-07-04, audit conv 8033ee7c: după
+   *  quote a trimis instant „Perfect! Pe ce adresa de email..." presupunând acordul.) */
+  priceQuotedThisTurn?: boolean;
   /** Rulare de tip follow-up (reminder spațiat după tăcerea userului) vs. run normal
    *  declanșat de un mesaj al userului. Unele guard-uri anti-repetiție se relaxează pe
    *  follow-up (un reminder spațiat e legitim, spre deosebire de 2 nudge-uri la rând). */
