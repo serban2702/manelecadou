@@ -2818,17 +2818,30 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       // 2) era deja o întrebare de tip „e corect, îți trimit linkul?" ȘI cel curent e tot așa →
       // blocăm și forțăm finalize. handleWizardFinalize verifică singur câmpurile lipsă, deci e
       // sigur chiar dacă mai lipsește ceva. NU pe follow-up.
+      // BUG observat 2026-07-05 conv ef943e46: după ce userul confirmase deja („Da") și dăduse
+      // emailul, Irina a trimis DOUĂ recapitulări consecutive aproape identice — „Bun, am notat:
+      // ... Daca e corect, iti trimit imediat linkul de plata ✨" (fără „?") urmată imediat de
+      // „Recapitulez scurt: ... E corect asa?". Ambele enumeră aceleași câmpuri (destinatar,
+      // ocazie, voce, email) și cer confirmare, dar formulările diferă lexical (Jaccard ~0.48) și
+      // niciuna nu trecea de isSendLinkConfirm (prima n-are „?", a doua n-are „link/trimit").
+      // Lărgim detectorul: orice recap+confirmare — începe cu „Recapitulez", ori „am notat ...
+      // corect", ori „...trimit linkul? e corect" — declanșează garda dacă un mesaj recent era la
+      // fel. Un singur recap rămâne permis; abia al 2-lea consecutiv forțează finalize.
       const isSendLinkConfirm = (t: string) =>
         /\?/.test(t) && /\blink/i.test(t) && /\btrimit/i.test(t) && /\b(corect|ok|bine|a[șs]a)\b/i.test(t);
-      const recentWasSendLinkConfirm = recentNorm.slice(0, 2).some((t) => isSendLinkConfirm(t));
-      if (!ctx.followUp && recentWasSendLinkConfirm && isSendLinkConfirm(normalized)) {
+      const isRecapConfirm = (t: string) =>
+        /recapitul/i.test(t) ||
+        (/\bnotat\b/i.test(t) && /\bcorect\b/i.test(t)) ||
+        isSendLinkConfirm(t);
+      const recentWasSendLinkConfirm = recentNorm.slice(0, 2).some((t) => isRecapConfirm(t));
+      if (!ctx.followUp && recentWasSendLinkConfirm && isRecapConfirm(normalized)) {
         this.logger.warn(`RECAP_RECONFIRM blocked on conv=${ctx.conv.id.slice(0, 8)} — a 2-a reconfirmare „e corect, trimit linkul?".`);
         return {
           sent: false,
           messageType: 'duplicate_text',
           status: 'RECAP_RECONFIRM_BLOCKED',
           instruction:
-            'STAI — ai întrebat DEJA „E corect, îți trimit linkul?" și userul a confirmat (sau ți-a dat un detaliu mic în plus, ex. email/stil). NU recapitula din nou și NU re-întreba dacă e ok — sună robotic și întârzie plata. Un detaliu mic adăugat de user NU cere o recapitulare completă nouă + reconfirmare: notează-l scurt și treci DIRECT la acțiune. Apelează ACUM `wizard_finalize` ca să trimiți linkul de plată (tool-ul verifică singur dacă mai lipsește ceva). NU mai trimite un mesaj de tip „recap + e corect?".',
+            'STAI — ai recapitulat DEJA comanda și ai cerut confirmarea („e corect?" / „daca e corect, iti trimit linkul"). NU recapitula A DOUA OARĂ — sună robotic și întârzie plata. Un detaliu mic adăugat de user NU cere o recapitulare completă nouă + reconfirmare: notează-l scurt și treci DIRECT la acțiune. Decide acum UNA din două: (a) dacă NU ai prezentat încă cele 3 pachete (ETAPA 5.5 — Standard/Plus/Premium), prezintă-le O SINGURĂ dată acum, apoi așteaptă alegerea; (b) dacă pachetele au fost deja prezentate (sau userul a ales), apelează `wizard_finalize` ca să trimiți linkul de plată (tool-ul verifică singur dacă mai lipsește ceva). NU mai trimite un al 2-lea mesaj de tip „recap + e corect?".',
         };
       }
 
