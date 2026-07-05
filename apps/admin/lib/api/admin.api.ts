@@ -39,6 +39,23 @@ export interface AdminVariation {
   completedAt: string | null;
 }
 
+/** Un colaj video (slideshow din poze) sau image_video (o poză) al unei comenzi. */
+export interface AdminCollage {
+  id: string;
+  status: 'pending' | 'processing' | 'succeeded' | 'failed';
+  videoUrl: string | null;
+  track: string;
+  kind: 'collage' | 'image_video';
+  aspect: string;
+  imageCount: number;
+  error: string | null;
+  sourceImageUrl: string | null;
+  /** URL-urile imaginilor sursă încărcate (doar pentru kind='collage'). */
+  images: string[];
+  createdAt: string;
+  completedAt: string | null;
+}
+
 export interface OrderDetailTimelineEvent {
   at: string;
   kind: string;
@@ -353,6 +370,36 @@ export class AdminApi {
   }
   static orderDetail(id: string): Promise<OrderDetail> {
     return http.get(`/admin/orders/${id}`);
+  }
+
+  // ============== Colaj video (poze client + generare/regenerare din admin) ==
+  /** Toate colajele unei comenzi + imaginile sursă încărcate de client. */
+  static generationCollages(id: string): Promise<{ collages: AdminCollage[] }> {
+    return http.get(`/admin/generations/${id}/collages`);
+  }
+  /** Admin încarcă imagini proprii și pornește un colaj nou (max 15, ≤10MB). */
+  static generationCreateCollage(
+    id: string,
+    files: File[],
+    track: 'main' | 'bonus',
+    aspect: string,
+  ): Promise<{ collageId: string; status: string }> {
+    const fd = new FormData();
+    fd.append('track', track);
+    fd.append('aspect', aspect);
+    for (const f of files) fd.append('images', f);
+    return http.post(`/admin/generations/${id}/collage`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120_000,
+    });
+  }
+  /** Regenerează un colaj (aceleași poze, altă variantă) sau reface image_video. */
+  static generationRegenerateCollage(
+    id: string,
+    collageId: string,
+    opts?: { track?: 'main' | 'bonus'; aspect?: string },
+  ): Promise<{ collageId: string; status: string }> {
+    return http.post(`/admin/generations/${id}/collage/${collageId}/regenerate`, opts ?? {});
   }
 
   // ============== Regenerare + variații + unelte Suno ==============

@@ -1,8 +1,8 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAsync, useAsyncCallback } from '@/lib/hooks/use-async';
-import { AdminApi, type OrderDetail, type AdminVariation } from '@/lib/api';
+import { AdminApi, type OrderDetail, type AdminVariation, type AdminCollage } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -177,7 +177,6 @@ function OverviewTab({ data }: { data: OrderDetail }) {
               <Kv k="Pachet" v={<Badge variant="warning">{packageLabel(g.packageTier)}</Badge>} />
             )}
             {g.premium && <Kv k="Premium" v={<Badge variant="warning">premium</Badge>} />}
-            {g.tipAmount > 0 && <Kv k="Bacșiș" v={`${g.tipAmount} ${data.site?.currency ?? ''}`} />}
             {g.inferredFromChat && (
               <Kv k="Origine" v={<Badge variant="info">📩 Comandă din chat AI</Badge>} />
             )}
@@ -342,6 +341,195 @@ function OverviewTab({ data }: { data: OrderDetail }) {
 
 // ============== TAB: Form ==============
 
+const COLLAGE_ASPECTS: { value: string; label: string }[] = [
+  { value: '9x16', label: '9:16 (TikTok/Story)' },
+  { value: '1x1', label: '1:1 (pătrat)' },
+  { value: '16x9', label: '16:9 (YouTube)' },
+];
+
+function collageKindLabel(c: AdminCollage): string {
+  return c.kind === 'image_video'
+    ? 'Videoclip cu o poză'
+    : `Colaj slideshow · ${c.imageCount} poze`;
+}
+
+/**
+ * Gestionarea colajelor video ale unei comenzi din admin: vezi pozele încărcate
+ * de client + colajele generate, încarcă poze proprii și pornește un colaj, sau
+ * regenerează un colaj existent (aceleași poze, altă variantă). Fără email
+ * automat către client — verifici rezultatul, apoi îl trimiți manual din chat.
+ */
+function CollageManager({ generationId, hasBonus }: { generationId: string; hasBonus: boolean }) {
+  const { toast } = useToast();
+  const [collages, setCollages] = useState<AdminCollage[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [files, setFiles] = useState<File[]>([]);
+  const [aspect, setAspect] = useState('9x16');
+  const [track, setTrack] = useState<'main' | 'bonus'>('main');
+  const [busy, setBusy] = useState<string | null>(null); // 'upload' | <collageId>
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  async function load() {
+    try {
+      const r = await AdminApi.generationCollages(generationId);
+      setCollages(r.collages);
+    } catch {
+      setCollages([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generationId]);
+
+  // Polling cât vreun colaj e în lucru.
+  const anyWorking = !!collages?.some((c) => c.status === 'pending' || c.status === 'processing');
+  useEffect(() => {
+    if (!anyWorking) return;
+    const id = setInterval(() => { void load(); }, 4000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anyWorking]);
+
+  async function doUpload() {
+    if (files.length === 0) {
+      toast({ title: 'Alege cel puțin o imagine', variant: 'destructive' });
+      return;
+    }
+    setBusy('upload');
+    try {
+      await AdminApi.generationCreateCollage(generationId, files, hasBonus ? track : 'main', aspect);
+      setFiles([]);
+      if (fileRef.current) fileRef.current.value = '';
+      toast({ title: 'Colaj pornit', description: 'Se montează — apare mai jos în ~1-2 minute.' });
+      await load();
+    } catch (e) {
+      toast({ title: 'Eroare la pornirea colajului', description: String((e as Error)?.message ?? e), variant: 'destructive' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function doRegen(c: AdminCollage) {
+    setBusy(c.id);
+    try {
+      await AdminApi.generationRegenerateCollage(generationId, c.id);
+      toast({ title: 'Regenerare pornită', description: 'Varianta nouă apare mai jos în ~1-2 minute.' });
+      await load();
+    } catch (e) {
+      toast({ title: 'Eroare la regenerare', description: String((e as Error)?.message ?? e), variant: 'destructive' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Card title="Colaj video (pozele clientului)" icon={<Film className="h-3.5 w-3.5" />}>
+      {loading && <p className="text-xs text-muted-foreground">Se încarcă…</p>}
+      {!loading && collages && collages.length === 0 && (
+        <p className="mb-3 text-xs text-muted-foreground">Clientul nu a creat niciun colaj încă.</p>
+      )}
+
+      <div className="space-y-3">
+        {collages?.map((c) => (
+          <div key={c.id} className="rounded-lg border border-amber-400/20 bg-black/30 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-amber-300">
+                {c.kind === 'image_video' ? '🖼️' : '🎞️'} {collageKindLabel(c)} · {c.aspect} · {c.track}
+              </span>
+              <StatusBadge status={c.status} />
+            </div>
+
+            {c.images.length > 0 && (
+              <div className="mb-2">
+                <p className="mb-1 text-[11px] text-muted-foreground">{c.images.length} poze încărcate de client</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {c.images.map((url, i) => (
+                    <a key={url + i} href={url} target="_blank" rel="noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={url} alt={`poza ${i + 1}`} className="h-16 w-16 rounded object-cover" />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {c.status === 'succeeded' && c.videoUrl && (
+              <video controls src={c.videoUrl} className="mb-2 max-w-xs rounded" />
+            )}
+            {c.status === 'failed' && (
+              <p className="mb-2 text-[11px] text-red-400">Eșuat: {c.error ?? 'eroare necunoscută'}</p>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              {c.status === 'succeeded' && c.videoUrl && (
+                <a href={c.videoUrl} download>
+                  <Button size="sm" variant="outline">
+                    <Download className="mr-1 h-3.5 w-3.5" />Descarcă
+                  </Button>
+                </a>
+              )}
+              {(c.status === 'succeeded' || c.status === 'failed') && (
+                <Button size="sm" variant="outline" disabled={busy === c.id} onClick={() => doRegen(c)}>
+                  {busy === c.id ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Shuffle className="mr-1 h-3.5 w-3.5" />}
+                  {c.kind === 'image_video' ? 'Refă' : 'Altă variantă'}
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-lg border border-dashed border-amber-400/30 p-3">
+        <p className="mb-2 text-xs font-semibold text-amber-300">Încarcă tu poze și fă un colaj</p>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, 15))}
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
+            <Upload className="mr-1 h-3.5 w-3.5" />
+            {files.length > 0 ? `${files.length} poze alese` : 'Alege poze'}
+          </Button>
+          <select
+            value={aspect}
+            onChange={(e) => setAspect(e.target.value)}
+            className="rounded border border-white/10 bg-black/40 px-2 py-1 text-xs"
+          >
+            {COLLAGE_ASPECTS.map((a) => (
+              <option key={a.value} value={a.value}>{a.label}</option>
+            ))}
+          </select>
+          {hasBonus && (
+            <select
+              value={track}
+              onChange={(e) => setTrack(e.target.value as 'main' | 'bonus')}
+              className="rounded border border-white/10 bg-black/40 px-2 py-1 text-xs"
+            >
+              <option value="main">Melodia 1</option>
+              <option value="bonus">Melodia 2</option>
+            </select>
+          )}
+          <Button size="sm" disabled={busy === 'upload' || files.length === 0} onClick={doUpload}>
+            {busy === 'upload' ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Film className="mr-1 h-3.5 w-3.5" />}
+            Generează colaj
+          </Button>
+        </div>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          max 15 imagini · ≤10MB fiecare · nu trimite email automat clientului
+        </p>
+      </div>
+    </Card>
+  );
+}
+
 function FormTab({ data }: { data: OrderDetail }) {
   const g = data.generation;
   if (!g) return <Empty title="Nicio generation legată" />;
@@ -358,8 +546,9 @@ function FormTab({ data }: { data: OrderDetail }) {
         <Kv k="Durată" v={`${g.durationSec}s`} />
         {g.packageTier && <Kv k="Pachet" v={packageLabel(g.packageTier)} />}
         <Kv k="Premium" v={g.premium ? 'da' : 'nu'} />
-        <Kv k="Bacșiș (tipAmount)" v={String(g.tipAmount)} />
       </Card>
+
+      <CollageManager generationId={g.id} hasBonus={!!g.bonusAudioUrl} />
 
       <Card title="Mesaj (text liber al clientului)">
         <pre className="whitespace-pre-wrap rounded bg-black/40 p-3 text-xs">{g.message || '(gol)'}</pre>

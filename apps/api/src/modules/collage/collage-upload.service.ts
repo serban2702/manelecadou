@@ -84,4 +84,48 @@ export class CollageUploadService {
     this.logger.log(`collage ${collageId.slice(0, 8)} saved ${paths.length} images`);
     return { paths, dir };
   }
+
+  /**
+   * Listează imaginile sursă (`img_*`) ale unui colaj de pe disc, ca URL-uri
+   * publice `/uploads/collage/<id>/img_NNN.ext`, în ordinea de upload. Folosit de
+   * admin ca să vadă exact ce poze a încărcat clientul. Gol dacă dir lipsește.
+   */
+  async listImageUrls(collageId: string): Promise<string[]> {
+    const dir = this.dirFor(collageId);
+    let names: string[];
+    try {
+      names = await fs.readdir(dir);
+    } catch {
+      return [];
+    }
+    return names
+      .filter((n) => /^img_\d+\.(png|jpe?g|webp|gif)$/i.test(n))
+      .sort()
+      .map((n) => `/uploads/collage/${collageId}/${n}`);
+  }
+
+  /**
+   * Copiază imaginile `img_*` dintr-un colaj sursă în directorul altui colaj —
+   * pentru „regenerează cu aceleași poze, altă variantă". Întoarce câte a copiat.
+   */
+  async copyImages(srcCollageId: string, destCollageId: string): Promise<number> {
+    const srcDir = this.dirFor(srcCollageId);
+    const destDir = this.dirFor(destCollageId);
+    let names: string[];
+    try {
+      names = await fs.readdir(srcDir);
+    } catch {
+      return 0;
+    }
+    const imgs = names.filter((n) => /^img_\d+\.(png|jpe?g|webp|gif)$/i.test(n)).sort();
+    if (imgs.length === 0) return 0;
+    await fs.mkdir(destDir, { recursive: true });
+    for (const n of imgs) {
+      await fs.copyFile(join(srcDir, n), join(destDir, n));
+    }
+    this.logger.log(
+      `collage ${destCollageId.slice(0, 8)} copied ${imgs.length} images from ${srcCollageId.slice(0, 8)}`,
+    );
+    return imgs.length;
+  }
 }

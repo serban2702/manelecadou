@@ -236,4 +236,136 @@ export class CollageService {
     if (!c) throw new NotFoundException('Colaj indisponibil');
     return c;
   }
+
+  // ─────────────────── ADMIN (cross-tenant, bypass ownership) ────────────────
+  // Operațiile de mai jos NU verifică owner/parolă — sunt protejate de AdminGuard
+  // la nivel de controller. Colajele create de admin au `email=null` (fără
+  // notificare automată către client): adminul verifică rezultatul, apoi îl
+  // trimite manual (ex. din chat).
+
+  /** Generation-ul, fără verificare de owner (pentru operații admin). */
+  private async adminRequireGeneration(generationId: string): Promise<Generation> {
+    const g = await this.generations.findOne({ where: { id: generationId } });
+    if (!g) throw new NotFoundException('Generation indisponibilă');
+    return g;
+  }
+
+  /** Track-ul are audio pe disc (fără restricția premium — admin poate oricând). */
+  private assertTrackAudio(gen: Generation, track: CollageTrack): void {
+    const hasTrack = track === 'bonus' ? !!gen.bonusAudioUrl : !!gen.audioUrl;
+    if (!hasTrack) {
+      throw new NotFoundException(
+        track === 'bonus' ? 'A doua melodie nu este disponibilă' : 'Melodia nu este disponibilă',
+      );
+    }
+  }
+
+  /** Admin: toate colajele unei generări + imaginile sursă de pe disc. */
+  async adminListForGeneration(
+    generationId: string,
+  ): Promise<Array<VideoCollage & { images: string[] }>> {
+    await this.adminRequireGeneration(generationId);
+    const items = await this.repo.find({
+      where: { generationId },
+      order: { createdAt: 'DESC' },
+    });
+    const out: Array<VideoCollage & { images: string[] }> = [];
+    for (const c of items) {
+      const images = c.kind === 'collage' ? await this.upload.listImageUrls(c.id) : [];
+      out.push({ ...c, images });
+    }
+    return out;
+  }
+
+  /** Admin: creează un colaj din imagini încărcate de admin (fără email automat). */
+  async adminCreateUpload(args: {
+    generationId: string;
+    track: CollageTrack;
+    aspect?: string;
+    files: UploadedImage[];
+  }): Promise<{ collageId: string; status: string }> {
+    const gen = await this.adminRequireGeneration(args.generationId);
+    this.assertTrackAudio(gen, args.track);
+    const aspect: CollageAspect = normalizeAspect(args.aspect);
+    const collage = await this.repo.save(
+      this.repo.create({
+        generationId: gen.id,
+        track: args.track,
+        kind: 'collage',
+        aspect,
+        status: 'pending',
+        imageCount: args.files.length,
+        email: null,
+      }),
+    );
+    try {
+      await this.upload.save(collage.id, args.files);
+    } catch (err) {
+      await this.repo.delete({ id: collage.id }).catch(() => {});
+      throw err;
+    }
+    await this.enqueue(collage.id);
+    this.logger.log(
+      `[admin] collage ${collage.id.slice(0, 8)} queued gen=${gen.id.slice(0, 8)} imgs=${args.files.length}`,
+    );
+    return { collageId: collage.id, status: collage.status };
+  }
+
+  /**
+   * Admin: regenerează un colaj existent cu ACELEAȘI poze (altă variantă, ordinea
+   * se re-amestecă la render) sau reface un image_video. Creează un colaj NOU —
+   * nu-l atinge pe cel vechi.
+   */
+  async adminRegenerate(
+    sourceCollageId: string,
+    opts: { track?: CollageTrack; aspect?: string } = {},
+  ): Promise<{ collageId: string; status: string }> {
+    const src = await this.repo.findOne({ where: { id: sourceCollageId } });
+    if (!src) throw new NotFoundException('Colaj indisponibil');
+    const gen = await this.adminRequireGeneration(src.generationId);
+    const track: CollageTrack = opts.track ?? src.track;
+    this.assertTrackAudio(gen, track);
+    const aspect: CollageAspect = normalizeAspect(opts.aspect ?? src.aspect);
+
+    if (src.kind === 'image_video') {
+      const collage = await this.repo.save(
+        this.repo.create({
+          generationId: gen.id,
+          track,
+          kind: 'image_video',
+          aspect,
+          sourceImageUrl: src.sourceImageUrl,
+          status: 'pending',
+          imageCount: 1,
+          email: null,
+        }),
+      );
+      await this.enqueue(collage.id);
+      return { collageId: collage.id, status: collage.status };
+    }
+
+    // kind = 'collage': colaj nou, copiem pozele sursă în noul director.
+    const collage = await this.repo.save(
+      this.repo.create({
+        generationId: gen.id,
+        track,
+        kind: 'collage',
+        aspect,
+        status: 'pending',
+        imageCount: src.imageCount,
+        email: null,
+      }),
+    );
+    const copied = await this.upload.copyImages(src.id, collage.id);
+    if (copied === 0) {
+      await this.repo.delete({ id: collage.id }).catch(() => {});
+      throw new BadRequestException('Colajul sursă nu mai are imagini pe disc');
+    }
+    await this.repo.update({ id: collage.id }, { imageCount: copied });
+    await this.enqueue(collage.id);
+    this.logger.log(
+      `[admin] regenerate collage ${collage.id.slice(0, 8)} from ${src.id.slice(0, 8)} imgs=${copied}`,
+    );
+    return { collageId: collage.id, status: collage.status };
+  }
 }

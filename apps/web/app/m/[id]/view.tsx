@@ -1537,32 +1537,30 @@ function CollageSection({
   const [err, setErr] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  // Colajul curent (din mount sau după submit) + flag de polling activ.
-  const [collage, setCollage] = useState<CollageDto | null>(null);
+  // TOATE colajele/clipurile generării (nu doar ultimul — clientul poate face
+  // mai multe: colaj cu poze + image-video). Le arătăm pe toate ca galerie.
+  const [collages, setCollages] = useState<CollageDto[]>([]);
   const [polling, setPolling] = useState(false);
 
-  // La mount: vezi dacă există deja un colaj.
+  // La mount: încarcă lista completă de colaje.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const latest = await api.getLatestCollage(g.id, password);
-      if (!cancelled && latest) {
-        setCollage(latest);
-        if (latest.status === 'pending' || latest.status === 'processing') setPolling(true);
-      }
+      const list = await api.listCollages(g.id, password);
+      if (cancelled) return;
+      setCollages(list);
+      if (list.some((c) => c.status === 'pending' || c.status === 'processing')) setPolling(true);
     })();
     return () => { cancelled = true; };
   }, [g.id, password]);
 
-  // Polling la ~4s cât colajul e în lucru.
+  // Polling la ~4s cât vreun colaj e în lucru.
   useEffect(() => {
     if (!polling) return;
     const tick = async () => {
-      const latest = await api.getLatestCollage(g.id, password);
-      if (latest) {
-        setCollage(latest);
-        if (latest.status === 'succeeded' || latest.status === 'failed') setPolling(false);
-      }
+      const list = await api.listCollages(g.id, password);
+      setCollages(list);
+      if (!list.some((c) => c.status === 'pending' || c.status === 'processing')) setPolling(false);
     };
     const id = setInterval(tick, 4000);
     return () => clearInterval(id);
@@ -1608,7 +1606,10 @@ function CollageSection({
     setErr(null);
     try {
       const r = await api.createCollage(g.id, trackChoice, files, aspect);
-      setCollage({ id: r.collageId, status: (r.status as CollageDto['status']) ?? 'pending', kind: 'collage' });
+      setCollages((prev) => [
+        { id: r.collageId, status: (r.status as CollageDto['status']) ?? 'pending', kind: 'collage', imageCount: files.length },
+        ...prev,
+      ]);
       setPolling(true);
       // Eliberăm fișierele după submit (rămâne starea de polling).
       previews.forEach((u) => URL.revokeObjectURL(u));
@@ -1621,12 +1622,6 @@ function CollageSection({
     }
   }
 
-  function reset() {
-    setCollage(null);
-    setPolling(false);
-    setErr(null);
-  }
-
   const sectionStyle: React.CSSProperties = {
     marginTop: 20, padding: 16, borderRadius: 12,
     background: 'rgba(241,200,77,0.06)', border: '1px solid rgba(241,200,77,0.2)',
@@ -1636,96 +1631,96 @@ function CollageSection({
     textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8,
   };
 
-  // Stare: colaj gata.
-  if (collage?.status === 'succeeded' && collage.videoUrl) {
-    const resolved = resolveMediaUrl(collage.videoUrl)!;
-    return (
-      <div style={sectionStyle}>
-        <div style={headerStyle}>🎞️ Colajul tău video</div>
-        <VideoPlayer src={resolved} />
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-          <a href={resolved} download onClick={() => trackEvent({ type: 'image_download', props: { generationId: g.id, kind: 'video' } })} className="btn btn-gold" style={{ flex: '1 1 140px', textAlign: 'center', textDecoration: 'none' }}>
-            ⬇ Descarcă
-          </a>
-          {isOwner && (
-            <button type="button" onClick={reset} className="btn btn-ghost" style={{ flex: '1 1 140px' }}>
-              🔁 Fă altul
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  }
+  // Colajele gata (cu poze primele), cele în lucru și eticheta pe fiecare.
+  const rankKind = (c: CollageDto) => (c.kind === 'image_video' ? 1 : 0);
+  const done = [...collages]
+    .filter((c) => c.status === 'succeeded' && c.videoUrl)
+    .sort((a, b) => rankKind(a) - rankKind(b));
+  const working = collages.filter((c) => c.status === 'pending' || c.status === 'processing');
+  const collageLabel = (c: CollageDto) =>
+    c.kind === 'image_video'
+      ? '🖼️ Videoclip cu o poză'
+      : `🎞️ Colaj cu pozele tale${c.imageCount ? ` · ${c.imageCount} poze` : ''}`;
 
-  // Stare: în lucru (pending/processing) — card animat.
-  if (collage && (collage.status === 'pending' || collage.status === 'processing')) {
-    return (
-      <div style={sectionStyle}>
-        <div style={headerStyle}>🎞️ Colajul tău video</div>
-        <div style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
-          padding: '22px 12px 18px', gap: 14,
-        }}>
-          {/* Spinner cu inel auriu */}
-          <div style={{
-            width: 56, height: 56, borderRadius: '50%',
-            border: '4px solid rgba(241,200,77,0.18)', borderTopColor: 'var(--gold)',
-            animation: 'spin 0.9s linear infinite',
-          }} />
-          <div style={{ fontFamily: "'Cinzel', serif", fontSize: 17, fontWeight: 700, color: 'var(--gold-2)' }}>
-            Îți montăm colajul…
+  // Nimic de arătat și nici owner (fără formular de creare) → nu randăm nimic.
+  if (done.length === 0 && working.length === 0 && !isOwner) return null;
+
+  return (
+    <>
+      {/* Galerie: TOATE colajele gata (cele cu poze primele). */}
+      {done.length > 0 && (
+        <div style={sectionStyle}>
+          <div style={headerStyle}>🎞️ Colajele tale video</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            {done.map((c) => {
+              const resolved = resolveMediaUrl(c.videoUrl!)!;
+              return (
+                <div key={c.id}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--gold-2)', marginBottom: 6 }}>
+                    {collageLabel(c)}
+                  </div>
+                  <VideoPlayer src={resolved} />
+                  <a
+                    href={resolved}
+                    download
+                    onClick={() => trackEvent({ type: 'image_download', props: { generationId: g.id, kind: 'video' } })}
+                    className="btn btn-gold"
+                    style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: 8 }}
+                  >
+                    ⬇ Descarcă
+                  </a>
+                </div>
+              );
+            })}
           </div>
-          {/* Bară shimmer indeterminată */}
+        </div>
+      )}
+
+      {/* Colaj(e) în lucru — card animat. */}
+      {working.length > 0 && (
+        <div style={sectionStyle}>
+          <div style={headerStyle}>🎞️ Colajul tău video</div>
           <div style={{
-            width: '100%', maxWidth: 320, height: 8, borderRadius: 999, overflow: 'hidden',
-            background: 'rgba(241,200,77,0.12)', position: 'relative',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
+            padding: '22px 12px 18px', gap: 14,
           }}>
             <div style={{
-              position: 'absolute', top: 0, bottom: 0, width: '45%', borderRadius: 999,
-              background: 'linear-gradient(90deg, transparent, var(--gold), transparent)',
-              animation: 'collageShimmer 1.4s ease-in-out infinite',
+              width: 56, height: 56, borderRadius: '50%',
+              border: '4px solid rgba(241,200,77,0.18)', borderTopColor: 'var(--gold)',
+              animation: 'spin 0.9s linear infinite',
             }} />
+            <div style={{ fontFamily: "'Cinzel', serif", fontSize: 17, fontWeight: 700, color: 'var(--gold-2)' }}>
+              Îți montăm colajul…
+            </div>
+            <div style={{
+              width: '100%', maxWidth: 320, height: 8, borderRadius: 999, overflow: 'hidden',
+              background: 'rgba(241,200,77,0.12)', position: 'relative',
+            }}>
+              <div style={{
+                position: 'absolute', top: 0, bottom: 0, width: '45%', borderRadius: 999,
+                background: 'linear-gradient(90deg, transparent, var(--gold), transparent)',
+                animation: 'collageShimmer 1.4s ease-in-out infinite',
+              }} />
+            </div>
+            <div style={{ fontSize: 12.5, lineHeight: 1.6, color: 'rgba(255,245,220,0.6)', maxWidth: 340 }}>
+              🖼️ Aranjăm pozele · 🎬 Adăugăm tranziții · 🎵 Sincronizăm pe melodie<br />
+              Durează câteva minute. <b style={{ color: 'var(--gold-2)' }}>Primești și pe email</b> când e gata —
+              poți închide pagina.
+            </div>
           </div>
-          <div style={{ fontSize: 12.5, lineHeight: 1.6, color: 'rgba(255,245,220,0.6)', maxWidth: 340 }}>
-            🖼️ Aranjăm pozele · 🎬 Adăugăm tranziții · 🎵 Sincronizăm pe melodie<br />
-            Durează câteva minute. <b style={{ color: 'var(--gold-2)' }}>Primești și pe email</b> când e gata —
-            poți închide pagina.
-          </div>
+          <style>{`
+            @keyframes collageShimmer {
+              0% { left: -45%; }
+              100% { left: 100%; }
+            }
+          `}</style>
         </div>
-        <style>{`
-          @keyframes collageShimmer {
-            0% { left: -45%; }
-            100% { left: 100%; }
-          }
-        `}</style>
-      </div>
-    );
-  }
+      )}
 
-  // Stare: eșuat — mesaj prietenos + retry (retry doar owner).
-  if (collage?.status === 'failed') {
-    return (
-      <div style={sectionStyle}>
-        <div style={headerStyle}>🎞️ Fă-ți un colaj video</div>
-        <div style={{ fontSize: 13, color: '#ffb3b3', marginBottom: 10 }}>
-          😕 Ne pare rău, colajul nu a putut fi generat. Mai încearcă o dată.
-        </div>
-        {isOwner && (
-          <button type="button" onClick={reset} className="btn btn-gold" style={{ width: '100%' }}>
-            🔁 Încearcă din nou
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  // Non-owner deblocat fără niciun colaj existent → nu arătăm formularul de creare.
-  if (!isOwner) return null;
-
-  // Stare: formular de upload (owner-only).
-  return (
+      {/* Formular de creare (owner-only) — mereu disponibil ca să poată face altul. */}
+      {isOwner && (
     <div style={sectionStyle}>
-      <div style={headerStyle}>🎞️ Fă-ți un colaj video</div>
+      <div style={headerStyle}>🎞️ Fă-ți {done.length > 0 ? 'încă un' : 'un'} colaj video</div>
       <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
         Încarcă-ți pozele și le montăm într-un videoclip pe melodia ta.
       </div>
@@ -1861,5 +1856,7 @@ function CollageSection({
 
       {err && <div style={{ marginTop: 8, fontSize: 12, color: '#ff8888' }}>{err}</div>}
     </div>
+      )}
+    </>
   );
 }
