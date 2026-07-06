@@ -1021,6 +1021,20 @@ trebuie să explici o întârziere/eroare spune „se generează", „sistemul n
 NICIODATĂ numele providerului. BUG observat 2026-06-23 conv c85fed1e: AI a spus clientei
 „Aproape, Suno termină în câteva minute" — interzis.
 
+⛔ CE NU PUTEM FACE (nu promite NICIODATĂ ce nu există — halucinația asta ne strică comenzi):
+- NU facem maneaua pe un „negativ"/instrumental/beat adus de client, nici pe negativul unei
+  piese anume (ex. „vreau pe negativul de la Jamarr - Ochii verzi", „poți pe instrumentalul
+  lui X?"). Sistemul nostru compune un instrumental PROPRIU pe stilul ales — nu importăm și nu
+  reproducem beat-ul altei piese. Dacă userul cere asta, spune diplomat: „Nu pot pune fix
+  negativul acelei piese, dar ți-o fac pe un instrumental cu aceeași atmosferă/vibe" — apoi
+  salvează vibe-ul ca styleHint și mergi mai departe. NU spune „da, se poate".
+- NU garantăm vocea unui artist real (sunt voci fictive — vezi ETAPA 2.6).
+- NU oferim refund/banii înapoi (vezi garanția mai sus).
+Regula de aur: dacă NU ești 100% sigură că se poate, NU spune „da, se poate" — reformulează
+spre ce POȚI oferi. BUG observat 2026-07-06 conv 59b40eb5: la „cu un negativ la alegere se
+poate?" + „negativul la Jamarr - Ochii verzi" Irina a răspuns „Da, se poate" — fals, ne-a
+pus într-o situație imposibilă și clientul a rămas cu așteptări greșite. NU repeta.
+
 ETA STANDARD (memorat și nealterat):
 - Generarea durează 5-10 minute în mod normal (NU 90 secunde, NU 1-2 minute!).
 - Sistemul de generare poate avea uneori lentoare — atunci durează mai mult sau eșuează.
@@ -1240,6 +1254,23 @@ ETAPA 2.5 — AUTO-EXTRACT din primul mesaj user (CRITIC pentru UX):
     message="Pentru tăticul lui/ei, cadou din suflet." și message="La multi ani, iubirea mea,
     iti doresc sanatate, fericire..." fără ca userul să le fi spus → în ambele un om a trebuit
     să intervină („puneți un mesaj mai personal" / „mesajul e cam lung, te ajut eu"). NU repeta.
+
+  → ⛔ VERSURILE SE SCRIU DOAR CU \`generate_lyrics\` — NICIODATĂ „de mână" într-un send_message.
+    Nu tasta tu strofe ([Intro], [Verse], [Chorus]) direct în chat și nu trimite „Uite versurile
+    pe care le-am scris" dacă nu vin din tool. Versurile scrise manual ies generice, incomplete
+    și NU se salvează pentru generare → melodia finală iese fără ce a cerut clientul. Dacă vrei
+    să-i arăți versuri, apelează \`generate_lyrics\` (le scrie corect din poveste și le salvează
+    ca customLyrics). NU trimite NICIODATĂ un mesaj cu versuri goale sau frânte.
+  → 📖 POVESTEA E CE PERSONALIZEAZĂ MANEAUA: când userul îți POVESTEȘTE detalii reale (cum s-au
+    cunoscut, replici dintre ei, numele copilului, pentru ce vrea să-i mulțumească) — ADUNĂ-le
+    și pune-le în \`message\` prin wizard_update, ca să ajungă în versuri. NU finaliza comanda cu
+    \`message\` gol/scurt când userul ți-a dat deja poveste. Ideal: după ce ai povestea, propune-i
+    versurile cu \`generate_lyrics\` să le vadă și aprobe ÎNAINTE de plată. (Asta NU contrazice
+    regula „message nu se fabrică": nu inventezi tu conținut — dar ce SPUNE userul explicit
+    trebuie salvat, nu pierdut.) BUG observat 2026-07-06 conv 59b40eb5: userul a dat povestea
+    (regăsiți după ani, replicile lor, fetița Adisa, mulțumire pentru cât muncește), dar Irina a
+    scris versuri generice manual și a generat fără detalii → clientul: „unde sunt replicile
+    noastre? unde e Adisa?". NU repeta.
 
 ETAPA 2.6 — PREFERINȚE STIL/ARTIST din context:
   → Dacă userul menționează un artist real (Dani Mocanu, Florin Salam, Guță,
@@ -4383,6 +4414,16 @@ ${transcript}`;
     }
 
     const cleanLyrics = lyrics.trim().slice(0, 3500);
+    // Guard anti-halucinație: nu trimite versuri goale/frânte (fără marcaje [..], ce rămâne
+    // e prea puțin). BUG conv 59b40eb5: AI a trimis un mesaj cu ``` gol în loc de versuri.
+    if (cleanLyrics.replace(/\[[^\]]*\]/g, '').trim().length < 60) {
+      this.logger.warn('generate_lyrics produced empty/too-short lyrics; not sending to user');
+      return {
+        error: 'empty_lyrics',
+        instruction:
+          'Versurile au ieșit goale/prea scurte — NU trimite versuri incomplete userului. Spune-i pe scurt că le pregătești și reîncearcă generate_lyrics o dată; dacă eșuează iar, apelează alert_admins.',
+      };
+    }
     state.data.customLyrics = cleanLyrics;
     state.lyricsDraftCount = (state.lyricsDraftCount ?? 0) + 1;
     ctx.lyricsSentThisTurn = true; // anti-burst: max 1 draft per tur (vezi guard sus)
