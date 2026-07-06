@@ -90,6 +90,11 @@ export interface WizardState {
   appliedPromoCode?: string | null;
   /** Câte drafturi de versuri a generat AI-ul în chat (cap 3 — control cost). */
   lyricsDraftCount?: number;
+  /** Snapshot al `message`-ului din care s-a scris ULTIMUL draft de versuri (AI) —
+   *  ca să detectăm când draftul devine stale (userul a mai dat poveste DUPĂ ce a
+   *  fost generat). Non-null ⇒ `customLyrics` curent e draft AI (nu versuri lipite
+   *  de user). Vezi bug conv 59b40eb5 (2026-07-06). */
+  lyricsBasedOnMessage?: string;
   /** Modificare contra cost în așteptarea plății (request_modification). */
   modification?: {
     generationId: string;

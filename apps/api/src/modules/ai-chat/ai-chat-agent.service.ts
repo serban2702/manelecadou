@@ -2178,6 +2178,24 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     };
   }
 
+  /** True dacă draftul curent de versuri (AI) nu mai reflectă mesajul/povestea
+   *  clientului — s-a schimbat suficient de mult față de mesajul din care a fost
+   *  scris. Folosit ca să invalidăm draftul stale înainte să ajungă la generare.
+   *  Toleranță la corecții mici (typo/1-2 cuvinte); declanșează pe adăugare de
+   *  poveste substanțială sau conținut complet diferit. */
+  private lyricsDraftIsStale(prevMsg: string | undefined | null, newMsg: string | undefined | null): boolean {
+    const norm = (s: string) =>
+      (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const a = norm(prevMsg ?? '');
+    const b = norm(newMsg ?? '');
+    if (!b || a === b) return false;
+    // conținut nou substanțial (poveste adăugată după draft)
+    if (Math.abs(b.length - a.length) > 20) return true;
+    // conținut complet schimbat (niciunul nu-l conține pe celălalt)
+    if (a && !b.includes(a) && !a.includes(b)) return true;
+    return false;
+  }
+
   private missingWizardFields(data: WizardData): Array<keyof WizardData> {
     return REQUIRED_WIZARD_FIELDS.filter((f) => {
       const v = data[f];
@@ -2277,6 +2295,28 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     }
 
     Object.assign(state.data, updates);
+
+    // INVALIDARE draft versuri stale (BUG conv 59b40eb5, 2026-07-06): dacă s-a generat
+    // deja un draft AI de versuri și userul adaugă/schimbă povestea (message) DUPĂ aceea,
+    // draftul nu mai reflectă ce a spus clientul. Păstrat = finalize trimite versuri
+    // generice/vechi la generare (în conv 59b40eb5: draft generat pe „pentru soțul meu",
+    // apoi toată povestea — Adisa, replicile, mulțumirea — a intrat în message, dar
+    // melodia s-a scris pe draftul vechi). Îl ștergem ca finalize să rescrie din message.
+    let lyricsInvalidated = false;
+    if (typeof args.customLyrics === 'string' && args.customLyrics.length > 10) {
+      // Userul a lipit versurile LUI → sunt versuri „owned", nu draft AI de invalidat.
+      state.lyricsBasedOnMessage = undefined;
+    } else if (
+      typeof updates.message === 'string' &&
+      state.lyricsBasedOnMessage != null &&
+      state.data.customLyrics &&
+      this.lyricsDraftIsStale(state.lyricsBasedOnMessage, updates.message)
+    ) {
+      state.data.customLyrics = undefined;
+      state.lyricsBasedOnMessage = undefined;
+      lyricsInvalidated = true;
+    }
+
     state.updatedAt = new Date().toISOString();
     if (state.step === 'idle' && Object.keys(updates).length > 0) state.step = 'collecting';
     conv.wizardState = state;
@@ -2302,10 +2342,15 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       data: state.data,
       missingFields: missing,
       readyToFinalize: missing.length === 0 && (emailUpdated || !!conv.email),
+      lyricsInvalidated,
       instruction:
         (missing.length === 0
           ? 'Toate câmpurile sunt complete. Recapitulează datele în send_message + cere confirmare, apoi wizard_finalize.'
-          : `Mai întreabă: ${missing[0]} (un singur câmp pe mesaj).`) + correctionNote,
+          : `Mai întreabă: ${missing[0]} (un singur câmp pe mesaj).`) +
+        correctionNote +
+        (lyricsInvalidated
+          ? ' ⚠️ Povestea/mesajul s-a schimbat față de versurile trimise anterior — acel draft NU mai e valabil și a fost șters. Dacă vrei să-i arăți versuri actualizate, apelează generate_lyrics DIN NOU cu povestea completă înainte de finalize. Altfel melodia se scrie automat din mesajul nou la generare (cu toată povestea), nu din draftul vechi.'
+          : ''),
     };
   }
 
@@ -2502,6 +2547,22 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
 
       // 1b. Crează Generation pending cu valorile inferate (sau user_said dacă există)
       const tier = normalizeTier(state.data.packageTier);
+      // Plasă de siguranță anti-versuri-stale (BUG conv 59b40eb5): dacă draftul AI de
+      // versuri nu mai reflectă mesajul curent (userul a mai dat poveste după ce a fost
+      // scris), NU-l trimite la generare — lasă writer-ul să scrie proaspăt din message
+      // (care conține toată povestea). Redundant cu invalidarea din wizard_update, dar
+      // prinde și cazurile în care draftul a rămas cumva sincron cu un message vechi.
+      let finalCustomLyrics = state.data.customLyrics;
+      if (
+        finalCustomLyrics &&
+        state.lyricsBasedOnMessage != null &&
+        this.lyricsDraftIsStale(state.lyricsBasedOnMessage, state.data.message ?? '')
+      ) {
+        this.logger.warn(
+          `STALE_LYRICS_DROPPED conv=${conv.id.slice(0, 8)} — draft nu reflectă mesajul curent; generez din message`,
+        );
+        finalCustomLyrics = undefined;
+      }
       const generation = await this.generations.createPendingForPayment(
         {
           style: inference.style.value,
@@ -2510,7 +2571,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           message: inference.message.value, // mesaj posibil enrich-uit cu context
           voiceArtist: inference.voiceArtist.value,
           dedication: state.data.dedication,
-          customLyrics: state.data.customLyrics,
+          customLyrics: finalCustomLyrics,
           packageTier: tier,
           locale: site.locale,
         },
@@ -4425,6 +4486,9 @@ ${transcript}`;
       };
     }
     state.data.customLyrics = cleanLyrics;
+    // Reține din ce mesaj/poveste a fost scris draftul — ca să-l invalidăm dacă
+    // userul mai adaugă poveste DUPĂ asta (altfel finalize ar trimite versuri stale).
+    state.lyricsBasedOnMessage = state.data.message ?? '';
     state.lyricsDraftCount = (state.lyricsDraftCount ?? 0) + 1;
     ctx.lyricsSentThisTurn = true; // anti-burst: max 1 draft per tur (vezi guard sus)
     if (state.step === 'idle') state.step = 'collecting';
