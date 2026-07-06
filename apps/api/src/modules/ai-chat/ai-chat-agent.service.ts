@@ -1131,9 +1131,17 @@ ETAPA 0 — COMANDĂ EXISTENTĂ (verifică ÎNAINTE de a porni wizard-ul):
     nu trata din reflex ca „insuficient". BUG observat 2026-06-28 conv 1f2bf005: user a zis
     „am doar 16€" (≈80 lei, mai mult decât orice pachet) iar AI i-a oferit Plus la 49.99
     (mai scump) + a sugerat o „variantă mai ieftină" care nu există.
-  → 🔗 LINK DE PLATĂ PIERDUT/EXPIRAT: dacă userul zice „nu am primit linkul", „nu-l găsesc",
-    „a expirat", „dă-mi link-ul" → apelează \`resend_payment_link\` (re-emite cardul de plată).
-    NU-i spune doar „e mai sus în chat" dacă el zice că nu-l vede.
+  → 🔗 LINK DE PLATĂ PIERDUT/EXPIRAT/STRICAT: dacă userul zice „nu am primit linkul", „nu-l
+    găsesc", „a expirat", „dă-mi link-ul", SAU că linkul de plată „nu merge", „nu funcționează",
+    „nu se deschide", „nu pot să plătesc", „nu pot plăti", „e blocat" → apelează
+    \`resend_payment_link\` DIRECT (re-emite cardul de plată cu o sesiune Stripe nouă). NU-i
+    spune doar „e mai sus în chat" dacă el zice că nu-l vede. ⛔ NU-i cere permisiune să
+    retrimiți („spune-mi și ți-l retrimit") și NU repeta reformulat de mai multe ori „încă
+    e în așteptare plata, zi-mi dacă vrei link nou" — userul care spune că nu merge ȚI-A CERUT
+    deja implicit să-l retrimiți. Retrimite-l pe loc, o singură dată, apoi spune-i scurt că
+    i-ai trimis un link nou mai sus. BUG observat 2026-07-06 conv 49be0056: la „Nu merge" Irina
+    a trimis 3 mesaje aproape identice cerând „spune-mi și ți-l retrimit" în loc să apeleze
+    \`resend_payment_link\` — buclă inutilă, userul a rămas blocat fără link nou.
   → Indiciu vizual: dacă vezi în istoric un mesaj song_preview cu „/m/<id>", userul ARE
     deja o melodie — NU te purta ca și cum ar fi un chat nou.
   → BUG observat 2026-06-08 (conv c06c6997, dec6adaf): userul zicea „am plătit deja" /
@@ -1770,7 +1778,7 @@ REGULI STRICTE:
       },
       {
         name: 'resend_payment_link',
-        description: 'Re-trimite linkul de plată al comenzii curente ca un card nou în chat. Folosește când userul nu găsește linkul, zice că a expirat, sau a schimbat pachetul/datele înainte de plată (regenerează sesiunea Stripe cu datele actuale). NU scrie URL-ul în text — tool-ul trimite singur cardul.',
+        description: 'Re-trimite linkul de plată al comenzii curente ca un card nou în chat. Folosește când userul nu găsește linkul, zice că a expirat, că „nu merge"/„nu funcționează"/„nu se deschide"/„nu pot plăti", sau a schimbat pachetul/datele înainte de plată (regenerează sesiunea Stripe cu datele actuale). NU scrie URL-ul în text — tool-ul trimite singur cardul. NU cere permisiune să retrimiți — dacă userul semnalează o problemă cu linkul, retrimite-l direct.',
         parameters: { type: 'object', properties: {} },
       },
       {
