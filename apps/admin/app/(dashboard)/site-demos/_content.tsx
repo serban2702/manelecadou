@@ -59,11 +59,14 @@ import { useToast } from '@/components/ui/use-toast';
  */
 export default function SiteDemosPage() {
   const { toast } = useToast();
-  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
+  // Init sincron din localStorage — altfel primul fetch pleca fără filtru de
+  // site și afișa pentru o clipă demo-urile TUTUROR site-urilor amestecate.
+  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(() =>
+    typeof window === 'undefined' ? null : getSelectedSiteId(),
+  );
 
   useEffect(() => {
     const onChange = () => setSelectedSiteId(getSelectedSiteId());
-    onChange();
     window.addEventListener('mc:site-changed', onChange);
     return () => window.removeEventListener('mc:site-changed', onChange);
   }, []);
@@ -127,7 +130,7 @@ export default function SiteDemosPage() {
     return (
       <div>
         <PageHeader
-          title='Demo-uri „Ascultă"'
+          title='Demo-uri'
           description="Manele curate afișate pe /asculta și în popup-ul de pe homepage"
         />
         <Card>
@@ -142,7 +145,7 @@ export default function SiteDemosPage() {
   return (
     <div>
       <PageHeader
-        title='Demo-uri „Ascultă"'
+        title='Demo-uri'
         description="Manele curate pentru pagina /asculta (10-15) și popup-ul homepage (max 5 marcate featured)"
         actions={
           <Button onClick={() => setCreating(true)}>

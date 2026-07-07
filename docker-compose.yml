@@ -61,6 +61,8 @@ services:
       API_URL: ${API_URL:-http://localhost:1501}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       JWT_SECRET: ${JWT_SECRET:-change_me_in_production}
+      # Gate suplimentar pe /admin/database — gol în dev = gate dezactivat.
+      OPS_TERMINAL_CREDENTIAL: ${OPS_TERMINAL_CREDENTIAL:-}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       MAGIC_LINK_TTL_MIN: ${MAGIC_LINK_TTL_MIN:-15}
       MAIL_PROVIDER: ${MAIL_PROVIDER:-smtp}

@@ -1,5 +1,5 @@
-import Content from './_content';
-
-export default function Page() {
-  return <Content />;
-}
+// Rută Next dedicată DOAR pentru direct-load/refresh la /seo-pages. Re-exportăm
+// catch-all-ul (nu _content) ca view-ul să se aleagă după pathname — altfel, după
+// un refresh aici, navigarea SPA către alte pagini rămânea blocată pe SEO articles
+// (Next ținea montată pagina dedicată, pushState nu re-rulează match-ul de rută).
+export { default } from '../[[...slug]]/page';

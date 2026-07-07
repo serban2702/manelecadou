@@ -1,4 +1,4 @@
-import { http, getAdminToken } from '../http/client';
+import { http, getAdminToken, getOpsCredential } from '../http/client';
 
 export interface DbBackup {
   name: string;
@@ -36,10 +36,16 @@ export class DatabaseApi {
   /** Download direct cu Bearer token, ca la mail attachments. */
   static async download(name: string): Promise<void> {
     const token = getAdminToken();
+    const opsCred = getOpsCredential();
     const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
     const res = await fetch(
       `${baseUrl}/api/admin/database/backups/${encodeURIComponent(name)}/download`,
-      { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(opsCred ? { 'x-ops-credential': opsCred } : {}),
+        },
+      },
     );
     if (!res.ok) throw new Error(`Descărcare eșuată (${res.status})`);
     const blob = await res.blob();

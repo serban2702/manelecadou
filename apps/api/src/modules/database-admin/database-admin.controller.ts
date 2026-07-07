@@ -13,6 +13,7 @@ import type { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { AdminGuard } from '../../common/admin.guard';
+import { OpsCredentialGuard } from '../../common/ops-credential.guard';
 import { DatabaseAdminService } from './database-admin.service';
 
 class CreateBackupDto {
@@ -22,7 +23,9 @@ class CreateBackupDto {
   label?: string;
 }
 
-@UseGuards(AdminGuard)
+// Dublu gate: JWT admin + credențialul ops (același user:parolă ca terminalul
+// Claude Ops) — restore/reset/download pot distruge sau exfiltra toată baza.
+@UseGuards(AdminGuard, OpsCredentialGuard)
 @Controller('admin/database')
 export class DatabaseAdminController {
   constructor(

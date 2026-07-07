@@ -75,7 +75,7 @@ export default function MarketingPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Marketing emails"
+        title="Email marketing"
         description="Trimite oferte clienților, vezi toate șabloanele de email și pune reduceri pe pilot automat."
       />
       <Tabs defaultValue="campaigns">

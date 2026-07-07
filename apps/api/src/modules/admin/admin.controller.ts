@@ -11,6 +11,7 @@ import { Generation } from '../generations/generation.entity';
 import { Payment } from '../payments/payment.entity';
 import { PaymentsService } from '../payments/payments.service';
 import { AnalyticsSession } from '../analytics/analytics-session.entity';
+import { AnalyticsEvent } from '../analytics/analytics-event.entity';
 import { TEAM_TEST_EMAILS } from '../analytics/profitability.service';
 import { MailerService } from '../../mailer/mailer.module';
 import { SeederService } from '../../database/seeder/seeder.service';
@@ -72,6 +73,7 @@ export class AdminController {
     @InjectRepository(Generation) private readonly generations: Repository<Generation>,
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     @InjectRepository(AnalyticsSession) private readonly analyticsSessions: Repository<AnalyticsSession>,
+    @InjectRepository(AnalyticsEvent) private readonly analyticsEvents: Repository<AnalyticsEvent>,
     private readonly mailer: MailerService,
     private readonly paymentsService: PaymentsService,
     private readonly seeder: SeederService,
@@ -336,10 +338,43 @@ export class AdminController {
       .getMany();
     const byGuest = new Map(sessions.map((s) => [s.guestId, s]));
 
+    // Nivelul atins în wizard-ul de comandă, per guest, din analytics_events:
+    // form_start(1) → form_field_change(2, cu nr. câmpuri distincte) →
+    // generation_start(3) → purchase_init(4) → purchase_success(5).
+    const wizardRows = (await this.analyticsEvents.query(
+      `SELECT e."guestId" AS gid,
+         MAX(CASE e.type
+           WHEN 'purchase_success' THEN 5
+           WHEN 'purchase_init' THEN 4
+           WHEN 'generation_start' THEN 3
+           WHEN 'form_field_change' THEN 2
+           WHEN 'form_start' THEN 1
+           ELSE 0 END)::int AS stage,
+         COUNT(DISTINCT e.props->>'field') FILTER (WHERE e.type='form_field_change')::int AS fields,
+         MAX(e."createdAt") FILTER (WHERE e.type IN
+           ('form_start','form_field_change','generation_start','purchase_init','purchase_success')
+         ) AS last_at
+       FROM analytics_events e
+       WHERE e."guestId" = ANY($1::uuid[])
+       GROUP BY 1`,
+      [guestIds],
+    )) as Array<{ gid: string; stage: number; fields: number; last_at: Date | string | null }>;
+    const wizardByGuest = new Map(
+      wizardRows.map((r) => [
+        r.gid,
+        {
+          stage: Number(r.stage) || 0,
+          fieldsTouched: Number(r.fields) || 0,
+          lastEventAt: r.last_at ? new Date(r.last_at).toISOString() : null,
+        },
+      ]),
+    );
+
     return guests.map((g) => {
       const s = byGuest.get(g.id);
       return {
         ...g,
+        wizard: wizardByGuest.get(g.id) ?? null,
         analytics: s
           ? {
               country: s.country,

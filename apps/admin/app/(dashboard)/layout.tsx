@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import {
+  Activity,
   AlertTriangle,
   BarChart3,
   BookOpen,
@@ -13,7 +14,6 @@ import {
   Database,
   FileText,
   FolderCog,
-  Gift,
   Globe,
   Inbox,
   LayoutDashboard,
@@ -74,8 +74,10 @@ function isGroup(e: NavEntry): e is NavGroup {
 }
 
 /**
- * Sidebar DESKTOP (cerință 2026-07-07): items principale + două grupuri
- * colapsabile („Administrare", „Gestionare") care strâng restul paginilor.
+ * Sidebar DESKTOP (cerință 2026-07-07, v2): items principale + trei grupuri
+ * colapsabile. Pe „Toate site-urile" aceeași structură primește și paginile
+ * globale (Suno credits / Lyrics / Settings în Platformă, Database în
+ * Monitorizare) — copiii per-site dispar automat prin filtrarea pe scope.
  */
 const DESKTOP_NAV: NavEntry[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, scope: 'both' },
@@ -92,29 +94,35 @@ const DESKTOP_NAV: NavEntry[] = [
     children: [
       { href: '/users', label: 'Utilizatori', icon: Users, scope: 'both' },
       { href: '/clienti', label: 'Clienți', icon: Contact, scope: 'both' },
-      { href: '/inbox/knowledge', label: 'Knowledge', icon: BookOpen, scope: 'per-site' },
+      { href: '/generations', label: 'Generări', icon: Music2, scope: 'both' },
+      { href: '/guests', label: 'Guests', icon: Users2, scope: 'both' },
+      { href: '/marketing', label: 'Email marketing', icon: Megaphone, scope: 'both' },
     ],
   },
   {
-    key: 'gestionare',
-    label: 'Gestionare',
+    key: 'platforma',
+    label: 'Platformă',
     icon: FolderCog,
     children: [
-      { href: '/seo-pages', label: 'SEO articles', icon: FileText, scope: 'per-site' },
-      { href: '/generations', label: 'Generations', icon: Music2, scope: 'both' },
-      { href: '/site-demos', label: 'Demo-uri ascultă', icon: Music2, scope: 'per-site' },
-      { href: '/gift-codes', label: 'Gift codes', icon: Gift, scope: 'per-site' },
-      { href: '/marketing', label: 'Marketing', icon: Megaphone, scope: 'both' },
-      { href: '/emails', label: 'Emails trimise', icon: Send, scope: 'both' },
+      { href: '/site-demos', label: 'Demo-uri', icon: Music2, scope: 'per-site' },
       { href: '/ai-memory', label: 'AI Memory', icon: BookOpen, scope: 'both' },
-      { href: '/ai-monitor', label: 'AI Monitor', icon: Terminal, scope: 'both' },
-      { href: '/guests', label: 'Guests', icon: Users2, scope: 'both' },
+      { href: '/inbox/knowledge', label: 'Knowledge', icon: BookOpen, scope: 'per-site' },
+      { href: '/seo-pages', label: 'SEO articles', icon: FileText, scope: 'per-site' },
       { href: '/suno', label: 'Suno credits', icon: Coins, scope: 'global' },
       { href: '/lyrics', label: 'Lyrics (AI)', icon: Mic2, scope: 'global' },
-      { href: '/errors', label: 'Errors', icon: AlertTriangle, scope: 'both' },
-      { href: '/database', label: 'Database', icon: Database, scope: 'global' },
-      { href: '/terminal', label: 'Claude Ops', icon: SquareTerminal, scope: 'both' },
       { href: '/settings', label: 'Settings', icon: SettingsIcon, scope: 'global' },
+    ],
+  },
+  {
+    key: 'monitorizare',
+    label: 'Monitorizare',
+    icon: Activity,
+    children: [
+      { href: '/ai-monitor', label: 'AI Monitor', icon: Terminal, scope: 'both' },
+      { href: '/emails', label: 'Emails trimise', icon: Send, scope: 'both' },
+      { href: '/errors', label: 'Errors', icon: AlertTriangle, scope: 'both' },
+      { href: '/terminal', label: 'Claude Ops', icon: SquareTerminal, scope: 'both' },
+      { href: '/database', label: 'Database', icon: Database, scope: 'global' },
     ],
   },
   { href: '/site', label: 'Acest site', icon: Globe, scope: 'per-site' },
@@ -126,7 +134,7 @@ const MOBILE_NAV: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, scope: 'both' },
   { href: '/analytics', label: 'Analytics', icon: BarChart3, scope: 'both' },
   { href: '/chat', label: 'Chat', icon: MessageSquare, scope: 'both' },
-  { href: '/generations', label: 'Generations', icon: Music2, scope: 'both' },
+  { href: '/generations', label: 'Generări', icon: Music2, scope: 'both' },
   { href: '/payments', label: 'Payments', icon: CreditCard, scope: 'both' },
   { href: '/promo', label: 'Promo', icon: Tag, scope: 'both' },
   { href: '/emails', label: 'Emails trimise', icon: Send, scope: 'both' },

@@ -95,6 +95,8 @@ services:
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
       MAIL_CRED_KEY: ${MAIL_CRED_KEY:-}
+      # Gate suplimentar pe /admin/database (aceleași user:parolă ca terminalul ops).
+      OPS_TERMINAL_CREDENTIAL: ${OPS_TERMINAL_CREDENTIAL:-}
       MAIL_ATTACH_DIR: /app/mail-attach
       MAIL_POLL_INTERVAL_MS: ${MAIL_POLL_INTERVAL_MS:-60000}
       GA4_MEASUREMENT_ID: ${NEXT_PUBLIC_GA_ID:-}

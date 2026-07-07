@@ -124,8 +124,16 @@ export class AdminSiteDemosController {
   constructor(private readonly demos: SiteDemosService) {}
 
   @Get()
-  async list(@Query('siteId') siteId?: string) {
-    const items = await this.demos.listAdmin(siteId || undefined);
+  async list(
+    @Query('siteId') siteId: string | undefined,
+    @CurrentSiteId() ctxSiteId: string | null,
+  ) {
+    // Demo-urile sunt strict per-site (cerință 2026-07-07): fără query explicit
+    // cădem pe site-ul din selector (header x-site-id); fără niciunul NU mai
+    // returnăm dump-ul cross-site — alegerea unui site e obligatorie.
+    const effective = siteId || ctxSiteId || undefined;
+    if (!effective) return { items: [] };
+    const items = await this.demos.listAdmin(effective);
     return { items };
   }
 

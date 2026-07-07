@@ -4,6 +4,20 @@ import axios, { AxiosError, AxiosInstance, AxiosRequestConfig } from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
 const TOKEN_KEY = 'mc_admin_token';
+/** Credențialul ops (user:parolă, ca la terminalul Claude Ops) pentru zona /admin/database.
+ *  Ținut în sessionStorage — se cere din nou la fiecare sesiune de browser. */
+const OPS_CRED_KEY = 'mc_ops_credential';
+
+export function getOpsCredential(): string | null {
+  if (typeof window === 'undefined') return null;
+  return window.sessionStorage.getItem(OPS_CRED_KEY);
+}
+
+export function setOpsCredential(cred: string | null): void {
+  if (typeof window === 'undefined') return;
+  if (cred) window.sessionStorage.setItem(OPS_CRED_KEY, cred);
+  else window.sessionStorage.removeItem(OPS_CRED_KEY);
+}
 
 export function getAdminToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -58,6 +72,13 @@ class HttpClient {
         if (!isAuthCall) {
           const siteId = window.localStorage.getItem('mc_admin_site');
           if (siteId) config.headers['x-site-id'] = siteId;
+        }
+        // Zona /admin/database e gate-uită suplimentar cu credențialul ops
+        // (OpsCredentialGuard pe backend). Backend-ul răspunde 403
+        // OPS_CREDENTIAL_REQUIRED când lipsește/e greșit.
+        if (/^\/?admin\/database\b/.test(url)) {
+          const cred = getOpsCredential();
+          if (cred) config.headers['x-ops-credential'] = cred;
         }
       }
       return config;

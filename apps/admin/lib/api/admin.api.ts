@@ -2,7 +2,6 @@ import { http } from '../http/client';
 import type {
   AdminError,
   AdminGeneration,
-  AdminGiftCode,
   AdminGuest,
   AdminPayment,
   AdminPromoCode,
@@ -670,12 +669,3 @@ export class ErrorsApi {
   }
 }
 
-export class GiftCodesApi {
-  static list(): Promise<AdminGiftCode[]> { return http.get('/admin/gift-codes'); }
-  static setActive(id: string, active: boolean): Promise<unknown> {
-    return http.patch(`/admin/gift-codes/${id}/active`, { active });
-  }
-  static extend(id: string, days: number): Promise<unknown> {
-    return http.patch(`/admin/gift-codes/${id}/extend`, { days });
-  }
-}

@@ -27,6 +27,40 @@ function flagEmoji(countryCode: string | null): string {
   return String.fromCodePoint(A + cc.charCodeAt(0) - 65, A + cc.charCodeAt(1) - 65);
 }
 
+/** Progresul în wizard-ul de comandă: badge + bară cu 5 segmente. */
+function WizardProgress({
+  wizard,
+}: {
+  wizard: { stage: number; fieldsTouched: number; lastEventAt: string | null } | null | undefined;
+}) {
+  const stage = wizard?.stage ?? 0;
+  const labels: Array<{ text: string; variant: 'muted' | 'secondary' | 'default' | 'success' }> = [
+    { text: 'Doar vizită', variant: 'muted' },
+    { text: 'Formular deschis', variant: 'secondary' },
+    { text: `Completează (${wizard?.fieldsTouched ?? 0} câmpuri)`, variant: 'secondary' },
+    { text: 'Comandă creată', variant: 'default' },
+    { text: 'La plată', variant: 'default' },
+    { text: 'A plătit', variant: 'success' },
+  ];
+  const l = labels[Math.min(stage, 5)];
+  return (
+    <div className="flex flex-col gap-1 min-w-[120px]">
+      <Badge variant={l.variant} className="w-fit whitespace-nowrap">{l.text}</Badge>
+      <div className="flex gap-0.5">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <span
+            key={i}
+            className={
+              'h-1 w-4 rounded-full ' +
+              (i < stage ? (stage >= 5 ? 'bg-success' : 'bg-primary') : 'bg-secondary')
+            }
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function GuestsPage() {
   const { data, loading: isLoading } = useAsync(() => AdminApi.guests(), []);
   const { isAllSelected } = useSitesMap();
@@ -49,6 +83,7 @@ export default function GuestsPage() {
               <TableHead>Locație</TableHead>
               <TableHead>Device</TableHead>
               <TableHead>Sursă</TableHead>
+              <TableHead>Wizard</TableHead>
               <TableHead className="text-right">Vizite</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>ID</TableHead>
@@ -96,6 +131,15 @@ export default function GuestsPage() {
                     ) : (
                       <span className="text-muted-foreground">direct</span>
                     )}
+                  </TableCell>
+                  <TableCell
+                    title={
+                      g.wizard?.lastEventAt
+                        ? `Ultima acțiune în wizard: ${format(new Date(g.wizard.lastEventAt), "d MMM yyyy 'la' HH:mm", { locale: ro })}`
+                        : undefined
+                    }
+                  >
+                    <WizardProgress wizard={g.wizard} />
                   </TableCell>
                   <TableCell className="text-xs text-right font-mono tabular-nums">
                     {a?.pageViews ?? 0}

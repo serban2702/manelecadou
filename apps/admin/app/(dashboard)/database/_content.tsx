@@ -1,18 +1,23 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   Database,
   Download,
   FlaskConical,
   HardDriveDownload,
+  KeyRound,
   Plus,
   RefreshCw,
+  ShieldAlert,
   Trash2,
   Undo2,
 } from 'lucide-react';
 import { DatabaseApi, type DbBackup } from '@/lib/api';
+import { setOpsCredential } from '@/lib/http/client';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useAsync } from '@/lib/hooks/use-async';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -50,7 +55,102 @@ function fmtDate(iso: string): string {
   });
 }
 
+/**
+ * Zonă protejată exact ca terminalul Claude Ops (cerință 2026-07-07): pe lângă
+ * JWT-ul de admin, backend-ul (OpsCredentialGuard) cere user:parolă din
+ * OPS_TERMINAL_CREDENTIAL. Verificăm cu un info() — 403 = gate; altfel intrăm.
+ */
 export default function DatabaseAdminPage() {
+  const [unlocked, setUnlocked] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    DatabaseApi.info()
+      .then(() => setUnlocked(true))
+      .catch((e) => {
+        const status = (e as { status?: number }).status;
+        // Doar 403 = credential ops lipsă/greșit. Alte erori le lăsăm să apară
+        // în pagină (nu blocăm accesul pentru un 5xx tranzitoriu).
+        setUnlocked(status === 403 ? false : true);
+      });
+  }, []);
+
+  if (unlocked === null) {
+    return (
+      <div>
+        <PageHeader title="Database" description="Se verifică accesul…" />
+        <Skeleton className="h-72 w-full" />
+      </div>
+    );
+  }
+  if (!unlocked) return <OpsCredentialGate onUnlocked={() => setUnlocked(true)} />;
+  return <DatabaseAdminInner />;
+}
+
+/** Formular de deblocare — aceleași user + parolă ca la terminalul web (ttyd). */
+function OpsCredentialGate({ onUnlocked }: { onUnlocked: () => void }) {
+  const { toast } = useToast();
+  const [user, setUser] = useState('');
+  const [pass, setPass] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function unlock() {
+    if (!user.trim() || !pass) {
+      toast({ variant: 'destructive', title: 'Completează userul și parola' });
+      return;
+    }
+    setBusy(true);
+    setOpsCredential(`${user.trim()}:${pass}`);
+    try {
+      await DatabaseApi.info();
+      onUnlocked();
+    } catch {
+      setOpsCredential(null);
+      toast({ variant: 'destructive', title: 'Credențiale greșite', description: 'Folosește userul și parola de la terminalul Claude Ops.' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <PageHeader title="Database" description="Zonă protejată — backup, restore și reset pe baza de date" />
+      <div className="max-w-md mx-auto mt-10">
+        <Card className="surface">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ShieldAlert className="h-5 w-5 text-primary" /> Acces restricționat
+            </CardTitle>
+            <CardDescription>
+              Pagina de Database e protejată la fel ca terminalul Claude Ops. Introdu
+              aceleași user și parolă (Basic Auth-ul terminalului).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>User</Label>
+              <Input value={user} onChange={(e) => setUser(e.target.value)} autoFocus autoComplete="off" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Parolă</Label>
+              <Input
+                type="password"
+                value={pass}
+                onChange={(e) => setPass(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void unlock(); }}
+                autoComplete="off"
+              />
+            </div>
+            <Button className="w-full" onClick={unlock} loading={busy}>
+              <KeyRound className="h-4 w-4" /> Deblochează
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function DatabaseAdminInner() {
   const { toast } = useToast();
   const { data: info } = useAsync(() => DatabaseApi.info(), []);
   const { data: backups, loading, refetch } = useAsync(() => DatabaseApi.listBackups(), [], {

@@ -55,6 +55,14 @@ export interface AdminGuest {
   createdAt: string;
   lastSeenAt: string;
   siteId?: string | null;
+  /** Nivelul atins în wizard-ul de comandă (agregat din analytics_events).
+   *  stage: 0=doar vizită, 1=formular deschis, 2=completează câmpuri,
+   *  3=comandă creată, 4=a ajuns la plată, 5=a plătit. */
+  wizard?: {
+    stage: number;
+    fieldsTouched: number;
+    lastEventAt: string | null;
+  } | null;
   /** Date din cea mai recentă analytics_session asociată guestului. */
   analytics?: {
     country: string | null;
@@ -315,15 +323,6 @@ export interface AdminOutboundEmail {
   openReplaySessionId: string | null;
   createdAt: string;
   finalizedAt: string | null;
-}
-
-export interface AdminGiftCode {
-  id: string; code: string; tier: 'single' | 'pack3' | 'pack10';
-  usesLeft: number; totalUses: number;
-  purchasedByEmail: string | null; purchasedByUserId: string | null;
-  lastRedeemedAt: string | null;
-  validUntil: string; active: boolean; createdAt: string;
-  siteId?: string | null;
 }
 
 // ====== Mail Hub ======
