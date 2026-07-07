@@ -2294,19 +2294,44 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       }
     }
 
+    // Snapshot draftul de versuri existent ÎNAINTE de Object.assign, ca să putem
+    // distinge „user a lipit versuri genuin noi" de „AI re-persistă propriul draft".
+    const prevCustomLyrics = (state.data.customLyrics ?? '').trim();
+
     Object.assign(state.data, updates);
 
-    // INVALIDARE draft versuri stale (BUG conv 59b40eb5, 2026-07-06): dacă s-a generat
-    // deja un draft AI de versuri și userul adaugă/schimbă povestea (message) DUPĂ aceea,
-    // draftul nu mai reflectă ce a spus clientul. Păstrat = finalize trimite versuri
-    // generice/vechi la generare (în conv 59b40eb5: draft generat pe „pentru soțul meu",
-    // apoi toată povestea — Adisa, replicile, mulțumirea — a intrat în message, dar
-    // melodia s-a scris pe draftul vechi). Îl ștergem ca finalize să rescrie din message.
     let lyricsInvalidated = false;
+
+    // Pas 1 — decide OWNERSHIP-ul versurilor primite prin wizard_update.
+    // Versurile „owned de user" (lipite explicit de el) sunt sacre și nu se invalidează
+    // la schimbarea poveștii, deci ștergem semnalul de invalidare (lyricsBasedOnMessage).
+    // DAR: Irina (AI) apelează des wizard_update cu customLyrics = EXACT draftul pe care
+    // tocmai l-a generat cu generate_lyrics. Dacă tratăm și asta ca „owned", spălăm
+    // lyricsBasedOnMessage și invalidarea de la Pas 2 nu se mai declanșează NICIODATĂ.
+    // BUG conv 7b98fe03 (2026-07-07): draft AI pe „Vero + Mihaela" re-salvat prin
+    // wizard_update → flag pierdut → cererea ulterioară „adaugă și pe Alin" a intrat doar
+    // în message și a fost ignorată la generare (customLyrics stale au prioritate absolută
+    // în lyrics.module.ts writeDraft). Deci: NU spăla flag-ul dacă versurile primite sunt
+    // doar re-persistarea draftului AI existent (overlap mare cu draftul deja invalidabil).
     if (typeof args.customLyrics === 'string' && args.customLyrics.length > 10) {
-      // Userul a lipit versurile LUI → sunt versuri „owned", nu draft AI de invalidat.
-      state.lyricsBasedOnMessage = undefined;
-    } else if (
+      const incoming = (args.customLyrics as string).trim();
+      const isRepersistedAiDraft =
+        state.lyricsBasedOnMessage != null &&
+        prevCustomLyrics.length > 0 &&
+        textOverlap(incoming, prevCustomLyrics) >= 0.6;
+      if (!isRepersistedAiDraft) {
+        // Versuri genuin noi, lipite de user → owned, nu draft AI de invalidat.
+        state.lyricsBasedOnMessage = undefined;
+      }
+    }
+
+    // Pas 2 — INVALIDARE draft versuri stale (BUG conv 59b40eb5, 2026-07-06): dacă s-a
+    // generat deja un draft AI de versuri și userul adaugă/schimbă povestea (message) DUPĂ
+    // aceea, draftul nu mai reflectă ce a spus clientul. Păstrat = finalize trimite versuri
+    // generice/vechi la generare (în conv 59b40eb5: draft generat pe „pentru soțul meu",
+    // apoi toată povestea — Adisa, replicile, mulțumirea — a intrat în message, dar melodia
+    // s-a scris pe draftul vechi). Îl ștergem ca finalize să rescrie din message.
+    if (
       typeof updates.message === 'string' &&
       state.lyricsBasedOnMessage != null &&
       state.data.customLyrics &&
