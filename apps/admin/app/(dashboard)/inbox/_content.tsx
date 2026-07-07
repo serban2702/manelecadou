@@ -180,7 +180,7 @@ export default function InboxPage() {
     <div className="flex flex-col h-[calc(100vh-3rem)] -my-2">
       <div className="flex items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold">Inbox</h1>
+          <h1 className="text-xl font-semibold">Email</h1>
           {connected ? (
             <Badge variant="secondary" className="gap-1 text-emerald-500"><Wifi className="h-3 w-3" /> live</Badge>
           ) : (

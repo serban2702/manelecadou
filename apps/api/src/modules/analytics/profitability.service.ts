@@ -13,7 +13,7 @@ import { SettingsService } from '../settings/settings.service';
  * Emailurile echipei — plățile lor de test se IGNORĂ complet (nici venit, nici
  * comision Stripe). Veniturile afișate sunt deja fără ele.
  */
-const TEAM_TEST_EMAILS = [
+export const TEAM_TEST_EMAILS = [
   'serban2702@gmail.com',
   'robertsmara1@gmail.com',
   'contact@manelecadou.ro',

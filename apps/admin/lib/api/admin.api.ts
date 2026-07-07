@@ -7,6 +7,7 @@ import type {
   AdminPayment,
   AdminPromoCode,
   AdminStats,
+  AdminStatsRange,
   AdminUser,
 } from '../types';
 
@@ -321,8 +322,16 @@ export class AdminApi {
   static userSetRole(id: string, role: 'user' | 'admin'): Promise<unknown> {
     return http.patch(`/admin/users/${id}/role`, { role });
   }
+  /** Creare user din admin (inclusiv admini). siteId obligatoriu — userii sunt unici pe (siteId, email). */
+  static userCreate(body: { email: string; name?: string; role: 'user' | 'admin'; siteId: string }): Promise<AdminUser> {
+    return http.post('/admin/users', body);
+  }
   static userResetDemo(id: string): Promise<unknown> {
     return http.post(`/admin/users/${id}/reset-demo`);
+  }
+  /** KPI + serii zilnice pe interval pentru dashboard (sume normalizate RON, fără plățile echipei). */
+  static statsRange(range: { from: string; to: string }): Promise<AdminStatsRange> {
+    return http.get(`/admin/stats/range?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`);
   }
   static generationForceUnlock(id: string): Promise<unknown> {
     return http.post(`/admin/generations/${id}/force-unlock`);

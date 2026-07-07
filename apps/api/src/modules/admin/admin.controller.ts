@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
-import { IsEmail, IsEnum, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AdminGuard } from '../../common/admin.guard';
@@ -11,6 +11,7 @@ import { Generation } from '../generations/generation.entity';
 import { Payment } from '../payments/payment.entity';
 import { PaymentsService } from '../payments/payments.service';
 import { AnalyticsSession } from '../analytics/analytics-session.entity';
+import { TEAM_TEST_EMAILS } from '../analytics/profitability.service';
 import { MailerService } from '../../mailer/mailer.module';
 import { SeederService } from '../../database/seeder/seeder.service';
 import { SitesService } from '../sites/sites.service';
@@ -30,6 +31,37 @@ class TestMailDto {
   @MinLength(1)
   body!: string;
 }
+
+class CreateUserDto {
+  @IsEmail()
+  email!: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  name?: string;
+  @IsIn(['user', 'admin'])
+  role!: 'user' | 'admin';
+  /** Obligatoriu: userii sunt unici pe (siteId, email), iar magic link-ul îl caută
+   *  scoped pe site-ul rezolvat din Host. Pentru admini = site-ul default. */
+  @IsUUID()
+  siteId!: string;
+}
+
+/**
+ * Statisticile dashboard-ului „încep" pe 25 mai 2026 — la fel ca analytics
+ * (vezi ANALYTICS_EPOCH în analytics.controller.ts): înainte = teste interne.
+ */
+const STATS_EPOCH = new Date('2026-05-25T00:00:00+03:00');
+
+/** Suma plății în bani RON indiferent de valută (alias `t`) — aceeași logică cu
+ *  ProfitabilityService.AMOUNT_RON (amountRonCents → RON → curs Stripe → fallback EUR). */
+const AMOUNT_RON_SQL = `
+  CASE
+    WHEN t."amountRonCents" IS NOT NULL THEN t."amountRonCents"
+    WHEN upper(t.currency) = 'RON' THEN t.amount
+    WHEN t."exchangeRateToRon" IS NOT NULL THEN round(t.amount * t."exchangeRateToRon")::int
+    ELSE round(t.amount * 4.97)::int
+  END`;
 
 @UseGuards(AdminGuard)
 @Controller('admin')
@@ -119,6 +151,157 @@ export class AdminController {
       paidPayments,
       revenue: { totalCents: totalRevenueCents, last7dCents: revenue7dCents },
       conversionRate,
+    };
+  }
+
+  /**
+   * KPI-uri + serii zilnice pe un interval ales (dashboard-ul nou). Sumele sunt
+   * normalizate în bani RON (cross-currency) și EXCLUD plățile de test ale echipei
+   * (aceeași listă ca raportul de profitabilitate). Zilele = Europe/Bucharest.
+   */
+  @Get('stats/range')
+  async statsRange(
+    @Query('from') fromRaw: string | undefined,
+    @Query('to') toRaw: string | undefined,
+    @CurrentSiteId() siteId: string | null,
+  ) {
+    const to = toRaw ? new Date(toRaw) : new Date();
+    let from = fromRaw ? new Date(fromRaw) : STATS_EPOCH;
+    if (isNaN(from.getTime())) from = STATS_EPOCH;
+    if (from.getTime() < STATS_EPOCH.getTime()) from = STATS_EPOCH;
+    const toSafe = isNaN(to.getTime()) ? new Date() : to;
+
+    const params: unknown[] = [from.toISOString(), toSafe.toISOString()];
+    const siteFilter = siteId ? `AND t."siteId" = $3` : '';
+    if (siteId) params.push(siteId);
+
+    const emailList = TEAM_TEST_EMAILS.map((e) => `'${e}'`).join(',');
+    // Plățile de test ale echipei ies din toate sumele/counturile de payments.
+    const payBase = `
+      FROM payments t
+      LEFT JOIN guest_sessions gst ON gst.id = t."guestId"
+      LEFT JOIN users u ON u.id = t."userId"
+      WHERE t."createdAt" BETWEEN $1 AND $2 ${siteFilter}
+        AND lower(COALESCE(t."customerEmail", gst.email, u.email, '')) NOT IN (${emailList})`;
+    const AMOUNT = AMOUNT_RON_SQL;
+
+    const [payKpi, paySeries, genKpi, genSeries, userSeries, usersCount, guestsCount] =
+      await Promise.all([
+        this.payments.query(
+          `SELECT
+             COALESCE(SUM(${AMOUNT}) FILTER (WHERE t.status='paid'),0)::bigint AS revenue,
+             COUNT(*) FILTER (WHERE t.status='paid')::int AS paid,
+             COUNT(*) FILTER (WHERE t.status='failed')::int AS failed,
+             COUNT(*) FILTER (WHERE t.status='refunded')::int AS refunded,
+             COUNT(*) FILTER (WHERE t.status='pending')::int AS pending
+           ${payBase}`,
+          params,
+        ),
+        this.payments.query(
+          `SELECT to_char((t."createdAt" AT TIME ZONE 'Europe/Bucharest')::date,'YYYY-MM-DD') AS day,
+             COALESCE(SUM(${AMOUNT}) FILTER (WHERE t.status='paid'),0)::bigint AS revenue,
+             COUNT(*) FILTER (WHERE t.status='paid')::int AS orders
+           ${payBase} GROUP BY 1 ORDER BY 1`,
+          params,
+        ),
+        this.generations.query(
+          `SELECT COUNT(*)::int AS total,
+             COUNT(*) FILTER (WHERE t.type='demo')::int AS demos,
+             COUNT(*) FILTER (WHERE t.type='full')::int AS fulls,
+             COUNT(*) FILTER (WHERE t.status='succeeded')::int AS succeeded,
+             COUNT(*) FILTER (WHERE t.status='failed')::int AS failed,
+             COUNT(*) FILTER (WHERE t.status NOT IN ('succeeded','failed'))::int AS running,
+             COUNT(*) FILTER (WHERE t."paidUnlocked")::int AS "paidUnlocked"
+           FROM generations t WHERE t."createdAt" BETWEEN $1 AND $2 ${siteFilter}`,
+          params,
+        ),
+        this.generations.query(
+          `SELECT to_char((t."createdAt" AT TIME ZONE 'Europe/Bucharest')::date,'YYYY-MM-DD') AS day,
+             COUNT(*)::int AS generations
+           FROM generations t WHERE t."createdAt" BETWEEN $1 AND $2 ${siteFilter}
+           GROUP BY 1 ORDER BY 1`,
+          params,
+        ),
+        this.users.query(
+          `SELECT to_char((t."createdAt" AT TIME ZONE 'Europe/Bucharest')::date,'YYYY-MM-DD') AS day,
+             COUNT(*)::int AS users
+           FROM users t WHERE t."createdAt" BETWEEN $1 AND $2 ${siteFilter}
+           GROUP BY 1 ORDER BY 1`,
+          params,
+        ),
+        this.users.count({
+          where: siteId ? { siteId } : {},
+        }),
+        this.guests.count({ where: siteId ? { siteId } : {} }),
+      ]);
+
+    // Breakdown per site — doar în scope „Toate site-urile".
+    let bySite: Array<{ siteId: string | null; revenueRonCents: number; orders: number }> = [];
+    if (!siteId) {
+      const rows = (await this.payments.query(
+        `SELECT t."siteId" AS site_id,
+           COALESCE(SUM(${AMOUNT}) FILTER (WHERE t.status='paid'),0)::bigint AS revenue,
+           COUNT(*) FILTER (WHERE t.status='paid')::int AS orders
+         ${payBase} GROUP BY 1 ORDER BY 2 DESC`,
+        params,
+      )) as Array<{ site_id: string | null; revenue: string; orders: number }>;
+      bySite = rows.map((r) => ({
+        siteId: r.site_id,
+        revenueRonCents: parseInt(r.revenue, 10) || 0,
+        orders: Number(r.orders) || 0,
+      }));
+    }
+
+    // Merge seriile pe zile (union de chei, zile lipsă = 0).
+    const dayMap = new Map<string, { day: string; revenueRonCents: number; orders: number; generations: number; newUsers: number }>();
+    const ensure = (day: string) => {
+      let e = dayMap.get(day);
+      if (!e) { e = { day, revenueRonCents: 0, orders: 0, generations: 0, newUsers: 0 }; dayMap.set(day, e); }
+      return e;
+    };
+    for (const r of paySeries as Array<{ day: string; revenue: string; orders: number }>) {
+      const e = ensure(r.day);
+      e.revenueRonCents = parseInt(r.revenue, 10) || 0;
+      e.orders = Number(r.orders) || 0;
+    }
+    for (const r of genSeries as Array<{ day: string; generations: number }>) {
+      ensure(r.day).generations = Number(r.generations) || 0;
+    }
+    for (const r of userSeries as Array<{ day: string; users: number }>) {
+      ensure(r.day).newUsers = Number(r.users) || 0;
+    }
+    const series = Array.from(dayMap.values()).sort((a, b) => (a.day < b.day ? -1 : 1));
+
+    const pk = (payKpi as Array<Record<string, unknown>>)[0] ?? {};
+    const gk = (genKpi as Array<Record<string, unknown>>)[0] ?? {};
+    const revenue = parseInt(String(pk.revenue ?? '0'), 10) || 0;
+    const paid = Number(pk.paid) || 0;
+    const demos = Number(gk.demos) || 0;
+    const paidUnlocked = Number(gk.paidUnlocked) || 0;
+
+    return {
+      range: { from: from.toISOString(), to: toSafe.toISOString() },
+      revenue: {
+        totalRonCents: revenue,
+        paidCount: paid,
+        aovRonCents: paid > 0 ? Math.round(revenue / paid) : 0,
+        failedCount: Number(pk.failed) || 0,
+        refundedCount: Number(pk.refunded) || 0,
+        pendingCount: Number(pk.pending) || 0,
+      },
+      totals: { users: usersCount, guests: guestsCount },
+      generations: {
+        total: Number(gk.total) || 0,
+        demos,
+        fulls: Number(gk.fulls) || 0,
+        succeeded: Number(gk.succeeded) || 0,
+        failed: Number(gk.failed) || 0,
+        running: Number(gk.running) || 0,
+        paidUnlocked,
+      },
+      conversionRate: demos > 0 ? Math.round((paidUnlocked / demos) * 1000) / 10 : 0,
+      series,
+      bySite,
     };
   }
 
@@ -794,6 +977,33 @@ export class AdminController {
   async deleteGeneration(@Param('id') id: string) {
     await this.generations.delete({ id });
     return { ok: true };
+  }
+
+  /**
+   * Creare user din admin (inclusiv admini). Userii sunt unici pe (siteId, email),
+   * deci site-ul e obligatoriu. ATENȚIE pentru admini: magic link-ul cerut de pe
+   * admin.manelecadou.ro caută userul pe site-ul DEFAULT — creează adminii acolo,
+   * altfel la login se creează un duplicat cu role='user'.
+   */
+  @Post('users')
+  async createUser(@Body() body: CreateUserDto) {
+    const email = body.email.toLowerCase().trim();
+    const site = await this.sites.findById(body.siteId);
+    if (!site) throw new BadRequestException('Site inexistent');
+    const existing = await this.users.findOne({ where: { email, siteId: site.id } });
+    if (existing) {
+      throw new BadRequestException(
+        `Există deja un user cu emailul ${email} pe site-ul ${site.domain}`,
+      );
+    }
+    const user = this.users.create({
+      email,
+      name: body.name?.trim() || null,
+      role: body.role === 'admin' ? 'admin' : 'user',
+      siteId: site.id,
+    });
+    await this.users.save(user);
+    return user;
   }
 
   @Patch('users/:id/role')

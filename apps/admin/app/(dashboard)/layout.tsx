@@ -5,12 +5,14 @@ import {
   AlertTriangle,
   BarChart3,
   BookOpen,
+  ChevronRight,
   Coins,
   Contact,
   CreditCard,
   Crown,
   Database,
   FileText,
+  FolderCog,
   Gift,
   Globe,
   Inbox,
@@ -25,6 +27,7 @@ import {
   Receipt,
   Send,
   Settings as SettingsIcon,
+  ShieldCheck,
   SquareTerminal,
   Tag,
   Terminal,
@@ -51,43 +54,87 @@ type NavItem = {
   icon: React.ComponentType<{ className?: string }>;
   /**
    *  scope = 'global'   → vizibil DOAR în „Toate site-urile" (Sites/Database/Settings/Suno credits — operează la nivel de DB/cont).
-   *  scope = 'per-site' → vizibil DOAR când e selectat un site (Chat/Inbox/Knowledge — backend-ul refuză cross-tenant).
+   *  scope = 'per-site' → vizibil DOAR când e selectat un site (Knowledge/SEO/Gift codes — backend-ul refuză cross-tenant).
    *  scope = 'both'     → mereu vizibil (datele se filtrează automat după selector).
    */
   scope: NavScope;
-  /** `mobile: true` → secțiunea apare și pe telefon. Restul sunt ascunse sub `md`. */
-  mobile?: boolean;
 };
 
-const NAV: NavItem[] = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard, scope: 'both', mobile: true },
-  { href: '/analytics', label: 'Analytics', icon: BarChart3, scope: 'both', mobile: true },
-  { href: '/chat', label: 'Chat', icon: MessageSquare, scope: 'both', mobile: true },
-  { href: '/ai-memory', label: 'AI Memory', icon: BookOpen, scope: 'both' },
-  { href: '/ai-monitor', label: 'AI Monitor', icon: Terminal, scope: 'both' },
-  { href: '/inbox', label: 'Inbox', icon: Inbox, scope: 'both' },
-  { href: '/inbox/knowledge', label: 'Knowledge', icon: BookOpen, scope: 'per-site' },
-  { href: '/seo-pages', label: 'SEO articles', icon: FileText, scope: 'per-site' },
-  { href: '/site-demos', label: 'Demo-uri ascultă', icon: Music2, scope: 'per-site' },
-  { href: '/generations', label: 'Generations', icon: Music2, scope: 'both', mobile: true },
-  { href: '/suno', label: 'Suno credits', icon: Coins, scope: 'global' },
-  { href: '/lyrics', label: 'Lyrics (AI)', icon: Mic2, scope: 'global' },
-  { href: '/users', label: 'Users', icon: Users, scope: 'both' },
-  { href: '/guests', label: 'Guests', icon: Users2, scope: 'both' },
-  { href: '/payments', label: 'Payments', icon: CreditCard, scope: 'both', mobile: true },
+type NavGroup = {
+  key: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  children: NavItem[];
+};
+
+type NavEntry = NavItem | NavGroup;
+
+function isGroup(e: NavEntry): e is NavGroup {
+  return 'children' in e;
+}
+
+/**
+ * Sidebar DESKTOP (cerință 2026-07-07): items principale + două grupuri
+ * colapsabile („Administrare", „Gestionare") care strâng restul paginilor.
+ */
+const DESKTOP_NAV: NavEntry[] = [
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, scope: 'both' },
+  { href: '/analytics', label: 'Analytics', icon: BarChart3, scope: 'both' },
+  { href: '/chat', label: 'Chat', icon: MessageSquare, scope: 'both' },
+  { href: '/payments', label: 'Payments', icon: CreditCard, scope: 'both' },
   { href: '/facturare', label: 'Facturare', icon: Receipt, scope: 'both' },
-  { href: '/clienti', label: 'Clienți', icon: Contact, scope: 'both' },
-  { href: '/promo', label: 'Promo', icon: Tag, scope: 'both', mobile: true },
-  { href: '/gift-codes', label: 'Gift codes', icon: Gift, scope: 'per-site' },
-  { href: '/marketing', label: 'Marketing', icon: Megaphone, scope: 'both' },
-  { href: '/emails', label: 'Emails trimise', icon: Send, scope: 'both', mobile: true },
-  { href: '/errors', label: 'Errors', icon: AlertTriangle, scope: 'both' },
-  { href: '/sites', label: 'Toate site-urile', icon: Globe, scope: 'both', mobile: true },
+  { href: '/promo', label: 'Promo', icon: Tag, scope: 'both' },
+  { href: '/inbox', label: 'Email', icon: Inbox, scope: 'both' },
+  {
+    key: 'administrare',
+    label: 'Administrare',
+    icon: ShieldCheck,
+    children: [
+      { href: '/users', label: 'Utilizatori', icon: Users, scope: 'both' },
+      { href: '/clienti', label: 'Clienți', icon: Contact, scope: 'both' },
+      { href: '/inbox/knowledge', label: 'Knowledge', icon: BookOpen, scope: 'per-site' },
+    ],
+  },
+  {
+    key: 'gestionare',
+    label: 'Gestionare',
+    icon: FolderCog,
+    children: [
+      { href: '/seo-pages', label: 'SEO articles', icon: FileText, scope: 'per-site' },
+      { href: '/generations', label: 'Generations', icon: Music2, scope: 'both' },
+      { href: '/site-demos', label: 'Demo-uri ascultă', icon: Music2, scope: 'per-site' },
+      { href: '/gift-codes', label: 'Gift codes', icon: Gift, scope: 'per-site' },
+      { href: '/marketing', label: 'Marketing', icon: Megaphone, scope: 'both' },
+      { href: '/emails', label: 'Emails trimise', icon: Send, scope: 'both' },
+      { href: '/ai-memory', label: 'AI Memory', icon: BookOpen, scope: 'both' },
+      { href: '/ai-monitor', label: 'AI Monitor', icon: Terminal, scope: 'both' },
+      { href: '/guests', label: 'Guests', icon: Users2, scope: 'both' },
+      { href: '/suno', label: 'Suno credits', icon: Coins, scope: 'global' },
+      { href: '/lyrics', label: 'Lyrics (AI)', icon: Mic2, scope: 'global' },
+      { href: '/errors', label: 'Errors', icon: AlertTriangle, scope: 'both' },
+      { href: '/database', label: 'Database', icon: Database, scope: 'global' },
+      { href: '/terminal', label: 'Claude Ops', icon: SquareTerminal, scope: 'both' },
+      { href: '/settings', label: 'Settings', icon: SettingsIcon, scope: 'global' },
+    ],
+  },
   { href: '/site', label: 'Acest site', icon: Globe, scope: 'per-site' },
-  { href: '/database', label: 'Database', icon: Database, scope: 'global' },
-  { href: '/terminal', label: 'Claude Ops', icon: SquareTerminal, scope: 'both', mobile: true },
-  { href: '/settings', label: 'Settings', icon: SettingsIcon, scope: 'global' },
+  { href: '/sites', label: 'Toate site-urile', icon: Globe, scope: 'both' },
 ];
+
+/** Sidebar TELEFON — neschimbat de refactorul desktop (aceleași secțiuni ca înainte). */
+const MOBILE_NAV: NavItem[] = [
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, scope: 'both' },
+  { href: '/analytics', label: 'Analytics', icon: BarChart3, scope: 'both' },
+  { href: '/chat', label: 'Chat', icon: MessageSquare, scope: 'both' },
+  { href: '/generations', label: 'Generations', icon: Music2, scope: 'both' },
+  { href: '/payments', label: 'Payments', icon: CreditCard, scope: 'both' },
+  { href: '/promo', label: 'Promo', icon: Tag, scope: 'both' },
+  { href: '/emails', label: 'Emails trimise', icon: Send, scope: 'both' },
+  { href: '/sites', label: 'Toate site-urile', icon: Globe, scope: 'both' },
+  { href: '/terminal', label: 'Claude Ops', icon: SquareTerminal, scope: 'both' },
+];
+
+const NAV_GROUPS_STORAGE_KEY = 'mc_admin_nav_groups';
 
 /**
  * Layout-ul admin. Wrapper-ul exterior pune SpaRouter în jurul tot — așa orice
@@ -130,6 +177,22 @@ function DashboardShell({ children }: { children: ReactNode }) {
   const closeSidebarOnMobile = () => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
   };
+
+  // Grupurile colapsabile din sidebar-ul desktop (Administrare / Gestionare).
+  // Stare persistată; grupul cu ruta activă se deschide automat la navigare.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(NAV_GROUPS_STORAGE_KEY);
+      if (raw) setOpenGroups(JSON.parse(raw) as Record<string, boolean>);
+    } catch {/* ignore */}
+  }, []);
+  const toggleGroup = (key: string) =>
+    setOpenGroups((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try { localStorage.setItem(NAV_GROUPS_STORAGE_KEY, JSON.stringify(next)); } catch {/* ignore */}
+      return next;
+    });
 
   // Resolve auth state DUPĂ hydration (citirea localStorage e client-only).
   useEffect(() => {
@@ -252,52 +315,111 @@ function DashboardShell({ children }: { children: ReactNode }) {
           {(() => {
             // Filtrare după scope-ul curent — selectorul controlează ce e relevant.
             const isAllScope = selectedSite === ALL_SITES;
-            const visibleNav = NAV.filter((n) => {
+            const scopeVisible = (n: NavItem) => {
               if (n.scope === 'both') return true;
-              if (n.scope === 'global') return isAllScope; // Sites/Database/Settings/Suno credits doar pe „Toate"
-              if (n.scope === 'per-site') return !isAllScope; // Chat/Inbox/Knowledge doar când ai un site
-              return true;
-            });
+              if (n.scope === 'global') return isAllScope; // Database/Settings/Suno credits doar pe „Toate"
+              return !isAllScope; // per-site doar când ai un site selectat
+            };
+
+            const badgeFor = (href: string) =>
+              href === '/chat' ? unreadTotal :
+              href === '/inbox' ? mailUnreadCount :
+              href === '/errors' ? unresolvedErrors : 0;
+
+            // Grupurile își păstrează doar copiii vizibili; grup gol = ascuns.
+            const desktopNav = DESKTOP_NAV
+              .map((e) => (isGroup(e) ? { ...e, children: e.children.filter(scopeVisible) } : e))
+              .filter((e) => (isGroup(e) ? e.children.length > 0 : scopeVisible(e)));
 
             // Cel mai lung href care e prefix al pathname-ului câștigă —
-            // așa /inbox/knowledge marchează doar Knowledge, nu și Inbox.
-            const candidates = visibleNav.filter(
-              (n) => pathname === n.href || (n.href !== '/' && pathname.startsWith(n.href + '/')) || (n.href !== '/' && pathname === n.href),
+            // așa /inbox/knowledge marchează doar Knowledge, nu și Email.
+            const leaves = desktopNav.flatMap((e) => (isGroup(e) ? e.children : [e]));
+            const candidates = leaves.filter(
+              (n) => pathname === n.href || (n.href !== '/' && pathname.startsWith(n.href + '/')),
             );
             const activeHref = candidates.length
               ? candidates.reduce((a, b) => (b.href.length > a.href.length ? b : a)).href
               : pathname === '/' ? '/' : null;
-            return visibleNav.map((n) => {
-            const active = n.href === activeHref;
-            const Icon = n.icon;
-            const badge =
-              n.href === '/chat' ? unreadTotal :
-              n.href === '/inbox' ? mailUnreadCount :
-              n.href === '/errors' ? unresolvedErrors : 0;
+
+            const renderLink = (n: NavItem, indent = false) => {
+              const active = n.href === activeHref;
+              const Icon = n.icon;
+              const badge = badgeFor(n.href);
+              return (
+                <SpaLink
+                  key={n.href}
+                  href={n.href}
+                  onClick={closeSidebarOnMobile}
+                  className={cn(
+                    'group flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors',
+                    indent && 'ml-4 pl-2 border-l border-border/60 rounded-l-none',
+                    active
+                      ? 'bg-primary/15 text-primary font-medium'
+                      : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                  )}
+                >
+                  <Icon className={cn('h-4 w-4 shrink-0 transition-transform', active && 'scale-110')} />
+                  <span className="flex-1 truncate">{n.label}</span>
+                  {badge > 0 && (
+                    <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold px-1">
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  )}
+                </SpaLink>
+              );
+            };
+
             return (
-              <SpaLink
-                key={n.href}
-                href={n.href}
-                onClick={closeSidebarOnMobile}
-                className={cn(
-                  'group flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors',
-                  // Secțiunile fără `mobile` nu apar pe telefon (cerere user).
-                  n.mobile ? 'flex' : 'hidden md:flex',
-                  active
-                    ? 'bg-primary/15 text-primary font-medium'
-                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-                )}
-              >
-                <Icon className={cn('h-4 w-4 shrink-0 transition-transform', active && 'scale-110')} />
-                <span className="flex-1 truncate">{n.label}</span>
-                {badge > 0 && (
-                  <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold px-1">
-                    {badge > 99 ? '99+' : badge}
-                  </span>
-                )}
-              </SpaLink>
+              <>
+                {/* Telefon: lista plată de dinainte de refactor (cerință: doar desktop-ul se schimbă). */}
+                <div className="md:hidden space-y-0.5">
+                  {MOBILE_NAV.filter(scopeVisible).map((n) => renderLink(n))}
+                </div>
+
+                {/* Desktop: items + grupuri colapsabile. */}
+                <div className="hidden md:block space-y-0.5">
+                  {desktopNav.map((e) => {
+                    if (!isGroup(e)) return renderLink(e);
+                    const groupActive = e.children.some((c) => c.href === activeHref);
+                    // Grupul cu ruta activă rămâne deschis chiar dacă a fost strâns.
+                    const open = (openGroups[e.key] ?? false) || groupActive;
+                    const GroupIcon = e.icon;
+                    const groupBadge = e.children.reduce((acc, c) => acc + badgeFor(c.href), 0);
+                    return (
+                      <div key={e.key}>
+                        <button
+                          type="button"
+                          onClick={() => toggleGroup(e.key)}
+                          className={cn(
+                            'w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors',
+                            groupActive && !open
+                              ? 'text-primary font-medium'
+                              : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                          )}
+                          aria-expanded={open}
+                        >
+                          <GroupIcon className="h-4 w-4 shrink-0" />
+                          <span className="flex-1 truncate text-left">{e.label}</span>
+                          {!open && groupBadge > 0 && (
+                            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold px-1">
+                              {groupBadge > 99 ? '99+' : groupBadge}
+                            </span>
+                          )}
+                          <ChevronRight
+                            className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-90')}
+                          />
+                        </button>
+                        {open && (
+                          <div className="mt-0.5 space-y-0.5">
+                            {e.children.map((c) => renderLink(c, true))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             );
-            });
           })()}
         </nav>
 

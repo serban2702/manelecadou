@@ -22,7 +22,16 @@ interface Preset {
   range: () => DateRangeValue;
 }
 
+/** Începutul datelor reale (tracking + ads live) — 25 mai 2026. Backend-ul oricum
+ *  limitează analitica la această zi, deci „Tot timpul" = de atunci încoace. */
+export const DATA_EPOCH = new Date(2026, 4, 25);
+
 const PRESETS: Preset[] = [
+  {
+    key: 'all',
+    label: 'Tot timpul',
+    range: () => ({ from: startOfDay(DATA_EPOCH), to: endOfDay(new Date()) }),
+  },
   { key: 'today', label: 'Azi', range: () => ({ from: startOfDay(new Date()), to: endOfDay(new Date()) }) },
   {
     key: 'yesterday',

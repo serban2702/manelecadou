@@ -9,6 +9,34 @@ export interface AdminStats {
   conversionRate: number;
 }
 
+/** Răspunsul GET /admin/stats/range — KPI + serii zilnice pe interval (dashboard). */
+export interface AdminStatsRange {
+  range: { from: string; to: string };
+  revenue: {
+    totalRonCents: number;
+    paidCount: number;
+    aovRonCents: number;
+    failedCount: number;
+    refundedCount: number;
+    pendingCount: number;
+  };
+  /** Totaluri all-time (nu depind de interval) — contoare de conturi existente. */
+  totals: { users: number; guests: number };
+  generations: {
+    total: number;
+    demos: number;
+    fulls: number;
+    succeeded: number;
+    failed: number;
+    running: number;
+    paidUnlocked: number;
+  };
+  conversionRate: number;
+  series: Array<{ day: string; revenueRonCents: number; orders: number; generations: number; newUsers: number }>;
+  /** Doar în scope „Toate site-urile" — altfel []. */
+  bySite: Array<{ siteId: string | null; revenueRonCents: number; orders: number }>;
+}
+
 export interface AdminUser {
   id: string;
   email: string;

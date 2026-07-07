@@ -43,10 +43,26 @@ function guestIdHeader(req: Request): string | null {
   return typeof v === 'string' && v.length > 0 ? v : null;
 }
 
+/**
+ * Analitica „reală" începe pe 25 mai 2026 (lansarea tracking-ului + ads). Tot ce
+ * e mai vechi = teste interne / date incomplete, care ar polua rapoartele (mai
+ * ales cheltuielile pro-rata din profitabilitate). Orice interval cerut de admin
+ * e limitat la >= această zi.
+ */
+const ANALYTICS_EPOCH_DAY = '2026-05-25';
+const ANALYTICS_EPOCH = new Date('2026-05-25T00:00:00+03:00');
+
 function rangeFromQuery(q: { from?: string; to?: string }): { from: Date; to: Date } {
   const to = q.to ? new Date(q.to) : new Date();
-  const from = q.from ? new Date(q.from) : new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
+  let from = q.from ? new Date(q.from) : new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
+  if (from.getTime() < ANALYTICS_EPOCH.getTime()) from = ANALYTICS_EPOCH;
   return { from, to };
+}
+
+/** Clamp pe zilele locale (`fromDay`) folosite la pro-rata cheltuielilor. */
+function clampDay(day?: string): string | undefined {
+  if (!day) return undefined;
+  return day < ANALYTICS_EPOCH_DAY ? ANALYTICS_EPOCH_DAY : day;
 }
 
 @Controller('analytics')
@@ -126,7 +142,10 @@ export class AnalyticsAdminController {
   profitabilityReport(
     @Query() q: { from?: string; to?: string; fromDay?: string; toDay?: string },
   ) {
-    return this.profitability.compute(rangeFromQuery(q), { fromDay: q.fromDay, toDay: q.toDay });
+    return this.profitability.compute(rangeFromQuery(q), {
+      fromDay: clampDay(q.fromDay),
+      toDay: q.toDay,
+    });
   }
 
   @Get('profit-config')
@@ -147,7 +166,10 @@ export class AnalyticsAdminController {
     @Query() q: { from?: string; to?: string; fromDay?: string; toDay?: string },
     @CurrentSiteId() siteId: string | null,
   ) {
-    return this.adSpend.report(rangeFromQuery(q), siteId, { fromDay: q.fromDay, toDay: q.toDay });
+    return this.adSpend.report(rangeFromQuery(q), siteId, {
+      fromDay: clampDay(q.fromDay),
+      toDay: q.toDay,
+    });
   }
 
   /** Trigger manual de sincronizare din Marketing API. Dacă `x-site-id: all`
