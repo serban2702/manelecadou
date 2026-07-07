@@ -338,37 +338,57 @@ export class AdminController {
       .getMany();
     const byGuest = new Map(sessions.map((s) => [s.guestId, s]));
 
-    // Nivelul atins în wizard-ul de comandă, per guest, din analytics_events:
-    // form_start(1) → form_field_change(2, cu nr. câmpuri distincte) →
-    // generation_start(3) → purchase_init(4) → purchase_success(5).
-    const wizardRows = (await this.analyticsEvents.query(
-      `SELECT e."guestId" AS gid,
-         MAX(CASE e.type
-           WHEN 'purchase_success' THEN 5
-           WHEN 'purchase_init' THEN 4
-           WHEN 'generation_start' THEN 3
-           WHEN 'form_field_change' THEN 2
-           WHEN 'form_start' THEN 1
-           ELSE 0 END)::int AS stage,
-         COUNT(DISTINCT e.props->>'field') FILTER (WHERE e.type='form_field_change')::int AS fields,
-         MAX(e."createdAt") FILTER (WHERE e.type IN
-           ('form_start','form_field_change','generation_start','purchase_init','purchase_success')
-         ) AS last_at
-       FROM analytics_events e
-       WHERE e."guestId" = ANY($1::uuid[])
-       GROUP BY 1`,
-      [guestIds],
-    )) as Array<{ gid: string; stage: number; fields: number; last_at: Date | string | null }>;
-    const wizardByGuest = new Map(
-      wizardRows.map((r) => [
-        r.gid,
-        {
-          stage: Number(r.stage) || 0,
-          fieldsTouched: Number(r.fields) || 0,
-          lastEventAt: r.last_at ? new Date(r.last_at).toISOString() : null,
-        },
-      ]),
-    );
+    // Nivelul atins în wizard-ul de comandă, per guest. Etapele 1-2 vin din
+    // analytics_events (form_start / form_field_change — best effort, evenimentele
+    // vechi nu poartă guestId); etapele 3-5 vin din FAPTE certe din DB:
+    // generations.ownerGuestId = comandă creată (3), payments.guestId = a ajuns
+    // la checkout (4), payment paid = a plătit (5).
+    const [wizardRows, genRows, payRows] = await Promise.all([
+      this.analyticsEvents.query(
+        `SELECT e."guestId" AS gid,
+           MAX(CASE e.type
+             WHEN 'purchase_success' THEN 5
+             WHEN 'purchase_init' THEN 4
+             WHEN 'generation_start' THEN 3
+             WHEN 'form_field_change' THEN 2
+             WHEN 'form_start' THEN 1
+             ELSE 0 END)::int AS stage,
+           COUNT(DISTINCT e.props->>'field') FILTER (WHERE e.type='form_field_change')::int AS fields,
+           MAX(e."createdAt") FILTER (WHERE e.type IN
+             ('form_start','form_field_change','generation_start','purchase_init','purchase_success')
+           ) AS last_at
+         FROM analytics_events e
+         WHERE e."guestId" = ANY($1::uuid[])
+         GROUP BY 1`,
+        [guestIds],
+      ) as Promise<Array<{ gid: string; stage: number; fields: number; last_at: Date | string | null }>>,
+      this.generations.query(
+        `SELECT "ownerGuestId" AS gid, MAX("createdAt") AS last_at
+         FROM generations WHERE "ownerGuestId" = ANY($1::uuid[]) GROUP BY 1`,
+        [guestIds],
+      ) as Promise<Array<{ gid: string; last_at: Date | string }>>,
+      this.payments.query(
+        `SELECT "guestId" AS gid,
+           COUNT(*) FILTER (WHERE status='paid')::int AS paid,
+           MAX("createdAt") AS last_at
+         FROM payments WHERE "guestId" = ANY($1::uuid[]) GROUP BY 1`,
+        [guestIds],
+      ) as Promise<Array<{ gid: string; paid: number; last_at: Date | string }>>,
+    ]);
+
+    const wizardByGuest = new Map<string, { stage: number; fieldsTouched: number; lastEventAt: string | null }>();
+    const bump = (gid: string, stage: number, at: Date | string | null, fields = 0) => {
+      const cur = wizardByGuest.get(gid) ?? { stage: 0, fieldsTouched: 0, lastEventAt: null };
+      const atIso = at ? new Date(at).toISOString() : null;
+      wizardByGuest.set(gid, {
+        stage: Math.max(cur.stage, stage),
+        fieldsTouched: Math.max(cur.fieldsTouched, fields),
+        lastEventAt: !cur.lastEventAt || (atIso && atIso > cur.lastEventAt) ? atIso : cur.lastEventAt,
+      });
+    };
+    for (const r of wizardRows) bump(r.gid, Number(r.stage) || 0, r.last_at, Number(r.fields) || 0);
+    for (const r of genRows) bump(r.gid, 3, r.last_at);
+    for (const r of payRows) bump(r.gid, Number(r.paid) > 0 ? 5 : 4, r.last_at);
 
     return guests.map((g) => {
       const s = byGuest.get(g.id);
