@@ -2486,12 +2486,31 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         conv.wizardState = state;
         // cad prin la restul handleWizardFinalize → emite comanda nouă pentru recipientul corect.
       } else {
+        // Sync conținut (BUG 2026-07-07 conv 7b98fe03): userul adaugă detalii DUPĂ ce
+        // linkul de plată a fost trimis („adaugă și pe Alin, soțul Mihaelei"). wizard_update
+        // actualizează doar wizardState (JSON) — Generation deja creată rămânea înghețată la
+        // conținutul din momentul finalize, iar AI-ul zicea „Am notat" deși versurile efective
+        // nu reflectau asta. Sincronizăm aici message + customLyrics pe comanda neplătită
+        // (customLyrics=null dacă a fost invalidat de wizard_update → writer-ul rescrie
+        // proaspăt din message la generare, la fel ca la finalize inițial).
+        if (state.generationId) {
+          try {
+            await this.generations['repo']
+              .createQueryBuilder()
+              .update('generations')
+              .set({ message: state.data.message, customLyrics: state.data.customLyrics ?? null })
+              .where('id = :id AND "paidUnlocked" = false', { id: state.generationId })
+              .execute();
+          } catch (e) {
+            this.logger.warn(`LINK_ALREADY_SENT content sync failed conv=${conv.id.slice(0, 8)}: ${(e as Error).message}`);
+          }
+        }
         return {
           status: 'LINK_ALREADY_SENT',
           currentStep: state.step,
           generationId: state.generationId,
           instruction:
-            'Există deja link de plată activ pe această comandă. NU re-finaliza. Dacă userul nu găsește linkul sau zice că a expirat → apelează resend_payment_link. Dacă vrea cu totul ALTĂ melodie → start_new_order. Dacă doar adaugă detalii post-link („mesajul nostru este...") → răspunde scurt: „Am notat! Dă click pe linkul de plată de mai sus și melodia se generează".',
+            'Există deja link de plată activ pe această comandă. NU re-finaliza. Datele noi din wizard_update (dacă ai făcut deja) au fost sincronizate pe comandă. Dacă userul nu găsește linkul sau zice că a expirat → apelează resend_payment_link. Dacă vrea cu totul ALTĂ melodie → start_new_order. Dacă doar adaugă detalii post-link → răspunde scurt: „Am notat! Dă click pe linkul de plată de mai sus și melodia se generează cu tot ce mi-ai spus".',
         };
       }
     }
