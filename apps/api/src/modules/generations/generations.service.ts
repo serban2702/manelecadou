@@ -23,7 +23,7 @@ import { MailerService } from '../../mailer/mailer.module';
 import { paymentSuccessTemplate } from '../../mailer/templates/templates';
 import { brandingFromSite } from '../../mailer/branding';
 import { SitesService } from '../sites/sites.service';
-import { normalizeTier, packageDef } from '../payments/packages';
+import { isPackageTier, normalizeTier, packageDef, PACKAGE_TIERS } from '../payments/packages';
 import { hashUnlock, verifyUnlock } from '../../common/unlock';
 
 export { GENERATIONS_QUEUE } from './generations.constants';
@@ -742,6 +742,63 @@ export class GenerationsService {
       lyricsMode: 'keep',
       label: 'Re-roll',
     });
+  }
+
+  /**
+   * Upgrade de pachet pe comanda EXISTENTĂ (basic→plus/premium, plus→premium),
+   * FĂRĂ regenerarea melodiei. Piesa live rămâne neschimbată; se generează în
+   * fundal doar livrabilele lipsă ale noului tier (imagini social, videoclip),
+   * iar pagina publică deblochează automat secțiunile plus/premium (citește
+   * direct packageTier). Plata existentă NU e atinsă — încasarea diferenței se
+   * face separat (payment link din chat sau curtoazie).
+   */
+  async adminUpgradePackage(
+    generationId: string,
+    tierRaw: string,
+  ): Promise<{ generation: Generation; deliverablesQueued: boolean }> {
+    const gen = await this.repo.findOne({ where: { id: generationId } });
+    if (!gen) throw new NotFoundException('Generation not found');
+    if (!isPackageTier(tierRaw)) throw new ConflictException('invalid_tier');
+    if (gen.type !== 'full') {
+      // Demo-urile nu au livrabile de pachet — pentru demo folosește Studio
+      // (regenerare cu tier nou), care produce o piesă full de la zero.
+      throw new ConflictException('demo_not_upgradable');
+    }
+    const current = normalizeTier(gen.packageTier);
+    if (PACKAGE_TIERS.indexOf(tierRaw) <= PACKAGE_TIERS.indexOf(current)) {
+      throw new ConflictException('tier_not_higher');
+    }
+
+    gen.packageTier = tierRaw;
+
+    // Piesa nu e încă generată (queued/running/failed): procesorul citește
+    // packageTier la rulare, deci va produce singur livrabilele noului tier.
+    // Actualizăm doar durata țintă (premium = piesă mai lungă).
+    if (gen.status !== 'succeeded') {
+      gen.durationSec = packageDef(tierRaw).durationSec;
+      const saved = await this.repo.save(gen);
+      this.logger.warn(`[admin-upgrade] generation=${saved.id} ${current} → ${tierRaw} (pipeline va livra extras)`);
+      return { generation: saved, deliverablesQueued: false };
+    }
+
+    // Piesa există: generăm în fundal DOAR ce lipsește, fără să atingem audio-ul.
+    const def = packageDef(tierRaw);
+    const needsExtras =
+      (def.socialImage && (gen.socialImages?.length ?? 0) === 0) ||
+      (def.video && !gen.videoUrl);
+    if (needsExtras) gen.deliverablesReady = false;
+    const saved = await this.repo.save(gen);
+    if (needsExtras) {
+      await this.queue.add(
+        'upgrade-deliverables',
+        { generationId: saved.id },
+        { removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
+      );
+    }
+    this.logger.warn(
+      `[admin-upgrade] generation=${saved.id} ${current} → ${tierRaw}${needsExtras ? ' (extras queued)' : ''}`,
+    );
+    return { generation: saved, deliverablesQueued: needsExtras };
   }
 
   /** Interschimbă piesa principală ↔ bonus (audio + demo + video + wav). */

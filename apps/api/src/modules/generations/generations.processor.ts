@@ -143,6 +143,9 @@ export class GenerationsProcessor extends WorkerHost {
     if (job.name === 'media-op') {
       return this.processMediaOp(job.data as MediaOpJob);
     }
+    if (job.name === 'upgrade-deliverables') {
+      return this.processUpgradeDeliverables((job.data as { generationId: string }).generationId);
+    }
     const { generationId } = job.data as { generationId: string };
     const gen = await this.repo.findOne({ where: { id: generationId } });
     if (!gen) {
@@ -566,6 +569,55 @@ export class GenerationsProcessor extends WorkerHost {
           .update({ id: data.childId }, { status: 'failed', error: (err as Error).message, completedAt: new Date() })
           .catch(() => {});
       }
+    }
+  }
+
+  /**
+   * Job „upgrade-deliverables" — după un upgrade de pachet din admin pe o piesă
+   * deja generată: produce DOAR livrabilele lipsă ale noului tier (imagini
+   * social, videoclipuri refren), fără să atingă audio-ul. Instrumentalul e
+   * sărit intenționat — niciun tier actual nu-l include, iar generarea lui ar
+   * cere un apel Suno complet. La final `deliverablesReady` devine true
+   * indiferent de eșecuri parțiale (fiecare pas e best-effort, ca în fluxul
+   * normal de generare).
+   */
+  private async processUpgradeDeliverables(generationId: string): Promise<void> {
+    const gen = await this.repo.findOne({ where: { id: generationId } });
+    if (!gen) {
+      this.logger.warn(`upgrade-deliverables: generation ${generationId} not found`);
+      return;
+    }
+    const def = packageDef(normalizeTier(gen.packageTier));
+    try {
+      if (def.socialImage && (gen.socialImages?.length ?? 0) === 0) {
+        try {
+          gen.socialImages = await this.media.generateSocialImages(gen);
+          gen.socialImageSelected = gen.socialImageSelected ?? gen.socialImages[0] ?? null;
+        } catch (err) {
+          this.logger.warn(`upgrade social images failed for ${gen.id}: ${(err as Error).message}`);
+        }
+        await this.repo.save(gen);
+      }
+
+      if (def.video && !gen.videoUrl) {
+        gen.videoUrl = await this.generateChorusClip(gen, {
+          idx: 0,
+          audioPath: `/app/uploads/audio/${gen.id}/full.mp3`,
+          outName: 'clip.mp4',
+        });
+        if (gen.bonusAudioUrl && !gen.videoUrlBonus) {
+          gen.videoUrlBonus = await this.generateChorusClip(gen, {
+            idx: 1,
+            audioPath: `/app/uploads/audio/${gen.id}/bonus.mp3`,
+            outName: 'clip2.mp4',
+          });
+        }
+        await this.repo.save(gen);
+      }
+      this.logger.log(`upgrade-deliverables done for ${gen.id} (tier=${gen.packageTier})`);
+    } finally {
+      gen.deliverablesReady = true;
+      await this.repo.save(gen);
     }
   }
 

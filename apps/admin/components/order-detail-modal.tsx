@@ -5,6 +5,7 @@ import { useAsync, useAsyncCallback } from '@/lib/hooks/use-async';
 import { AdminApi, type OrderDetail, type AdminVariation, type AdminCollage } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Empty } from '@/components/ui/empty';
@@ -138,7 +139,7 @@ function OrderTabs({ data, refetch }: { data: OrderDetail; refetch: () => Promis
 
   return (
     <ResponsiveTabs value={tab} onValueChange={setTab} tabs={tabs}>
-      <TabsContent value="overview"><OverviewTab data={data} /></TabsContent>
+      <TabsContent value="overview"><OverviewTab data={data} refetch={refetch} /></TabsContent>
       <TabsContent value="form"><FormTab data={data} /></TabsContent>
       <TabsContent value="payment"><PaymentTab data={data} refetch={refetch} /></TabsContent>
       <TabsContent value="audio"><AudioTab data={data} /></TabsContent>
@@ -158,9 +159,91 @@ function OrderTabs({ data, refetch }: { data: OrderDetail; refetch: () => Promis
 
 // ============== TAB: Overview ==============
 
-function OverviewTab({ data }: { data: OrderDetail }) {
+/**
+ * Upgrade de pachet DIRECT pe comanda existentă (fără regenerarea melodiei) —
+ * vizibil în Overview atât pe /generations cât și pe /payments (modal partajat).
+ * Serverul schimbă tier-ul și generează în fundal doar livrabilele lipsă
+ * (imagini social / videoclip); pagina clientului deblochează automat
+ * secțiunile noului pachet. Plata existentă nu e atinsă.
+ */
+function PackageUpgrade({
+  generationId,
+  currentTier,
+  refetch,
+}: {
+  generationId: string;
+  currentTier: 'basic' | 'plus';
+  refetch: () => Promise<void>;
+}) {
+  const { toast } = useToast();
+  const options =
+    currentTier === 'basic'
+      ? [
+          { value: 'plus', label: 'Plus' },
+          { value: 'premium', label: 'Premium' },
+        ]
+      : [{ value: 'premium', label: 'Premium' }];
+  const [tier, setTier] = useState<'plus' | 'premium'>(options[0].value as 'plus' | 'premium');
+  const [busy, setBusy] = useState(false);
+
+  async function run() {
+    const label = tier === 'plus' ? 'Plus' : 'Premium';
+    const ok = await confirmDialog({
+      title: `Upgrade la ${label}?`,
+      description:
+        'Melodia rămâne neschimbată — se generează în fundal doar livrabilele lipsă (imagini social / videoclip), iar pagina clientului deblochează secțiunile noului pachet. Plata existentă NU e modificată; diferența se încasează separat (link de plată din chat) dacă e cazul.',
+      confirmText: 'Upgrade',
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const res = await AdminApi.generationUpgradePackage(generationId, tier);
+      toast({
+        variant: 'success',
+        title: `Pachet actualizat → ${label}`,
+        description: res.deliverablesQueued
+          ? 'Livrabilele lipsă se generează în fundal (1-2 min).'
+          : 'Pachetul a fost schimbat; livrabilele existau deja sau se produc la finalul generării.',
+      });
+      await refetch();
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Upgrade eșuat', description: errorMessage(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 border-t border-white/5 pt-2.5">
+      <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+        Upgrade pachet · melodia rămâne, se adaugă doar livrabilele
+      </div>
+      <div className="flex items-center gap-2">
+        <select
+          value={tier}
+          onChange={(e) => setTier(e.target.value as 'plus' | 'premium')}
+          className={inputCls + ' h-8 flex-1 py-0 text-xs'}
+          disabled={busy}
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value} className="bg-[hsl(220_22%_9%)]">
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <Button size="xs" variant="warning" onClick={run} loading={busy} disabled={busy}>
+          <ArrowUp />
+          Upgrade
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function OverviewTab({ data, refetch }: { data: OrderDetail; refetch: () => Promise<void> }) {
   const g = data.generation;
   const p = data.payment;
+  const tier = (g?.packageTier ?? 'basic') as 'basic' | 'plus' | 'premium';
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <Card title="Comandă" icon={<Music2 className="h-4 w-4" />}>
@@ -179,6 +262,9 @@ function OverviewTab({ data }: { data: OrderDetail }) {
             {g.premium && <Kv k="Premium" v={<Badge variant="warning">premium</Badge>} />}
             {g.inferredFromChat && (
               <Kv k="Origine" v={<Badge variant="info">📩 Comandă din chat AI</Badge>} />
+            )}
+            {g.type === 'full' && tier !== 'premium' && (
+              <PackageUpgrade generationId={g.id} currentTier={tier} refetch={refetch} />
             )}
           </>
         ) : (

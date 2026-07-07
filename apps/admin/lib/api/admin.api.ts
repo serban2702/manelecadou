@@ -434,6 +434,13 @@ export class AdminApi {
   static generationReroll(id: string): Promise<{ ok: boolean; id: string; status: string }> {
     return http.post(`/admin/generations/${id}/reroll`);
   }
+  /** Upgrade pachet pe piesa existentă (fără regenerare) — generează doar livrabilele lipsă. */
+  static generationUpgradePackage(
+    id: string,
+    tier: 'plus' | 'premium',
+  ): Promise<{ ok: boolean; id: string; packageTier: string; deliverablesQueued: boolean }> {
+    return http.post(`/admin/generations/${id}/upgrade-package`, { tier });
+  }
   static generationSwapTracks(
     id: string,
   ): Promise<{ ok: boolean; audioUrl: string | null; bonusAudioUrl: string | null }> {

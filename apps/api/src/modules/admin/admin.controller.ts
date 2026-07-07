@@ -902,6 +902,23 @@ export class AdminController {
     return { ok: true, status: g.status, retryCount: g.retryCount };
   }
 
+  /**
+   * Upgrade de pachet pe comanda existentă (basic→plus/premium, plus→premium):
+   * schimbă tier-ul FĂRĂ să regenereze melodia și generează în fundal doar
+   * livrabilele lipsă (imagini social / videoclip). Plata existentă nu e atinsă.
+   */
+  @Post('generations/:id/upgrade-package')
+  async upgradePackage(@Param('id') id: string, @Body() body: { tier?: string }) {
+    if (!body?.tier) throw new BadRequestException('tier lipsă (plus|premium)');
+    const res = await this.generationsService.adminUpgradePackage(id, body.tier);
+    return {
+      ok: true,
+      id: res.generation.id,
+      packageTier: res.generation.packageTier,
+      deliverablesQueued: res.deliverablesQueued,
+    };
+  }
+
   // ============== Regenerare + variații + unelte Suno ==============
 
   /** Regenerare cu editări + țintă (overwrite | new_track | new_order). */
