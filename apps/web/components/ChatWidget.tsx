@@ -33,6 +33,57 @@ function playPing() {
   }
 }
 
+/**
+ * Randează corpul unui mesaj cu link-urile CLICABILE (paritate cu admin-ul): URL-uri
+ * absolute (http/https) și path-uri relative `/m/<uuid>` (pagina melodiei, same-origin
+ * pe site-ul clientului). Restul rămâne text simplu — containerul are white-space:pre-wrap,
+ * deci newline-urile și spațiile se păstrează. Fără asta, un mesaj de la operator gen
+ * „Ai colajul aici: /m/…" apărea la client ca text mort, imposibil de apăsat.
+ */
+function LinkifiedText({ text }: { text: string }) {
+  const re =
+    /(https?:\/\/[^\s)\]]+)|(\/m\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
+  const parts: Array<string | { href: string; label: string }> = [];
+  let lastIdx = 0;
+  for (const match of text.matchAll(re)) {
+    const idx = match.index ?? 0;
+    if (idx > lastIdx) parts.push(text.slice(lastIdx, idx));
+    const raw = match[0];
+    // `/m/…` e relativ și same-origin pe site → href relativ deschide pagina melodiei
+    // pe domeniul curent. URL-urile http rămân exact cum sunt.
+    parts.push({ href: raw, label: raw });
+    lastIdx = idx + raw.length;
+  }
+  if (lastIdx < text.length) parts.push(text.slice(lastIdx));
+
+  return (
+    <>
+      {parts.map((p, i) =>
+        typeof p === 'string' ? (
+          <span key={i}>{p}</span>
+        ) : (
+          <a
+            key={i}
+            href={p.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              color: 'inherit',
+              textDecoration: 'underline',
+              fontWeight: 700,
+              wordBreak: 'break-all',
+              cursor: 'pointer',
+            }}
+          >
+            {p.label}
+          </a>
+        ),
+      )}
+    </>
+  );
+}
+
 /** Desenează un dot roșu peste favicon-ul curent când unread > 0. */
 function useFaviconDot(unread: number) {
   const originalRef = useRef<string | null>(null);
@@ -811,7 +862,9 @@ export function ChatWidget() {
                     })()
                   )}
                   {/* nu afișa "body" generic pentru payment_link / song_preview / image (ar fi redundant) */}
-                  {!(mm.messageType === 'payment_link' || mm.messageType === 'song_preview' || (mm.attachmentUrl && (!m.body || m.body === '📷 Imagine'))) && m.body}
+                  {!(mm.messageType === 'payment_link' || mm.messageType === 'song_preview' || (mm.attachmentUrl && (!m.body || m.body === '📷 Imagine'))) && m.body
+                    ? <LinkifiedText text={m.body} />
+                    : null}
                   <div
                     style={{
                       fontSize: 10,
