@@ -23,7 +23,7 @@ import { MailerService } from '../../mailer/mailer.module';
 import { paymentSuccessTemplate } from '../../mailer/templates/templates';
 import { brandingFromSite } from '../../mailer/branding';
 import { SitesService } from '../sites/sites.service';
-import { isPackageTier, normalizeTier, packageDef, PACKAGE_TIERS } from '../payments/packages';
+import { isPackageTier, normalizeTier, packageDef } from '../payments/packages';
 import { hashUnlock, verifyUnlock } from '../../common/unlock';
 
 export { GENERATIONS_QUEUE } from './generations.constants';
@@ -745,48 +745,57 @@ export class GenerationsService {
   }
 
   /**
-   * Upgrade de pachet pe comanda EXISTENTĂ (basic→plus/premium, plus→premium),
-   * FĂRĂ regenerarea melodiei. Piesa live rămâne neschimbată; se generează în
-   * fundal doar livrabilele lipsă ale noului tier (imagini social, videoclip),
-   * iar pagina publică deblochează automat secțiunile plus/premium (citește
-   * direct packageTier). Plata existentă NU e atinsă — încasarea diferenței se
-   * face separat (payment link din chat sau curtoazie).
+   * Setează DIRECT tipul (demo|full) și/sau pachetul (basic|plus|premium) al
+   * unei comenzi din admin, FĂRĂ regenerarea melodiei. Spre deosebire de vechiul
+   * „upgrade" (doar în sus, doar full), permite orice direcție (up/down) și
+   * conversia demo↔full.
+   *
+   * Efecte:
+   *  - type='full' → pagina publică servește maneaua COMPLETĂ (isPaid), nu demo-ul;
+   *  - type='demo' → revine la demo-ul de 30s (maneaua completă se re-blochează);
+   *  - durationSec se recalculează DOAR cât timp piesa nu e generată (queued/
+   *    running/failed) — pentru o piesă `succeeded` audio-ul e deja fix;
+   *  - dacă rezultă un pachet full căruia îi lipsesc livrabile (imagini social /
+   *    videoclip) și piesa e `succeeded`, se generează în fundal doar ce lipsește.
+   *  Plata existentă NU e atinsă — încasarea diferenței se face separat
+   *  (payment link din chat sau curtoazie).
    */
-  async adminUpgradePackage(
+  async adminSetPackaging(
     generationId: string,
-    tierRaw: string,
+    input: { type?: string; tier?: string },
   ): Promise<{ generation: Generation; deliverablesQueued: boolean }> {
     const gen = await this.repo.findOne({ where: { id: generationId } });
     if (!gen) throw new NotFoundException('Generation not found');
-    if (!isPackageTier(tierRaw)) throw new ConflictException('invalid_tier');
-    if (gen.type !== 'full') {
-      // Demo-urile nu au livrabile de pachet — pentru demo folosește Studio
-      // (regenerare cu tier nou), care produce o piesă full de la zero.
-      throw new ConflictException('demo_not_upgradable');
+    if (input.type != null && input.type !== 'demo' && input.type !== 'full') {
+      throw new ConflictException('invalid_type');
     }
-    const current = normalizeTier(gen.packageTier);
-    if (PACKAGE_TIERS.indexOf(tierRaw) <= PACKAGE_TIERS.indexOf(current)) {
-      throw new ConflictException('tier_not_higher');
+    if (input.tier != null && !isPackageTier(input.tier)) {
+      throw new ConflictException('invalid_tier');
     }
 
-    gen.packageTier = tierRaw;
+    const newType = (input.type ?? gen.type) as 'demo' | 'full';
+    const newTier = normalizeTier(input.tier ?? gen.packageTier);
+    const prev = `${gen.type}/${normalizeTier(gen.packageTier)}`;
 
-    // Piesa nu e încă generată (queued/running/failed): procesorul citește
-    // packageTier la rulare, deci va produce singur livrabilele noului tier.
-    // Actualizăm doar durata țintă (premium = piesă mai lungă).
+    gen.type = newType;
+    gen.packageTier = newTier;
+
+    // Durata țintă se recalculează doar cât timp piesa NU e generată — altfel
+    // audio-ul e deja fixat și n-are sens s-o schimbăm retroactiv.
     if (gen.status !== 'succeeded') {
-      gen.durationSec = packageDef(tierRaw).durationSec;
-      const saved = await this.repo.save(gen);
-      this.logger.warn(`[admin-upgrade] generation=${saved.id} ${current} → ${tierRaw} (pipeline va livra extras)`);
-      return { generation: saved, deliverablesQueued: false };
+      gen.durationSec = newType === 'demo' ? 30 : packageDef(newTier).durationSec;
     }
 
-    // Piesa există: generăm în fundal DOAR ce lipsește, fără să atingem audio-ul.
-    const def = packageDef(tierRaw);
+    // Livrabile: doar pentru o piesă full `succeeded` căreia îi lipsesc extras-urile
+    // noului tier. Generăm în fundal DOAR ce lipsește, fără să atingem audio-ul.
+    const def = packageDef(newTier);
     const needsExtras =
-      (def.socialImage && (gen.socialImages?.length ?? 0) === 0) ||
-      (def.video && !gen.videoUrl);
+      newType === 'full' &&
+      gen.status === 'succeeded' &&
+      ((def.socialImage && (gen.socialImages?.length ?? 0) === 0) ||
+        (def.video && !gen.videoUrl));
     if (needsExtras) gen.deliverablesReady = false;
+
     const saved = await this.repo.save(gen);
     if (needsExtras) {
       await this.queue.add(
@@ -796,7 +805,7 @@ export class GenerationsService {
       );
     }
     this.logger.warn(
-      `[admin-upgrade] generation=${saved.id} ${current} → ${tierRaw}${needsExtras ? ' (extras queued)' : ''}`,
+      `[admin-set-packaging] generation=${saved.id} ${prev} → ${newType}/${newTier}${needsExtras ? ' (extras queued)' : ''}`,
     );
     return { generation: saved, deliverablesQueued: needsExtras };
   }

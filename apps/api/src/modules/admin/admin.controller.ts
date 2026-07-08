@@ -903,17 +903,24 @@ export class AdminController {
   }
 
   /**
-   * Upgrade de pachet pe comanda existentă (basic→plus/premium, plus→premium):
-   * schimbă tier-ul FĂRĂ să regenereze melodia și generează în fundal doar
-   * livrabilele lipsă (imagini social / videoclip). Plata existentă nu e atinsă.
+   * Setează direct tipul (demo|full) și/sau pachetul (basic|plus|premium) al
+   * comenzii — fără regenerare. Permite orice direcție (up/down) + conversie
+   * demo↔full. Pentru full, generează în fundal doar livrabilele lipsă (imagini
+   * social / videoclip). Plata existentă nu e atinsă.
    */
-  @Post('generations/:id/upgrade-package')
-  async upgradePackage(@Param('id') id: string, @Body() body: { tier?: string }) {
-    if (!body?.tier) throw new BadRequestException('tier lipsă (plus|premium)');
-    const res = await this.generationsService.adminUpgradePackage(id, body.tier);
+  @Post('generations/:id/packaging')
+  async setPackaging(
+    @Param('id') id: string,
+    @Body() body: { type?: string; tier?: string },
+  ) {
+    if (body?.type == null && body?.tier == null) {
+      throw new BadRequestException('type sau tier necesar');
+    }
+    const res = await this.generationsService.adminSetPackaging(id, body);
     return {
       ok: true,
       id: res.generation.id,
+      type: res.generation.type,
       packageTier: res.generation.packageTier,
       deliverablesQueued: res.deliverablesQueued,
     };

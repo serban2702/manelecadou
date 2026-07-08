@@ -160,54 +160,77 @@ function OrderTabs({ data, refetch }: { data: OrderDetail; refetch: () => Promis
 // ============== TAB: Overview ==============
 
 /**
- * Upgrade de pachet DIRECT pe comanda existentă (fără regenerarea melodiei) —
- * vizibil în Overview atât pe /generations cât și pe /payments (modal partajat).
- * Serverul schimbă tier-ul și generează în fundal doar livrabilele lipsă
- * (imagini social / videoclip); pagina clientului deblochează automat
- * secțiunile noului pachet. Plata existentă nu e atinsă.
+ * Editor de „ambalaj" al comenzii — schimbă DIRECT tipul (demo/normal) și
+ * nivelul pachetului (Bază/Plus/Premium) fără regenerarea melodiei. Vizibil în
+ * Overview atât pe /generations cât și pe /payments (modal partajat). Serverul
+ * setează câmpurile și, pentru comenzile normale, generează în fundal doar
+ * livrabilele lipsă (imagini social / videoclip); pagina clientului reflectă
+ * automat noul tip/pachet. Plata existentă nu e atinsă.
  */
-function PackageUpgrade({
+function PackagingEditor({
   generationId,
+  currentType,
   currentTier,
   refetch,
 }: {
   generationId: string;
-  currentTier: 'basic' | 'plus';
+  currentType: 'demo' | 'full';
+  currentTier: 'basic' | 'plus' | 'premium';
   refetch: () => Promise<void>;
 }) {
   const { toast } = useToast();
-  const options =
-    currentTier === 'basic'
-      ? [
-          { value: 'plus', label: 'Plus' },
-          { value: 'premium', label: 'Premium' },
-        ]
-      : [{ value: 'premium', label: 'Premium' }];
-  const [tier, setTier] = useState<'plus' | 'premium'>(options[0].value as 'plus' | 'premium');
+  const [type, setType] = useState<'demo' | 'full'>(currentType);
+  const [tier, setTier] = useState<'basic' | 'plus' | 'premium'>(currentTier);
   const [busy, setBusy] = useState(false);
 
+  const dirty = type !== currentType || tier !== currentTier;
+  const tierLabel = tier === 'basic' ? 'Bază' : tier === 'plus' ? 'Plus' : 'Premium';
+
   async function run() {
-    const label = tier === 'plus' ? 'Plus' : 'Premium';
+    if (!dirty) return;
+    // Explicăm efectele concrete în funcție de ce anume se schimbă.
+    const notes: string[] = [];
+    if (type !== currentType) {
+      notes.push(
+        type === 'full'
+          ? 'Tipul devine NORMAL → pagina publică servește maneaua COMPLETĂ (audio integral, vizibil oricui are linkul), nu demo-ul de 30s.'
+          : 'Tipul devine DEMO → pagina publică revine la demo-ul de 30s (maneaua completă se re-blochează).',
+      );
+    }
+    if (tier !== currentTier) {
+      notes.push(
+        `Pachetul devine ${tierLabel}. Melodia rămâne neschimbată; dacă noul pachet cere livrabile lipsă (imagini social / videoclip) și piesa e gata, se generează în fundal (1-2 min).`,
+      );
+    }
+    notes.push('Plata existentă NU e modificată — diferența se încasează separat (link de plată din chat) dacă e cazul.');
     const ok = await confirmDialog({
-      title: `Upgrade la ${label}?`,
-      description:
-        'Melodia rămâne neschimbată — se generează în fundal doar livrabilele lipsă (imagini social / videoclip), iar pagina clientului deblochează secțiunile noului pachet. Plata existentă NU e modificată; diferența se încasează separat (link de plată din chat) dacă e cazul.',
-      confirmText: 'Upgrade',
+      title: 'Aplici modificările comenzii?',
+      description: (
+        <span className="flex flex-col gap-2">
+          {notes.map((n, i) => (
+            <span key={i}>{n}</span>
+          ))}
+        </span>
+      ),
+      confirmText: 'Aplică',
     });
     if (!ok) return;
     setBusy(true);
     try {
-      const res = await AdminApi.generationUpgradePackage(generationId, tier);
+      const res = await AdminApi.generationSetPackaging(generationId, {
+        type: type !== currentType ? type : undefined,
+        tier: tier !== currentTier ? tier : undefined,
+      });
       toast({
         variant: 'success',
-        title: `Pachet actualizat → ${label}`,
+        title: 'Comandă actualizată',
         description: res.deliverablesQueued
           ? 'Livrabilele lipsă se generează în fundal (1-2 min).'
-          : 'Pachetul a fost schimbat; livrabilele existau deja sau se produc la finalul generării.',
+          : `Tip: ${res.type === 'full' ? 'normal' : 'demo'} · Pachet: ${res.packageTier}`,
       });
       await refetch();
     } catch (e) {
-      toast({ variant: 'destructive', title: 'Upgrade eșuat', description: errorMessage(e) });
+      toast({ variant: 'destructive', title: 'Modificare eșuată', description: errorMessage(e) });
     } finally {
       setBusy(false);
     }
@@ -216,24 +239,33 @@ function PackageUpgrade({
   return (
     <div className="mt-3 border-t border-white/5 pt-2.5">
       <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">
-        Upgrade pachet · melodia rămâne, se adaugă doar livrabilele
+        Schimbă tip &amp; pachet · fără regenerare (melodia rămâne)
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <select
-          value={tier}
-          onChange={(e) => setTier(e.target.value as 'plus' | 'premium')}
+          value={type}
+          onChange={(e) => setType(e.target.value as 'demo' | 'full')}
           className={inputCls + ' h-8 flex-1 py-0 text-xs'}
           disabled={busy}
+          aria-label="Tip comandă"
         >
-          {options.map((o) => (
-            <option key={o.value} value={o.value} className="bg-[hsl(220_22%_9%)]">
-              {o.label}
-            </option>
-          ))}
+          <option value="demo" className="bg-[hsl(220_22%_9%)]">Demo</option>
+          <option value="full" className="bg-[hsl(220_22%_9%)]">Normal</option>
         </select>
-        <Button size="xs" variant="warning" onClick={run} loading={busy} disabled={busy}>
-          <ArrowUp />
-          Upgrade
+        <select
+          value={tier}
+          onChange={(e) => setTier(e.target.value as 'basic' | 'plus' | 'premium')}
+          className={inputCls + ' h-8 flex-1 py-0 text-xs'}
+          disabled={busy}
+          aria-label="Pachet"
+        >
+          <option value="basic" className="bg-[hsl(220_22%_9%)]">Bază</option>
+          <option value="plus" className="bg-[hsl(220_22%_9%)]">Plus</option>
+          <option value="premium" className="bg-[hsl(220_22%_9%)]">Premium</option>
+        </select>
+        <Button size="xs" variant="warning" onClick={run} loading={busy} disabled={busy || !dirty}>
+          <CheckCircle2 />
+          Aplică
         </Button>
       </div>
     </div>
@@ -263,9 +295,12 @@ function OverviewTab({ data, refetch }: { data: OrderDetail; refetch: () => Prom
             {g.inferredFromChat && (
               <Kv k="Origine" v={<Badge variant="info">📩 Comandă din chat AI</Badge>} />
             )}
-            {g.type === 'full' && tier !== 'premium' && (
-              <PackageUpgrade generationId={g.id} currentTier={tier} refetch={refetch} />
-            )}
+            <PackagingEditor
+              generationId={g.id}
+              currentType={g.type}
+              currentTier={tier}
+              refetch={refetch}
+            />
           </>
         ) : (
           <p className="text-xs text-muted-foreground">Fără generation.</p>
