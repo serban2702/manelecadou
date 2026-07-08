@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
@@ -48,6 +49,8 @@ interface OwnerCtx {
 
 @Injectable()
 export class ChatService implements OnModuleInit {
+  private readonly logger = new Logger('ChatService');
+
   constructor(
     @InjectRepository(Conversation) private readonly conv: Repository<Conversation>,
     @InjectRepository(ChatMessage) private readonly msg: Repository<ChatMessage>,
@@ -1085,10 +1088,44 @@ export class ChatService implements OnModuleInit {
         this.gateway.emitMessage({ message: m, conversation: conv });
       }
 
-      // System message de confirmare (vizibil pe ambele părți)
-      const body = status === 'paid'
-        ? '✅ Plată primită! Începem să generăm melodia ta — durează 5-10 minute. Vei primi linkul aici și pe email când e gata.'
-        : '⚠️ Plata nu s-a procesat. Te rugăm să reîncerci sau scrie-ne aici.';
+      // ── Are plata o generare (deja) atașată? Generarea se queue-uiește de webhook
+      // DOAR dacă linkul avea generationId în metadata (calea wizard_finalize). Un link
+      // ad-hoc (trimis manual din admin) SAU un wizard care n-a apucat să finalizeze NU
+      // pornește nimic → clientul plătit ar rămâne fără melodie, iar noi îi promiteam
+      // fals „începem să generăm" (BUG real 2026-07-08 conv gheteuoctavian).
+      const convPaidLinks = messages.filter((x) => x.conversationId === convId);
+      const alreadyHasGeneration =
+        !!conv.wizardState?.generationId ||
+        convPaidLinks.some((x) => {
+          const p = (x.payload ?? {}) as Record<string, unknown>;
+          return typeof p.generationId === 'string' && p.generationId.trim().length > 0;
+        });
+      const isModificationPayment = convPaidLinks.some((x) => {
+        const p = (x.payload ?? {}) as Record<string, unknown>;
+        return typeof p.modificationForGenerationId === 'string' && p.modificationForGenerationId.trim().length > 0;
+      });
+
+      // Plasă de siguranță: plată fără generare atașată și NU e modificare → încearcă
+      // să lansezi automat din datele deja colectate în wizardState (recipient + mesaj/
+      // versuri). Clientul plătit nu trebuie să rămână „în aer".
+      let autoLaunchedGenId: string | null = null;
+      if (status === 'paid' && !alreadyHasGeneration && !isModificationPayment) {
+        autoLaunchedGenId = await this.autoLaunchFromWizardData(conv, paymentId).catch((e) => {
+          this.logger.warn(`autoLaunchFromWizardData failed conv=${convId.slice(0, 8)}: ${(e as Error).message}`);
+          return null;
+        });
+      }
+      const willGenerate =
+        status === 'paid' && (alreadyHasGeneration || isModificationPayment || !!autoLaunchedGenId);
+
+      // System message de confirmare — ONEST: nu promitem „generăm" dacă nu pornește
+      // efectiv nimic. Când n-avem cum lansa automat, un coleg uman preia (alertat mai jos).
+      const body =
+        status !== 'paid'
+          ? '⚠️ Plata nu s-a procesat. Te rugăm să reîncerci sau scrie-ne aici.'
+          : willGenerate
+            ? '✅ Plată primită! Începem să generăm melodia ta — durează 5-10 minute. Vei primi linkul aici și pe email când e gata.'
+            : '✅ Plată primită, îți mulțumim! Pregătim melodia ta și revenim aici în câteva minute. 🙏';
       const sysMsg = this.msg.create({
         conversationId: convId,
         siteId: conv.siteId ?? null,
@@ -1104,7 +1141,13 @@ export class ChatService implements OnModuleInit {
       conv.unreadByUser += 1;
       // Update wizard state dacă există
       if (conv.wizardState) {
-        conv.wizardState.step = status === 'paid' ? 'paid' : 'collecting';
+        if (autoLaunchedGenId) {
+          // Am lansat generarea din plasa de siguranță → comanda intră în „generating".
+          conv.wizardState.step = 'generating';
+          conv.wizardState.generationId = autoLaunchedGenId;
+        } else {
+          conv.wizardState.step = status === 'paid' ? 'paid' : 'collecting';
+        }
         conv.wizardState.updatedAt = new Date().toISOString();
         if (status === 'paid') {
           // Reset contoare la plată reușită — clientul fidel pornește curat la
@@ -1119,6 +1162,22 @@ export class ChatService implements OnModuleInit {
       }
       await this.conv.save(conv);
       this.gateway.emitMessage({ message: saved, conversation: conv });
+
+      // Plată confirmată dar NICIO generare pornită (nici auto) → un om trebuie să o
+      // lanseze manual RAPID. Alertă urgentă (nu lăsăm clientul plătit fără melodie).
+      if (status === 'paid' && !willGenerate) {
+        void this.webPush
+          .sendToAll({
+            title: `⚠️ Plată FĂRĂ melodie pornită — ${conv.email ?? 'guest'}`,
+            body: 'Client plătit dar nu s-a pornit nicio generare (link ad-hoc/date incomplete). Pornește-o manual.',
+            tag: `chat-${convId}`,
+            url: `/chat?c=${convId}`,
+            icon: '/icon-512.png',
+            badge: '/icon-512.png',
+            data: { conversationId: convId, paymentId },
+          })
+          .catch(() => {});
+      }
 
       // ── Modificare contra cost plătită → pornește refacerea automat. AI-ul a
       // stocat pe payment_link payload generația-țintă + schimbările cerute.
@@ -1307,6 +1366,81 @@ export class ChatService implements OnModuleInit {
     this.gateway.emitMessage({ message: saved, conversation: conv });
 
     return { generationId: generation.id };
+  }
+
+  /**
+   * PLASĂ DE SIGURANȚĂ (2026-07-08): plată confirmată pe o conversație FĂRĂ generare
+   * atașată — link ad-hoc trimis manual din admin SAU un wizard care n-a apucat să
+   * finalizeze. Reconstruiește comanda din `wizardState.data` deja colectat și pornește
+   * generarea pe aceeași cale ca fluxul normal (generations.create type='full' + paymentId
+   * → intră direct în queue), ca un client care a plătit să nu rămână fără melodie.
+   * Întoarce generationId dacă a lansat, altfel null (date insuficiente → caller alertează
+   * adminii ca un om s-o pornească manual). NU inventează conținut: fără recipient + (mesaj
+   * sau versuri) deja colectate, nu lansează.
+   */
+  private async autoLaunchFromWizardData(
+    conv: Conversation,
+    paymentId: string,
+  ): Promise<string | null> {
+    const data = conv.wizardState?.data;
+    if (!data) return null;
+    const recipientName = (data.recipientName ?? '').trim();
+    const message = (data.message ?? '').trim();
+    const customLyrics = (data.customLyrics ?? '').trim();
+    // Minimul ca să iasă o melodie decentă: știm PENTRU CINE + avem fie mesaj/poveste,
+    // fie versuri deja scrise. Fără astea nu inventăm — lăsăm omul să preia.
+    if (!recipientName || (!message && !customLyrics)) return null;
+
+    // Găsește payment_link-ul plătit al acestei conversații și verifică să nu aibă deja
+    // o generație atașată (anti dublu-lansare).
+    const paidLink = await this.msg
+      .createQueryBuilder('m')
+      .where('m."conversationId" = :cid', { cid: conv.id })
+      .andWhere(`m."messageType" = 'payment_link'`)
+      .andWhere(`m.payload->>'paymentId' = :pid`, { pid: paymentId })
+      .getOne();
+    if (!paidLink) return null;
+    const payload = (paidLink.payload ?? {}) as Record<string, unknown>;
+    if (typeof payload.generationId === 'string' && payload.generationId.trim()) return null;
+
+    const { GenerationsService } = await import('../generations/generations.service');
+    const generations = this.moduleRef.get(GenerationsService, { strict: false });
+    const site = conv.siteId ? await this.sites.findById(conv.siteId) : null;
+    const locale = site?.locale ?? 'ro';
+
+    // Valori creative implicite când wizardul nu le-a colectat (finalize le-ar fi inferat).
+    const style = (data.style ?? '').trim() || 'iubire';
+    const occasion = (data.occasion ?? '').trim() || 'dragoste';
+    const voiceArtist =
+      (data.voiceArtist ?? '').trim() || (data.recipientGender === 'F' ? 'female' : 'male');
+    const tierRaw =
+      (typeof payload.packageTier === 'string' && payload.packageTier) || data.packageTier || 'basic';
+
+    const generation = await generations.create(
+      {
+        type: 'full',
+        style,
+        occasion,
+        recipientName,
+        message: message || `Melodie pentru ${recipientName}`,
+        voiceArtist,
+        dedication: data.dedicatorName ? `De la ${data.dedicatorName}` : undefined,
+        customLyrics: customLyrics || undefined,
+        packageTier: normalizeTier(tierRaw),
+        paymentId,
+        locale,
+      },
+      { userId: conv.userId, guestId: conv.guestId, siteId: conv.siteId },
+    );
+
+    // Atașează generationId pe payment_link (anti dublu-lansare + check_order_status).
+    paidLink.payload = { ...payload, generationId: generation.id };
+    await this.msg.save(paidLink);
+
+    this.logger.warn(
+      `[auto-launch-fallback] conv=${conv.id.slice(0, 8)} payment=${paymentId.slice(0, 8)} → generation=${generation.id.slice(0, 8)} recipient="${recipientName}"`,
+    );
+    return generation.id;
   }
 
   /**

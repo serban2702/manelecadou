@@ -671,17 +671,33 @@ export class AIChatAgentService {
 
     // ── STARE CURENTĂ (server-side) — elimină iterații irosite pe wizard_get_state
     // și o categorie întreagă de halucinații (AI nu mai ghicește ce s-a colectat).
-    const ws = conv.wizardState;
     const styleSampleIds = Object.keys(site?.suno?.styleSamples ?? {});
     const voiceSampleIds = Object.keys(site?.suno?.voiceSamples ?? {});
-    sysPrompt += `
 
-══ STARE CURENTĂ (date live de pe server — folosește-le, nu le cita brut) ══
-- Wizard: step=${ws?.step ?? 'idle'}; date colectate=${JSON.stringify(ws?.data ?? {}).slice(0, 800)}
-- Preț cotat deja: ${(ws?.priceQuotedCount ?? 0) > 0 ? 'DA' : 'nu'}; email client: ${conv.email ?? 'NECUNOSCUT — cere-l devreme'}
-- Comandă activă: ${ws?.generationId ? `DA (folosește check_order_status pentru status live)` : 'niciuna în această conversație'}
-- Versuri draft generate în chat: ${ws?.data?.customLyrics ? 'DA — finalize le va folosi exact pe acestea' : 'nu'}
-- Mostre audio disponibile pentru play_sample → stiluri: [${styleSampleIds.join(', ') || 'niciuna'}]; voci: [${voiceSampleIds.join(', ') || 'niciuna'}] (folosește EXACT aceste id-uri)`;
+    // ── Semnale pentru blocul determinist de stare. `userSubstantiveMsgs` =
+    // câte mesaje REALE a dat userul (peste un simplu „da/ok") — dacă a povestit
+    // deja, NU mai re-cerem „mesajul exact" (fix buclă infinită). `hasEmail` din
+    // conv.email (setat de wizard_update) sau user logat.
+    const AFFIRM_ONLY = new Set([
+      'da', 'ok', 'okay', 'nu', 'bine', 'da da', 'sigur', 'mda', 'yes', 'yep',
+      'merci', 'mersi', 'multumesc', 'mulțumesc', 'da.', 'ok.', 'nuu', 'daa',
+    ]);
+    const userSubstantiveMsgs = last20.filter(
+      (m) =>
+        m.authorRole !== 'admin' &&
+        m.messageType !== 'system' &&
+        typeof m.body === 'string' &&
+        m.body.trim().length >= 12 &&
+        !AFFIRM_ONLY.has(m.body.trim().toLowerCase()),
+    ).length;
+    const hasEmail = !!conv.email || !!conv.userId;
+
+    sysPrompt += this.buildOrderStateBlock(conv, {
+      userSubstantiveMsgs,
+      hasEmail,
+      styleSampleIds,
+      voiceSampleIds,
+    });
 
     // ── POZIȚIE PE SITE (presence live din gateway, fallback DB) — Irina vede
     // pagina curentă + pasul din formularul PUBLIC de comandă (Generator). Dacă
@@ -947,6 +963,157 @@ formular mascat și nu a avansat deloc. NU repeta.`;
       qb.andWhere('m.siteId IS NULL');
     }
     return qb.getMany();
+  }
+
+  /**
+   * Blocul DETERMINIST „STAREA COMENZII" — injectat la fiecare tură ca ULTIMA
+   * secțiune a system promptului (deci cea mai proeminentă). Înlocuiește vechiul
+   * `JSON.stringify(ws.data).slice(0,800)` care tăia povestea/numele și lăsa
+   * modelul să rătăcească. Aici starea e listată PER CÂMP (✓/✗), cu povestea
+   * ne-trunchiată agresiv, plus PASUL CURENT + UNICA ACȚIUNE calculate în cod.
+   * Rezolvă cele 3 reclamații majore: „uită ce s-a colectat", „nu urmează tunelul
+   * de vânzări", „buclează cerând «mesajul exact»".
+   */
+  private buildOrderStateBlock(
+    conv: Conversation,
+    ctx: {
+      userSubstantiveMsgs: number;
+      hasEmail: boolean;
+      styleSampleIds: string[];
+      voiceSampleIds: string[];
+    },
+  ): string {
+    const ws = conv.wizardState;
+    const d = ws?.data ?? {};
+    const email = conv.email ?? null;
+    const tier = d.packageTier ?? null;
+
+    const mark = (v: unknown) => (v && String(v).trim() ? '✓' : '✗');
+    const show = (v: unknown, max: number) => {
+      const s = v == null ? '' : String(v).trim();
+      if (!s) return '— (lipsește)';
+      return s.length > max ? `${s.slice(0, max)}…` : s;
+    };
+
+    const fields: string[] = [
+      `${mark(d.recipientName)} Pentru cine (destinatar): ${show(d.recipientName, 120)}`,
+      `${mark(d.dedicatorName)} De la cine (dedică, opțional): ${show(d.dedicatorName, 120)}`,
+      `${mark(d.message)} Ce să transmită (poveste/mesaj): ${show(d.message, 900)}`,
+      `${mark(email)} Email livrare: ${show(email, 120)}`,
+      `${mark(tier)} Pachet: ${tier ? packageLabel(normalizeTier(tier)) : '— (neales; default Standard)'}`,
+    ];
+    if (d.style || d.styleHint) fields.push(`• Stil dorit: ${show(d.style ?? d.styleHint, 90)}`);
+    if (d.recipientGender) fields.push(`• Voce: ${d.recipientGender === 'F' ? 'feminină' : 'masculină'}`);
+    if (d.customLyrics && d.customLyrics.trim()) {
+      fields.push('• Versuri draft în chat: DA — finalize le va folosi EXACT pe acestea');
+    }
+
+    const { stepLabel, nextAction } = this.computeFunnelNextAction(conv, ctx);
+
+    return `
+
+══════════ STAREA COMENZII (SURSĂ DE ADEVĂR — CITEȘTE-O ÎNAINTE DE A SCRIE ORICE) ══════════
+${fields.join('\n')}
+
+📍 PASUL CURENT: ${stepLabel}
+👉 UNICA TA ACȚIUNE ACUM: ${nextAction}
+
+⛔ REGULI DE FIER (le încalci = client pierdut, exact reclamația adminului):
+• Câmpurile cu ✓ sunt DEJA colectate — NU le re-cere NICIODATĂ. Dacă ești pe punctul să
+  întrebi ceva ce are deja ✓ mai sus, OPREȘTE-TE: îl ai. Verifică lista, apoi vorbește.
+• Fă DOAR „UNICA TA ACȚIUNE ACUM". Un singur pas pe tură, în ordinea tunelului. NU sări
+  înainte, NU improviza, NU „ții de vorbă" clientul — mișcă-l spre plată.
+• NU repeta o întrebare la care userul a răspuns deja în istoric. Integrezi ce a zis și
+  AVANSEZI. Dacă te trezești trimițând al 2-lea mesaj aproape identic → e greșit, schimbă pasul.
+
+Mostre audio pentru play_sample → stiluri: [${ctx.styleSampleIds.join(', ') || 'niciuna'}]; voci: [${ctx.voiceSampleIds.join(', ') || 'niciuna'}] (folosește EXACT aceste id-uri).`;
+  }
+
+  /**
+   * Calculează DETERMINIST (în cod, nu la latitudinea modelului) pasul curent din
+   * tunelul de vânzări + UNICA acțiune următoare. Oglindă a ETAPELOR 0-7 din
+   * system prompt, dar ca instrucțiune scurtă și imperativă pe care modelul o
+   * respectă mult mai fiabil decât 684 de linii de proză.
+   */
+  private computeFunnelNextAction(
+    conv: Conversation,
+    ctx: { hasEmail: boolean; userSubstantiveMsgs: number },
+  ): { stepLabel: string; nextAction: string } {
+    const ws = conv.wizardState;
+    const d = ws?.data ?? {};
+    const step = ws?.step ?? 'idle';
+    const priced = (ws?.priceQuotedCount ?? 0) > 0;
+    const hasRecipient = !!(d.recipientName && d.recipientName.trim());
+    const hasMessage = !!(d.message && d.message.trim());
+    const hasLyrics = !!(d.customLyrics && d.customLyrics.trim());
+    const hasTier = !!d.packageTier;
+
+    // Post-plată — NU mai colecta, NU mai trimite link.
+    if (step === 'paid' || step === 'generating' || step === 'completed') {
+      return {
+        stepLabel: 'COMANDĂ PLĂTITĂ — melodia se generează / e gata',
+        nextAction:
+          'NU re-colecta nimic și NU trimite link nou pe comanda asta. Dacă userul întreabă de status → check_order_status și raportează EXACT ce zice. O modificare pe melodia plătită → request_modification. Dacă vrea o melodie NOUĂ pentru altcineva → start_new_order întâi, apoi reia tunelul. Altfel răspunde scurt la ce te întreabă.',
+      };
+    }
+    // Link trimis — așteptăm plata.
+    if (step === 'payment_sent') {
+      return {
+        stepLabel: 'LINK DE PLATĂ TRIMIS — așteptăm plata',
+        nextAction:
+          'Linkul e deja trimis mai sus. Dacă userul zice că nu merge / nu-l găsește / a expirat → resend_payment_link (o singură dată). Dacă vrea o melodie pentru ALTĂ persoană → start_new_order întâi. NU re-finaliza, NU re-cota prețul.',
+      };
+    }
+    // Colectare / idle — mergem pas cu pas pe tunel.
+    if (!priced) {
+      // ÎNAINTE de a împinge spre vânzare nouă, respectă ETAPA 0: dacă userul se
+      // referă la o comandă DEJA făcută/plătită sau nu-și găsește melodia, NU porni
+      // un funnel nou — check_order_status / cere emailul. Doar dacă vrea clar o
+      // melodie NOUĂ anunți prețul.
+      return {
+        stepLabel: 'ÎNCEPUT — încă n-ai anunțat prețul',
+        nextAction:
+          'Citește ÎNTÂI ce vrea userul: (a) melodie NOUĂ → anunță prețul cu quote_price_with_offer și cere confirmare („sunteti de acord?"), fără să ceri încă nume/mesaj/email; (b) întreabă de o comandă DEJA făcută/plătită sau „nu-mi găsesc melodia" → check_order_status (cere-i emailul dacă nu apare în chat), NU porni o vânzare nouă și NU re-cota prețul; (c) vrea o modificare pe o melodie plătită → request_modification.',
+      };
+    }
+    if (!ctx.hasEmail) {
+      return {
+        stepLabel: 'PREȚ CONFIRMAT — lipsește emailul',
+        nextAction: 'Cere DOAR emailul de livrare, apoi salvează-l cu wizard_update({email}).',
+      };
+    }
+    if (!hasRecipient) {
+      return {
+        stepLabel: 'COLECTARE — lipsește destinatarul',
+        nextAction: 'Întreabă pentru cine e melodia, apoi wizard_update({recipientName}).',
+      };
+    }
+    if (!hasMessage && !hasLyrics) {
+      if (ctx.userSubstantiveMsgs >= 2) {
+        return {
+          stepLabel: 'COLECTARE — userul ȚI-A DAT deja povestea, dar n-ai salvat-o încă',
+          nextAction:
+            '⛔ NU mai cere „mesajul exact"! Userul ți-a spus deja destul (uită-te în istoric: relația, ocazia, ce simte). Rezumă TOT ce ți-a povestit — nume, relație, ocazie, orice detaliu real — și salvează-l cu wizard_update({message}), apoi avansează. Când un om îți POVESTEȘTE despre cel drag, ACEEA e mesajul; nu e „fabricare". A cere a 3-a oară același lucru pierde clientul.',
+        };
+      }
+      return {
+        stepLabel: 'COLECTARE — lipsește ce să transmită melodia',
+        nextAction:
+          'Întreabă SCURT, o singură dată, ce vrea să-i transmită („câteva cuvinte din suflet, restul aranjez eu 🙂"). Când îți dă ceva real (chiar și o poveste scurtă), salvează-l în `message` cu wizard_update și mergi mai departe — NU insista pe „mesajul exact".',
+      };
+    }
+    if (!hasTier) {
+      return {
+        stepLabel: 'APROAPE GATA — lipsește pachetul',
+        nextAction:
+          'Prezintă O SINGURĂ DATĂ cele 3 pachete (Standard/Plus/Premium) și așteaptă alegerea, apoi wizard_update({packageTier}). Dacă userul a fost deja indiferent → basic.',
+      };
+    }
+    return {
+      stepLabel: 'TOATE DATELE COMPLETE — gata de finalizare',
+      nextAction:
+        'Ai destinatar + mesaj + email + pachet. Dacă userul a confirmat măcar o dată → wizard_finalize ACUM (emite linkul de plată). NU mai cere încă o confirmare.',
+    };
   }
 
   private async buildSystemPrompt(site: Awaited<ReturnType<SitesService['findById']>>, memory: AiMemory[]): Promise<string> {
@@ -1246,6 +1413,15 @@ ETAPA 2.5 — AUTO-EXTRACT din primul mesaj user (CRITIC pentru UX):
     ani, iubirea mea, îți doresc sănătate și fericire...") și NU o pune în wizard_update ca și
     cum ar fi spus-o userul. O dedicație fabricată = manea impersonală + textul „lui/ei"
     nepersonalizat ajunge în melodie.
+  → ✅ DISTINCȚIE CRITICĂ (ca să NU buclezi la infinit cerând „mesajul exact"): a FABRICA
+    = să inventezi TU conținut pe care userul NU l-a spus. A SALVA POVESTEA = să pui în
+    \`message\` ce ȚI-A SPUS userul, chiar dacă e o poveste liberă, nu o frază formală.
+    „Suntem împreună de 50 de ani, am trecut prin bune și rele, o vreau despre iubirea
+    și respectul dintre noi" ESTE conținut valid → wizard_update({message: rezumatul
+    poveștii lui}) și AVANSEAZĂ. NU e „fabricare" și NU e „mesaj lipsă". Regula „message
+    rămâne GOL" se aplică DOAR când userul chiar nu ți-a spus NIMIC despre ce să transmită
+    (doar „pentru soția mea", punct). Dacă ți-a povestit orice real, salvează și mergi mai
+    departe — a cere a 3-a oară „mesajul exact" când omul ți-a spus deja = clientul pierdut.
   → Când userul a ales „fă-o TU pentru mine" și nu ți-a dat un mesaj, ai EXACT 2 căi corecte:
     (a) întrebi scurt ce vrea să-i transmită („Ce vrei să-i spui prin melodie? Câteva cuvinte
     din suflet sunt destul, restul aranjez eu 🙂"); SAU (b) dacă vrea să compui tu, folosești
