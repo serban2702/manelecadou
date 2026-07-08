@@ -712,6 +712,10 @@ export class AIChatAgentService {
 Follow-up-ul are sens DOAR dacă există o ACȚIUNE CONCRETĂ neterminată de partea ta sau a lui:
  • aștepta linkul de plată / nu a plătit încă → „Ai reușit cu plata? Te ajut dacă s-a blocat ceva 🙏";
  • s-a oprit la jumătatea comenzii (lipsesc nume/mesaj/email) → reia FIX întrebarea la care a rămas;
+ • ultimul tău mesaj a fost cotarea prețului („Sunteti de acord?") și nu a răspuns → re-întrebi
+   BLÂND doar acordul („Rămâne să-mi spui dacă ești de acord și pornim 🙂") — NU presupune că a
+   acceptat și NU trece la nume/mesaj/email (BUG 2026-07-08 conv ce0e8926: follow-up a trimis
+   „Perfect. Pentru cine vrei maneaua?" fără ca userul să fi confirmat prețul);
  • ți-a pus o întrebare la care n-ai răspuns complet → răspunde-i acum, concret.
 🚫 DACĂ NU există nimic concret de rezolvat — comanda e gata/livrată, discuția s-a încheiat natural
 („ok", „mersi"), sau aștepți un coleg uman după o escaladare — NU TRIMITE NIMIC. Termină turul fără
@@ -1634,6 +1638,14 @@ Dacă userul cere un DEMO PERSONALIZAT înainte de plată („fă-mi o mostră c
     (email/pachet/finalize). Melodia finală se va cânta EXACT pe versurile aprobate de el.
   → Versurile sunt cel mai puternic instrument de vânzare — odată ce omul își vede povestea
     scrisă, conversia e aproape făcută. Folosește-le și proactiv la clienții indeciși.
+  → ⚠️ ORICE corectură cerută la versuri TREBUIE persistată printr-un tool ÎNAINTE să
+    confirmi „am scos / am schimbat / am pus": cât mai ai drafturi → generate_lyrics cu
+    revisionNotes = cerințele lui exacte; după limita de drafturi → wizard_update({message:
+    povestea actualizată + interdicțiile explicite, ex. „NU menționa ziua de naștere / la
+    mulți ani"}) — draftul vechi se invalidează și melodia finală se scrie cu corecturile.
+    Ce spui DOAR în chat NU ajunge în melodie. BUG observat 2026-07-08 conv fb5aa187:
+    „șterge la mulți ani" / „nu e ziua lui" cerut de 4×, Irina confirma „am scos" fără
+    niciun tool call → melodia plătită a ieșit tot cu „la mulți ani" → reclamație + escaladare.
 
 ═══════════════════════════════════════════════════════════════════════
 REGULI STRICTE:
@@ -3009,6 +3021,35 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         instruction:
           'STAI — tocmai ai cotat prețul și ai întrebat „Sunteti de acord?". TERMINĂ TURUL și AȘTEAPTĂ ca userul să confirme („da/ok/de acord") ÎNAINTE de a cere emailul sau orice alt detaliu. NU presupune acordul, NU trimite „Perfect! Pe ce adresa de email...". NU mai apela niciun tool.',
       };
+    }
+
+    // Varianta CROSS-RUN a guard-ului de mai sus, pentru follow-up: dacă ULTIMUL mesaj din
+    // conversație e chiar cotarea de preț (userul nu a răspuns încă la „Sunteti de acord?"),
+    // follow-up-ul NU are voie să avanseze presupunând acordul — are voie doar să re-întrebe
+    // acordul. BUG observat 2026-07-08 conv ce0e8926: la 6 min după quote, follow-up-ul a
+    // trimis „Perfect. Pentru cine vrei maneaua?" deși clientul nu confirmase nimic.
+    if (ctx.followUp && !/\bde\s+acord\b/i.test(trimmed)) {
+      try {
+        const lastMsg = await this.msg.findOne({
+          where: { conversationId: ctx.conv.id },
+          order: { createdAt: 'DESC' },
+        });
+        if (
+          lastMsg &&
+          lastMsg.authorRole === 'admin' &&
+          /sunte[țt]i de acord\s*\?/i.test(lastMsg.body)
+        ) {
+          return {
+            sent: false,
+            messageType: 'noop',
+            status: 'AWAIT_PRICE_CONFIRMATION',
+            instruction:
+              'STAI — ultimul mesaj din conversație e cotarea prețului („Sunteti de acord?") și userul NU a răspuns încă. NU presupune acordul și NU avansa la nume/mesaj/email. Poți trimite DOAR un nudge scurt care re-întreabă acordul („Rămâne să-mi spui dacă ești de acord și pornim 🙂") — sau nu trimite nimic.',
+          };
+        }
+      } catch {
+        /* best-effort — dacă lookup-ul pică, lăsăm mesajul să treacă prin restul gardurilor */
+      }
     }
 
     // Hard limit: max 2 mesaje per run (suggest sau auto) — al 2-lea doar pentru
@@ -4877,7 +4918,17 @@ ${transcript}`;
     if ((state.lyricsDraftCount ?? 0) >= MAX_LYRICS_DRAFTS) {
       return {
         status: 'LYRICS_LIMIT_REACHED',
-        instruction: 'Ai generat deja 3 drafturi de versuri pe această conversație. NU mai genera altele — întreabă userul ce anume să schimbe și transmite-i că ajustările finale se fac la generare, sau alert_admins dacă clientul e nemulțumit.',
+        instruction: 'Ai generat deja 3 drafturi de versuri pe această conversație — NU mai poți trimite altele în chat. Corecturile cerute de user de-acum TREBUIE persistate ca să ajungă în melodie: apelează wizard_update({message: povestea COMPLETĂ actualizată, cu schimbările cerute incluse + interdicțiile explicite, ex. „NU menționa ziua de naștere / la mulți ani"}) — draftul vechi se invalidează automat și versurile finale se rescriu cu corecturile la generare. NU spune „am scos / am schimbat" dacă nu ai apelat wizard_update cu schimbarea. Dacă clientul e nemulțumit → alert_admins.',
+      };
+    }
+    // După primul draft, RE-generarea fără revisionNotes e oarbă: writer-ul rescrie din
+    // același message și poate re-halucina exact ce l-a deranjat pe client. BUG observat
+    // 2026-07-08 conv fb5aa187: toate cele 3 drafturi cerute cu {} — userul a zis „șterge
+    // la mulți ani / nu e ziua lui", dar drafturile 2-3 au venit tot cu „De ziua lui...".
+    if ((state.lyricsDraftCount ?? 0) >= 1 && !revisionNotes?.trim()) {
+      return {
+        status: 'REVISION_NOTES_REQUIRED',
+        instruction: 'Ai trimis deja un draft de versuri. Ca să generezi altul, RE-apelează generate_lyrics cu revisionNotes = EXACT ce a cerut userul să se schimbe față de draftul anterior (ce scoatem, ce adăugăm, ce păstrăm — citează cerințele lui, inclusiv interdicțiile: „NU menționa X"). Fără revisionNotes, writer-ul rescrie orbește și repetă aceleași greșeli.',
       };
     }
     const site = await this.sites.findById(ctx.conv.siteId);
@@ -5132,6 +5183,9 @@ ${transcript}`;
         );
         state.generationId = regen.id;
         state.step = 'generating';
+        // Reține CE a aplicat refacerea gratuită — guard-ul din calea contra cost refuză
+        // să încaseze pentru aceeași schimbare imediat după (CHANGE_ALREADY_APPLIED_BY_REMAKE).
+        state.lastFreeRemakeChanges = changes;
         state.updatedAt = new Date().toISOString();
         await this.conv
           .createQueryBuilder()
@@ -5164,6 +5218,29 @@ ${transcript}`;
     }
 
     // CAZ 2: modificare contra cost → link de plată; refacerea pornește la webhook.
+
+    // GUARD anti-încasare dublă: dacă refacerea GRATUITĂ recentă a aplicat DEJA (aproape)
+    // exact schimbarea cerută acum, NU emite link de plată — de obicei clientul ascultă în
+    // continuare varianta veche / nu a dat refresh la pagină. BUG observat 2026-07-08 conv
+    // fb5aa187: free remake a scos „la mulți ani" din versuri, dar clientul nu vedea încă
+    // versiunea nouă; Irina i-a cerut 14.99 RON pentru fix aceeași corectură DEJA aplicată
+    // → „Nui corect v reclam pe fb" + escaladare la om.
+    const remakeRecent =
+      genRow.freeRemakeUsedAt &&
+      Date.now() - new Date(genRow.freeRemakeUsedAt).getTime() < 60 * 60 * 1000;
+    if (
+      remakeRecent &&
+      state.lastFreeRemakeChanges &&
+      textOverlap(changes, state.lastFreeRemakeChanges) >= 0.45
+    ) {
+      return {
+        status: 'CHANGE_ALREADY_APPLIED_BY_REMAKE',
+        appliedChanges: state.lastFreeRemakeChanges,
+        instruction:
+          'STAI — refacerea gratuită de adineauri a aplicat DEJA (aproape) exact schimbarea cerută acum. NU trimite link de plată pentru ea. Verifică cu check_order_status că varianta refăcută e gata, apoi explică-i clientului că versiunea corectată e DEJA live pe pagina melodiei — să reîncarce pagina și să asculte ULTIMA versiune (cea mai nouă). Dacă și după reascultare susține că problema persistă în audio, e responsabilitatea noastră: alert_admins ca un coleg să verifice manual — NU încasa bani pentru o corectură deja promisă gratuit.',
+      };
+    }
+
     const amount = args.scope === 'large' ? MODIFICATION_PRICE_LARGE_CENTS : MODIFICATION_PRICE_SMALL_CENTS;
     const site = await this.sites.findById(ctx.conv.siteId);
     if (!site) return { error: 'site_not_found' };

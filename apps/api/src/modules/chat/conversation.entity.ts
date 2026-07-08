@@ -95,6 +95,10 @@ export interface WizardState {
    *  fost generat). Non-null ⇒ `customLyrics` curent e draft AI (nu versuri lipite
    *  de user). Vezi bug conv 59b40eb5 (2026-07-06). */
   lyricsBasedOnMessage?: string;
+  /** Schimbările aplicate de refacerea GRATUITĂ (request_modification cu isOurError /
+   *  isRetentionOffer) — guard „nu încasa pentru o schimbare deja aplicată"
+   *  (CHANGE_ALREADY_APPLIED_BY_REMAKE în ai-chat-agent.service.ts). */
+  lastFreeRemakeChanges?: string | null;
   /** Modificare contra cost în așteptarea plății (request_modification). */
   modification?: {
     generationId: string;
