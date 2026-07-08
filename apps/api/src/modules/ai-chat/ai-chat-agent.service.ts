@@ -2239,8 +2239,27 @@ REGULI STRICTE:
 
     // Timing — cât timp a trecut de la pickup la Suno
     // Suno API normal: 3-5 min. Cap ETA 10 min — peste, considerăm tech_error.
+    // Baza de timp = momentul PLĂȚII, nu crearea comenzii: generarea pornește abia la
+    // plată, iar comanda poate sta neplătită mult timp. BUG observat 2026-07-08 conv
+    // fb5aa187: comandă creată 16:30, plătită 16:44 → la 16:45 ageSeconds era deja >600
+    // → „EROARE TEHNICĂ" fals, mesaje „Am o problemă tehnică" + alert_admins pentru o
+    // generare care rula normal de 1 minut.
     const createdAtMs = new Date(generation.createdAt).getTime();
-    const ageSeconds = Math.floor((Date.now() - createdAtMs) / 1000);
+    let generationStartMs = createdAtMs;
+    const genPaymentId = (generation as { paymentId?: string | null }).paymentId ?? null;
+    if (paid && genPaymentId) {
+      try {
+        const payRows: { paidAt: Date | null }[] = await this.conv.manager.query(
+          `SELECT "paidAt" FROM payments WHERE id = $1 LIMIT 1`,
+          [genPaymentId],
+        );
+        const paidAtMs = payRows[0]?.paidAt ? new Date(payRows[0].paidAt).getTime() : 0;
+        if (paidAtMs > generationStartMs) generationStartMs = paidAtMs;
+      } catch {
+        /* fallback createdAt */
+      }
+    }
+    const ageSeconds = Math.floor((Date.now() - generationStartMs) / 1000);
     const ageMinutes = Math.floor(ageSeconds / 60);
     const isStuck = paid && !audioReady && ageSeconds > 600; // >10 min = clar tech_error
     const isSlowButNormal = paid && !audioReady && ageSeconds > 300 && ageSeconds <= 600; // 5-10 min = încărcare Suno
@@ -3689,7 +3708,7 @@ Pe baza conversației user-ului de mai jos și a datelor wizard deja colectate, 
 REGULI:
 - Dacă userul a SPUS explicit ceva ("vreau ceva clasic", "voce de femeie") → folosește exact.
 - Dacă wizardData are deja câmp setat → respectă-l, nu schimba.
-- occasion: NU presupune un eveniment pe care userul nu l-a menționat. "Zi de naștere" SE alege DOAR dacă apar indicii clare (zi de naștere, "la mulți ani", împlinește ani). Manea de dragoste / "te iubesc" fără eveniment → "Declarație". Răzbunare, ironie, "să sufere", "m-a înșelat" → "Roast prieten". Fără niciun indiciu de ocazie → "Altă ocazie". NICIODATĂ nu băga referințe la un eveniment (zi de naștere, nuntă, botez) pe care userul nu l-a cerut.
+- occasion: NU presupune un eveniment pe care userul nu l-a menționat. "Zi de naștere" SE alege DOAR dacă apar indicii clare (zi de naștere, "la mulți ani", împlinește ani). ATENȚIE la NEGAȚII: "nu e ziua lui", "nu-i pentru ziua lui", "șterge/scoate la mulți ani", "fără la mulți ani" înseamnă că ocazia NU e "Zi de naștere" — mențiunea într-o corectură/negare NU e indiciu pozitiv. Manea de dragoste / "te iubesc" fără eveniment → "Declarație". Răzbunare, ironie, "să sufere", "m-a înșelat" → "Roast prieten". Fără niciun indiciu de ocazie → "Altă ocazie". NICIODATĂ nu băga referințe la un eveniment (zi de naștere, nuntă, botez) pe care userul nu l-a cerut.
 - Pentru style/voice fără indicii clare → alege default-uri logice (voce match sex recipient).
 
 Returnează STRICT JSON: {"style": "...", "occasion": "...", "voiceArtist": "...", "enrichedMessage": "..."}`;
@@ -3750,6 +3769,24 @@ ${transcript}`;
     // Normalize style/occasion la denumiri exacte
     styleResult.value = this.normalizeStyle(styleResult.value);
     occasionResult.value = this.normalizeOccasion(occasionResult.value);
+
+    // Guard anti-negare: dacă userul a spus explicit că NU e ziua lui / să scoatem
+    // „la mulți ani", inferența NU are voie să aleagă „Zi de naștere" — modelul citea
+    // corecturile ca indicii pozitive și re-injecta tema la fiecare re-inferență.
+    // BUG observat 2026-07-08 conv fb5aa187: „Sterge la multi ani / Nui pnt ziua lui"
+    // cerut de 5×, dar drafturile și melodia finală reveneau cu „De ziua lui...".
+    const birthdayNegated =
+      /(nu\s+(e|este)|nu-i|nui)\s+(pnt\s+|pentru\s+)?ziua|(sterge|șterge|scoate|scoateți|f[ăa]r[ăa])[^.\n]{0,40}la\s+mul[țt][iî]\s*ani/i.test(
+        transcript,
+      );
+    if (
+      birthdayNegated &&
+      occasionResult.source !== 'user_said' &&
+      /na[șs]tere/i.test(occasionResult.value)
+    ) {
+      occasionResult.value = this.normalizeOccasion(fallbackOccasion);
+      occasionResult.source = 'default';
+    }
 
     // Voice: doar male/female. Matching simplu pe transcript pentru preferință
     // explicită; altfel inferat de AI; altfel fallback pe sexul destinatarului.

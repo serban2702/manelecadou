@@ -1774,7 +1774,7 @@ export class ChatService implements OnModuleInit {
     // cardul cu manea, apoi vede mesajul cald de mulțumire).
     if (isOk) {
       setTimeout(() => {
-        void this.sendThankYouAfterGeneration(conv.id, conv.siteId).catch(() => undefined);
+        void this.sendThankYouAfterGeneration(conv.id, conv.siteId, generationId).catch(() => undefined);
       }, 2000);
     }
 
@@ -1847,7 +1847,7 @@ export class ChatService implements OnModuleInit {
    * user. Mesajul e marcat ca AI-generated dar authorRole='admin' ca să apară ca
    * dialog natural în UI.
    */
-  private async sendThankYouAfterGeneration(conversationId: string, siteId: string | null): Promise<void> {
+  private async sendThankYouAfterGeneration(conversationId: string, siteId: string | null, generationId?: string): Promise<void> {
     const variants = [
       'Mă bucur tare că ți-a ieșit! 🎵 Sper să le placă și celor pentru care e dedicată. Mulțumesc că ne-ai ales! ❤️',
       'Gata, mulțumim mult! ✨ Sper să-i placă tare. Dacă vrei să mai faci una pentru cineva drag, mă găsești aici. 🎶',
@@ -1855,6 +1855,38 @@ export class ChatService implements OnModuleInit {
       'Felicitări, ai un cadou super! 🎤 Mulțumim că ne-ai dat o șansă să fim parte din momentul ăsta. ❤️',
       'Mă bucur că totul a ieșit cum trebuie! 🎶 Mulțumim mult, ne vedem la următoarea manea! ✨',
     ];
+    // Livrarea unei REFACERI (free remake / modificare plătită) nu e un moment de
+    // sărbătoare — clientul tocmai s-a plâns de ceva. Celebrarea „Mă bucur că totul a
+    // ieșit cum trebuie! ✨" pica tone-deaf (2026-07-08, audit conv fb5aa187: trimisă
+    // de 2× unui client furios că nu i s-a aplicat corectura). Mesaj dedicat, care
+    // cere confirmarea corecturii în loc să sărbătorească.
+    const remakeVariant =
+      'Am refăcut-o cum ai cerut 🙏 Ascultă te rog ULTIMA versiune de pe pagina melodiei (reîncarcă pagina) și spune-mi dacă acum e totul ok.';
+    let isRemakeDelivery = false;
+    if (generationId) {
+      try {
+        const rows: { freeRemakeUsedAt: Date | null }[] = await this.msg.manager.query(
+          `SELECT "freeRemakeUsedAt" FROM generations WHERE id = $1 LIMIT 1`,
+          [generationId],
+        );
+        const remakeAt = rows[0]?.freeRemakeUsedAt ? new Date(rows[0].freeRemakeUsedAt).getTime() : 0;
+        if (remakeAt && Date.now() - remakeAt < 2 * 60 * 60 * 1000) isRemakeDelivery = true;
+        if (!isRemakeDelivery) {
+          const modRows: { id: string }[] = await this.msg.manager.query(
+            `SELECT id FROM chat_messages
+             WHERE "conversationId" = $1 AND "messageType" = 'payment_link'
+               AND payload->>'modificationForGenerationId' = $2
+               AND payload->>'status' = 'paid'
+               AND "createdAt" > now() - interval '2 hours'
+             LIMIT 1`,
+            [conversationId, generationId],
+          );
+          if (modRows[0]) isRemakeDelivery = true;
+        }
+      } catch {
+        /* best-effort — fallback pe celebrare */
+      }
+    }
     // GUARD anti-spam (2026-06-17, audit conv af0b5a7d): când se completează mai multe
     // generații pentru aceeași conversație în câteva secunde (variante/regenerări
     // duplicate), fiecare ar apela acest thank-you → clientul primea „Felicitări, ai un
@@ -1866,7 +1898,7 @@ export class ChatService implements OnModuleInit {
         authorRole: 'admin',
         messageType: 'text',
         aiGenerated: true,
-        body: In(variants),
+        body: In([...variants, remakeVariant]),
         createdAt: MoreThan(new Date(Date.now() - 3 * 60 * 1000)),
       },
     });
@@ -1887,7 +1919,7 @@ export class ChatService implements OnModuleInit {
       order: { createdAt: 'DESC' },
     });
     const pool = lastThankYou ? variants.filter((v) => v !== lastThankYou.body) : variants;
-    const text = pool[Math.floor(Math.random() * pool.length)];
+    const text = isRemakeDelivery ? remakeVariant : pool[Math.floor(Math.random() * pool.length)];
     const conv = await this.conv.findOne({ where: { id: conversationId } });
     if (!conv) return;
     const msg = this.msg.create({
