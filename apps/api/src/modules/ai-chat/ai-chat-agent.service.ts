@@ -1633,7 +1633,29 @@ REGULI STRICTE:
     BUG observat 2026-06-24 conv d2ca6b06: user „am comandat 2 melodii, am plătit", a rezolvat
     prima (Gabriella, email greșit), apoi „am și melodie pt Mihaela, aceeași situație" → AI a
     cotat 29.99 ca pentru comandă nouă și a ignorat „am plătit melodia pt Mihaela", revenind
-    haotic la Gabriella. Mihaela nu exista în sistem → trebuia inspect_customer_data + escalate.`;
+    haotic la Gabriella. Mihaela nu exista în sistem → trebuia inspect_customer_data + escalate.
+32. ⛔ POZE / IMAGINI / COLAJ VIDEO NU SUNT MODIFICARE DE MELODIE. Pozele de share și
+    colajul video sunt FEATURE-URI DE PACHET pe pagina melodiei (/m/...): imaginile de
+    social media se generează automat la pachetele Plus/Premium, iar colajul video cu pozele
+    clientului există DOAR la Premium — clientul își încarcă SINGUR pozele direct de pe
+    pagina piesei (butonul de colaj), GRATUIT, fără nicio regenerare. NU apela
+    request_modification pentru poze/imagini/video — regenerarea reface DOAR audio+versuri
+    și NU poate adăuga poze; ai încasa bani pentru ceva ce nu se livrează. Dacă userul vrea
+    poze/colaj: explică-i unde le încarcă pe pagina melodiei; dacă pachetul lui nu include
+    feature-ul, spune-i ce pachet îl are. Dacă zice că „la varianta X nu poate pune poze" →
+    e o întrebare de UI, nu o modificare: îndrumă-l pas cu pas sau escalate_to_human.
+    BUG observat 2026-07-08 conv 7d48c0fe: user a vrut „poze la varianta 3" (ca la varianta 1,
+    unde și le pusese singur), AI a vândut o „modificare amplă" de 29.99 → s-a regenerat
+    melodia (fără poze, evident) și clientul a plătit degeaba.
+33. RETRAGEREA UNEI MODIFICĂRI CERUTE (link de modificare NEPLĂTIT încă): schimbările se
+    ACUMULEAZĂ pe linkul de plată existent la fiecare request_modification. Dacă userul
+    RETRAGE sau schimbă ceva cerut anterior („nu mai schimba versurile", „las-o cum era cu
+    numele", „de fapt fără strofa aia") → apelează request_modification DIN NOU cu
+    replaceChanges=true și changes = DOAR lista completă FINALĂ a schimbărilor rămase
+    valabile. Fără asta, instrucțiunea retrasă rămâne pe link și SE EXECUTĂ după plată.
+    BUG observat 2026-07-08 conv 7d48c0fe: user a cerut schimbare de versuri, apoi a zis
+    explicit „Nu schimbati versurile" — AI a confirmat verbal dar n-a curățat linkul, iar
+    după plată versurile au fost rescrise contra voinței clientului.`;
 
     return this.appendMemoryAndContacts(basePrompt, memory, site);
   }
@@ -1809,7 +1831,7 @@ REGULI STRICTE:
       },
       {
         name: 'resend_payment_link',
-        description: 'Re-trimite linkul de plată al comenzii curente ca un card nou în chat. Folosește când userul nu găsește linkul, zice că a expirat, că „nu merge"/„nu funcționează"/„nu se deschide"/„nu pot plăti", sau a schimbat pachetul/datele înainte de plată (regenerează sesiunea Stripe cu datele actuale). NU scrie URL-ul în text — tool-ul trimite singur cardul. NU cere permisiune să retrimiți — dacă userul semnalează o problemă cu linkul, retrimite-l direct.',
+        description: 'Re-trimite linkul de plată al comenzii curente ca un card nou în chat. Folosește când userul nu găsește linkul, zice că a expirat, că „nu merge"/„nu funcționează"/„nu se deschide"/„nu pot plăti", sau a schimbat pachetul/datele înainte de plată (regenerează sesiunea Stripe cu datele actuale). Dacă există un link de MODIFICARE neplătit, îl re-emite pe ACELA cu prioritate (comanda de bază plătită NU înseamnă că modificarea e plătită). NU scrie URL-ul în text — tool-ul trimite singur cardul. NU cere permisiune să retrimiți — dacă userul semnalează o problemă cu linkul, retrimite-l direct.',
         parameters: { type: 'object', properties: {} },
       },
       {
@@ -1834,6 +1856,7 @@ REGULI STRICTE:
             isOurError: { type: 'boolean', description: 'true DOAR dacă e clar greșeala noastră (am livrat altceva decât a cerut clientul).' },
             isRetentionOffer: { type: 'boolean', description: 'true DOAR ca gest comercial unic pentru a salva un client nemulțumit/pe punctul să plece. Nu se oferă proactiv ca opțiune standard.' },
             generationId: { type: 'string', description: 'OPTIONAL: id-ul generării țintă dacă îl știi din check_order_status. Altfel tool-ul găsește singur ultima melodie plătită.' },
+            replaceChanges: { type: 'boolean', description: 'true DOAR când userul RETRAGE/corectează schimbări cerute anterior pe un link de modificare încă neplătit („nu mai schimba versurile"). Atunci changes ÎNLOCUIEȘTE complet lista veche — pune în el DOAR schimbările finale rămase valabile. Default (false): changes se ADAUGĂ peste cele existente.' },
           },
           required: ['changes', 'isOurError'],
         },
@@ -1885,6 +1908,7 @@ REGULI STRICTE:
           isOurError: args.isOurError === true,
           isRetentionOffer: args.isRetentionOffer === true,
           generationId: typeof args.generationId === 'string' ? args.generationId : undefined,
+          replaceChanges: args.replaceChanges === true,
         }),
       inspect_customer_data: async () => this.handleInspectCustomerData(ctx),
       alert_admins: async (args) =>
@@ -2909,6 +2933,38 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           instruction:
             'STAI — mesajul ăsta e o parafrază aproape identică cu ULTIMUL mesaj pe care l-ai trimis. NU repeta aceeași asigurare reformulată, sună robotic. Dacă aștepți o generare blocată și ai anunțat deja echipa / ai escaladat, NU mai trimite încă un „revin imediat" — userul a primit deja mesajul. Verifică statusul real (check_order_status): ori spui ceva CONCRET nou (linkul melodiei dacă e gata, un timp estimat clar diferit), ori NU mai trimite niciun mesaj acum.',
         };
+      }
+
+      // Treapta 0.55 — același link de melodie (/m/<id>) repetat. BUG observat 2026-07-08
+      // conv 7d48c0fe: userul zicea „nu se deschide" / „tot nu găsesc varianta 3", iar Irina
+      // a re-lipit ACELAȘI link de 4-5 ori cu text ușor variat (Jaccard sub pragurile de
+      // mai sus). Linkul se trimite de maxim 2 ori — a 3-a oară userul are o problemă REALĂ
+      // (nu găsește / nu se deschide / caută altceva) și repetarea linkului n-o rezolvă.
+      const songLinkMatch = normalized.match(/\/m\/[0-9a-f]{8}-[0-9a-f-]{27,}/);
+      if (songLinkMatch) {
+        try {
+          const priorLinkSends = await this.msg
+            .createQueryBuilder('m')
+            .where('m."conversationId" = :cid', { cid: ctx.conv.id })
+            .andWhere(`m."authorRole" = 'admin'`)
+            .andWhere(`m."aiGenerated" = true`)
+            .andWhere(`m."messageType" = 'text'`)
+            .andWhere(`m."createdAt" > now() - interval '3 hours'`)
+            .andWhere('m.body ILIKE :pat', { pat: `%${songLinkMatch[0]}%` })
+            .getCount();
+          if (priorLinkSends >= 2) {
+            this.logger.warn(`SONG_LINK_REPEAT blocked on conv=${ctx.conv.id.slice(0, 8)} — al ${priorLinkSends + 1}-lea mesaj cu același link /m/.`);
+            return {
+              sent: false,
+              messageType: 'duplicate_text',
+              status: 'SONG_LINK_REPEAT_BLOCKED',
+              instruction:
+                'STAI — ai trimis DEJA acest link de melodie de 2+ ori în conversație; userul ÎL ARE. NU-l mai retrimite — dacă zice că „nu se deschide" sau „nu găsește" ceva, problema lui e alta și repetarea linkului îl enervează. Răspunde CONCRET la problema reală: întreabă-l CE vede când apasă (eroare? pagină goală?), explică-i pas cu pas unde e ce caută pe pagina melodiei (variantele sunt toate pe aceeași pagină, una sub alta) sau verifică emailul/spam. Dacă nici așa nu se rezolvă → escalate_to_human, nu încă un mesaj cu linkul.',
+            };
+          }
+        } catch (e) {
+          this.logger.warn(`song link repeat check failed: ${(e as Error).message}`);
+        }
       }
 
       // Treapta 0.6 — dublă confirmare a emailului (semantic, NU lexical). BUG observat
@@ -4106,6 +4162,17 @@ ${transcript}`;
     } catch (e) {
       this.logger.warn(`change_email find gen failed: ${(e as Error).message}`);
     }
+    // Fallback prin TOATE semnalele de identitate (wizard, email, IP) — comanda plătită e
+    // deseori pe ALT guest/device decât conversația. Fără fallback, gen rămânea null și
+    // tool-ul doar „nota emailul" fără să retrimită nimic, deși melodia era gata (BUG
+    // observat 2026-07-08 conv 7d48c0fe: „Nu a venit emailul" → resent=false silențios).
+    if (!gen) {
+      const resolved = await this.resolveCustomerGeneration(ctx.conv, { requirePaid: false });
+      if (resolved) {
+        const g = resolved.generation;
+        gen = { id: g.id, status: g.status, paidUnlocked: !!g.paidUnlocked, recipientName: g.recipientName };
+      }
+    }
 
     // Update email-ul în sursa de adevăr (guest_session sau users)
     try {
@@ -4153,7 +4220,9 @@ ${transcript}`;
     // Mesaj de confirmare în chat
     const confirmText = gen
       ? gen.status === 'succeeded'
-        ? `Gata, am schimbat email-ul pe ${clean} și ți-am retrimis maneaua acolo. ✨`
+        ? resent
+          ? `Gata, am schimbat email-ul pe ${clean} și ți-am retrimis maneaua acolo. ✨`
+          : `Am notat email-ul ${clean}. ✓`
         : `Am schimbat email-ul pe ${clean}. Imediat ce e gata maneaua, o primești pe noua adresă. 🎵`
       : `Am notat email-ul ${clean}. ✓`;
 
@@ -4180,7 +4249,40 @@ ${transcript}`;
       .execute();
     this.gateway.emitMessage({ message: saved, conversation: ctx.conv });
     ctx.sentRealMessages++;
-    return { sent: true, status: 'EMAIL_CHANGED_AND_RESENT', newEmail: clean, resent };
+    // Status SINCER: EMAIL_CHANGED_AND_RESENT doar când chiar am retrimis emailul. Înainte,
+    // statusul era mereu „RESENT" chiar cu resent=false → Irina îi spunea userului că i-a
+    // retrimis emailul deși nu plecase nimic (BUG observat 2026-07-08 conv 7d48c0fe).
+    if (resent) {
+      return { sent: true, status: 'EMAIL_CHANGED_AND_RESENT', newEmail: clean, resent };
+    }
+    if (gen && gen.status === 'succeeded') {
+      return {
+        sent: true,
+        status: 'EMAIL_SAVED_RESEND_FAILED',
+        newEmail: clean,
+        resent,
+        instruction:
+          'Emailul a fost salvat, dar RETRIMITEREA emailului cu melodia A EȘUAT tehnic. NU-i spune userului că i-ai (re)trimis emailul. Dă-i direct linkul melodiei în chat (check_order_status → linkToSong) și, dacă reclamă în continuare emailul, alert_admins ca un coleg să-l trimită manual.',
+      };
+    }
+    if (gen) {
+      return {
+        sent: true,
+        status: 'EMAIL_SAVED_SONG_NOT_READY',
+        newEmail: clean,
+        resent,
+        instruction:
+          'Emailul a fost salvat, dar melodia NU e încă gata — emailul de livrare pleacă AUTOMAT la noua adresă când se termină generarea. NU-i spune userului că i-ai retrimis ceva acum.',
+      };
+    }
+    return {
+      sent: true,
+      status: 'EMAIL_SAVED_NO_ORDER_FOUND',
+      newEmail: clean,
+      resent,
+      instruction:
+        'Emailul a fost salvat, dar NU am găsit nicio comandă a clientului (nici după email/IP) — nu s-a retrimis nimic. NU-i spune userului că i-ai trimis emailul. Dacă el susține că are o comandă plătită → inspect_customer_data, apoi alert_admins dacă tot nu apare.',
+    };
   }
 
   /** Trimite mesaj de empatie (condoleanțe, „să-ți trăiască") cu cap 2/conv. */
@@ -4299,6 +4401,117 @@ ${transcript}`;
     };
   }
 
+  /** Ultimul card de plată pentru MODIFICARE încă neplătit din conversație (fereastră 24h). */
+  private async findPendingModificationLink(
+    convId: string,
+  ): Promise<{ id: string; payload: ChatMessagePayload; createdAt: Date } | null> {
+    try {
+      const rows: { id: string; payload: ChatMessagePayload; createdAt: Date }[] =
+        await this.conv.manager.query(
+          `SELECT id, payload, "createdAt" FROM chat_messages
+           WHERE "conversationId" = $1 AND "messageType" = 'payment_link'
+             AND payload->>'modificationForGenerationId' IS NOT NULL
+             AND COALESCE(payload->>'status','') != 'paid'
+             AND payload->>'checkoutUrl' IS NOT NULL
+             AND "createdAt" > now() - interval '24 hours'
+           ORDER BY "createdAt" DESC LIMIT 1`,
+          [convId],
+        );
+      return rows[0] ?? null;
+    } catch (e) {
+      this.logger.warn(`findPendingModificationLink failed: ${(e as Error).message}`);
+      return null;
+    }
+  }
+
+  /** Re-emite cardul de plată al unei MODIFICĂRI neplătite: aceeași sesiune Stripe dacă e
+   *  proaspătă (<25 min), altfel sesiune nouă cu aceleași schimbări pe aceeași generare. */
+  private async resendModificationLink(
+    ctx: AgentCtx,
+    conv: Conversation,
+    pending: { id: string; payload: ChatMessagePayload; createdAt: Date },
+  ): Promise<unknown> {
+    if (!conv.siteId) return { error: 'no_site' };
+    const site = await this.sites.findById(conv.siteId);
+    if (!site) return { error: 'site_not_found' };
+    const state = this.getOrInitWizardState(conv);
+    const payload = pending.payload ?? {};
+    const amount = Number(payload.amount ?? 0) || MODIFICATION_PRICE_LARGE_CENTS;
+    const currency = String(payload.currency ?? site.currency.toUpperCase());
+    const description = String(payload.description ?? 'Modificare manea');
+    const ageMs = Date.now() - new Date(pending.createdAt).getTime();
+    let checkoutUrl = String(payload.checkoutUrl ?? '');
+    let paymentId = String(payload.paymentId ?? '');
+    let mode: 'reused' | 'fresh' = 'reused';
+    if (ageMs > 25 * 60 * 1000 || !checkoutUrl) {
+      try {
+        const checkout = await this.payments.createCheckoutSession({
+          userId: conv.userId,
+          guestId: conv.guestId,
+          overrideAmount: amount,
+          email: conv.email ?? undefined,
+          site,
+          ipAddress: conv.lastIp ?? undefined,
+        });
+        checkoutUrl = checkout.url;
+        paymentId = checkout.paymentId;
+        mode = 'fresh';
+        if (state.modification) {
+          state.modification.paymentId = paymentId;
+          state.updatedAt = new Date().toISOString();
+          await this.conv
+            .createQueryBuilder()
+            .update(Conversation)
+            .set({ wizardState: state })
+            .where('id = :id', { id: conv.id })
+            .execute();
+        }
+      } catch (e) {
+        this.logger.warn(`resend modification link failed: ${(e as Error).message}`);
+        return { error: 'modification_link_failed', instruction: 'Re-emiterea linkului de modificare a eșuat. alert_admins + mesaj diplomat.' };
+      }
+    }
+    await this.humanDelay('retrimit linkul de modificare', ctx.mode);
+    const m = this.msg.create({
+      conversationId: conv.id,
+      siteId: conv.siteId,
+      authorRole: 'admin',
+      authorId: null,
+      body: `💳 Link de plată modificare: ${description} — ${(amount / 100).toFixed(2)} ${currency}`,
+      messageType: 'payment_link',
+      payload: {
+        amount,
+        currency,
+        description,
+        checkoutUrl,
+        paymentId,
+        modificationForGenerationId: payload.modificationForGenerationId,
+        modificationChanges: payload.modificationChanges,
+        ...(payload.modificationNewRecipientName
+          ? { modificationNewRecipientName: payload.modificationNewRecipientName }
+          : {}),
+      },
+      aiGenerated: true,
+      detectedLang: site.locale,
+    });
+    const saved = await this.msg.save(m);
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+      .where('id = :id', { id: conv.id })
+      .execute();
+    this.gateway.emitMessage({ message: saved, conversation: conv });
+    ctx.paymentLinkSent = true;
+    return {
+      ok: true,
+      status: mode === 'reused' ? 'MODIFICATION_LINK_RESENT' : 'MODIFICATION_LINK_REISSUED',
+      amountCents: amount,
+      currentChanges: String(payload.modificationChanges ?? ''),
+      instruction: `Comanda de bază e PLĂTITĂ, dar MODIFICAREA cerută (${(amount / 100).toFixed(2)} ${currency}) NU e plătită încă — cardul de plată tocmai a fost retrimis mai sus. NU-i spune userului că „totul e plătit". Explică-i scurt că refacerea pornește după plata acestui link. Verifică currentChanges: dacă include ceva ce userul a RETRAS între timp, apelează request_modification cu replaceChanges=true și lista finală corectă. NU scrie URL în text.`,
+    };
+  }
+
   /** Re-trimite linkul de plată: refolosește sesiunea Stripe dacă e proaspătă (<25 min,
    *  sesiunile expiră la 30), altfel creează una NOUĂ pe aceeași comandă cu datele actuale. */
   private async handleResendPaymentLink(ctx: AgentCtx): Promise<unknown> {
@@ -4308,6 +4521,14 @@ ${transcript}`;
     const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
     if (!conv) return { error: 'conversation gone' };
     const state = this.getOrInitWizardState(conv);
+
+    // ÎNTÂI: link de MODIFICARE neplătit? „Mai trimite linkul" după un card de modificare
+    // se referă la EL, nu la comanda de bază. Fără verificarea asta, comanda plătită scurt-
+    // circuita totul cu ORDER_ALREADY_PAID și Irina îi spunea userului „nu mai trebuie link
+    // de plată" imediat după ce i-a vândut o modificare (BUG observat 2026-07-08 conv
+    // 7d48c0fe: buclă de ~15 mesaje contradictorii „plătește modificarea"/„e deja plătită").
+    const pendingMod = await this.findPendingModificationLink(conv.id);
+    if (pendingMod) return this.resendModificationLink(ctx, conv, pendingMod);
     if (!state.generationId) {
       // Recuperare din DB: wizardState poate fi golit (ex. start_new_order pe un input
       // ambiguu la trecut) deși comanda reală + cardul de plată există încă. BUG observat
@@ -4624,6 +4845,7 @@ ${transcript}`;
       isOurError: boolean;
       isRetentionOffer?: boolean;
       generationId?: string;
+      replaceChanges?: boolean;
     },
   ): Promise<unknown> {
     const check = await this.assertNotManual(ctx);
@@ -4790,9 +5012,14 @@ ${transcript}`;
       const existing = existingRows[0];
       if (existing) {
         const prevChanges = String(existing.payload?.modificationChanges ?? '').trim();
-        const mergedChanges = prevChanges && !prevChanges.includes(changes)
-          ? `${prevChanges}\n+ ${changes}`.slice(0, 2000)
-          : changes;
+        // replaceChanges: userul a RETRAS/corectat schimbări cerute anterior → lista veche
+        // se înlocuiește integral, altfel instrucțiunea retrasă rămâne pe link și se execută
+        // după plată (BUG observat 2026-07-08 conv 7d48c0fe: „Nu schimbati versurile" ignorat).
+        const mergedChanges = args.replaceChanges
+          ? changes
+          : prevChanges && !prevChanges.includes(changes)
+            ? `${prevChanges}\n+ ${changes}`.slice(0, 2000)
+            : changes;
         await this.conv.manager.query(
           `UPDATE chat_messages SET payload = jsonb_set(payload, '{modificationChanges}', to_jsonb($1::text)) WHERE id = $2`,
           [mergedChanges, existing.id],
@@ -4818,7 +5045,8 @@ ${transcript}`;
           ok: true,
           status: 'MODIFICATION_LINK_REUSED',
           amountCents: amount,
-          instruction: `Există DEJA un link de plată pentru modificare mai sus în chat (același cost). NU trimite un link nou. Am adăugat noile detalii peste modificarea existentă — toate schimbările cerute se aplică la o singură refacere, după o singură plată. Spune-i userului cald că am notat și acest detaliu și că totul se face din linkul de plată deja trimis (un singur cost). NU scrie URL în text.`,
+          currentChanges: mergedChanges,
+          instruction: `Există DEJA un link de plată pentru modificare mai sus în chat (același cost). NU trimite un link nou. ${args.replaceChanges ? 'Lista de schimbări de pe link a fost ÎNLOCUITĂ cu cea nouă.' : 'Am adăugat noile detalii peste modificarea existentă.'} Verifică currentChanges: DOAR ce e acolo se execută după plată — dacă conține ceva ce userul a retras între timp, re-apelează cu replaceChanges=true și lista finală corectă. Spune-i userului cald că am notat și că totul se face din linkul de plată deja trimis (un singur cost). NU scrie URL în text.`,
         };
       }
     } catch (e) {
