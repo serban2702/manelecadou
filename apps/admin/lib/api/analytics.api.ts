@@ -254,6 +254,13 @@ export interface ProfitReport {
   totalExpensesRonCents: number;
   profitRonCents: number;
   marginPct: number;
+  /** Serie zilnică venituri vs cheltuieli (toate componentele pro-rata pe zi). */
+  daily: Array<{
+    day: string;
+    revenueRonCents: number;
+    expensesRonCents: number;
+    profitRonCents: number;
+  }>;
 }
 
 /** Dimensiunile suportate de matricea de marketing (rânduri). */

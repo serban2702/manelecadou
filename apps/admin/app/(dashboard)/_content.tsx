@@ -28,9 +28,11 @@ import {
   CartesianGrid,
   Cell,
   ComposedChart,
+  Legend,
   Line,
   Pie,
   PieChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip as ReTooltip,
   XAxis,
@@ -141,6 +143,19 @@ export default function AdminDashboard() {
           orders: r.orders,
         })),
     [stats, sitesById],
+  );
+
+  // Seria zilnică venituri vs cheltuieli vs profit (business-wide, din raportul
+  // de profitabilitate — aceleași componente ca în cardul „Profitabilitate").
+  const profitSeries = useMemo(
+    () =>
+      (profit?.daily ?? []).map((d) => ({
+        label: format(new Date(d.day + 'T00:00:00'), 'd MMM', { locale: ro }),
+        venit: Math.round(d.revenueRonCents / 100),
+        cheltuieli: Math.round(d.expensesRonCents / 100),
+        profit: Math.round(d.profitRonCents / 100),
+      })),
+    [profit],
   );
 
   return (
@@ -254,10 +269,12 @@ export default function AdminDashboard() {
             <Card className="surface">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">
-                  {isAllSelected ? 'Venit per site' : 'Generări & utilizatori noi'}
+                  {isAllSelected ? 'Venit per site' : 'Venituri vs cheltuieli pe zi'}
                 </CardTitle>
                 <CardDescription>
-                  {isAllSelected ? 'Distribuția vânzărilor pe tenant' : 'Activitate zilnică'}
+                  {isAllSelected
+                    ? 'Distribuția vânzărilor pe tenant'
+                    : 'Business-wide (toate site-urile) · aceleași componente ca la Profitabilitate'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-2">
@@ -291,42 +308,26 @@ export default function AdminDashboard() {
                       </div>
                     </>
                   )
-                ) : series.length === 0 ? (
+                ) : profitSeries.length === 0 ? (
                   <EmptyChart />
                 ) : (
-                  <ResponsiveContainer width="100%" height={280}>
-                    <ComposedChart data={series} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(30 10% 18%)" vertical={false} />
-                      <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="hsl(30 8% 50%)" minTickGap={24} />
-                      <YAxis tick={{ fontSize: 11 }} stroke="hsl(30 8% 50%)" width={30} allowDecimals={false} />
-                      <ReTooltip contentStyle={chartTooltipStyle} />
-                      <Bar dataKey="generations" name="Generări" fill="hsl(280 65% 60%)" radius={[3, 3, 0, 0]} maxBarSize={18} />
-                      <Line type="monotone" dataKey="newUsers" name="Utilizatori noi" stroke="hsl(158 64% 52%)" strokeWidth={2} dot={false} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
+                  <ProfitDailyChart data={profitSeries} height={280} />
                 )}
               </CardContent>
             </Card>
           </div>
 
-          {/* ===== Activitate zilnică (doar în scope all — altfel e în cardul de sus) ===== */}
-          {isAllSelected && series.length > 0 && (
+          {/* ===== Venituri vs cheltuieli pe zi (doar în scope all — altfel e în cardul de sus) ===== */}
+          {isAllSelected && profitSeries.length > 0 && (
             <Card className="surface mb-4">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Generări & utilizatori noi pe zi</CardTitle>
-                <CardDescription>Volumul de producție și conturile noi create</CardDescription>
+                <CardTitle className="text-sm font-medium">Venituri vs cheltuieli pe zi</CardTitle>
+                <CardDescription>
+                  Cheltuieli = Meta + Suno + recurente pro-rata + TVA + impozit micro + Stripe · aceleași componente ca la Profitabilitate
+                </CardDescription>
               </CardHeader>
               <CardContent className="pt-2">
-                <ResponsiveContainer width="100%" height={220}>
-                  <ComposedChart data={series} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(30 10% 18%)" vertical={false} />
-                    <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="hsl(30 8% 50%)" minTickGap={24} />
-                    <YAxis tick={{ fontSize: 11 }} stroke="hsl(30 8% 50%)" width={30} allowDecimals={false} />
-                    <ReTooltip contentStyle={chartTooltipStyle} />
-                    <Bar dataKey="generations" name="Generări" fill="hsl(280 65% 60%)" radius={[3, 3, 0, 0]} maxBarSize={16} />
-                    <Line type="monotone" dataKey="newUsers" name="Utilizatori noi" stroke="hsl(158 64% 52%)" strokeWidth={2} dot={false} />
-                  </ComposedChart>
-                </ResponsiveContainer>
+                <ProfitDailyChart data={profitSeries} height={240} />
               </CardContent>
             </Card>
           )}
@@ -444,6 +445,43 @@ function ProfitCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Grafic zilnic venituri (verde) vs cheltuieli (roșu) + linia de profit (auriu).
+ * Culorile urmează semantica din cardul Profitabilitate (success/destructive/
+ * primary); legenda e obligatorie — identitatea seriilor nu stă doar în culoare.
+ */
+function ProfitDailyChart({
+  data,
+  height = 240,
+}: {
+  data: Array<{ label: string; venit: number; cheltuieli: number; profit: number }>;
+  height?: number;
+}) {
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <ComposedChart data={data} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="hsl(30 10% 18%)" vertical={false} />
+        <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="hsl(30 8% 50%)" minTickGap={24} />
+        <YAxis
+          tick={{ fontSize: 11 }}
+          stroke="hsl(30 8% 50%)"
+          width={48}
+          tickFormatter={(v: number) => v.toLocaleString('ro-RO')}
+        />
+        <ReTooltip
+          contentStyle={chartTooltipStyle}
+          formatter={(v, name) => [`${Number(v).toLocaleString('ro-RO')} lei`, name]}
+        />
+        <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />
+        <ReferenceLine y={0} stroke="hsl(30 10% 30%)" />
+        <Bar dataKey="venit" name="Venit" fill="hsl(158 64% 52%)" radius={[3, 3, 0, 0]} maxBarSize={14} />
+        <Bar dataKey="cheltuieli" name="Cheltuieli" fill="hsl(0 72% 56%)" radius={[3, 3, 0, 0]} maxBarSize={14} />
+        <Line type="monotone" dataKey="profit" name="Profit" stroke="hsl(45 84% 62%)" strokeWidth={2} dot={false} />
+      </ComposedChart>
+    </ResponsiveContainer>
   );
 }
 

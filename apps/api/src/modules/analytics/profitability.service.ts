@@ -73,6 +73,17 @@ export interface ProfitReport {
   profitRonCents: number;
   /** Marjă de profit (%) raportată la venituri. */
   marginPct: number;
+  /**
+   * Serie zilnică venituri vs cheltuieli (graficul din dashboard). Cheltuielile
+   * zilei = Meta + Suno + recurente pro-rata + TVA-ul lor + impozitul micro pe
+   * venitul zilei + comisionul Stripe al plăților zilei (zile Europe/Bucharest).
+   */
+  daily: Array<{
+    day: string;
+    revenueRonCents: number;
+    expensesRonCents: number;
+    profitRonCents: number;
+  }>;
 }
 
 function toDay(d: Date): string {
@@ -230,8 +241,18 @@ export class ProfitabilityService {
       return currency === 'EUR' ? wk.eurToRon : wk.usdToRon;
     };
 
+    // Acumulatoare pe zi pentru seria `daily` (venituri + cheltuieli pre-TVA).
+    // Bump doar pe zilele intervalului — conversiile de fus orar de la margini
+    // pot produce zile vecine; le ignorăm în serie (totalurile rămân exacte).
+    const dailyRevenue = new Map<string, number>(allDays.map((d) => [d, 0]));
+    const dailyPreVat = new Map<string, number>(allDays.map((d) => [d, 0]));
+    const bumpDay = (map: Map<string, number>, day: string, cents: number) => {
+      if (map.has(day)) map.set(day, (map.get(day) ?? 0) + cents);
+    };
+
     // --- 1) Venituri (paid, non-test, all-site) în bani RON ---
     const revenueRonCents = await this.revenueRonCents(range);
+    for (const r of await this.revenueByDay(range)) bumpDay(dailyRevenue, r.day, r.cents);
 
     // --- 2) Meta spend pe interval, convertit RON cu cursul fiecărei zile ---
     const metaDaily = await this.metaSpendByDay(fromDay, toDayStr);
@@ -241,7 +262,9 @@ export class ProfitabilityService {
     for (const d of metaDaily) {
       metaRawCents += d.cents;
       if (d.currency) metaCurrency = d.currency;
-      metaRonAcc += d.cents * rateFor(d.date, (d.currency as 'RON' | 'EUR' | 'USD') ?? 'RON');
+      const ron = d.cents * rateFor(d.date, (d.currency as 'RON' | 'EUR' | 'USD') ?? 'RON');
+      metaRonAcc += ron;
+      bumpDay(dailyPreVat, d.date, Math.round(ron));
     }
     const metaRonCents = Math.round(metaRonAcc);
 
@@ -251,7 +274,9 @@ export class ProfitabilityService {
     let sunoRonAcc = 0;
     for (const d of sunoDaily) {
       sunoRequests += d.n;
-      sunoRonAcc += d.n * cfg.sunoUsdPerRequest * rateFor(d.day, 'USD');
+      const ron = d.n * cfg.sunoUsdPerRequest * rateFor(d.day, 'USD');
+      sunoRonAcc += ron;
+      bumpDay(dailyPreVat, d.day, Math.round(ron * 100));
     }
     const sunoRonCents = Math.round(sunoRonAcc * 100);
 
@@ -264,7 +289,9 @@ export class ProfitabilityService {
         const daily = this.valueForPeriod(it, day) / divisor;
         if (daily === 0) continue;
         unit += daily;
-        ron += daily * rateFor(day, it.currency);
+        const dayRon = daily * rateFor(day, it.currency);
+        ron += dayRon;
+        bumpDay(dailyPreVat, day, Math.round(dayRon * 100));
       }
       return {
         id: it.id,
@@ -294,6 +321,18 @@ export class ProfitabilityService {
     const marginPct =
       revenueRonCents > 0 ? Math.round((profitRonCents / revenueRonCents) * 1000) / 10 : 0;
 
+    // --- 8) Seria zilnică venituri vs cheltuieli (aceeași formulă, pe zi) ---
+    const daily = allDays.map((day) => {
+      const rev = dailyRevenue.get(day) ?? 0;
+      const preVat = dailyPreVat.get(day) ?? 0;
+      const expenses =
+        preVat +
+        Math.round((preVat * cfg.vatRatePct) / 100) +
+        Math.round((rev * cfg.microTaxRatePct) / 100) +
+        (stripeFee.byDay.get(day) ?? 0);
+      return { day, revenueRonCents: rev, expensesRonCents: expenses, profitRonCents: rev - expenses };
+    });
+
     return {
       range: { fromDay, toDay: toDayStr, days },
       fx: cfg.fx,
@@ -316,6 +355,7 @@ export class ProfitabilityService {
       totalExpensesRonCents,
       profitRonCents,
       marginPct,
+      daily,
     };
   }
 
@@ -350,6 +390,21 @@ export class ProfitabilityService {
       [range.from.toISOString(), range.to.toISOString()],
     )) as Array<{ revenue: string }>;
     return parseInt(rows[0]?.revenue ?? '0', 10) || 0;
+  }
+
+  /** Veniturile pe zile locale (Europe/Bucharest), aceleași filtre ca `revenueRonCents`. */
+  private async revenueByDay(range: { from: Date; to: Date }): Promise<Array<{ day: string; cents: number }>> {
+    const rows = (await this.payments.query(
+      `SELECT to_char((p."createdAt" AT TIME ZONE 'Europe/Bucharest')::date, 'YYYY-MM-DD') AS day,
+              COALESCE(SUM(${ProfitabilityService.AMOUNT_RON}) FILTER (WHERE p.status='paid'),0)::bigint AS revenue
+       FROM payments p
+       LEFT JOIN guest_sessions gst ON gst.id = p."guestId"
+       LEFT JOIN users u ON u.id = p."userId"
+       WHERE p."createdAt" BETWEEN $1 AND $2 ${this.testEmailFilter()}
+       GROUP BY 1`,
+      [range.from.toISOString(), range.to.toISOString()],
+    )) as Array<{ day: string; revenue: string }>;
+    return rows.map((r) => ({ day: r.day, cents: parseInt(r.revenue ?? '0', 10) || 0 }));
   }
 
   private async metaSpendByDay(
@@ -420,23 +475,27 @@ export class ProfitabilityService {
    */
   private async stripeFees(range: { from: Date; to: Date }): Promise<{
     ronCents: number; paymentsKnown: number; paymentsTotal: number; configured: boolean;
+    /** Comisionul pe zile locale (Europe/Bucharest) — pentru seria `daily`. */
+    byDay: Map<string, number>;
   }> {
     // Plățile paid, non-test, cu sesiune Stripe, în interval.
     const rows = (await this.payments.query(
-      `SELECT p.id, p."providerSessionId" AS sid, p."stripeFeeCents" AS fee, p."stripeFeeCurrency" AS feecur
+      `SELECT p.id, p."providerSessionId" AS sid, p."stripeFeeCents" AS fee, p."stripeFeeCurrency" AS feecur,
+              to_char((p."createdAt" AT TIME ZONE 'Europe/Bucharest')::date, 'YYYY-MM-DD') AS day
        FROM payments p
        LEFT JOIN guest_sessions gst ON gst.id = p."guestId"
        LEFT JOIN users u ON u.id = p."userId"
        WHERE p.status='paid' AND p."createdAt" BETWEEN $1 AND $2
          AND p."providerSessionId" IS NOT NULL ${this.testEmailFilter()}`,
       [range.from.toISOString(), range.to.toISOString()],
-    )) as Array<{ id: string; sid: string | null; fee: number | null; feecur: string | null }>;
+    )) as Array<{ id: string; sid: string | null; fee: number | null; feecur: string | null; day: string }>;
 
     const cfg = await this.getConfig();
     const stripe = await this.getStripe();
     const paymentsTotal = rows.length;
     let paymentsKnown = 0;
     let ronCents = 0;
+    const byDay = new Map<string, number>();
 
     // Backfill din Stripe pentru plățile fără fee cache-uit (limităm per request).
     let fetched = 0;
@@ -449,10 +508,12 @@ export class ProfitabilityService {
       if (r.fee != null) {
         paymentsKnown++;
         const rate = fxToRon((r.feecur ?? 'RON').toUpperCase(), cfg.fx);
-        ronCents += Math.round(r.fee * rate);
+        const ron = Math.round(r.fee * rate);
+        ronCents += ron;
+        byDay.set(r.day, (byDay.get(r.day) ?? 0) + ron);
       }
     }
-    return { ronCents, paymentsKnown, paymentsTotal, configured: !!stripe };
+    return { ronCents, paymentsKnown, paymentsTotal, configured: !!stripe, byDay };
   }
 
   /** Recuperează fee-ul real al unei plăți din Stripe și-l persistă pe rândul Payment. */
