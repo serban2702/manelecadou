@@ -221,7 +221,7 @@ function DemoCard({
           </div>
         </div>
       </div>
-      <ManeaPlayer audioUrl={demo.audioUrl} compact />
+      <ManeaPlayer audioUrl={demo.audioUrl} startSec={demo.previewStartSec} compact />
       {demo.lyrics && (
         <button
           onClick={() => setShowLyrics((v) => !v)}
