@@ -1350,6 +1350,15 @@ ETAPA 0 — COMANDĂ EXISTENTĂ (verifică ÎNAINTE de a porni wizard-ul):
     \`resend_payment_link\` — buclă inutilă, userul a rămas blocat fără link nou.
   → Indiciu vizual: dacă vezi în istoric un mesaj song_preview cu „/m/<id>", userul ARE
     deja o melodie — NU te purta ca și cum ar fi un chat nou.
+  → 🎶 „AM FĂCUT MAI MULTE PIESE" / „DE CE APAR DOAR N?" / „UNDE-S CELELALTE MELODII?":
+    userul plătitor întreabă de MAI MULTE melodii, nu de status. APELEAZĂ \`check_order_status\`
+    — întoarce \`allSongs\` cu TOATE linkurile lui. Dă-i linkurile care lipsesc (calm, unul
+    pe rând), NU deflecta repetat cu „vezi în istoricul comenzii și pe email" (nu-l ajută cu
+    nimic). ⛔ NU porni un wizard nou și NU-i cere nume/voce/mesaj — le ARE deja. Dacă în chat
+    aruncă cuvinte ca „voce bărbătească", „Bader", un nume — în contextul ăsta NU e o comandă
+    nouă, ci descrie piesele existente; NU declanșa \`wizard_update\`. BUG observat 2026-07-10
+    conv a8970739: la „am făcut 3, de ce apar 2" Irina a repetat de 4 ori „în istoricul comenzii"
+    fără să dea vreun link, apoi la „voce bărbătească" a pornit din greșeală un wizard nou.
   → BUG observat 2026-06-08 (conv c06c6997, dec6adaf): userul zicea „am plătit deja" /
     „am comandat" iar AI a repornit wizard-ul de la zero (a re-cotat prețul, a cerut iar
     detalii) ignorând melodia care era CHIAR în chat. NU repeta asta.
@@ -2251,6 +2260,81 @@ REGULI STRICTE:
     return null;
   }
 
+  /**
+   * Enumeră TOATE melodiile plătite ale clientului (owner direct + același email +
+   * song_preview din istoricul chat-ului), deduplicate după generationId. Folosită de
+   * check_order_status ca să răspundă la „am făcut N piese, de ce apar doar M?" /
+   * „unde-s celelalte melodii?" — check_order_status singur întoarce DOAR ultima
+   * comandă, deci Irina nu putea lista restul și deflecta la nesfârșit („în istoricul
+   * comenzii și pe email"). BUG observat 2026-07-10 conv a8970739: clientul a insistat
+   * de 4 ori „am făcut 3", Irina nu i-a dat niciun link în plus + a pornit din greșeală
+   * un wizard nou („voce bărbătească" → recipientName).
+   */
+  private async listPaidSongs(
+    conv: Conversation,
+  ): Promise<Array<{ link: string; recipientName: string | null }>> {
+    const byId = new Map<string, { link: string; recipientName: string | null }>();
+    const add = (id: string, recipientName: string | null) => {
+      if (!byId.has(id)) byId.set(id, { link: `/m/${id}`, recipientName: recipientName ?? null });
+    };
+
+    // 1 — melodiile plătite ale owner-ului direct
+    if (conv.userId || conv.guestId) {
+      try {
+        const rows = await this.generations['repo']
+          .createQueryBuilder('g')
+          .where(conv.userId ? 'g.ownerUserId = :u' : 'g.ownerGuestId = :gid', { u: conv.userId, gid: conv.guestId })
+          .andWhere(conv.siteId ? 'g.siteId = :s' : '1=1', { s: conv.siteId })
+          .andWhere('g.paidUnlocked = true')
+          .orderBy('g.createdAt', 'DESC')
+          .limit(10)
+          .getMany();
+        for (const g of rows) add(g.id, (g as { recipientName?: string | null }).recipientName ?? null);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // 2 — melodiile plătite pe același email (alt device / altă conversație)
+    if (conv.email) {
+      try {
+        const rows: Array<{ id: string; recipientName: string | null }> = await this.conv.manager.query(
+          `SELECT g.id, g."recipientName" FROM generations g
+           LEFT JOIN users u ON u.id = g."ownerUserId"
+           LEFT JOIN guest_sessions gs ON gs.id = g."ownerGuestId"
+           WHERE LOWER(COALESCE(u.email, gs.email)) = LOWER($1)
+             AND ($2::uuid IS NULL OR g."siteId" = $2)
+             AND g."paidUnlocked" = true
+           ORDER BY g."createdAt" DESC LIMIT 10`,
+          [conv.email, conv.siteId],
+        );
+        for (const r of rows) add(r.id, r.recipientName ?? null);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // 3 — song_preview din istoricul chat-ului (acoperă melodii livrate fără paidUnlocked
+    // setat sau owner nelegat), doar dacă e o generare validă
+    try {
+      const previews = await this.msg.find({
+        where: { conversationId: conv.id, messageType: 'song_preview' as ChatMessage['messageType'] },
+        order: { createdAt: 'DESC' },
+        take: 10,
+      });
+      for (const p of previews) {
+        const match = /\/m\/([0-9a-fA-F-]{36})/.exec(p.body ?? '');
+        if (!match || byId.has(match[1])) continue;
+        const cand = await this.generations.findOnePublic(match[1]).catch(() => null);
+        if (cand) add(cand.id, (cand as { recipientName?: string | null }).recipientName ?? null);
+      }
+    } catch {
+      /* ignore */
+    }
+
+    return Array.from(byId.values());
+  }
+
   private async handleCheckOrderStatus(ctx: AgentCtx): Promise<unknown> {
     const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
     if (!conv) return { error: 'conversation gone' };
@@ -2408,6 +2492,21 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         `NU da linkul melodiei și NU comunica detalii până nu confirmă. După confirmare: ` + instruction;
     }
 
+    // TOATE melodiile plătite ale clientului — ca Irina să răspundă corect la „am făcut
+    // N piese, de ce apar doar M?" / „unde-s celelalte?" fără să deflecteze la nesfârșit
+    // sau să pornească un wizard nou. (Vezi listPaidSongs — BUG conv a8970739.)
+    const allSongs = identityConfidence === 'same_ip' ? [] : await this.listPaidSongs(conv);
+    if (allSongs.length > 1) {
+      instruction +=
+        `\n\n🎵 Clientul are ${allSongs.length} melodii plătite: ` +
+        allSongs.map((s) => `${s.recipientName ? `„${s.recipientName}" ` : ''}${s.link}`).join(' , ') +
+        `. Dacă întreabă de mai multe piese / „am făcut N, apar doar M" / „unde-s celelalte" → ` +
+        `dă-i linkurile de mai sus (unul pe rând, calm), NU deflecta cu „vezi în istoricul comenzii". ` +
+        `⛔ NU porni un wizard nou și NU cere nume/voce/mesaj — clientul ARE deja melodiile. ` +
+        `Notă utilă: pe pagina fiecărei melodii (/m) pot exista mai multe versiuni ale aceleiași piese, ` +
+        `deci numărul „bucăților" percepute poate diferi de numărul de comenzi.`;
+    }
+
     return {
       hasOrder: true,
       generationId: generation.id,
@@ -2415,6 +2514,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       generationStatus: generation.status,
       audioReady,
       linkToSong,
+      allSongs,
       humanStatus,
       healthCategory,
       ageSeconds,
@@ -3043,6 +3143,20 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
   private async handleSendMessage(ctx: AgentCtx, text: string): Promise<{ sent: boolean; messageType: string; status: string; instruction?: string }> {
     const trimmed = text.trim().slice(0, 1200);
     if (!trimmed) return { sent: false, messageType: 'noop', status: 'EMPTY_TEXT_IGNORED' };
+
+    // Junk guard: mesaj care după curățarea gardurilor markdown (```), a spațiilor și a
+    // punctuației nu conține NICIUN caracter real → nu-l livra. BUG observat 2026-07-10
+    // conv a8970739: Irina a trimis un mesaj care era literal „```" (fence gol) — apărea
+    // ca bulă goală la client. Un mesaj valid are cel puțin o literă sau cifră.
+    const junkStripped = trimmed.replace(/```/g, '').replace(/[\s`~*_>#\-.,!?…]/g, '');
+    if (!junkStripped) {
+      return {
+        sent: false,
+        messageType: 'noop',
+        status: 'JUNK_TEXT_IGNORED',
+        instruction: 'Mesajul era gol/junk (doar formatare, fără text real). NU trimite mesaje goale. Dacă nu ai ceva concret de spus, termină turul fără send_message.',
+      };
+    }
 
     // Hard-check live mode — anti race condition cu setAiMode('manual')
     const check = await this.assertNotManual(ctx);
