@@ -261,6 +261,23 @@ export class PaymentsService {
     if (!stripe) throw new ServiceUnavailableException('Stripe not configured');
     const site = input.site;
 
+    // ============== Guard anti dublă-plată (prevenție) ==============
+    // Dacă generationId indică o melodie DEJA plătită și deblocată, NU mai creăm o
+    // a doua sesiune de plată — clientul a plătit deja pentru ea. Îl trimitem direct
+    // la pagina melodiei gata. Reluarea LEGITIMĂ a plății (recovery, retrimitere link)
+    // se face doar pe generări pending/neplătite — acelea au paidUnlocked=false și
+    // trec de guard. Fluxurile de unlock demo și de modificare folosesc alt câmp
+    // (unlockGenerationId / overrideAmount fără generationId), deci nu sunt afectate.
+    if (input.generationId) {
+      const existingGen = await this.generations.findOnePublic(input.generationId);
+      if (existingGen?.paidUnlocked) {
+        this.logger.warn(
+          `Checkout refuzat (dublă-plată): generarea ${input.generationId} e deja plătită. Redirect la melodie.`,
+        );
+        return { url: `${this.siteAppUrl(site)}/m/${input.generationId}?already=1`, paymentId: '' };
+      }
+    }
+
     // Email pentru validarea promo (cod restricționat pe email) și precompletarea
     // Stripe Checkout. La reluarea plății dintr-un alt device/browser (link de
     // recovery), sesiunea owner lipsește → îl rezolvăm din owner-ul generării.

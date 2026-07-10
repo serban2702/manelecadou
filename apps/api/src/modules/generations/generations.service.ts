@@ -1173,6 +1173,24 @@ export class GenerationsService {
     const gen = await this.repo.findOne({ where: { id: generationId } });
     if (!gen) return null;
 
+    // ============== Plasă anti dublă-plată ==============
+    // O a doua plată care aterizează pe o generare DEJA plătită de ALTĂ plată =
+    // client taxat de două ori pentru aceeași melodie (a re-inițiat checkout-ul pe
+    // același generationId — vezi cazul baderalmohamed03, 10 iul 2026: 49.99 + 24.99
+    // pe aceeași piesă). NU rescriem atribuirea (altfel prima plată — cea care a
+    // produs efectiv melodia — apare orfană în DB), NU regenerăm, NU retrimitem
+    // email de confirmare. Doar alertăm adminii ca să decidă (refund manual etc.).
+    if (gen.paidUnlocked && gen.paymentId && gen.paymentId !== paymentId) {
+      this.logger.error(
+        `DUBLĂ PLATĂ: plata ${paymentId} a aterizat pe generarea ${gen.id} deja plătită de ${gen.paymentId}. ` +
+          `NU suprascriu atribuirea, NU regenerez. Alertez adminii.`,
+      );
+      await this.alertDuplicatePayment(gen, paymentId).catch((e) =>
+        this.logger.warn(`alertDuplicatePayment failed: ${(e as Error).message}`),
+      );
+      return gen;
+    }
+
     const wasPending = gen.status === 'pending';
     const wasAlreadyUnlocked = gen.paidUnlocked;
 
@@ -1194,6 +1212,58 @@ export class GenerationsService {
     }
 
     return saved;
+  }
+
+  /**
+   * Alertă email către admini când o a doua plată aterizează pe o generare deja
+   * plătită (dublă-plată pe aceeași melodie). Adminii decid dacă e nevoie de
+   * refund manual. Best-effort — nu blochează webhook-ul dacă mail-ul eșuează.
+   */
+  private async alertDuplicatePayment(
+    gen: Generation,
+    duplicatePaymentId: string,
+  ): Promise<void> {
+    // Destinatari: AI_ALERT_EMAILS (setare) → fallback ADMIN_EMAILS (env).
+    let recipients: string[] = [];
+    try {
+      const settingsMod = await import('../settings/settings.service');
+      const settings = this.moduleRef.get(settingsMod.SettingsService, { strict: false });
+      const raw = (await settings.get('AI_ALERT_EMAILS')) ?? '';
+      recipients = raw.split(',').map((e) => e.trim()).filter(Boolean);
+    } catch {
+      /* fallback mai jos */
+    }
+    if (recipients.length === 0) {
+      const fallback = this.config.get<string>('ADMIN_EMAILS') ?? '';
+      recipients = fallback.split(',').map((e) => e.trim()).filter(Boolean);
+    }
+    if (recipients.length === 0) return;
+
+    const site = gen.siteId ? await this.sites.findById(gen.siteId).catch(() => null) : null;
+    const dupPayment = await this.dataSource
+      .getRepository(Payment)
+      .findOne({ where: { id: duplicatePaymentId } });
+    const amount = dupPayment ? (dupPayment.amount / 100).toFixed(2) : '?';
+    const currency = dupPayment?.currency ?? '';
+
+    const subject = `⚠️ Dublă plată — ${amount} ${currency} pe melodie deja plătită (${site?.domain ?? 'site'})`;
+    const lines = [
+      `O a doua plată a aterizat pe o melodie DEJA plătită și livrată.`,
+      ``,
+      `Generare:  ${gen.id} (destinatar: ${gen.recipientName ?? '-'})`,
+      `Site:      ${site?.domain ?? gen.siteId ?? '-'}`,
+      `Plata originală (a produs melodia):  ${gen.paymentId}`,
+      `Plata duplicat (FĂRĂ contravaloare): ${duplicatePaymentId} — ${amount} ${currency}`,
+      ``,
+      `Atribuirea NU a fost suprascrisă, melodia NU a fost regenerată.`,
+      `Verifică în Stripe și decide dacă acorzi refund pentru plata duplicat.`,
+    ];
+    const body = lines.join('\n');
+
+    await this.mailer.send(
+      { to: recipients.join(','), subject, text: body, html: `<pre>${body}</pre>` },
+      { site, kind: 'duplicate_payment_alert', relatedId: duplicatePaymentId },
+    );
   }
 
   private async sendPaymentConfirmationEmail(gen: Generation, paymentId: string): Promise<void> {
