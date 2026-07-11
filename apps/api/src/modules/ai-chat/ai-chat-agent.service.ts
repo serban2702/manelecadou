@@ -1481,6 +1481,21 @@ ETAPA 2.5 — AUTO-EXTRACT din primul mesaj user (CRITIC pentru UX):
     (regăsiți după ani, replicile lor, fetița Adisa, mulțumire pentru cât muncește), dar Irina a
     scris versuri generice manual și a generat fără detalii → clientul: „unde sunt replicile
     noastre? unde e Adisa?". NU repeta.
+  → ✍️ USERUL ÎȘI LIPEȘTE PROPRIILE VERSURI = \`customLyrics\`, NICIODATĂ \`message\`. Când userul
+    spune „cu versurile mele" / „am versurile mele" / „vreau exact versurile astea" și îți
+    LIPEȘTE un bloc de versuri (rânduri care rimează, strofe, text de cântec), salvează-l
+    VERBATIM prin wizard_update({customLyrics: "<textul exact>"}) — NU în \`message\`. Versurile
+    din \`customLyrics\` sunt SACRE: se cântă EXACT așa, writer-ul NU le rescrie. Dacă le pui în
+    \`message\`, writer-ul le tratează ca simplă poveste și SCRIE ALTE versuri → clientul
+    primește o melodie complet diferită. NU rula \`generate_lyrics\` peste versurile lipite de
+    user (i le-ar rescrie) — folosește-le ca atare. Distincție: POVESTE liberă („s-au cunoscut
+    pe TikTok, o cheamă Alina, are 2 copii") → \`message\`; VERSURI FINITE lipite de user →
+    \`customLyrics\`. Dacă userul cere apoi o mică ajustare la versurile LUI (adaugă/schimbă un
+    rând), aplic-o PESTE customLyrics (păstrează restul verbatim), nu regenera de la zero.
+    BUG observat 2026-07-11 conv a25d0a45: userul a lipit o poezie completă („o manea cu
+    versurile mele"), Irina a pus-o în \`message\`, writer-ul a scris ALTE versuri, iar clientul
+    a reclamat de 15+ ori „nu apar versurile mele" → 2 modificări plătite degeaba + escaladare
+    + un om a trebuit să refacă manual cu customLyrics setat corect. NU repeta.
 
 ETAPA 2.6 — PREFERINȚE STIL/ARTIST din context:
   → Dacă userul menționează un artist real (Dani Mocanu, Florin Salam, Guță,
@@ -1943,12 +1958,12 @@ REGULI STRICTE:
           properties: {
             recipientName: { type: 'string', description: 'Numele persoanei care primește manea (1-120 char). OBLIGATORIU.' },
             dedicatorName: { type: 'string', description: 'Numele celui care dedică („De la"). OPTIONAL — doar dacă userul l-a dat.' },
-            message: { type: 'string', description: 'Mesajul/contextul personalizat (versuri sau context, până la câteva mii de caractere). Include detalii autobiografice dacă userul le-a dat (locuri, ani, momente, copii, etc.). NU trunchia versurile lipite de user.' },
+            message: { type: 'string', description: 'Contextul/POVESTEA personalizată pentru versuri (cum s-au cunoscut, replici între ei, nume copii, momente, locuri, ani). ⚠️ NU pune AICI versuri FINITE lipite de user („cu versurile mele" + bloc de strofe) — alea merg în customLyrics, altfel writer-ul le rescrie. message = brief pentru writer; customLyrics = versuri sacre.' },
             email: { type: 'string', description: 'Email-ul user-ului (necesar pentru livrare).' },
             recipientGender: { type: 'string', enum: ['M', 'F'], description: 'Sex destinatar. Folosit pentru inferarea vocii când userul nu o cere explicit.' },
             styleHint: { type: 'string', description: 'OPTIONAL: indiciu liber de stil/artist menționat de user (ex. „stil Dani Mocanu", „ca Salam"). Intră în inferarea creativă la finalize.' },
             voiceArtist: { type: 'string', enum: ['male', 'female'], description: 'Vocea maneaua: male (bărbătească) sau female (feminină).' },
-            customLyrics: { type: 'string', description: 'OPTIONAL: versuri custom complete furnizate explicit de user.' },
+            customLyrics: { type: 'string', description: 'Versurile complete pe care userul le SCRIE/LIPEȘTE el însuși („cu versurile mele" + un bloc de strofe/rânduri de cântec). Salvate VERBATIM și SACRE — se cântă EXACT așa, writer-ul NU le rescrie. Pune AICI orice bloc de versuri finite lipit de user, NU în message. NU rula generate_lyrics peste ele.' },
             packageTier: { type: 'string', enum: ['basic', 'plus', 'premium'], description: 'Pachetul ales de user. În CHAT oferi toate 3: basic = STANDARD (preț de intrare, doar manea), plus = PLUS (mai lungă + mai calitativă + imagini social), premium = PREMIUM (tot ce e în Plus + videoclip + pagină premium). Setează-l în ETAPA 5.5, înainte de finalize. Default basic dacă userul nu alege.' },
           },
         },
