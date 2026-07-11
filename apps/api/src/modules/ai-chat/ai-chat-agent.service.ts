@@ -3232,6 +3232,44 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       }
     }
 
+    // GUARD anti-email/link prematur: Irina cere emailul de livrare / anunță trimiterea
+    // linkului de plată ÎNAINTE de a colecta pentru cine e melodia (recipientName) și
+    // mesajul/ocazia. Emailul + plata sunt ULTIMUL pas — nu ai ce livra dacă nu știi încă
+    // ce melodie faci. BUG observat 2026-07-11: conv bb25dcc1 („Perfect! Dă-mi adresa ta de
+    // email și îți trimit linkul de plată imediat." înainte de orice detaliu) + conv ce0e8926
+    // („da-mi te rog emailul de livrare si iti trimit linkul de plata" imediat după ce a
+    // întrebat pentru cine, fără să aștepte răspunsul). Nu prinde lookup-ul unei comenzi
+    // existente („emailul folosit la comandă") — acela n-are link/plată/livrare.
+    const asksDeliveryEmail =
+      /e-?mail/i.test(trimmed) &&
+      /(link|pl[aă]t|livrare)/i.test(trimmed) &&
+      !/\bnotat\b/i.test(trimmed);
+    if (asksDeliveryEmail) {
+      try {
+        const convFresh = await this.conv.findOne({ where: { id: ctx.conv.id } });
+        if (convFresh) {
+          const missing = this.missingWizardFields(this.getOrInitWizardState(convFresh).data);
+          if (missing.length > 0) {
+            const fieldLabel: Record<string, string> = {
+              recipientName: 'pentru cine e melodia (numele)',
+              message: 'ce vrei să-i transmită (mesaj/ocazie)',
+            };
+            const missingHuman = missing.map((f) => fieldLabel[f as string] ?? f).join(' și ');
+            this.logger.warn(`PREMATURE_EMAIL blocked on conv=${ctx.conv.id.slice(0, 8)} — cere email/link fără ${missing.join('+')}.`);
+            return {
+              sent: false,
+              messageType: 'noop',
+              status: 'PREMATURE_EMAIL_BLOCKED',
+              instruction:
+                `STAI — NU cere emailul de livrare și NU anunța linkul de plată încă: mai lipsește ${missingHuman}. Emailul + plata sunt ULTIMUL pas — nu ai ce livra dacă nu știi ce melodie faci. Întreabă ACUM, scurt și doar câte un câmp pe mesaj, primul lucru care lipsește. Emailul îl ceri abia după ce ai și destinatarul și mesajul.`,
+            };
+          }
+        }
+      } catch {
+        /* best-effort — dacă lookup-ul pică, lăsăm mesajul să treacă prin restul gardurilor */
+      }
+    }
+
     // Hard limit: max 2 mesaje per run (suggest sau auto) — al 2-lea doar pentru
     // combinații naturale gen confirmare scurtă + întrebare. Anti-spam păstrat.
     if (ctx.suggestionMsgId || ctx.sentRealMessages >= 2) {
@@ -3320,8 +3358,13 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       // din prima un mesaj ~identic cu ultimul mesaj AI, FĂRĂ escaladare: îi cerem să verifice
       // statusul real și să spună ceva NOU sau să tacă (tipic la generări blocate, când userul
       // dă „Ok" iar AI reformulează la nesfârșit aceeași asigurare „revin imediat").
+      // Prag coborât 0.78 → 0.72 (2026-07-11 conv 26f29cef): userul a cerut un cod „1+1",
+      // iar Irina a trimis 3 refuzuri aproape identice la rând („Înțeleg ce vrei, dar nu am
+      // cod 1+1... pot să-ți fac o ofertă mică sau îți spun prețul"). Al 3-lea vs al 2-lea
+      // avea Jaccard ≈0.727 — sub vechiul prag 0.78, deci scăpa. 0.72 prinde parafraza
+      // robotică fără să atingă mesaje de pași diferiți (care au overlap mult sub 0.6).
       const lastAiNorm = recentNorm[0];
-      if (lastAiNorm && textOverlap(lastAiNorm, normalized) >= 0.78) {
+      if (lastAiNorm && textOverlap(lastAiNorm, normalized) >= 0.72) {
         this.logger.warn(`NEAR_DUP blocked on conv=${ctx.conv.id.slice(0, 8)} — parafrază ~identică cu ultimul mesaj AI.`);
         return {
           sent: false,
