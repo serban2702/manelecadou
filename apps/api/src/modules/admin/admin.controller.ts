@@ -130,9 +130,14 @@ export class AdminController {
       this.generations.count({ where: w({ paidUnlocked: true }) }),
     ]);
 
+    const AMOUNT_RON_P = `CASE
+      WHEN p."amountRonCents" IS NOT NULL THEN p."amountRonCents"
+      WHEN upper(p.currency) = 'RON' THEN p.amount
+      WHEN p."exchangeRateToRon" IS NOT NULL THEN round(p.amount * p."exchangeRateToRon")::int
+      ELSE round(p.amount * 5.23)::int END`;
     const revenueQb = this.payments
       .createQueryBuilder('p')
-      .select('COALESCE(SUM(p.amount), 0)', 'sum')
+      .select(`COALESCE(SUM(${AMOUNT_RON_P}), 0)`, 'sum')
       .where('p.status = :s', { s: 'paid' });
     if (siteId) revenueQb.andWhere('p."siteId" = :siteId', { siteId });
     const revenueRow = await revenueQb.getRawOne<{ sum: string }>();
@@ -140,7 +145,7 @@ export class AdminController {
 
     const recentQb = this.payments
       .createQueryBuilder('p')
-      .select('COALESCE(SUM(p.amount), 0)', 'sum')
+      .select(`COALESCE(SUM(${AMOUNT_RON_P}), 0)`, 'sum')
       .where('p.status = :s', { s: 'paid' })
       .andWhere(`p.createdAt >= NOW() - INTERVAL '7 days'`);
     if (siteId) recentQb.andWhere('p."siteId" = :siteId', { siteId });

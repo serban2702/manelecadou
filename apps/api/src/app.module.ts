@@ -46,6 +46,7 @@ import { BillingCustomersModule } from './modules/billing-customers/billing-cust
 import { MarketingModule } from './modules/marketing/marketing.module';
 import { CollageModule } from './modules/collage/collage.module';
 import { RecoveryModule } from './modules/recovery/recovery.module';
+import { FxModule } from './modules/fx/fx.module';
 
 @Module({
   imports: [
@@ -101,6 +102,7 @@ import { RecoveryModule } from './modules/recovery/recovery.module';
     MarketingModule,
     CollageModule,
     RecoveryModule,
+    FxModule,
     SeederModule,
   ],
   providers: [

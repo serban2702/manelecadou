@@ -27,6 +27,7 @@ import { TiktokEventsService } from '../tiktok/tiktok-events.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { inferBuyerGender } from '../analytics/gender-infer';
 import { MetaCapiService } from '../meta-capi/meta-capi.service';
+import { FxRateService } from '../fx/fx-rate.service';
 import {
   productName as i18nProductName,
   dedicationDescription as i18nDedicDesc,
@@ -107,6 +108,7 @@ export class PaymentsService {
     private readonly analytics: AnalyticsService,
     private readonly moduleRef: ModuleRef,
     private readonly metaCapi: MetaCapiService,
+    private readonly fx: FxRateService,
   ) {}
 
   /** Returnează instanța Stripe, re-instanțiată dacă cheia s-a schimbat în admin. */
@@ -685,29 +687,24 @@ export class PaymentsService {
       if (cdPhone) update.billingPhone = cdPhone.slice(0, 64);
       update.billingSyncedAt = new Date();
 
-      // Recuperăm exchange_rate din balance_transaction (pentru rapoarte RON
-      // pe site-uri cu valută diferită).
-      if (isPaid && session.payment_intent) {
-        try {
-          const piId = typeof session.payment_intent === 'string'
-            ? session.payment_intent
-            : session.payment_intent.id;
-          const pi = await stripe.paymentIntents.retrieve(piId, {
-            expand: ['latest_charge.balance_transaction'],
-          });
-          const charge = pi.latest_charge as Stripe.Charge | null;
-          const bt = charge?.balance_transaction as Stripe.BalanceTransaction | null;
-          if (bt && bt.exchange_rate != null) {
-            update.exchangeRateToRon = String(bt.exchange_rate);
-            // Stripe convertește în RON la payout (cont Stripe RO).
-            // amount = în valuta site, bt.amount = în RON cents la cursul aplicat.
-            update.amountRonCents = bt.amount;
-          } else if (session.currency && session.currency.toUpperCase() === 'RON') {
-            update.exchangeRateToRon = '1';
-            update.amountRonCents = session.amount_total ?? null;
+      // Conversie RON la cursul BNR de dinainte de data plății (raportare + facturi).
+      // Înlocuiește cursul Stripe (balance_transaction) — vezi FxRateService.
+      if (isPaid) {
+        const cur = (session.currency || 'ron').toUpperCase();
+        const amt = session.amount_total ?? null;
+        if (cur === 'RON') {
+          update.exchangeRateToRon = '1';
+          update.amountRonCents = amt;
+        } else if (amt != null) {
+          try {
+            const conv = await this.fx.toRonCents(amt, cur, new Date());
+            if (conv) {
+              update.exchangeRateToRon = String(conv.rate);
+              update.amountRonCents = conv.amountRonCents;
+            }
+          } catch (err) {
+            this.logger.warn(`BNR conversion failed: ${(err as Error).message}`);
           }
-        } catch (err) {
-          this.logger.warn(`balance_transaction lookup failed: ${(err as Error).message}`);
         }
       }
 
@@ -1105,10 +1102,10 @@ export class PaymentsService {
   /**
    * Suma brută încasată în RON pentru o plată (moneda contului Stripe = RON).
    * Pentru plățile în valută (ex. EUR pe doroparaggelia.gr), clientul plătește în
-   * EUR dar Stripe îți virează în RON — factura se emite pe suma în RON efectiv
-   * încasată (`balance_transaction.amount`, brut, înainte de comision). O persistă
-   * pe `amountRonCents` + `exchangeRateToRon` ca să nu reinterogăm. Null dacă nu se
-   * poate determina (fără Stripe/sesiune/balance_transaction).
+   * EUR dar factura se emite în RON. Convertim la cursul de referință BNR de
+   * dinainte de data plății (cerință Șerban — vezi FxRateService), NU la cursul
+   * Stripe. Persistă `amountRonCents` + `exchangeRateToRon` ca să nu reinterogăm.
+   * Null dacă nu se poate determina cursul.
    */
   async resolveRonAmount(
     paymentId: string,
@@ -1116,6 +1113,9 @@ export class PaymentsService {
     const p = await this.repo.findOne({ where: { id: paymentId } });
     if (!p) return null;
     if ((p.currency || 'RON').toUpperCase() === 'RON') {
+      if (p.amountRonCents == null) {
+        await this.repo.update(paymentId, { amountRonCents: p.amount, exchangeRateToRon: '1' });
+      }
       return { amountRonCents: p.amount, exchangeRate: 1 };
     }
     if (p.amountRonCents != null && p.amountRonCents > 0) {
@@ -1124,39 +1124,15 @@ export class PaymentsService {
         exchangeRate: p.exchangeRateToRon ? Number(p.exchangeRateToRon) : null,
       };
     }
-    if (!p.providerSessionId) return null;
-    const stripe = await this.getStripe();
-    if (!stripe) return null;
-    try {
-      const sid = p.providerSessionId;
-      let bt: Stripe.BalanceTransaction | null = null;
-      if (sid.startsWith('pi_')) {
-        const pi = await stripe.paymentIntents.retrieve(sid, {
-          expand: ['latest_charge.balance_transaction'],
-        });
-        bt = ((pi.latest_charge as Stripe.Charge | null)?.balance_transaction as Stripe.BalanceTransaction) ?? null;
-      } else {
-        const session = await stripe.checkout.sessions.retrieve(sid, {
-          expand: ['payment_intent.latest_charge.balance_transaction'],
-        });
-        const pi = session.payment_intent as Stripe.PaymentIntent | null;
-        bt = ((pi?.latest_charge as Stripe.Charge | null)?.balance_transaction as Stripe.BalanceTransaction) ?? null;
-      }
-      if (!bt || typeof bt.amount !== 'number' || bt.amount <= 0) return null;
-      const ronCents = bt.amount; // brut, în moneda de settlement (RON)
-      const rate = bt.exchange_rate != null ? Number(bt.exchange_rate) : null;
-      await this.repo.update(paymentId, {
-        amountRonCents: ronCents,
-        exchangeRateToRon: rate != null ? String(rate) : null,
-        ...(typeof bt.fee === 'number'
-          ? { stripeFeeCents: bt.fee, stripeFeeCurrency: (bt.currency ?? 'ron').toUpperCase() }
-          : {}),
-      });
-      return { amountRonCents: ronCents, exchangeRate: rate };
-    } catch (err) {
-      this.logger.warn(`resolveRonAmount ${paymentId}: ${(err as Error).message}`);
-      return null;
-    }
+    // Curs BNR de dinainte de data plății (paidAt, altfel createdAt).
+    const when = p.paidAt ?? p.createdAt ?? new Date();
+    const conv = await this.fx.toRonCents(p.amount, p.currency || 'RON', when);
+    if (!conv) return null;
+    await this.repo.update(paymentId, {
+      amountRonCents: conv.amountRonCents,
+      exchangeRateToRon: String(conv.rate),
+    });
+    return { amountRonCents: conv.amountRonCents, exchangeRate: conv.rate };
   }
 
   /** Câte plăți mai au nevoie de backfill al adresei de facturare. */

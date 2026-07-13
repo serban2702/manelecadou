@@ -14,6 +14,7 @@ import { TiktokModule } from '../tiktok/tiktok.module';
 import { GuestSessionsModule } from '../guest-sessions/guest-sessions.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { MetaCapiModule } from '../meta-capi/meta-capi.module';
+import { FxModule } from '../fx/fx.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { MetaCapiModule } from '../meta-capi/meta-capi.module';
     GuestSessionsModule,
     AnalyticsModule,
     MetaCapiModule,
+    FxModule,
   ],
   providers: [PaymentsService],
   controllers: [PaymentsController],

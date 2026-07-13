@@ -383,7 +383,7 @@ export class AnalyticsService {
     const revenueRow = await this.applySite(
       this.payments
         .createQueryBuilder('p')
-        .select('COALESCE(SUM(p.amount), 0)::int', 'sum')
+        .select(`COALESCE(SUM(${AnalyticsService.AMOUNT_RON}), 0)::int`, 'sum')
         .addSelect('COUNT(*)::int', 'count')
         .where('p.status = :s', { s: 'paid' })
         .andWhere('p.createdAt BETWEEN :from AND :to', r),
@@ -449,7 +449,7 @@ export class AnalyticsService {
     const revenue = await this.applySite(
       this.payments
         .createQueryBuilder('p')
-        .select('COALESCE(SUM(p.amount), 0)::int', 'sum')
+        .select(`COALESCE(SUM(${AnalyticsService.AMOUNT_RON}), 0)::int`, 'sum')
         .where('p.status = :s', { s: 'paid' })
         .andWhere('p.createdAt BETWEEN :from AND :to', r),
       'p',
@@ -487,7 +487,7 @@ export class AnalyticsService {
       this.payments
         .createQueryBuilder('p')
         .select(`${truncP}`, 'bucket')
-        .addSelect('COALESCE(SUM(p.amount), 0)::int', 'revenueCents')
+        .addSelect(`COALESCE(SUM(${AnalyticsService.AMOUNT_RON}), 0)::int`, 'revenueCents')
         .addSelect('COUNT(*)::int', 'count')
         .where('p.status = :s', { s: 'paid' })
         .andWhere('p.createdAt BETWEEN :from AND :to', r),
@@ -595,7 +595,7 @@ export class AnalyticsService {
         FROM (
           SELECT
             p.id,
-            p.amount AS amount,
+            (${AnalyticsService.AMOUNT_RON}) AS amount,
             -- Un singur touch responsabil: Meta câștigă dacă a apărut în ultimele
             -- 7 zile înainte de plată (attributionOrderBy), altfel ultima sursă
             -- non-direct, altfel cea mai recentă. Normalizat la canal canonic
@@ -652,7 +652,7 @@ export class AnalyticsService {
       await this.payments.query(
         `
         SELECT a.norm_source AS source, a.campaign AS campaign,
-          COUNT(*)::int AS paid_count, COALESCE(SUM(p.amount), 0)::bigint AS revenue_cents
+          COUNT(*)::int AS paid_count, COALESCE(SUM(${AnalyticsService.AMOUNT_RON}), 0)::bigint AS revenue_cents
         FROM payments p
         LEFT JOIN LATERAL (
           SELECT
@@ -825,15 +825,16 @@ export class AnalyticsService {
 
   /**
    * SQL pentru suma plății normalizată în bani (cents) RON, indiferent de valuta
-   * site-ului. Prioritate: amountRonCents (setat la webhook din balance_transaction)
-   * → amount dacă RON → amount × cursul Stripe → fallback EUR≈4.97. Alias `p`.
+   * site-ului. Prioritate: amountRonCents (setat la plată din cursul BNR de
+   * dinainte de data plății — vezi FxRateService) → amount dacă RON → amount ×
+   * exchangeRateToRon → fallback EUR≈5.23. Alias `p`.
    */
   private static readonly AMOUNT_RON = `
     CASE
       WHEN p."amountRonCents" IS NOT NULL THEN p."amountRonCents"
       WHEN upper(p.currency) = 'RON' THEN p.amount
       WHEN p."exchangeRateToRon" IS NOT NULL THEN round(p.amount * p."exchangeRateToRon")::int
-      ELSE round(p.amount * 4.97)::int
+      ELSE round(p.amount * 5.23)::int
     END`;
 
   /** Conversie UTC→ora locală RO pentru bucketing temporal corect. Alias dat de caller. */

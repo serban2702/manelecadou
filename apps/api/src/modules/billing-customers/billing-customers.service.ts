@@ -91,7 +91,14 @@ export class BillingCustomersService {
       p."siteId" AS site_id,
       COUNT(*) FILTER (WHERE p.status = 'paid') AS orders_paid,
       COUNT(*) AS orders_total,
-      COALESCE(SUM(p."amountRonCents") FILTER (WHERE p.status = 'paid'), 0) AS paid_total_ron,
+      COALESCE(SUM(
+        CASE
+          WHEN p."amountRonCents" IS NOT NULL THEN p."amountRonCents"
+          WHEN upper(p.currency) = 'RON' THEN p.amount
+          WHEN p."exchangeRateToRon" IS NOT NULL THEN round(p.amount * p."exchangeRateToRon")::int
+          ELSE round(p.amount * 5.23)::int
+        END
+      ) FILTER (WHERE p.status = 'paid'), 0) AS paid_total_ron,
       MAX(p."createdAt") AS last_order_at,
       (ARRAY_AGG(p."customerName" ORDER BY p."createdAt" DESC)
         FILTER (WHERE p."customerName" IS NOT NULL AND p."customerName" <> ''))[1] AS derived_name,
