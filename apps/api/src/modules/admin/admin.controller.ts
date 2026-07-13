@@ -13,6 +13,10 @@ import { PaymentsService } from '../payments/payments.service';
 import { AnalyticsSession } from '../analytics/analytics-session.entity';
 import { AnalyticsEvent } from '../analytics/analytics-event.entity';
 import { TEAM_TEST_EMAILS } from '../analytics/profitability.service';
+import {
+  normalizeSourceSql,
+  attributionOrderBySql,
+} from '../analytics/attribution-sql';
 import { MailerService } from '../../mailer/mailer.module';
 import { SeederService } from '../../database/seeder/seeder.service';
 import { SitesService } from '../sites/sites.service';
@@ -704,7 +708,9 @@ export class AdminController {
           ) AS has_session
         FROM payments p
         LEFT JOIN LATERAL (
-          SELECT a.source, a.medium, a.campaign, a.referrer, a."landingPath", a."utmContent"
+          -- Sursa normalizată la canal canonic (Gmail app → email, nu google).
+          -- Păstrăm referrer-ul brut pentru tooltip-ul din admin.
+          SELECT ${normalizeSourceSql('a.source')} AS source, a.medium, a.campaign, a.referrer, a."landingPath", a."utmContent"
           FROM analytics_sessions a
           WHERE ${matchSql}
             AND a."siteId" = p."siteId"
@@ -716,9 +722,9 @@ export class AdminController {
             -- ulterior. Cazuri reale de „venit prin Stripe" nu există.
             AND a.source NOT ILIKE 'stripe%'
             AND a.source NOT ILIKE 'checkout.stripe%'
-          -- Prioritate: sursele de campanie (non-direct) înaintea celor „direct".
-          ORDER BY (CASE WHEN a.source ILIKE 'direct' OR a.source = '(direct)' THEN 1 ELSE 0 END) ASC,
-                   a."startedAt" DESC
+          -- Prioritate: Meta câștigă dacă a apărut în ultimele 7 zile înainte de
+          -- plată; altfel ultima sursă non-direct; altfel cea mai recentă.
+          ORDER BY ${attributionOrderBySql('a.source', 'a."startedAt"', 'p."createdAt"')}
           LIMIT 1
         ) s ON true
         WHERE p.id = ANY($1::uuid[])

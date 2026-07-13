@@ -15,6 +15,10 @@ import { GeoIpService } from './geoip.service';
 import { parseUserAgent } from './ua-parser';
 import { evaluateBot } from './bot-detection';
 import { inferGenderFromName, inferGenderFromEmail } from './gender-infer';
+import {
+  normalizeSourceSql,
+  attributionOrderBySql,
+} from './attribution-sql';
 
 interface RangeQuery {
   from: Date;
@@ -585,39 +589,27 @@ export class AnalyticsService {
       await this.payments.query(
         `
         SELECT
-          CASE
-            WHEN src LIKE '%facebook%' OR src = 'fb' OR src = 'meta' THEN 'facebook'
-            WHEN src LIKE '%instagram%' OR src = 'ig' THEN 'instagram'
-            WHEN src LIKE '%tiktok%' THEN 'tiktok'
-            WHEN src LIKE '%google%' THEN 'google'
-            WHEN src LIKE '%youtube%' OR src = 'yt' THEN 'youtube'
-            WHEN src LIKE '%whatsapp%' OR src = 'wa' THEN 'whatsapp'
-            WHEN src LIKE '%telegram%' THEN 'telegram'
-            ELSE src
-          END AS source,
+          src AS source,
           COUNT(*)::int AS paid_count,
           COALESCE(SUM(amount), 0)::bigint AS revenue_cents
         FROM (
           SELECT
             p.id,
             p.amount AS amount,
+            -- Un singur touch responsabil: Meta câștigă dacă a apărut în ultimele
+            -- 7 zile înainte de plată (attributionOrderBy), altfel ultima sursă
+            -- non-direct, altfel cea mai recentă. Normalizat la canal canonic
+            -- (Gmail app → email, nu google). Fallback 'direct' dacă nicio sesiune.
             COALESCE(
-              (SELECT lower(s.source) FROM analytics_sessions s
+              (SELECT ${normalizeSourceSql('s.source')} FROM analytics_sessions s
                 WHERE ${matches}
                   AND s."siteId" = p."siteId"
                   AND s."startedAt" <= p."createdAt"
                   AND s."startedAt" >= p."createdAt" - INTERVAL '60 days'
                   AND s.source IS NOT NULL
                   AND s.source NOT ILIKE 'stripe%' AND s.source NOT ILIKE 'checkout.stripe%'
-                  AND s.source NOT ILIKE 'direct' AND s.source <> '(direct)'
-                ORDER BY s."startedAt" DESC LIMIT 1),
-              (SELECT lower(s.source) FROM analytics_sessions s
-                WHERE ${matches}
-                  AND s."siteId" = p."siteId"
-                  AND s."startedAt" <= p."createdAt"
-                  AND s.source IS NOT NULL
-                  AND s.source NOT ILIKE 'stripe%' AND s.source NOT ILIKE 'checkout.stripe%'
-                ORDER BY s."startedAt" DESC LIMIT 1),
+                ORDER BY ${attributionOrderBySql('s.source', 's."startedAt"', 'p."createdAt"')}
+                LIMIT 1),
               'direct'
             ) AS src
           FROM payments p
@@ -664,15 +656,7 @@ export class AnalyticsService {
         FROM payments p
         LEFT JOIN LATERAL (
           SELECT
-            CASE
-              WHEN lower(s.source) LIKE '%facebook%' OR lower(s.source) IN ('fb','meta','an') THEN 'facebook'
-              WHEN lower(s.source) LIKE '%instagram%' OR lower(s.source) = 'ig' THEN 'instagram'
-              WHEN lower(s.source) LIKE '%tiktok%' THEN 'tiktok'
-              WHEN lower(s.source) LIKE '%google%' THEN 'google'
-              WHEN lower(s.source) LIKE '%youtube%' OR lower(s.source) = 'yt' THEN 'youtube'
-              WHEN lower(s.source) LIKE '%whatsapp%' OR lower(s.source) = 'wa' THEN 'whatsapp'
-              ELSE lower(s.source)
-            END AS norm_source,
+            ${normalizeSourceSql('s.source')} AS norm_source,
             -- Când utm_campaign e un ID Meta numeric, îl traducem în numele real
             -- din ad_spend (tras din Marketing API). Altfel păstrăm numele brut.
             COALESCE(
@@ -688,8 +672,7 @@ export class AnalyticsService {
             AND s."startedAt" >= p."createdAt" - INTERVAL '60 days'
             AND s.source IS NOT NULL
             AND s.source NOT ILIKE 'stripe%' AND s.source NOT ILIKE 'checkout.stripe%'
-          ORDER BY (CASE WHEN s.source ILIKE 'direct' OR s.source = '(direct)' THEN 1 ELSE 0 END) ASC,
-                   s."startedAt" DESC
+          ORDER BY ${attributionOrderBySql('s.source', 's."startedAt"', 'p."createdAt"')}
           LIMIT 1
         ) a ON true
         WHERE p.status = 'paid'
@@ -1058,7 +1041,7 @@ export class AnalyticsService {
     const excludeBots = opts.excludeBots !== false;
     const excludeTests = opts.excludeTests !== false;
     const TRAFFIC: Record<string, { sess: string; att: string }> = {
-      source: { sess: `COALESCE(NULLIF(s.source,''),'direct')`, att: `COALESCE(NULLIF(att.source,''),'direct')` },
+      source: { sess: normalizeSourceSql('s.source'), att: normalizeSourceSql('att.source') },
       medium: { sess: `COALESCE(NULLIF(s.medium,''),'(none)')`, att: `COALESCE(NULLIF(att.medium,''),'(none)')` },
       campaign: { sess: `COALESCE(NULLIF(s.campaign,''),'(none)')`, att: `COALESCE(NULLIF(att.campaign,''),'(none)')` },
       device: { sess: `COALESCE(NULLIF(s.device,''),'unknown')`, att: `COALESCE(NULLIF(att.device,''),'unknown')` },
