@@ -2532,6 +2532,35 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         `deci numărul „bucăților" percepute poate diferi de numărul de comenzi.`;
     }
 
+    // ⚠️ Există un card de plată pentru MODIFICARE încă NEPLĂTIT pe conversație? Atunci
+    // comanda de bază poate fi paid+gata, dar REFACEREA cerută de user NU e plătită, deci
+    // nu pornește. check_order_status raporta DOAR statusul comenzii de bază → la „am plătit"
+    // (userul referindu-se la modificare) AI confirma fals „plata e în regulă, maneaua e
+    // gata" și userul rămânea în buclă „Cum?". BUG observat 2026-07-14 conv 38eee442:
+    // modificare 4 fete + ton trist, link 14.99 NEPLĂTIT, Irina zicea repetat „se face din
+    // linkul de modificare deja trimis" fără să spună clar că trebuie PLĂTIT acel link și
+    // fără să detecteze că plata modificării NU venise încă.
+    let pendingModification: { amountCents: number; currency: string; description: string } | null = null;
+    try {
+      const pendingMod = await this.findPendingModificationLink(ctx.conv.id);
+      if (pendingMod) {
+        const p = pendingMod.payload ?? {};
+        const amountCents = Number(p.amount ?? 0) || 0;
+        const currency = String(p.currency ?? '');
+        const description = String(p.description ?? 'Modificare manea');
+        pendingModification = { amountCents, currency, description };
+        instruction =
+          `⚠️ ATENȚIE MODIFICARE NEPLĂTITĂ: userul a cerut o MODIFICARE pe această melodie, iar cardul ei de plată (${(amountCents / 100).toFixed(2)} ${currency}) NU e plătit încă. ` +
+          `Comanda de BAZĂ poate fi plătită și melodia curentă gata, DAR refacerea cu schimbările cerute pornește DOAR după plata acestui link de modificare. ` +
+          `⛔ NU-i spune userului „totul e plătit" / „plata e în regulă" / „se reface automat" — refacerea NU pornește fără plata linkului de modificare. ` +
+          `Dacă userul susține că A PLĂTIT modificarea dar linkul apare tot neplătit → spune-i cald și onest că plata modificării încă nu a intrat la noi (poate întârzia puțin sau plata nu a mers) și, la nevoie, resend_payment_link. ` +
+          `Dacă întreabă „cum?" / „în ce fel?" → dă pasul CONCRET o singură dată: „Apasă pe cardul de plată „${description}" de aici din chat; după plată maneaua se reface cu schimbările în 5-10 min." NU relua la nesfârșit aceeași asigurare vagă. ` +
+          `\n\n--- Context comandă de bază (informativ) ---\n` + instruction;
+      }
+    } catch (e) {
+      this.logger.warn(`pending modification check failed: ${(e as Error).message}`);
+    }
+
     return {
       hasOrder: true,
       generationId: generation.id,
@@ -2540,6 +2569,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       audioReady,
       linkToSong,
       allSongs,
+      pendingModification,
       humanStatus,
       healthCategory,
       ageSeconds,
