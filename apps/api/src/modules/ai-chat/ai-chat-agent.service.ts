@@ -3282,7 +3282,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     // existente („emailul folosit la comandă") — acela n-are link/plată/livrare.
     const asksDeliveryEmail =
       /e-?mail/i.test(trimmed) &&
-      /(link|pl[aă]t|livrare)/i.test(trimmed) &&
+      /(link|pl[aă]t|livrare|vrei\s+s[aă]\s+prime[sș]ti)/i.test(trimmed) &&
       !/\bnotat\b/i.test(trimmed);
     if (asksDeliveryEmail) {
       try {
@@ -3597,13 +3597,21 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       const fresh = await this.conv.findOne({ where: { id: ctx.conv.id }, select: ['id', 'wizardState', 'email'] });
       const alreadyQuoted = (fresh?.wizardState?.priceQuotedCount ?? 0) >= 1;
       if (alreadyQuoted) {
+        // BUG observat 2026-07-16 conv 831268e6: instrucțiunea „cere DOAR email-ul" era
+        // necondiționată — dacă wizard-ul nu avea încă destinatar/mesaj, contrazicea
+        // tunelul (și guard-ul PREMATURE_EMAIL), iar Irina cerea emailul prematur.
+        const missingAfterQuote = fresh
+          ? this.missingWizardFields(this.getOrInitWizardState(fresh).data)
+          : [];
         return {
           sent: false,
           messageType: 'price_reconfirm_blocked',
           status: 'PRICE_ALREADY_QUOTED',
           instruction: fresh?.email
             ? 'Prețul a fost deja cotat și userul l-a văzut. NU-l recota și NU mai întreba „ești de acord?". Avansează: apelează wizard_finalize ca să trimiți linkul de plată.'
-            : 'Prețul a fost deja cotat. NU-l recota. Cere DOAR email-ul scurt printr-un send_message, apoi wizard_finalize.',
+            : missingAfterQuote.length > 0
+              ? `Prețul a fost deja cotat. NU-l recota. Continuă tunelul: mai lipsește ${missingAfterQuote.join(' și ')} — întreabă ACUM primul câmp lipsă (un singur câmp pe mesaj). Emailul îl ceri ABIA după ce ai și destinatarul și mesajul.`
+              : 'Prețul a fost deja cotat. NU-l recota. Cere DOAR email-ul scurt printr-un send_message, apoi wizard_finalize.',
         };
       }
       // Prima cotare prin send_message — marchează priceQuotedCount (sincron cu tool-ul)
@@ -4243,12 +4251,20 @@ ${transcript}`;
     const alreadyQuoted = (freshConv?.wizardState?.priceQuotedCount ?? 0) >= 1;
     if (alreadyQuoted) {
       const hasEmail = !!(freshConv?.email);
+      // BUG observat 2026-07-16 conv 831268e6: „cere DOAR email-ul" necondiționat, deși
+      // wizard-ul nu avea destinatar/mesaj → instrucțiune contradictorie cu tunelul,
+      // Irina cerea emailul prematur (reformulat ca să scape de guard).
+      const missingAfterQuote = freshConv
+        ? this.missingWizardFields(this.getOrInitWizardState(freshConv).data)
+        : [];
       return {
         sent: false,
         status: 'PRICE_ALREADY_QUOTED',
         instruction: hasEmail
           ? 'Prețul a fost deja cotat și userul îl știe. NU-l recota. Userul vrea să cumpere — apelează wizard_finalize ACUM ca să-i trimiți linkul de plată.'
-          : 'Prețul a fost deja cotat și userul îl știe. NU-l recota. Cere DOAR email-ul printr-un send_message scurt („Perfect! Dă-mi adresa ta de email și îți trimit linkul de plată imediat."), apoi wizard_finalize.',
+          : missingAfterQuote.length > 0
+            ? `Prețul a fost deja cotat și userul îl știe. NU-l recota. Continuă tunelul: mai lipsește ${missingAfterQuote.join(' și ')} — întreabă ACUM primul câmp lipsă (un singur câmp pe mesaj). Emailul îl ceri ABIA după ce ai și destinatarul și mesajul.`
+            : 'Prețul a fost deja cotat și userul îl știe. NU-l recota. Cere DOAR email-ul printr-un send_message scurt („Perfect! Dă-mi adresa ta de email și îți trimit linkul de plată imediat."), apoi wizard_finalize.',
       };
     }
 
