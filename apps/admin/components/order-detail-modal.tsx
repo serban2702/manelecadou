@@ -272,16 +272,27 @@ function PackagingEditor({
   );
 }
 
+/**
+ * „De la cine" e scris în două câmpuri diferite după originea comenzii:
+ * `dedicatorName` la comenzile din chat (Irina) și `dedication` la cele din
+ * formularul web (câmpul „Dedicație opțională (de la cine)").
+ */
+function dedicatorFrom(g: OrderDetail['generation']): string | null {
+  return g?.dedicatorName?.trim() || g?.dedication?.trim() || null;
+}
+
 function OverviewTab({ data, refetch }: { data: OrderDetail; refetch: () => Promise<void> }) {
   const g = data.generation;
   const p = data.payment;
   const tier = (g?.packageTier ?? 'basic') as 'basic' | 'plus' | 'premium';
+  const from = dedicatorFrom(g);
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <Card title="Comandă" icon={<Music2 className="h-4 w-4" />}>
         {g ? (
           <>
             <Kv k="Destinatar" v={<span className="font-medium">{g.recipientName}</span>} />
+            <Kv k="De la" v={from ? <span className="font-medium">{from}</span> : '—'} />
             <Kv k="Stil" v={<code>{g.style}</code>} />
             <Kv k="Voce" v={<code>{voiceLabel(g.voiceArtist)}</code>} />
             <Kv k="Ocazie" v={<code>{g.occasion}</code>} />
@@ -659,7 +670,7 @@ function FormTab({ data }: { data: OrderDetail }) {
       <Card title="Date introduse de client">
         <Kv k="Destinatar" v={g.recipientName} />
         {g.recipientGender && <Kv k="Sex destinatar" v={g.recipientGender === 'M' ? 'Bărbat' : 'Femeie'} />}
-        {g.dedicatorName && <Kv k="De la (dedică)" v={g.dedicatorName} />}
+        <Kv k="De la" v={dedicatorFrom(g) ?? '—'} />
         <Kv k="Ocazie" v={g.occasion} />
         <Kv k="Stil" v={g.style} />
         <Kv k="Voce" v={voiceLabel(g.voiceArtist)} />
