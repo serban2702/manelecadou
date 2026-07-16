@@ -1883,6 +1883,37 @@ export class ChatService implements OnModuleInit {
           );
           if (modRows[0]) isRemakeDelivery = true;
         }
+        // BUG observat 2026-07-16 (conv 5431bdad): cele două criterii de mai sus prind
+        // DOAR refacerea prin `adminRegenerate overwrite` (același generationId) și
+        // modificarea plătită. Dar refacerea uzuală făcută de operator e o generare
+        // NOUĂ (id nou, fără paymentId propriu, paidUnlocked=true) → detecția rata
+        // cazul și pleca celebrarea „Mă bucur că totul a ieșit cum trebuie!". Verificat
+        // pe prod: 13/13 livrări de refacere din ultimele 3 săptămâni au primit mesaj
+        // celebrator, remakeVariant nu s-a trimis niciodată.
+        // O comandă nouă legitimă (start_new_order) are ÎNTOTDEAUNA paymentId propriu →
+        // rămâne celebratorie. Prima livrare din conversație n-are livrare anterioară →
+        // rămâne celebratorie.
+        if (!isRemakeDelivery) {
+          const unpaidRows: { id: string }[] = await this.msg.manager.query(
+            `SELECT id FROM generations WHERE id = $1 AND "paymentId" IS NULL LIMIT 1`,
+            [generationId],
+          );
+          if (unpaidRows[0]) {
+            const priorDelivery = await this.msg.manager.query(
+              // payload->>'generationId' NOT NULL e obligatoriu: mostrele audio se trimit
+              // tot ca song_preview (kind='sample', fără generationId) — fără filtru, o
+              // primă comandă precedată de o mostră ar fi luată drept refacere.
+              `SELECT id FROM chat_messages
+               WHERE "conversationId" = $1 AND "messageType" = 'song_preview'
+                 AND payload->>'generationId' IS NOT NULL
+                 AND payload->>'generationId' <> $2
+                 AND "createdAt" > now() - interval '7 days'
+               LIMIT 1`,
+              [conversationId, generationId],
+            );
+            if (priorDelivery[0]) isRemakeDelivery = true;
+          }
+        }
       } catch {
         /* best-effort — fallback pe celebrare */
       }
