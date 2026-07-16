@@ -1,8 +1,12 @@
 import { Injectable, Logger, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { MailProvider, ResolvedMailContext, SendMailOptions, SendMailResult } from './mail.types';
+import { BullModule, InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { BuiltMime, MailProvider, ResolvedMailContext, SendMailOptions, SendMailResult } from './mail.types';
 import { SmtpMailProvider } from './providers/smtp.provider';
 import { MailgunMailProvider } from './providers/mailgun.provider';
+import { buildMime } from './mime.builder';
+import { MAIL_APPEND_QUEUE, MailAppendJob, stashMime } from './mail-append.queue';
 import { SettingsService } from '../modules/settings/settings.service';
 import type { Site, SiteMailConfig } from '../modules/sites/site.entity';
 import { decryptSecret } from '../common/crypto.util';
@@ -32,6 +36,11 @@ export interface SendMailExtra {
    * proprii pentru providerul cerut le folosește pe alea, altfel cade pe cele globale.
    */
   forceProvider?: 'smtp' | 'mailgun';
+  /**
+   * Sare peste copierea în `Sent` (IMAP APPEND). Folosit pentru mailurile care
+   * nu au ce căuta în căsuță (ex. testul de config din admin).
+   */
+  skipSentCopy?: boolean;
 }
 
 @Injectable()
@@ -43,6 +52,7 @@ export class MailerService {
     private readonly mailgun: MailgunMailProvider,
     private readonly settings: SettingsService,
     private readonly outboundLog: OutboundEmailService,
+    @InjectQueue(MAIL_APPEND_QUEUE) private readonly appendQueue: Queue,
   ) {}
 
   /**
@@ -174,12 +184,17 @@ export class MailerService {
       this.logger.warn(`outbound-email log insert failed: ${(logErr as Error).message}`);
     }
 
+    // MIME-ul se construiește o singură dată, aici: aceiași octeți pleacă la
+    // client (prin oricare provider) și se salvează în `Sent`.
+    const mime = await buildMime(opts, ctx);
+
     try {
-      const result = await provider.send(opts, ctx);
+      const result = await provider.send(opts, ctx, mime);
       if (result.sent) {
         this.logger.log(
           `mail sent via ${result.provider} src=${ctx.source}${ctx.siteSlug ? ' site=' + ctx.siteSlug : ''} to=${opts.to} id=${result.messageId ?? '-'}`,
         );
+        if (!extra?.skipSentCopy) await this.queueSentCopy(mime, opts, siteId);
         if (logId) {
           await this.outboundLog
             .markSent(logId, {
@@ -217,6 +232,36 @@ export class MailerService {
     }
   }
 
+  /**
+   * Pune mailul trimis la coadă pentru copiere în `Sent` prin IMAP APPEND.
+   *
+   * Rulează după ce providerul a confirmat trimiterea și e deliberat
+   * fire-and-forget: dacă serverul IMAP e jos sau căsuța e plină, mailul tot a
+   * ajuns la client — copia se reîncearcă din coadă. Nicio eroare de aici nu
+   * trebuie să rupă un magic link.
+   */
+  private async queueSentCopy(mime: BuiltMime, opts: SendMailOptions, siteId: string | null): Promise<void> {
+    try {
+      const mimePath = await stashMime(mime.raw);
+      const job: MailAppendJob = {
+        siteId,
+        fromAddr: mime.envelopeFrom,
+        mimePath,
+        messageId: mime.messageId,
+        subject: opts.subject,
+        to: opts.to,
+      };
+      await this.appendQueue.add('append', job, {
+        attempts: 5,
+        backoff: { type: 'exponential', delay: 30_000 },
+        removeOnComplete: 100,
+        removeOnFail: 200,
+      });
+    } catch (e) {
+      this.logger.warn(`sent-copy enqueue failed: ${(e as Error).message}`);
+    }
+  }
+
   /** Numele provider-ului activ pentru un site dat (sau global). */
   async providerName(site?: MailSiteRef): Promise<string> {
     const { provider } = await this.resolveContext(site);
@@ -238,7 +283,7 @@ function safeDecrypt(value: string | undefined | null): string | undefined {
 }
 
 @Module({
-  imports: [ConfigModule, OutboundEmailModule],
+  imports: [ConfigModule, OutboundEmailModule, BullModule.registerQueue({ name: MAIL_APPEND_QUEUE })],
   providers: [SmtpMailProvider, MailgunMailProvider, MailerService],
   exports: [MailerService],
 })

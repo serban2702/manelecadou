@@ -8,6 +8,8 @@ import { MailAccount } from './entities/mail-account.entity';
 import { MailFolder } from './entities/mail-folder.entity';
 import { MailMessage } from './entities/mail-message.entity';
 import { MailAttachment } from './entities/mail-attachment.entity';
+import { MailDraft } from './entities/mail-draft.entity';
+import { ImapService } from './imap.service';
 import { encryptSecret, decryptSecret, maskSecret } from '../../common/crypto.util';
 
 const ATTACH_DIR = process.env.MAIL_ATTACH_DIR ?? '/tmp/manelecadou-mail-attach';
@@ -47,7 +49,42 @@ export class MailService {
     @InjectRepository(MailFolder) public readonly folders: Repository<MailFolder>,
     @InjectRepository(MailMessage) public readonly messages: Repository<MailMessage>,
     @InjectRepository(MailAttachment) public readonly attachments: Repository<MailAttachment>,
+    @InjectRepository(MailDraft) public readonly drafts: Repository<MailDraft>,
+    private readonly imap: ImapService,
   ) {}
+
+  /**
+   * Salvează ciorna în lucru (autosave din compose). Un singur rând per ciornă:
+   * la fiecare salvare îl actualizăm, nu acumulăm versiuni.
+   */
+  async saveDraft(input: {
+    id?: string | null;
+    accountId: string;
+    to: string[];
+    subject: string;
+    bodyHtml: string;
+    inReplyToMessageId?: string | null;
+  }): Promise<MailDraft> {
+    const acc = await this.getAccount(input.accountId);
+    const draft = input.id ? await this.drafts.findOne({ where: { id: input.id } }) : null;
+    const row = draft ?? this.drafts.create({ accountId: acc.id, siteId: acc.siteId ?? null });
+    row.accountId = acc.id;
+    row.siteId = acc.siteId ?? null;
+    row.toAddrs = input.to.filter(Boolean).map((address) => ({ address }));
+    row.subject = (input.subject ?? '').slice(0, 500);
+    row.bodyHtml = input.bodyHtml ?? '';
+    row.inReplyToMessageId = input.inReplyToMessageId ?? null;
+    return this.drafts.save(row);
+  }
+
+  /** Cea mai recentă ciornă a unui cont — cea propusă la redeschiderea compose-ului. */
+  async latestDraft(accountId: string): Promise<MailDraft | null> {
+    return this.drafts.findOne({ where: { accountId }, order: { updatedAt: 'DESC' } });
+  }
+
+  async deleteDraft(id: string): Promise<void> {
+    await this.drafts.delete({ id });
+  }
 
   toSafe(acc: MailAccount): MailAccountSafe {
     const { imapPassEnc, smtpPassEnc, ...rest } = acc;
@@ -70,6 +107,31 @@ export class MailService {
   /** Conturi active pentru sync (folosit de cron-ul global de IMAP). */
   async listActiveAccountsForSync(): Promise<MailAccount[]> {
     return this.accounts.find({ where: { syncEnabled: true } });
+  }
+
+  /**
+   * Citește de pe disc atașamentele unui mesaj, în forma cerută la trimitere
+   * (folosit la forward). Fișierele lipsă sunt sărite: un mesaj arhivat își
+   * pierde atașamentele, iar forward-ul trebuie să meargă oricum.
+   */
+  async loadAttachmentsForSend(
+    messageId: string,
+  ): Promise<Array<{ filename: string; content: Buffer; contentType: string; cid?: string }>> {
+    const rows = await this.attachments.find({ where: { messageId } });
+    const out: Array<{ filename: string; content: Buffer; contentType: string; cid?: string }> = [];
+    for (const r of rows) {
+      try {
+        out.push({
+          filename: r.filename,
+          content: await fs.readFile(r.storagePath),
+          contentType: r.mime,
+          cid: r.contentId ?? undefined,
+        });
+      } catch (e) {
+        this.logger.warn(`attachment ${r.id} unreadable: ${(e as Error).message}`);
+      }
+    }
+    return out;
   }
 
   async getAccount(id: string): Promise<MailAccount> {
@@ -185,15 +247,86 @@ export class MailService {
   }
 
   /**
-   * Șterge complet mesajul (DB + atașamente pe disc + rânduri DB pentru atașamente).
-   * NU șterge mesajul de pe serverul IMAP remote — doar local.
+   * Marchează citit/steluță local ȘI pe server.
+   *
+   * IMAP-ul e best-effort: dacă serverul e jos, marcajul rămâne local și se
+   * corectează la următorul sync. Un mail marcat citit în admin trebuie să apară
+   * citit și pe telefon.
    */
-  async deleteMessage(messageId: string): Promise<void> {
+  async setMessageFlags(
+    messageId: string,
+    flags: { seen?: boolean; flagged?: boolean },
+  ): Promise<MailMessage> {
     const msg = await this.messages.findOne({ where: { id: messageId } });
     if (!msg) throw new NotFoundException('Mesaj inexistent');
+    if (flags.seen !== undefined) msg.seen = flags.seen;
+    if (flags.flagged !== undefined) msg.flagged = flags.flagged;
+    const saved = await this.messages.save(msg);
+
+    if (msg.uid && msg.folderId) {
+      const folder = await this.folders.findOne({ where: { id: msg.folderId } });
+      if (folder) {
+        try {
+          const acc = await this.getAccount(msg.accountId);
+          await this.imap.setFlags(acc, folder.path, msg.uid, flags);
+        } catch (e) {
+          this.logger.warn(`IMAP setFlags failed for ${messageId}: ${(e as Error).message}`);
+        }
+      }
+    }
+    return saved;
+  }
+
+  /** Mută mesajul în alt folder, pe server și local. */
+  async moveMessage(messageId: string, targetFolderId: string): Promise<MailMessage> {
+    const msg = await this.messages.findOne({ where: { id: messageId } });
+    if (!msg) throw new NotFoundException('Mesaj inexistent');
+    const target = await this.folders.findOne({ where: { id: targetFolderId } });
+    if (!target || target.accountId !== msg.accountId) {
+      throw new NotFoundException('Folder inexistent pentru acest cont');
+    }
+    const source = msg.folderId ? await this.folders.findOne({ where: { id: msg.folderId } }) : null;
+
+    if (msg.uid && source) {
+      const acc = await this.getAccount(msg.accountId);
+      const { newUid } = await this.imap.moveMessage(acc, source.path, msg.uid, target.path);
+      // UID-ul e valabil doar în folderul lui: dacă serverul nu ne-a dat unul nou,
+      // îl golim ca să nu acționăm pe UID-ul altui mesaj din folderul destinație.
+      msg.uid = newUid;
+    }
+    msg.folderId = target.id;
+    return this.messages.save(msg);
+  }
+
+  /**
+   * „Șterge" în sensul unui client de mail: mută în Coș pe server. Dacă mesajul
+   * e deja în Coș (sau contul n-are Coș), îl șterge definitiv de pe server și
+   * local, împreună cu atașamentele de pe disc.
+   */
+  async deleteMessage(messageId: string): Promise<{ trashed: boolean }> {
+    const msg = await this.messages.findOne({ where: { id: messageId } });
+    if (!msg) throw new NotFoundException('Mesaj inexistent');
+    const source = msg.folderId ? await this.folders.findOne({ where: { id: msg.folderId } }) : null;
+    const trash = await this.folders.findOne({ where: { accountId: msg.accountId, role: 'trash' } });
+
+    if (trash && source && source.id !== trash.id && msg.uid) {
+      await this.moveMessage(messageId, trash.id);
+      return { trashed: true };
+    }
+
+    if (msg.uid && source) {
+      try {
+        const acc = await this.getAccount(msg.accountId);
+        await this.imap.deleteMessage(acc, source.path, msg.uid);
+      } catch (e) {
+        // Serverul poate fi jos sau mesajul deja șters remote — local tot îl curățăm.
+        this.logger.warn(`IMAP delete failed for ${messageId}: ${(e as Error).message}`);
+      }
+    }
     await this.removeAttachmentDir(messageId);
     await this.attachments.delete({ messageId });
     await this.messages.delete({ id: messageId });
+    return { trashed: false };
   }
 
   /** Șterge silențios directorul de atașamente al unui mesaj. */

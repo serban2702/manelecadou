@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
-import { MailProvider, ResolvedMailContext, SendMailOptions, SendMailResult } from '../mail.types';
+import { BuiltMime, MailProvider, ResolvedMailContext, SendMailOptions, SendMailResult } from '../mail.types';
 
 @Injectable()
 export class SmtpMailProvider extends MailProvider {
@@ -31,11 +31,7 @@ export class SmtpMailProvider extends MailProvider {
     return transporter;
   }
 
-  async send(opts: SendMailOptions, ctx: ResolvedMailContext): Promise<SendMailResult> {
-    const fromAddr = ctx.fromEmail || 'no-reply@manelecadou.ro';
-    const fromName = ctx.fromName;
-    const from = opts.from ?? (fromName ? `"${fromName}" <${fromAddr}>` : fromAddr);
-
+  async send(opts: SendMailOptions, ctx: ResolvedMailContext, mime: BuiltMime): Promise<SendMailResult> {
     const transporter = this.ensureTransporter(ctx.smtp);
     if (!transporter) {
       this.logger.warn(
@@ -48,20 +44,17 @@ export class SmtpMailProvider extends MailProvider {
       };
     }
 
+    // Trimitem MIME-ul deja construit (`raw`), nu câmpuri separate: aceiași octeți
+    // ajung la client și în copia din `Sent`. Envelope-ul e explicit pentru că un
+    // mesaj raw nu are Bcc în headere.
     const info = await transporter.sendMail({
-      from,
-      to: opts.to,
-      cc: opts.cc || undefined,
-      bcc: opts.bcc || undefined,
-      subject: opts.subject,
-      html: opts.html,
-      text: opts.text,
-      replyTo: opts.replyTo ?? ctx.replyTo,
+      envelope: { from: mime.envelopeFrom, to: mime.recipients },
+      raw: mime.raw,
     });
     return {
       sent: true,
       provider: 'smtp',
-      messageId: info.messageId,
+      messageId: (info.messageId ?? mime.messageId).replace(/^<|>$/g, ''),
     };
   }
 }

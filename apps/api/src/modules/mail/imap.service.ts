@@ -178,13 +178,32 @@ export class ImapService {
   }
 
   async markSeen(acc: MailAccount, folderPath: string, uid: string, seen: boolean): Promise<void> {
+    await this.setFlags(acc, folderPath, uid, { seen });
+  }
+
+  /**
+   * Propagă pe server citit/steluță. Fără asta, marcajele făcute în admin se
+   * pierdeau: mailul rămânea necitit pe telefon și în webmail.
+   */
+  async setFlags(
+    acc: MailAccount,
+    folderPath: string,
+    uid: string,
+    flags: { seen?: boolean; flagged?: boolean },
+  ): Promise<void> {
     const client = this.buildClient(acc);
     try {
       await client.connect();
       const lock = await client.getMailboxLock(folderPath);
       try {
-        if (seen) await client.messageFlagsAdd({ uid }, ['\\Seen'], { uid: true });
-        else await client.messageFlagsRemove({ uid }, ['\\Seen'], { uid: true });
+        const add: string[] = [];
+        const remove: string[] = [];
+        if (flags.seen === true) add.push('\\Seen');
+        if (flags.seen === false) remove.push('\\Seen');
+        if (flags.flagged === true) add.push('\\Flagged');
+        if (flags.flagged === false) remove.push('\\Flagged');
+        if (add.length) await client.messageFlagsAdd({ uid }, add, { uid: true });
+        if (remove.length) await client.messageFlagsRemove({ uid }, remove, { uid: true });
       } finally {
         lock.release();
       }
@@ -193,12 +212,78 @@ export class ImapService {
     }
   }
 
-  /** Salvează mesaj în folder Sent (după trimitere) ca să apară și în Gmail Sent. */
-  async appendToSent(acc: MailAccount, sentFolder: string, raw: Buffer): Promise<void> {
+  /**
+   * Mută mesajul în alt folder pe server. Întoarce noul UID când serverul îl
+   * raportează (UIDPLUS); altfel null — sync-ul îl va prinde oricum.
+   */
+  async moveMessage(
+    acc: MailAccount,
+    fromPath: string,
+    uid: string,
+    toPath: string,
+  ): Promise<{ newUid: string | null }> {
     const client = this.buildClient(acc);
     try {
       await client.connect();
-      await client.append(sentFolder, raw, ['\\Seen']);
+      const lock = await client.getMailboxLock(fromPath);
+      try {
+        const res: any = await client.messageMove({ uid }, toPath, { uid: true });
+        const mapped = res?.uidMap instanceof Map ? res.uidMap.get(Number(uid)) : undefined;
+        return { newUid: mapped ? String(mapped) : null };
+      } finally {
+        lock.release();
+      }
+    } finally {
+      try { await client.logout(); } catch { /* ignore */ }
+    }
+  }
+
+  /** Șterge definitiv de pe server (flag \Deleted + expunge). */
+  async deleteMessage(acc: MailAccount, folderPath: string, uid: string): Promise<void> {
+    const client = this.buildClient(acc);
+    try {
+      await client.connect();
+      const lock = await client.getMailboxLock(folderPath);
+      try {
+        await client.messageDelete({ uid }, { uid: true });
+      } finally {
+        lock.release();
+      }
+    } finally {
+      try { await client.logout(); } catch { /* ignore */ }
+    }
+  }
+
+  /**
+   * Salvează mesajul într-un folder (tipic `Sent`, după trimitere) ca să apară și
+   * în webmail/telefon, nu doar în admin.
+   *
+   * Idempotent: caută întâi după Message-ID în folderul țintă și nu face nimic
+   * dacă mesajul e deja acolo. Fără asta, un retry al cozii (sau un APPEND care a
+   * reușit pe server dar a picat pe răspuns) ar lăsa copii duplicate în căsuță.
+   */
+  async appendToFolder(
+    acc: MailAccount,
+    folderPath: string,
+    raw: Buffer,
+    messageId: string | null,
+  ): Promise<{ appended: boolean }> {
+    const client = this.buildClient(acc);
+    try {
+      await client.connect();
+      if (messageId) {
+        const lock = await client.getMailboxLock(folderPath);
+        try {
+          const found = await client.search({ header: { 'message-id': messageId } }, { uid: true });
+          if (found && found.length) return { appended: false };
+        } catch {
+          // Serverele care nu suportă SEARCH HEADER: mergem mai departe cu APPEND.
+        } finally {
+          lock.release();
+        }
+      }
+      await client.append(folderPath, raw, ['\\Seen']);
+      return { appended: true };
     } finally {
       try { await client.logout(); } catch { /* ignore */ }
     }

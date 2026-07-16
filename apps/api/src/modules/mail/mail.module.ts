@@ -11,10 +11,13 @@ import { MailDraft } from './entities/mail-draft.entity';
 import { MailService } from './mail.service';
 import { ImapService } from './imap.service';
 import { MailSendService } from './mail-send.service';
+import { OutboxAttachmentsService } from './outbox-attachments.service';
 import { MailSyncService, IMAP_SYNC_QUEUE, AI_REPLY_QUEUE } from './mail-sync.service';
 import { ImapSyncProcessor } from './imap-sync.processor';
+import { MailAppendProcessor } from './mail-append.processor';
 import { AiReplyService } from './ai-reply.service';
 import { AiReplyProcessor } from './ai-reply.processor';
+import { MAIL_APPEND_QUEUE } from '../../mailer/mail-append.queue';
 import { MailGateway } from './mail.gateway';
 import { MailController } from './mail.controller';
 
@@ -28,7 +31,7 @@ import { MailerModule } from '../../mailer/mailer.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([MailAccount, MailFolder, MailMessage, MailAttachment, MailDraft]),
-    BullModule.registerQueue({ name: IMAP_SYNC_QUEUE }, { name: AI_REPLY_QUEUE }),
+    BullModule.registerQueue({ name: IMAP_SYNC_QUEUE }, { name: AI_REPLY_QUEUE }, { name: MAIL_APPEND_QUEUE }),
     AuthModule,
     KbModule,
     OpenAiModule,
@@ -39,8 +42,10 @@ import { MailerModule } from '../../mailer/mailer.module';
     MailService,
     ImapService,
     MailSendService,
+    OutboxAttachmentsService,
     MailSyncService,
     ImapSyncProcessor,
+    MailAppendProcessor,
     AiReplyService,
     AiReplyProcessor,
     MailGateway,

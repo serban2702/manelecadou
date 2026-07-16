@@ -4,18 +4,22 @@ import { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
-import { Bold, Italic, Link2, List, ListOrdered, Loader2, Send, Sparkles } from 'lucide-react';
+import { Bold, Italic, Link2, List, ListOrdered, Loader2, Send, Sparkles, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { promptDialog } from '@/components/ui/prompt-dialog';
+import { AttachmentPicker } from './AttachmentPicker';
+import type { StagedAttachment } from '@/lib/types';
 
 interface Props {
   to: string[];
   subject: string;
+  /** Ceilalți destinatari ai mesajului original — candidați pentru „Răspunde tuturor". */
+  replyAllCandidates?: string[];
   initialHtml?: string;
   /** HTML cu citatul mesajului original (attribution + blockquote), atașat sub draft. */
   quotedHtml?: string;
   aiSuggestionHtml?: string | null;
-  onSend: (html: string) => Promise<void>;
+  onSend: (html: string, opts: { cc?: string[]; attachmentIds?: string[] }) => Promise<void>;
 }
 
 const REPLY_BODY_PLACEHOLDER = '<p></p><p></p>';
@@ -25,8 +29,18 @@ function composeInitial(initialHtml: string | undefined, quotedHtml: string | un
   return quotedHtml ? `${body}${quotedHtml}` : body;
 }
 
-export function ReplyComposer({ to, subject, initialHtml, quotedHtml, aiSuggestionHtml, onSend }: Props) {
+export function ReplyComposer({
+  to,
+  subject,
+  replyAllCandidates = [],
+  initialHtml,
+  quotedHtml,
+  aiSuggestionHtml,
+  onSend,
+}: Props) {
   const [sending, setSending] = useState(false);
+  const [attachments, setAttachments] = useState<StagedAttachment[]>([]);
+  const [replyAll, setReplyAll] = useState(false);
 
   const editor = useEditor({
     extensions: [StarterKit, Link.configure({ openOnClick: false, HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' } })],
@@ -63,8 +77,13 @@ export function ReplyComposer({ to, subject, initialHtml, quotedHtml, aiSuggesti
     if (!html || html === '<p></p>') return;
     setSending(true);
     try {
-      await onSend(html);
+      await onSend(html, {
+        cc: replyAll && replyAllCandidates.length ? replyAllCandidates : undefined,
+        attachmentIds: attachments.length ? attachments.map((a) => a.id) : undefined,
+      });
       editor.commands.clearContent();
+      setAttachments([]);
+      setReplyAll(false);
     } finally {
       setSending(false);
     }
@@ -73,7 +92,25 @@ export function ReplyComposer({ to, subject, initialHtml, quotedHtml, aiSuggesti
   return (
     <div className="border border-border rounded-lg bg-card overflow-hidden">
       <div className="px-3 py-2 border-b border-border bg-muted/30 text-xs space-y-0.5">
-        <div><span className="text-muted-foreground">Către:</span> {to.join(', ') || '—'}</div>
+        <div className="flex items-center justify-between gap-2">
+          <div><span className="text-muted-foreground">Către:</span> {to.join(', ') || '—'}</div>
+          {replyAllCandidates.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setReplyAll((v) => !v)}
+              className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors ${
+                replyAll ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary'
+              }`}
+              title={`Include în Cc: ${replyAllCandidates.join(', ')}`}
+            >
+              <Users className="h-3 w-3" />
+              Răspunde tuturor
+            </button>
+          )}
+        </div>
+        {replyAll && (
+          <div><span className="text-muted-foreground">Cc:</span> {replyAllCandidates.join(', ')}</div>
+        )}
         <div><span className="text-muted-foreground">Subiect:</span> {subject}</div>
       </div>
 
@@ -114,6 +151,10 @@ export function ReplyComposer({ to, subject, initialHtml, quotedHtml, aiSuggesti
       </div>
 
       <EditorContent editor={editor} />
+
+      <div className="border-t border-border px-2 py-2">
+        <AttachmentPicker attachments={attachments} onChange={setAttachments} disabled={sending} />
+      </div>
     </div>
   );
 }

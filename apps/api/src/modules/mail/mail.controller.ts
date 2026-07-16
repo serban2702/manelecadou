@@ -10,8 +10,11 @@ import {
   Post,
   Query,
   Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -25,6 +28,7 @@ import { MailService, MailAccountInput } from './mail.service';
 import { ImapService } from './imap.service';
 import { MailSendService } from './mail-send.service';
 import { MailSyncService, IMAP_SYNC_QUEUE } from './mail-sync.service';
+import { OutboxAttachmentsService, MAX_ATTACHMENT_BYTES } from './outbox-attachments.service';
 import { KbService } from '../kb/kb.service';
 import { TranslationService } from '../../openai/translation.service';
 
@@ -80,6 +84,8 @@ class ReplyDto {
   @IsOptional() to?: string[];
   @IsOptional() cc?: string[];
   @IsOptional() @IsString() subject?: string;
+  /** Id-uri de atașamente încărcate în prealabil pe `POST /outbox-attachments`. */
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) attachmentIds?: string[];
   /**
    * Forțează limba țintă a traducerii. Dacă lipsește, sistemul folosește
    * `detectedLang` al mesajului original. 'ro' = nicio traducere (livrăm așa cum a scris adminul).
@@ -97,6 +103,32 @@ class ComposeDto {
   @IsOptional() @IsArray() @ArrayMaxSize(50) @IsEmail({}, { each: true }) bcc?: string[];
   @IsString() @MinLength(1) @MaxLength(300) subject!: string;
   @IsString() @MinLength(1) html!: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) attachmentIds?: string[];
+}
+
+class ForwardDto {
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(50) @IsEmail({}, { each: true }) to!: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsEmail({}, { each: true }) cc?: string[];
+  @IsOptional() @IsString() html?: string;
+  @IsOptional() @IsBoolean() includeAttachments?: boolean;
+}
+
+class MoveDto {
+  @IsString() folderId!: string;
+}
+
+class DraftDto {
+  @IsOptional() @IsString() id?: string;
+  @IsString() accountId!: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsString({ each: true }) to?: string[];
+  @IsOptional() @IsString() @MaxLength(500) subject?: string;
+  @IsOptional() @IsString() html?: string;
+  @IsOptional() @IsString() inReplyToMessageId?: string;
+}
+
+const FOLDER_ROLES = ['inbox', 'sent', 'drafts', 'spam', 'trash', 'archive', 'other'] as const;
+function isFolderRole(v: string): boolean {
+  return (FOLDER_ROLES as readonly string[]).includes(v);
 }
 
 class TranslateOutDto {
@@ -119,6 +151,7 @@ export class MailController {
     private readonly sync: MailSyncService,
     private readonly kb: KbService,
     private readonly translation: TranslationService,
+    private readonly outbox: OutboxAttachmentsService,
     @InjectQueue(IMAP_SYNC_QUEUE) private readonly syncQueue: Queue,
   ) {}
 
@@ -194,6 +227,7 @@ export class MailController {
     @CurrentSiteId() siteId: string | null,
     @Query('accountId') accountId?: string,
     @Query('folderId') folderId?: string,
+    @Query('role') role?: string,
     @Query('q') q?: string,
     @Query('limit') limit = '50',
     @Query('archived') archived?: string,
@@ -204,9 +238,60 @@ export class MailController {
     else if (archived !== 'all') qb.andWhere('m.archived = false');
     if (accountId) qb.andWhere('m.accountId = :accountId', { accountId });
     if (folderId) qb.andWhere('m.folderId = :folderId', { folderId });
+    // Filtrare pe rol (Inbox/Trimise/...) — merge și cross-cont, unde fiecare cont
+    // are propriul folder cu același rol.
+    if (role && isFolderRole(role)) {
+      qb.andWhere(
+        role === 'sent'
+          ? // Un mail proaspăt trimis are folderId abia după ce contul are folderul
+            // Sent sincronizat; până atunci îl recunoaștem după direcție, ca să nu
+            // dispară din „Trimise".
+            `(m."folderId" IN (SELECT id FROM mail_folders WHERE role = :role) OR (m."folderId" IS NULL AND m.direction = 'out'))`
+          : `m."folderId" IN (SELECT id FROM mail_folders WHERE role = :role)`,
+        { role },
+      );
+    }
     if (q) qb.andWhere('(m.subject ILIKE :q OR m.snippet ILIKE :q OR m.fromAddr ILIKE :q)', { q: `%${q}%` });
     if (siteId) qb.andWhere('m."siteId" = :siteId', { siteId });
     return qb.getMany();
+  }
+
+  /**
+   * Contoare per folder pentru sidebar (Inbox 3, Spam 12...). Numărăm din DB-ul
+   * local, nu din `mail_folders.unreadCount` (care e valoarea de pe server), ca
+   * cifra să corespundă exact listei afișate.
+   */
+  @Get('folders/summary')
+  async folderSummary(
+    @CurrentSiteId() siteId: string | null,
+    @Query('accountId') accountId?: string,
+  ) {
+    const qb = this.mail.messages
+      .createQueryBuilder('m')
+      .innerJoin('mail_folders', 'f', 'f.id = m."folderId"')
+      .select('f.role', 'role')
+      .addSelect('COUNT(*)', 'total')
+      .addSelect('COUNT(*) FILTER (WHERE m.seen = false)', 'unread')
+      .where('m.archived = false')
+      .groupBy('f.role');
+    if (accountId) qb.andWhere('m."accountId" = :accountId', { accountId });
+    if (siteId) qb.andWhere('m."siteId" = :siteId', { siteId });
+    const rows = await qb.getRawMany<{ role: string; total: string; unread: string }>();
+
+    const archivedQb = this.mail.messages
+      .createQueryBuilder('m')
+      .where('m.archived = true');
+    if (accountId) archivedQb.andWhere('m."accountId" = :accountId', { accountId });
+    if (siteId) archivedQb.andWhere('m."siteId" = :siteId', { siteId });
+
+    return {
+      folders: rows.map((r) => ({
+        role: r.role,
+        total: Number(r.total),
+        unread: Number(r.unread),
+      })),
+      archivedLocal: await archivedQb.getCount(),
+    };
   }
 
   @Get('threads/:threadId')
@@ -228,13 +313,16 @@ export class MailController {
     return { message: msg, attachments: atts, suggestion };
   }
 
+  /** Marchează citit/steluță — se propagă și pe serverul IMAP. */
   @Patch('messages/:id')
   async patchMessage(@Param('id') id: string, @Body() dto: FlagsDto) {
-    const msg = await this.mail.messages.findOne({ where: { id } });
-    if (!msg) throw new NotFoundException();
-    if (dto.seen !== undefined) msg.seen = dto.seen;
-    if (dto.flagged !== undefined) msg.flagged = dto.flagged;
-    return this.mail.messages.save(msg);
+    return this.mail.setMessageFlags(id, { seen: dto.seen, flagged: dto.flagged });
+  }
+
+  /** Mută mesajul în alt folder (pe server + local). */
+  @Post('messages/:id/move')
+  async moveMessage(@Param('id') id: string, @Body() dto: MoveDto) {
+    return this.mail.moveMessage(id, dto.folderId);
   }
 
   @Post('messages/:id/reply')
@@ -255,14 +343,33 @@ export class MailController {
       }
     }
 
+    const attachments = dto.attachmentIds?.length
+      ? await this.outbox.load(dto.attachmentIds)
+      : undefined;
+
     const sent = await this.send.sendReply({
       inReplyToId: id,
       htmlBody,
       to: dto.to,
       cc: dto.cc,
       subject: dto.subject,
+      attachments,
     });
+    // Fișierele au plecat cu mailul — nu le mai ținem în staging.
+    if (dto.attachmentIds?.length) await this.outbox.discard(dto.attachmentIds);
     return { ...sent, translation: translationMeta };
+  }
+
+  /** Redirecționează un mesaj către alt destinatar (opțional cu atașamentele lui). */
+  @Post('messages/:id/forward')
+  async forward(@Param('id') id: string, @Body() dto: ForwardDto) {
+    return this.send.forward({
+      messageId: id,
+      to: dto.to,
+      cc: dto.cc,
+      htmlBody: dto.html,
+      includeAttachments: dto.includeAttachments ?? true,
+    });
   }
 
   /**
@@ -272,14 +379,71 @@ export class MailController {
    */
   @Post('compose')
   async compose(@Body() dto: ComposeDto) {
-    return this.send.sendCompose({
+    const attachments = dto.attachmentIds?.length
+      ? await this.outbox.load(dto.attachmentIds)
+      : undefined;
+    const sent = await this.send.sendCompose({
       accountId: dto.accountId,
       to: dto.to,
       cc: dto.cc,
       bcc: dto.bcc,
       subject: dto.subject,
       htmlBody: dto.html,
+      attachments,
     });
+    if (dto.attachmentIds?.length) await this.outbox.discard(dto.attachmentIds);
+    return sent;
+  }
+
+  // ======= CIORNE (autosave din compose) =======
+
+  /** Ciorna curentă a unui cont, propusă la redeschiderea compose-ului. */
+  @Get('drafts/latest')
+  async latestDraft(@Query('accountId') accountId: string) {
+    if (!accountId) throw new BadRequestException('accountId lipsă');
+    return (await this.mail.latestDraft(accountId)) ?? null;
+  }
+
+  /** Autosave: creează sau actualizează ciorna. */
+  @Post('drafts')
+  async saveDraft(@Body() dto: DraftDto) {
+    return this.mail.saveDraft({
+      id: dto.id ?? null,
+      accountId: dto.accountId,
+      to: dto.to ?? [],
+      subject: dto.subject ?? '',
+      bodyHtml: dto.html ?? '',
+      inReplyToMessageId: dto.inReplyToMessageId ?? null,
+    });
+  }
+
+  @Delete('drafts/:id')
+  async deleteDraft(@Param('id') id: string) {
+    await this.mail.deleteDraft(id);
+    return { ok: true };
+  }
+
+  // ======= OUTBOX ATTACHMENTS (staging pentru compose/reply) =======
+
+  /** Încarcă un fișier de atașat. Întoarce un id folosit apoi în compose/reply. */
+  @Post('outbox-attachments')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_ATTACHMENT_BYTES } }))
+  async uploadOutboxAttachment(
+    @UploadedFile() file: { buffer: Buffer; originalname: string; size: number; mimetype: string } | undefined,
+  ) {
+    if (!file) throw new BadRequestException('Lipsește file');
+    return this.outbox.save({
+      buffer: file.buffer,
+      originalName: file.originalname,
+      mime: file.mimetype,
+    });
+  }
+
+  /** Renunță la un fișier încărcat (adminul l-a scos din compose). */
+  @Delete('outbox-attachments/:id')
+  async deleteOutboxAttachment(@Param('id') id: string) {
+    await this.outbox.discard([id]);
+    return { ok: true };
   }
 
   /**
@@ -324,10 +488,11 @@ export class MailController {
     return this.mail.unarchiveMessage(id);
   }
 
+  /** Mută în Coș pe server; dacă e deja în Coș, șterge definitiv. */
   @Delete('messages/:id')
   async deleteMessage(@Param('id') id: string) {
-    await this.mail.deleteMessage(id);
-    return { ok: true };
+    const r = await this.mail.deleteMessage(id);
+    return { ok: true, trashed: r.trashed };
   }
 
   // ======= AI SUGGESTIONS =======

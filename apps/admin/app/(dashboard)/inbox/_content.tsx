@@ -5,8 +5,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { formatDistanceToNowStrict, format } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import DOMPurify from 'dompurify';
-import { Archive, ArchiveRestore, Bot, Inbox as InboxIcon, Mail, MessagesSquare, Paperclip, PenSquare, Settings2, Sparkles, Trash2, Users, Wifi, WifiOff, X } from 'lucide-react';
+import { Archive, ArchiveRestore, Bot, FileEdit, Forward, Inbox as InboxIcon, Mail, MessagesSquare, Paperclip, PenSquare, Send, Settings2, ShieldAlert, Sparkles, Star, Trash2, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { MailApi, type MailMessageRow } from '@/lib/api';
+import type { MailFolderRole } from '@/lib/types';
 import { useAsync } from '@/lib/hooks/use-async';
 import { useMailSocket } from '@/lib/inbox-ws';
 import { Badge } from '@/components/ui/badge';
@@ -21,9 +22,26 @@ import { HtmlBody } from '@/components/inbox/HtmlBody';
 import { ReplyComposer } from '@/components/inbox/ReplyComposer';
 import { ComposeDialog } from '@/components/inbox/ComposeDialog';
 import { SuggestionBanner } from '@/components/inbox/SuggestionBanner';
+import { ForwardDialog } from '@/components/inbox/ForwardDialog';
 import { SiteBadge } from '@/components/site-badge';
 import { AssistantPanel } from '@/components/ai-assistant/AssistantPanel';
 import { TranslationToggle } from '@/components/inbox/TranslationToggle';
+
+/**
+ * Vederea curentă din pane-ul de listă: un folder de pe server sau arhiva locală
+ * (feature separat — arhivarea din admin doar șterge atașamentele, nu mută nimic
+ * pe IMAP).
+ */
+type MailView = MailFolderRole | 'archived-local';
+
+const FOLDER_TABS: Array<{ role: MailFolderRole; label: string; icon: typeof InboxIcon; always: boolean }> = [
+  { role: 'inbox', label: 'Inbox', icon: InboxIcon, always: true },
+  { role: 'sent', label: 'Trimise', icon: Send, always: true },
+  { role: 'drafts', label: 'Ciorne', icon: FileEdit, always: false },
+  { role: 'spam', label: 'Spam', icon: ShieldAlert, always: false },
+  { role: 'trash', label: 'Coș', icon: Trash2, always: true },
+  { role: 'archive', label: 'Arhivă', icon: Archive, always: false },
+];
 
 export default function InboxPage() {
   const { toast } = useToast();
@@ -31,7 +49,8 @@ export default function InboxPage() {
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [composerHtml, setComposerHtml] = useState<string>('');
-  const [view, setView] = useState<'inbox' | 'archive'>('inbox');
+  const [view, setView] = useState<MailView>('inbox');
+  const [forwardOpen, setForwardOpen] = useState(false);
   const [bodyMode, setBodyMode] = useState<'original' | 'ro'>('original');
   const [showAccounts, setShowAccounts] = useState(true);
   const [showAssistant, setShowAssistant] = useState(true);
@@ -52,9 +71,16 @@ export default function InboxPage() {
       accountId: activeAccountId && activeAccountId !== 'all' ? activeAccountId : undefined,
       q: search || undefined,
       limit: 100,
-      archived: view === 'archive' ? 'true' : undefined,
+      role: view === 'archived-local' ? undefined : view,
+      archived: view === 'archived-local' ? 'true' : undefined,
     }),
     [activeAccountId, search, view],
+    { enabled: activeAccountId !== null, refetchInterval: 60_000 },
+  );
+
+  const { data: summary, refetch: refetchSummary } = useAsync(
+    () => MailApi.folderSummary(activeAccountId && activeAccountId !== 'all' ? activeAccountId : undefined),
+    [activeAccountId],
     { enabled: activeAccountId !== null, refetchInterval: 60_000 },
   );
 
@@ -74,7 +100,7 @@ export default function InboxPage() {
 
   // WS live updates: declanșează refetch pe cele mai relevante când vin evenimente.
   const { connected } = useMailSocket({
-    onNewMessage: () => { refetchMessages(); },
+    onNewMessage: () => { refetchMessages(); refetchSummary(); },
     onSuggestion: () => { refetchDetail(); refetchMessages(); },
     onAccountStatus: () => { refetchAccounts(); },
   });
@@ -123,30 +149,61 @@ export default function InboxPage() {
 
   async function handleDelete() {
     if (!detail?.message) return;
+    // Din Coș ștergerea e definitivă (server + local); din rest e o mutare în Coș.
+    const inTrash = view === 'trash';
     const ok = await confirmDialog({
-      title: 'Ștergi mesajul complet?',
-      description: 'Atât textul cât și atașamentele vor dispărea. Acțiunea nu se poate anula local.',
-      confirmText: 'Șterge',
+      title: inTrash ? 'Ștergi definitiv?' : 'Muți mesajul în Coș?',
+      description: inTrash
+        ? 'Mesajul dispare de pe server și din admin, împreună cu atașamentele. Nu se mai poate recupera.'
+        : 'Mesajul se mută în Coș pe serverul de mail — îl poți recupera de acolo.',
+      confirmText: inTrash ? 'Șterge definitiv' : 'Mută în Coș',
       variant: 'destructive',
     });
     if (!ok) return;
     try {
-      await MailApi.deleteMessage(detail.message.id);
-      toast({ variant: 'success', title: 'Mesaj șters' });
+      const r = await MailApi.deleteMessage(detail.message.id);
+      toast({ variant: 'success', title: r.trashed ? 'Mutat în Coș' : 'Mesaj șters definitiv' });
       refetchMessages();
+      refetchSummary();
       setActiveMessageId(null);
     } catch (e) {
       toast({ variant: 'destructive', title: 'Eroare', description: (e as Error).message });
     }
   }
 
-  async function handleSend(html: string) {
+  /** Steluță — se propagă și pe server, deci se vede și în webmail/telefon. */
+  async function handleToggleFlag() {
     if (!detail?.message) return;
     try {
-      await MailApi.reply(detail.message.id, { html });
+      await MailApi.messagePatch(detail.message.id, { flagged: !detail.message.flagged });
+      refetchDetail();
+      refetchMessages();
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Eroare', description: (e as Error).message });
+    }
+  }
+
+  /** Marchează necitit și închide — pattern clasic „mă întorc la el mai târziu". */
+  async function handleMarkUnread() {
+    if (!detail?.message) return;
+    try {
+      await MailApi.messagePatch(detail.message.id, { seen: false });
+      setActiveMessageId(null);
+      refetchMessages();
+      refetchSummary();
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Eroare', description: (e as Error).message });
+    }
+  }
+
+  async function handleSend(html: string, opts: { cc?: string[]; attachmentIds?: string[] }) {
+    if (!detail?.message) return;
+    try {
+      await MailApi.reply(detail.message.id, { html, cc: opts.cc, attachmentIds: opts.attachmentIds });
       toast({ variant: 'success', title: 'Răspuns trimis' });
       refetchThread();
       refetchMessages();
+      refetchSummary();
       setComposerHtml('');
     } catch (e) {
       toast({ variant: 'destructive', title: 'Eroare la trimitere', description: (e as Error).message });
@@ -233,7 +290,7 @@ export default function InboxPage() {
               className={cn('w-full text-left px-3 py-2 text-sm hover:bg-secondary/50 flex items-center gap-2', activeAccountId === 'all' && 'bg-primary/10 text-primary')}
               onClick={() => { setActiveAccountId('all'); setActiveMessageId(null); }}
             >
-              <InboxIcon className="h-4 w-4" />
+              <Mail className="h-4 w-4" />
               <span className="flex-1">Toate</span>
             </button>
             {accounts.map((a) => (
@@ -251,36 +308,56 @@ export default function InboxPage() {
                 {a.lastError && <span className="h-2 w-2 rounded-full bg-destructive shrink-0" />}
               </button>
             ))}
+
+            {/* Foldere — reflectă folderele reale de pe serverul IMAP. */}
+            <div className="mt-1 px-3 pt-2 pb-1 border-t border-border text-xs uppercase tracking-wider text-muted-foreground">
+              Foldere
+            </div>
+            {FOLDER_TABS.map((f) => {
+              const stats = summary?.folders.find((s) => s.role === f.role);
+              if (!f.always && !stats?.total) return null;
+              return (
+                <FolderButton
+                  key={f.role}
+                  icon={<f.icon className="h-4 w-4 shrink-0" />}
+                  label={f.label}
+                  unread={stats?.unread ?? 0}
+                  total={stats?.total ?? 0}
+                  active={view === f.role}
+                  onClick={() => { setView(f.role); setActiveMessageId(null); }}
+                />
+              );
+            })}
+            {!!summary?.archivedLocal && (
+              <FolderButton
+                icon={<ArchiveRestore className="h-4 w-4 shrink-0" />}
+                label="Arhivate local"
+                title="Mesaje arhivate din admin — atașamentele lor au fost șterse. Nu are legătură cu folderul Arhivă de pe server."
+                unread={0}
+                total={summary.archivedLocal}
+                active={view === 'archived-local'}
+                onClick={() => { setView('archived-local'); setActiveMessageId(null); }}
+              />
+            )}
           </div>
         </aside>
         )}
 
         {/* Pane 2: message list */}
         <section className="w-[360px] shrink-0 flex flex-col border border-border rounded-lg overflow-hidden bg-card/40">
-          <div className="flex items-center gap-1 px-2 pt-2">
-            <button
-              type="button"
-              onClick={() => { setView('inbox'); setActiveMessageId(null); }}
-              className={cn('flex-1 text-xs px-2 py-1.5 rounded-md transition-colors flex items-center justify-center gap-1.5', view === 'inbox' ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-secondary')}
-            >
-              <InboxIcon className="h-3.5 w-3.5" /> Inbox
-            </button>
-            <button
-              type="button"
-              onClick={() => { setView('archive'); setActiveMessageId(null); }}
-              className={cn('flex-1 text-xs px-2 py-1.5 rounded-md transition-colors flex items-center justify-center gap-1.5', view === 'archive' ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-secondary')}
-            >
-              <Archive className="h-3.5 w-3.5" /> Arhivate
-            </button>
-          </div>
-          <div className="px-3 py-2 border-b border-border">
+          <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+            <span className="text-xs font-medium shrink-0">{viewLabel(view)}</span>
             <Input placeholder="Caută în mailuri..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-8 text-sm" />
           </div>
           <div className="flex-1 overflow-y-auto">
             {loadingList ? (
               <div className="p-3 space-y-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
             ) : !messages || messages.length === 0 ? (
-              <div className="p-6 text-center text-xs text-muted-foreground">Niciun mesaj. Așteaptă sync sau apasă „Sincronizează" în Conturi.</div>
+              <div className="p-6 text-center text-xs text-muted-foreground">
+                {search
+                  ? 'Niciun mesaj pentru această căutare.'
+                  : `Niciun mesaj în ${viewLabel(view)}. Așteaptă sync sau apasă „Sincronizează" în Conturi.`}
+              </div>
             ) : (
               messages.map((m) => (
                 <MessageRow
@@ -314,17 +391,40 @@ export default function InboxPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleToggleFlag}
+                    title={detail.message.flagged ? 'Scoate steluța (și pe server)' : 'Marchează cu steluță (și pe server)'}
+                    className={detail.message.flagged ? 'text-amber-400' : undefined}
+                  >
+                    <Star className={cn('h-3.5 w-3.5', detail.message.flagged && 'fill-current')} />
+                  </Button>
+                  {detail.message.direction === 'in' && (
+                    <Button variant="outline" size="sm" onClick={handleMarkUnread} title="Marchează necitit (și pe server)">
+                      <Mail className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" onClick={() => setForwardOpen(true)} title="Redirecționează">
+                    <Forward className="h-3.5 w-3.5" /> Fwd
+                  </Button>
                   {detail.message.archived ? (
                     <Button variant="outline" size="sm" onClick={handleUnarchive} title="Dezarhivează">
                       <ArchiveRestore className="h-3.5 w-3.5" /> Dezarhivează
                     </Button>
                   ) : (
-                    <Button variant="outline" size="sm" onClick={handleArchive} title="Arhivează (șterge atașamente, păstrează textul)">
+                    <Button variant="outline" size="sm" onClick={handleArchive} title="Arhivează local (șterge atașamentele, păstrează textul)">
                       <Archive className="h-3.5 w-3.5" /> Arhivează
                     </Button>
                   )}
-                  <Button variant="outline" size="sm" onClick={handleDelete} title="Șterge mesajul complet" className="text-destructive hover:text-destructive">
-                    <Trash2 className="h-3.5 w-3.5" /> Șterge
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDelete}
+                    title={view === 'trash' ? 'Șterge definitiv de pe server' : 'Mută în Coș pe server'}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> {view === 'trash' ? 'Șterge' : 'Coș'}
                   </Button>
                 </div>
               </div>
@@ -421,6 +521,7 @@ export default function InboxPage() {
                   <ReplyComposer
                     key={detail.message.id}
                     to={[detail.message.fromAddr ?? '']}
+                    replyAllCandidates={replyAllCandidates(detail.message, accountMap[detail.message.accountId]?.email)}
                     subject={replySubject(detail.message.subject)}
                     initialHtml={composerHtml || undefined}
                     quotedHtml={buildQuotedReply(detail.message)}
@@ -450,9 +551,77 @@ export default function InboxPage() {
         onOpenChange={setComposeOpen}
         accounts={accounts}
         defaultAccountId={activeAccountId && activeAccountId !== 'all' ? activeAccountId : null}
-        onSent={() => { refetchMessages(); }}
+        onSent={() => { refetchMessages(); refetchSummary(); }}
       />
+
+      {detail?.message && (
+        <ForwardDialog
+          open={forwardOpen}
+          onOpenChange={setForwardOpen}
+          message={detail.message}
+          attachmentCount={detail.attachments.length}
+          onSent={() => { refetchMessages(); refetchSummary(); }}
+        />
+      )}
     </div>
+  );
+}
+
+/** Numele vederii curente, pentru antetul listei și mesajele goale. */
+function viewLabel(v: MailView): string {
+  if (v === 'archived-local') return 'Arhivate local';
+  return FOLDER_TABS.find((f) => f.role === v)?.label ?? 'Mesaje';
+}
+
+/**
+ * Ceilalți participanți la mesaj (To + Cc), mai puțin adresa noastră — candidații
+ * pentru „Răspunde tuturor". Fără excluderea propriei adrese ne-am trimite nouă
+ * o copie la fiecare răspuns.
+ */
+function replyAllCandidates(m: MailMessageRow, ownEmail?: string): string[] {
+  const own = (ownEmail ?? '').toLowerCase();
+  const from = (m.fromAddr ?? '').toLowerCase();
+  const all = [...m.toAddrs, ...m.cc].map((a) => a.address).filter(Boolean);
+  return Array.from(new Set(all.filter((a) => {
+    const lc = a.toLowerCase();
+    return lc !== own && lc !== from;
+  })));
+}
+
+function FolderButton({
+  icon,
+  label,
+  unread,
+  total,
+  active,
+  title,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  unread: number;
+  total: number;
+  active: boolean;
+  title?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title ?? `${label} · ${total} mesaje`}
+      className={cn(
+        'w-full text-left px-3 py-1.5 text-sm hover:bg-secondary/50 flex items-center gap-2',
+        active && 'bg-primary/10 text-primary',
+      )}
+    >
+      {icon}
+      <span className={cn('flex-1 truncate text-xs', unread > 0 && 'font-semibold')}>{label}</span>
+      {unread > 0 ? (
+        <Badge variant="secondary" className="h-4 px-1.5 text-[10px] text-primary">{unread}</Badge>
+      ) : total > 0 ? (
+        <span className="text-[10px] text-muted-foreground">{total}</span>
+      ) : null}
+    </button>
   );
 }
 

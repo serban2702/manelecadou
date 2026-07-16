@@ -5,9 +5,13 @@ import type {
   MailAccountInputDto,
   MailAccountSafe,
   MailAttachmentRow,
+  MailDraftRow,
+  MailFolderRole,
   MailFolderRow,
+  MailFolderSummary,
   MailMessageRow,
   MailTestResult,
+  StagedAttachment,
 } from '../types';
 
 export class MailApi {
@@ -38,10 +42,15 @@ export class MailApi {
   }
 
   // ===== Messages =====
-  static messages(params: { accountId?: string; folderId?: string; q?: string; limit?: number; archived?: 'true' | 'false' | 'all' } = {}): Promise<MailMessageRow[]> {
+  static messages(params: { accountId?: string; folderId?: string; role?: MailFolderRole; q?: string; limit?: number; archived?: 'true' | 'false' | 'all' } = {}): Promise<MailMessageRow[]> {
     const qs = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') qs.set(k, String(v)); });
     return http.get(`/admin/mail/messages${qs.toString() ? '?' + qs.toString() : ''}`);
+  }
+  /** Contoare pentru sidebar-ul de foldere. */
+  static folderSummary(accountId?: string): Promise<MailFolderSummary> {
+    const qs = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
+    return http.get(`/admin/mail/folders/summary${qs}`);
   }
   static message(id: string): Promise<{ message: MailMessageRow; attachments: MailAttachmentRow[]; suggestion: AiReplySuggestionRow | null }> {
     return http.get(`/admin/mail/messages/${id}`);
@@ -52,12 +61,20 @@ export class MailApi {
   static messagePatch(id: string, body: { seen?: boolean; flagged?: boolean }): Promise<MailMessageRow> {
     return http.patch(`/admin/mail/messages/${id}`, body);
   }
-  static reply(id: string, body: { html: string; to?: string[]; cc?: string[]; subject?: string }): Promise<MailMessageRow> {
+  static reply(id: string, body: { html: string; to?: string[]; cc?: string[]; subject?: string; attachmentIds?: string[] }): Promise<MailMessageRow> {
     return http.post(`/admin/mail/messages/${id}/reply`, body);
   }
-  /** Compune și trimite un email NOU dintr-un cont (prin Mailgun, nu prin SMTP-ul contului). */
-  static compose(body: { accountId: string; to: string[]; cc?: string[]; bcc?: string[]; subject: string; html: string }): Promise<MailMessageRow> {
+  /** Compune și trimite un email NOU dintr-un cont (prin pipeline-ul platformei). */
+  static compose(body: { accountId: string; to: string[]; cc?: string[]; bcc?: string[]; subject: string; html: string; attachmentIds?: string[] }): Promise<MailMessageRow> {
     return http.post('/admin/mail/compose', body);
+  }
+  /** Redirecționează un mesaj primit către alt destinatar. */
+  static forward(id: string, body: { to: string[]; cc?: string[]; html?: string; includeAttachments?: boolean }): Promise<MailMessageRow> {
+    return http.post(`/admin/mail/messages/${id}/forward`, body);
+  }
+  /** Mută mesajul în alt folder (pe server + local). */
+  static move(id: string, folderId: string): Promise<MailMessageRow> {
+    return http.post(`/admin/mail/messages/${id}/move`, { folderId });
   }
   static archive(id: string): Promise<MailMessageRow> {
     return http.post(`/admin/mail/messages/${id}/archive`);
@@ -65,8 +82,54 @@ export class MailApi {
   static unarchive(id: string): Promise<MailMessageRow> {
     return http.post(`/admin/mail/messages/${id}/unarchive`);
   }
-  static deleteMessage(id: string): Promise<{ ok: true }> {
+  /** Mută în Coș pe server; dacă mesajul e deja în Coș, îl șterge definitiv. */
+  static deleteMessage(id: string): Promise<{ ok: true; trashed: boolean }> {
     return http.delete(`/admin/mail/messages/${id}`);
+  }
+
+  // ===== Atașamente la trimitere =====
+
+  /**
+   * Încarcă un fișier de atașat și întoarce id-ul lui de staging, folosit apoi
+   * la compose/reply. Merge prin fetch direct (nu prin `http`) pentru multipart.
+   */
+  static async uploadOutboxAttachment(file: File): Promise<StagedAttachment> {
+    const token = getAdminToken();
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(`${baseUrl}/api/admin/mail/outbox-attachments`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(body?.message ?? `Încărcare eșuată (${res.status})`);
+    }
+    return res.json();
+  }
+
+  static discardOutboxAttachment(id: string): Promise<{ ok: true }> {
+    return http.delete(`/admin/mail/outbox-attachments/${id}`);
+  }
+
+  // ===== Ciorne (autosave din compose) =====
+  static latestDraft(accountId: string): Promise<MailDraftRow | null> {
+    return http.get(`/admin/mail/drafts/latest?accountId=${encodeURIComponent(accountId)}`);
+  }
+  static saveDraft(body: {
+    id?: string;
+    accountId: string;
+    to?: string[];
+    subject?: string;
+    html?: string;
+    inReplyToMessageId?: string;
+  }): Promise<MailDraftRow> {
+    return http.post('/admin/mail/drafts', body);
+  }
+  static deleteDraft(id: string): Promise<{ ok: true }> {
+    return http.delete(`/admin/mail/drafts/${id}`);
   }
 
   // ===== AI suggestions =====

@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { format } from 'date-fns';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
-import { Bold, Italic, Link2, List, ListOrdered, Loader2, Send } from 'lucide-react';
+import { Bold, Italic, Link2, List, ListOrdered, Loader2, Send, Trash2 } from 'lucide-react';
 import { MailApi, type MailAccountSafe } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +26,8 @@ import {
 } from '@/components/ui/select';
 import { promptDialog } from '@/components/ui/prompt-dialog';
 import { useToast } from '@/components/ui/use-toast';
+import { AttachmentPicker } from './AttachmentPicker';
+import type { StagedAttachment } from '@/lib/types';
 
 interface Props {
   open: boolean;
@@ -59,6 +62,12 @@ export function ComposeDialog({ open, onOpenChange, accounts, defaultAccountId, 
   const [showCcBcc, setShowCcBcc] = useState(false);
   const [subject, setSubject] = useState('');
   const [sending, setSending] = useState(false);
+  const [attachments, setAttachments] = useState<StagedAttachment[]>([]);
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
+  // Blochează autosave-ul cât încărcăm o ciornă existentă, altfel primul render
+  // ar salva conținutul gol peste ea.
+  const restoringRef = useRef(false);
 
   const editor = useEditor({
     extensions: [
@@ -73,7 +82,8 @@ export function ComposeDialog({ open, onOpenChange, accounts, defaultAccountId, 
     },
   });
 
-  // La fiecare deschidere: resetează câmpurile + preselectează contul.
+  // La fiecare deschidere: resetează câmpurile, preselectează contul și reia
+  // ciorna nefinalizată, dacă există.
   useEffect(() => {
     if (!open) return;
     const preferred =
@@ -86,8 +96,65 @@ export function ComposeDialog({ open, onOpenChange, accounts, defaultAccountId, 
     setBcc('');
     setShowCcBcc(false);
     setSubject('');
+    setAttachments([]);
+    setDraftId(null);
+    setDraftSavedAt(null);
     editor?.commands.setContent('<p></p>');
+
+    if (!preferred || !editor) return;
+    restoringRef.current = true;
+    MailApi.latestDraft(preferred)
+      .then((d) => {
+        if (!d) return;
+        setDraftId(d.id);
+        setTo(d.toAddrs.map((t) => t.address).join(', '));
+        setSubject(d.subject);
+        if (d.bodyHtml) editor.commands.setContent(d.bodyHtml);
+        setDraftSavedAt(new Date(d.updatedAt));
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        restoringRef.current = false;
+      });
   }, [open, defaultAccountId, accounts, editor]);
+
+  /** Salvează ciorna dacă are conținut. Rulează debounced din efectul de mai jos. */
+  const persistDraft = useCallback(async () => {
+    if (!editor || !accountId || restoringRef.current) return;
+    const html = editor.getHTML();
+    const hasContent = to.trim() || subject.trim() || (html && html !== '<p></p>');
+    if (!hasContent) return;
+    try {
+      const saved = await MailApi.saveDraft({
+        id: draftId ?? undefined,
+        accountId,
+        to: parseEmails(to),
+        subject,
+        html,
+      });
+      setDraftId(saved.id);
+      setDraftSavedAt(new Date());
+    } catch {
+      // Autosave silențios: o ciornă nesalvată nu merită să întrerupă scrisul.
+    }
+  }, [editor, accountId, to, subject, draftId]);
+
+  // Autosave la 2s după ultima tastare.
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(persistDraft, 2000);
+    return () => clearTimeout(t);
+  }, [open, to, subject, persistDraft]);
+
+  async function discardDraft() {
+    if (draftId) await MailApi.deleteDraft(draftId).catch(() => undefined);
+    setDraftId(null);
+    setDraftSavedAt(null);
+    setTo('');
+    setSubject('');
+    setAttachments([]);
+    editor?.commands.setContent('<p></p>');
+  }
 
   async function handleSend() {
     if (!editor) return;
@@ -127,8 +194,15 @@ export function ComposeDialog({ open, onOpenChange, accounts, defaultAccountId, 
         bcc: bccList.length ? bccList : undefined,
         subject: subject.trim(),
         html,
+        attachmentIds: attachments.length ? attachments.map((a) => a.id) : undefined,
       });
-      toast({ variant: 'success', title: 'Email trimis', description: `Către ${toList.join(', ')}` });
+      // Mailul a plecat — ciorna nu mai are rost.
+      if (draftId) await MailApi.deleteDraft(draftId).catch(() => undefined);
+      toast({
+        variant: 'success',
+        title: 'Email trimis',
+        description: `Către ${toList.join(', ')}${attachments.length ? ` · ${attachments.length} atașament(e)` : ''}`,
+      });
       onSent?.();
       onOpenChange(false);
     } catch (e) {
@@ -144,7 +218,7 @@ export function ComposeDialog({ open, onOpenChange, accounts, defaultAccountId, 
         <DialogHeader>
           <DialogTitle>Scrie un email nou</DialogTitle>
           <DialogDescription>
-            Mesajul se trimite prin Mailgun, împachetat în șablonul brandat al site-ului.
+            Mesajul pleacă prin providerul site-ului și se salvează automat în Trimise.
           </DialogDescription>
         </DialogHeader>
 
@@ -241,16 +315,36 @@ export function ComposeDialog({ open, onOpenChange, accounts, defaultAccountId, 
               <EditorContent editor={editor} />
             </div>
           </div>
+
+          <AttachmentPicker attachments={attachments} onChange={setAttachments} disabled={sending} />
         </div>
 
-        <div className="flex items-center justify-end gap-2 pt-1">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={sending}>
-            Anulează
-          </Button>
-          <Button onClick={handleSend} disabled={sending || !editor}>
-            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            Trimite
-          </Button>
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            {draftSavedAt && (
+              <>
+                <span>Ciornă salvată {format(draftSavedAt, 'HH:mm:ss')}</span>
+                <button
+                  type="button"
+                  onClick={discardDraft}
+                  disabled={sending}
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-secondary hover:text-foreground"
+                  title="Șterge ciorna și golește formularul"
+                >
+                  <Trash2 className="h-3 w-3" /> Renunță
+                </button>
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={sending}>
+              Închide
+            </Button>
+            <Button onClick={handleSend} disabled={sending || !editor}>
+              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Trimite
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

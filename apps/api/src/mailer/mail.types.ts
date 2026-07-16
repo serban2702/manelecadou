@@ -1,3 +1,12 @@
+/** Fișier atașat unui email trimis. Conținutul e ținut în memorie (max 25MB/mail). */
+export interface MailAttachmentInput {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+  /** Content-ID pentru imagini inline (`<img src="cid:...">`). */
+  cid?: string;
+}
+
 export interface SendMailOptions {
   to: string;
   /** Destinatari în copie (comma-separated). Opțional — folosit la compunere din Inbox. */
@@ -9,6 +18,28 @@ export interface SendMailOptions {
   text?: string;
   from?: string;
   replyTo?: string;
+  attachments?: MailAttachmentInput[];
+  /** Message-ID al mesajului la care răspundem (threading RFC 5322). */
+  inReplyTo?: string;
+  /** Lanțul de References pentru threading. */
+  references?: string[];
+}
+
+/**
+ * Mesajul serializat în MIME, construit O SINGURĂ DATĂ de `MailerService` și
+ * pasat provider-ului. Aceiași octeți pleacă la destinatar și sunt salvați prin
+ * IMAP APPEND în folderul `Sent` — copia din webmail e bit-identică cu ce a
+ * primit clientul, iar `messageId` e generat de noi (nu de provider), ca să
+ * putem corela rândul local cu mesajul adus înapoi de sync.
+ */
+export interface BuiltMime {
+  raw: Buffer;
+  /** Message-ID fără parantezele unghiulare. */
+  messageId: string;
+  /** Adresa de expeditor folosită în envelope (fără display name). */
+  envelopeFrom: string;
+  /** Toți destinatarii (to + cc + bcc) — envelope recipients. */
+  recipients: string[];
 }
 
 export interface SendMailResult {
@@ -53,5 +84,5 @@ export interface ResolvedMailContext {
 
 export abstract class MailProvider {
   abstract readonly name: 'smtp' | 'mailgun' | 'noop';
-  abstract send(opts: SendMailOptions, ctx: ResolvedMailContext): Promise<SendMailResult>;
+  abstract send(opts: SendMailOptions, ctx: ResolvedMailContext, mime: BuiltMime): Promise<SendMailResult>;
 }

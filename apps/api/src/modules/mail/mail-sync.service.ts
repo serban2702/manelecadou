@@ -60,9 +60,11 @@ export class MailSyncService {
         }
       }
 
-      // 2) Sync inbox + sent (cele mai relevante)
+      // 2) Sync pe toate folderele standard. `other` rămâne exclus intenționat:
+      //    sunt foldere custom ale userului (uneori zeci, cu mii de mailuri vechi)
+      //    care ar umfla sync-ul fără să aducă ceva pentru operare.
       const folders = await this.mail.folders.find({ where: { accountId: acc.id } });
-      const targetRoles: MailFolderRole[] = ['inbox', 'sent'];
+      const targetRoles: MailFolderRole[] = ['inbox', 'sent', 'drafts', 'spam', 'trash', 'archive'];
       for (const f of folders) {
         if (!targetRoles.includes(f.role)) continue;
         const result = await this.imap.fetchNew(acc, f.path, f.lastUid);
@@ -74,8 +76,10 @@ export class MailSyncService {
           const created = await this.persistMessage(acc, f, m);
           if (!created) continue;
           ingested++;
-          // Only enqueue AI for inbound, non-AI messages.
-          if (created.direction === 'in') {
+          // AI + traducere doar pentru mailurile primite în Inbox. Spam/Coș/Arhivă
+          // se sincronizează pentru vizibilitate, dar n-au ce căuta la sugestii —
+          // ar arde tokeni OpenAI pe junk și ar propune răspunsuri la el.
+          if (created.direction === 'in' && f.role === 'inbox') {
             await this.aiQueue.add('suggest', { messageId: created.id }, { removeOnComplete: 100, removeOnFail: 50 });
             // Auto-translate inbound non-RO → RO. Fire-and-forget: nu blocăm sync-ul
             // dacă traducerea durează / cade (mesajul e oricum vizibil în original).
@@ -102,7 +106,23 @@ export class MailSyncService {
   private async persistMessage(acc: MailAccount, folder: MailFolder, m: ParsedMessage): Promise<MailMessage | null> {
     if (m.messageId) {
       const existing = await this.mail.messages.findOne({ where: { accountId: acc.id, messageId: m.messageId } });
-      if (existing) return null;
+      if (existing) {
+        // Mesajul e deja la noi — tipic unul trimis de noi, salvat local la
+        // trimitere și adus acum înapoi din `Sent` de APPEND. Nu-l duplicăm, dar
+        // îl legăm de folderul și uid-ul real, altfel ar rămâne orfan
+        // (folderId/uid null) și n-ar răspunde la acțiunile IMAP.
+        let touched = false;
+        if (!existing.folderId || existing.folderId !== folder.id) {
+          existing.folderId = folder.id;
+          touched = true;
+        }
+        if (!existing.uid) {
+          existing.uid = m.uid;
+          touched = true;
+        }
+        if (touched) await this.mail.messages.save(existing);
+        return null;
+      }
     }
     const threadId = m.references[0] ?? m.inReplyTo ?? m.messageId ?? null;
     const msg = this.mail.messages.create({

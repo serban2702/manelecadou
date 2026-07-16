@@ -378,16 +378,46 @@ export interface MailTestResult {
   smtp: { ok: boolean; error?: string };
 }
 
+export type MailFolderRole = 'inbox' | 'sent' | 'drafts' | 'trash' | 'spam' | 'archive' | 'other';
+
 export interface MailFolderRow {
   id: string;
   accountId: string;
   path: string;
   name: string;
-  role: 'inbox' | 'sent' | 'drafts' | 'trash' | 'spam' | 'archive' | 'other';
+  role: MailFolderRole;
   uidValidity: string;
   lastUid: string;
   unreadCount: number;
   totalCount: number;
+}
+
+/** Contoare per rol de folder, pentru sidebar-ul din /inbox. */
+export interface MailFolderSummary {
+  folders: Array<{ role: MailFolderRole; total: number; unread: number }>;
+  /** Mesaje arhivate local (feature separat de folderul Archive de pe server). */
+  archivedLocal: number;
+}
+
+/** Fișier încărcat, în așteptare până la trimiterea mailului. */
+export interface StagedAttachment {
+  id: string;
+  filename: string;
+  mime: string;
+  size: number;
+}
+
+/** Ciornă salvată automat în timp ce adminul compune un mail. */
+export interface MailDraftRow {
+  id: string;
+  siteId: string | null;
+  accountId: string;
+  inReplyToMessageId: string | null;
+  toAddrs: MailAddrLite[];
+  subject: string;
+  bodyHtml: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface MailAddrLite { address: string; name?: string }
