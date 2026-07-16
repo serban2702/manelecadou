@@ -11,6 +11,7 @@ import type {
   MailFolderSummary,
   MailMessageRow,
   MailTestResult,
+  MailThreadRow,
   StagedAttachment,
 } from '../types';
 
@@ -46,6 +47,15 @@ export class MailApi {
     const qs = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') qs.set(k, String(v)); });
     return http.get(`/admin/mail/messages${qs.toString() ? '?' + qs.toString() : ''}`);
+  }
+  /**
+   * Lista grupată pe conversații (un rând per thread, cele mai recente primele).
+   * Aceleași filtre ca `messages()`; `limit` numără thread-uri, nu mesaje.
+   */
+  static threads(params: { accountId?: string; folderId?: string; role?: MailFolderRole; q?: string; limit?: number; archived?: 'true' | 'false' | 'all' } = {}): Promise<MailThreadRow[]> {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') qs.set(k, String(v)); });
+    return http.get(`/admin/mail/threads${qs.toString() ? '?' + qs.toString() : ''}`);
   }
   /** Contoare pentru sidebar-ul de foldere. */
   static folderSummary(accountId?: string): Promise<MailFolderSummary> {

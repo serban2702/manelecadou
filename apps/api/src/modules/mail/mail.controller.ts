@@ -294,6 +294,103 @@ export class MailController {
     };
   }
 
+  /**
+   * Lista grupată pe conversații (ca în Outlook): un rând per thread, cea mai
+   * recentă conversație prima. Filtrele sunt identice cu `GET /messages`.
+   *
+   * Subiectul vine din PRIMUL mesaj cu subiect al thread-ului, nu din ultimul:
+   * replies-urile vin cu „Re:" (uneori gol de tot), iar titlul conversației
+   * trebuie să rămână cel original.
+   *
+   * Gruparea se face doar peste mesajele vizibile în vederea curentă (în Inbox
+   * numărăm mesajele din Inbox), dar deschiderea thread-ului aduce oricum tot
+   * schimbul, din toate folderele — vezi `GET /threads/:threadId`.
+   */
+  @Get('threads')
+  async threads(
+    @CurrentSiteId() siteId: string | null,
+    @Query('accountId') accountId?: string,
+    @Query('folderId') folderId?: string,
+    @Query('role') role?: string,
+    @Query('q') q?: string,
+    @Query('limit') limit = '50',
+    @Query('archived') archived?: string,
+  ) {
+    const params: unknown[] = [];
+    const p = (v: unknown): string => {
+      params.push(v);
+      return `$${params.length}`;
+    };
+    const where: string[] = [];
+
+    // Default: ascunde arhivate. ?archived=true → doar arhivate. ?archived=all → tot.
+    if (archived === 'true') where.push('m.archived = true');
+    else if (archived !== 'all') where.push('m.archived = false');
+    if (accountId) where.push(`m."accountId" = ${p(accountId)}`);
+    if (folderId) where.push(`m."folderId" = ${p(folderId)}`);
+    if (role && isFolderRole(role)) {
+      const rp = p(role);
+      where.push(
+        role === 'sent'
+          ? `(m."folderId" IN (SELECT id FROM mail_folders WHERE role = ${rp}) OR (m."folderId" IS NULL AND m.direction = 'out'))`
+          : `m."folderId" IN (SELECT id FROM mail_folders WHERE role = ${rp})`,
+      );
+    }
+    if (q) {
+      const qp = p(`%${q}%`);
+      where.push(`(m.subject ILIKE ${qp} OR m.snippet ILIKE ${qp} OR m."fromAddr" ILIKE ${qp})`);
+    }
+    if (siteId) where.push(`m."siteId" = ${p(siteId)}`);
+
+    const lim = p(Math.min(200, parseInt(String(limit)) || 50));
+
+    return this.mail.messages.query(
+      `
+      WITH filtered AS (
+        SELECT m.*,
+               COALESCE(m."threadId", m.id::text) AS thread_key,
+               COALESCE(m."sentAt", m."receivedAt", m."createdAt") AS ts
+        FROM mail_messages m
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ),
+      agg AS (
+        SELECT thread_key,
+               COUNT(*)::int AS "messageCount",
+               COUNT(*) FILTER (WHERE seen = false AND direction = 'in')::int AS "unreadCount",
+               MAX(ts) AS "lastAt",
+               BOOL_OR(flagged) AS flagged,
+               COALESCE(SUM("attachmentCount"), 0)::int AS "attachmentCount",
+               (ARRAY_AGG(subject ORDER BY ts ASC)
+                  FILTER (WHERE COALESCE(subject, '') <> ''))[1] AS root_subject,
+               ARRAY_AGG(DISTINCT COALESCE(NULLIF("fromName", ''), "fromAddr"))
+                  FILTER (WHERE COALESCE(NULLIF("fromName", ''), "fromAddr") IS NOT NULL) AS participants
+        FROM filtered
+        GROUP BY thread_key
+      ),
+      latest AS (
+        SELECT DISTINCT ON (thread_key)
+               thread_key, id, subject, "fromName", "fromAddr", "toAddrs",
+               snippet, direction, "aiGenerated", "siteId", "accountId"
+        FROM filtered
+        ORDER BY thread_key, ts DESC NULLS LAST, id DESC
+      )
+      SELECT l.thread_key AS "threadId",
+             l.id         AS "latestMessageId",
+             COALESCE(NULLIF(a.root_subject, ''), l.subject, '') AS subject,
+             l."fromName", l."fromAddr", l."toAddrs", l.snippet, l.direction,
+             l."aiGenerated", l."siteId", l."accountId",
+             a."lastAt", a."messageCount", a."unreadCount", a.flagged,
+             a."attachmentCount",
+             COALESCE(a.participants, ARRAY[]::text[]) AS participants
+      FROM latest l
+      JOIN agg a ON a.thread_key = l.thread_key
+      ORDER BY a."lastAt" DESC NULLS LAST
+      LIMIT ${lim}
+      `,
+      params,
+    );
+  }
+
   @Get('threads/:threadId')
   async thread(@Param('threadId') threadId: string) {
     return this.mail.messages.find({

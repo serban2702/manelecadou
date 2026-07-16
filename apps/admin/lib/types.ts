@@ -459,6 +459,35 @@ export interface MailMessageRow {
   translationConsensus: number | null;
 }
 
+/**
+ * Un rând din lista grupată pe conversații. Câmpurile de conținut (from, snippet,
+ * direction) sunt ale ULTIMULUI mesaj din thread, iar `subject` e al primului —
+ * titlul conversației, nu „Re:"-ul ultimului reply.
+ */
+export interface MailThreadRow {
+  /** Cheia thread-ului — se dă mai departe la `MailApi.thread()`. */
+  threadId: string;
+  /** Ultimul mesaj: pe el se deschide conversația. */
+  latestMessageId: string;
+  subject: string;
+  fromAddr: string | null;
+  fromName: string | null;
+  toAddrs: MailAddrLite[];
+  snippet: string;
+  direction: 'in' | 'out';
+  aiGenerated: boolean;
+  siteId: string | null;
+  accountId: string;
+  /** Data ultimului mesaj — după ea e sortată lista. */
+  lastAt: string;
+  messageCount: number;
+  unreadCount: number;
+  flagged: boolean;
+  attachmentCount: number;
+  /** Numele distincte ale expeditorilor din thread (noi + clientul). */
+  participants: string[];
+}
+
 export interface MailAttachmentRow {
   id: string;
   messageId: string;

@@ -1,13 +1,13 @@
 'use client';
 
 import { SpaLink as Link } from '@/lib/spa-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatDistanceToNowStrict, format } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import DOMPurify from 'dompurify';
 import { Archive, ArchiveRestore, Bot, FileEdit, Forward, Inbox as InboxIcon, Mail, MessagesSquare, Paperclip, PenSquare, Send, Settings2, ShieldAlert, Sparkles, Star, Trash2, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { MailApi, type MailMessageRow } from '@/lib/api';
-import type { MailFolderRole } from '@/lib/types';
+import type { MailFolderRole, MailThreadRow } from '@/lib/types';
 import { useAsync } from '@/lib/hooks/use-async';
 import { useMailSocket } from '@/lib/inbox-ws';
 import { Badge } from '@/components/ui/badge';
@@ -66,8 +66,10 @@ export default function InboxPage() {
     if (activeAccountId === null && accounts && accounts.length > 0) setActiveAccountId('all');
   }, [accounts, activeAccountId]);
 
-  const { data: messages, loading: loadingList, refetch: refetchMessages } = useAsync(
-    () => MailApi.messages({
+  // Lista e grupată pe conversații (ca în Outlook): un rând per schimb de mailuri,
+  // cel mai recent sus. Mesajele individuale se văd la deschiderea thread-ului.
+  const { data: threads, loading: loadingList, refetch: refetchMessages } = useAsync(
+    () => MailApi.threads({
       accountId: activeAccountId && activeAccountId !== 'all' ? activeAccountId : undefined,
       q: search || undefined,
       limit: 100,
@@ -105,15 +107,37 @@ export default function InboxPage() {
     onAccountStatus: () => { refetchAccounts(); },
   });
 
-  // Mark seen automat când deschizi
+  /** Thread-ul deschis — evidențiază rândul corect în listă. */
+  const activeThreadId = detail?.message?.threadId ?? null;
+
+  // Marcăm citită TOATĂ conversația la deschidere, nu doar ultimul mesaj: lista
+  // numără necititele pe thread, așa că altfel rândul ar rămâne „3 noi" după ce
+  // l-ai citit.
+  //
+  // Ținem minte ce am marcat deja la nivel de mesaj, nu de thread: efectul
+  // rulează întâi cu mesajul deschis (thread-ul se încarcă separat) și abia apoi
+  // cu firul complet — un guard pe thread ar bloca exact a doua rulare, adică pe
+  // cea care marchează restul conversației.
+  const patchedSeenRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (detail?.message && detail.message.direction === 'in' && !detail.message.seen) {
-      MailApi.messagePatch(detail.message.id, { seen: true }).then(() => {
+    const msgs = thread ?? (detail?.message ? [detail.message] : []);
+    const unread = msgs.filter(
+      (m) => m.direction === 'in' && !m.seen && !patchedSeenRef.current.has(m.id),
+    );
+    if (!unread.length) return;
+    unread.forEach((m) => patchedSeenRef.current.add(m.id));
+    Promise.all(unread.map((m) => MailApi.messagePatch(m.id, { seen: true })))
+      .then(() => {
         refetchMessages();
         refetchDetail();
+        refetchThread();
+        refetchSummary();
+      })
+      .catch(() => {
+        // Lasă-le să fie reîncercate la următoarea deschidere.
+        unread.forEach((m) => patchedSeenRef.current.delete(m.id));
       });
-    }
-  }, [detail?.message?.id, detail?.message?.seen, detail?.message?.direction, refetchMessages, refetchDetail]);
+  }, [thread, detail?.message, refetchMessages, refetchDetail, refetchThread, refetchSummary]);
 
   const accountMap = useMemo(() => Object.fromEntries((accounts ?? []).map((a) => [a.id, a])), [accounts]);
 
@@ -352,20 +376,20 @@ export default function InboxPage() {
           <div className="flex-1 overflow-y-auto">
             {loadingList ? (
               <div className="p-3 space-y-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
-            ) : !messages || messages.length === 0 ? (
+            ) : !threads || threads.length === 0 ? (
               <div className="p-6 text-center text-xs text-muted-foreground">
                 {search
                   ? 'Niciun mesaj pentru această căutare.'
                   : `Niciun mesaj în ${viewLabel(view)}. Așteaptă sync sau apasă „Sincronizează" în Conturi.`}
               </div>
             ) : (
-              messages.map((m) => (
-                <MessageRow
-                  key={m.id}
-                  m={m}
-                  active={m.id === activeMessageId}
-                  accountLabel={accountMap[m.accountId]?.label}
-                  onClick={() => setActiveMessageId(m.id)}
+              threads.map((t) => (
+                <ThreadRow
+                  key={t.threadId}
+                  t={t}
+                  active={t.threadId === activeThreadId || t.latestMessageId === activeMessageId}
+                  accountLabel={accountMap[t.accountId]?.label}
+                  onClick={() => setActiveMessageId(t.latestMessageId)}
                 />
               ))
             )}
@@ -663,37 +687,81 @@ function toHtmlIfPlain(s: string): string {
     .join('\n');
 }
 
-function MessageRow({ m, active, accountLabel, onClick }: { m: MailMessageRow; active: boolean; accountLabel?: string; onClick: () => void }) {
-  const date = m.sentAt ?? m.receivedAt ?? m.createdAt;
+/**
+ * Un rând = o conversație întreagă, nu un mesaj. Arată participanții, subiectul
+ * original al firului și câte mesaje conține — schimbul de 6 „Re:" cu un client
+ * ocupă un singur rând, ca în Outlook.
+ */
+function ThreadRow({
+  t,
+  active,
+  accountLabel,
+  onClick,
+}: {
+  t: MailThreadRow;
+  active: boolean;
+  accountLabel?: string;
+  onClick: () => void;
+}) {
+  const unread = t.unreadCount > 0;
   return (
     <button
       onClick={onClick}
       className={cn(
         'w-full text-left px-3 py-2.5 border-b border-border/50 hover:bg-secondary/40 transition-colors',
         active && 'bg-primary/10',
-        !m.seen && m.direction === 'in' && 'border-l-2 border-l-primary',
+        unread && 'border-l-2 border-l-primary',
       )}
     >
       <div className="flex items-center gap-2 mb-0.5">
-        <div className={cn('truncate text-xs flex-1', !m.seen && m.direction === 'in' && 'font-semibold')}>
-          {m.direction === 'out' ? `Către: ${m.toAddrs[0]?.address ?? ''}` : (m.fromName ?? m.fromAddr ?? '')}
+        <div className={cn('truncate text-xs flex-1', unread && 'font-semibold')}>
+          {threadPeople(t)}
         </div>
+        {t.flagged && <Star className="h-2.5 w-2.5 shrink-0 fill-current text-amber-400" />}
         <div className="text-[10px] text-muted-foreground shrink-0">
-          {date ? formatDistanceToNowStrict(new Date(date), { locale: ro }) : ''}
+          {t.lastAt ? formatDistanceToNowStrict(new Date(t.lastAt), { locale: ro }) : ''}
         </div>
       </div>
-      <div className="text-xs truncate font-medium">{m.subject || '(fără subiect)'}</div>
+      <div className="flex items-center gap-1.5">
+        <span className={cn('text-xs truncate', unread ? 'font-semibold' : 'font-medium')}>
+          {t.subject || '(fără subiect)'}
+        </span>
+        {t.messageCount > 1 && (
+          <span
+            className="shrink-0 rounded-full border border-border px-1.5 text-[10px] text-muted-foreground"
+            title={`${t.messageCount} mesaje în conversație`}
+          >
+            {t.messageCount}
+          </span>
+        )}
+      </div>
       <div className="text-[11px] text-muted-foreground truncate flex items-center gap-1">
-        {m.aiGenerated && <Sparkles className="h-2.5 w-2.5 text-primary" />}
-        {m.attachmentCount > 0 && <Paperclip className="h-2.5 w-2.5" />}
-        <span className="truncate">{m.snippet}</span>
+        {t.aiGenerated && <Sparkles className="h-2.5 w-2.5 text-primary" />}
+        {t.attachmentCount > 0 && <Paperclip className="h-2.5 w-2.5" />}
+        {t.direction === 'out' && <span className="shrink-0">Tu:</span>}
+        <span className="truncate">{t.snippet}</span>
       </div>
       <div className="flex items-center gap-1.5 mt-0.5">
-        <SiteBadge siteId={m.siteId} />
+        <SiteBadge siteId={t.siteId} />
         {accountLabel && <span className="text-[10px] text-muted-foreground truncate">{accountLabel}</span>}
+        {unread && (
+          <span className="rounded-full bg-primary/15 px-1.5 text-[10px] text-primary">{t.unreadCount} noi</span>
+        )}
       </div>
     </button>
   );
+}
+
+/**
+ * Cine e în conversație. Pentru un fir cu mai mulți participanți arătăm numele
+ * lor (fără al nostru — vezi SQL-ul din /threads, care le agregă pe toate), iar
+ * pentru un mail trimis fără răspuns, destinatarul.
+ */
+function threadPeople(t: MailThreadRow): string {
+  const others = t.participants.filter(Boolean);
+  if (others.length > 1) return others.join(', ');
+  if (t.direction === 'out' && !others.length) return `Către: ${t.toAddrs[0]?.address ?? ''}`;
+  return others[0] ?? t.fromName ?? t.fromAddr ?? '';
 }
 
 function replySubject(s: string): string {
