@@ -70,6 +70,18 @@ const VOICE_DEFAULTS = {
   F: 'female',  // voce feminină — default feminin
 } as const;
 
+/** Confirmări scurte, fără conținut propriu — userul doar validează, nu dă info nouă. */
+const AFFIRM_ONLY = new Set([
+  'da', 'ok', 'okay', 'nu', 'bine', 'da da', 'sigur', 'mda', 'yes', 'yep',
+  'merci', 'mersi', 'multumesc', 'mulțumesc', 'da.', 'ok.', 'nuu', 'daa',
+]);
+
+/** Mesaj fără niciun caracter real după curățarea formatării markdown. Un mesaj
+ *  valid are cel puțin o literă sau cifră. */
+function isJunkText(s: string): boolean {
+  return !s.replace(/```/g, '').replace(/[\s`~*_>#\-.,!?…]/g, '');
+}
+
 /** Jaccard similarity pe cuvinte. Returnează 0..1 — 1 = identice, 0 = disjuncte.
  *  Folosit pentru detectarea buclelor sterile AI (răspuns identic la userul care
  *  cere același lucru repetat). */
@@ -678,10 +690,6 @@ export class AIChatAgentService {
     // câte mesaje REALE a dat userul (peste un simplu „da/ok") — dacă a povestit
     // deja, NU mai re-cerem „mesajul exact" (fix buclă infinită). `hasEmail` din
     // conv.email (setat de wizard_update) sau user logat.
-    const AFFIRM_ONLY = new Set([
-      'da', 'ok', 'okay', 'nu', 'bine', 'da da', 'sigur', 'mda', 'yes', 'yep',
-      'merci', 'mersi', 'multumesc', 'mulțumesc', 'da.', 'ok.', 'nuu', 'daa',
-    ]);
     const userSubstantiveMsgs = last20.filter(
       (m) =>
         m.authorRole !== 'admin' &&
@@ -833,9 +841,15 @@ BUG observat 2026-06-22 conv 8a7a621a (lista de pachete trimisă de 3 ori la râ
     if (conv.aiMode === 'auto' && ctx.sentRealMessages === 0 && !ctx.escalated && !opts.followUp) {
       const fresh = await this.conv.findOne({ where: { id: conv.id }, select: ['id', 'aiMode'] });
       if (fresh?.aiMode === 'auto') {
+        // Junk guard pe finalContent. Safety net-ul salvează DIRECT (msg.save), ocolind
+        // handleSendMessage — deci și junk guard-ul lui. BUG observat 2026-07-16 conv
+        // 2c167873: userul a primit o bulă cu literal „```" (fence markdown gol emis ca
+        // finalContent, fără tool call). Guard-ul din handleSendMessage exista din 2026-07-10
+        // (conv a8970739) dar nu acoperea calea asta. Junk → cădem pe textul neutru.
+        const finalRaw = (result.finalContent ?? '').trim();
         const fallback =
-          (result.finalContent && result.finalContent.trim().length > 0)
-            ? result.finalContent.trim().slice(0, 800)
+          finalRaw && !isJunkText(finalRaw)
+            ? finalRaw.slice(0, 800)
             : 'Înțeleg, lasă-mă o secundă să verific și revin imediat.';
         // GUARD anti-duplicat pe safety net. Safety net-ul persistă finalContent-ul DIRECT
         // (msg.save de mai jos), ocolind complet dedup-ul din handleSendMessage (EXACT_DUP /
@@ -3203,8 +3217,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     // punctuației nu conține NICIUN caracter real → nu-l livra. BUG observat 2026-07-10
     // conv a8970739: Irina a trimis un mesaj care era literal „```" (fence gol) — apărea
     // ca bulă goală la client. Un mesaj valid are cel puțin o literă sau cifră.
-    const junkStripped = trimmed.replace(/```/g, '').replace(/[\s`~*_>#\-.,!?…]/g, '');
-    if (!junkStripped) {
+    if (isJunkText(trimmed)) {
       return {
         sent: false,
         messageType: 'noop',
@@ -3444,6 +3457,35 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           }
         } catch (e) {
           this.logger.warn(`song link repeat check failed: ${(e as Error).message}`);
+        }
+      }
+
+      // Treapta 0.55b — a 2-a recapitulare + cerere de confirmare (semantic, NU lexical).
+      // BUG observat 2026-07-16 conv 2c167873: Irina a recapitulat comanda de 3 ori cerând
+      // de fiecare dată OK („Daca e ok asa, iti trimit linkul" → „Recapitulare scurtă… E
+      // corect asa?" → „Daca e ok, iti trimit linkul de plata acum"), deși userul răspunsese
+      // „Da" între ele. Parafrazele au Jaccard ≈0.67 față de recapitularea de acum două
+      // mesaje — sub NEAR_DUP (0.72), care oricum compară doar cu ULTIMUL mesaj AI. ETAPA 5.8
+      // interzice deja explicit tiparul (același bug 2026-06-29 conv 7dec1ea6), dar modelul îl
+      // repetă → mutăm detecția în cod. Blocăm doar când userul TOCMAI a confirmat cu un „da/
+      // ok" simplu: prima recapitulare și cele de după info nouă trec neatinse.
+      const asksConfirmation = (t: string) =>
+        /\b(dac[aă] e ok|dac[aă] e bine|e corect|e ok a[sș]a|e bine a[sș]a|recapitul|confirmi)\b/i.test(t);
+      if (asksConfirmation(normalized) && recentNorm.some(asksConfirmation)) {
+        const lastUser = await this.msg.findOne({
+          where: { conversationId: ctx.conv.id, authorRole: 'user' },
+          order: { createdAt: 'DESC' },
+        });
+        const lastUserBody = (lastUser?.body ?? '').trim().toLowerCase();
+        if (lastUserBody && AFFIRM_ONLY.has(lastUserBody)) {
+          this.logger.warn(`RECAP_REPEAT blocked on conv=${ctx.conv.id.slice(0, 8)} — a 2-a cerere de confirmare după ce userul confirmase deja.`);
+          return {
+            sent: false,
+            messageType: 'duplicate_text',
+            status: 'RECAP_REPEAT_BLOCKED',
+            instruction:
+              'STAI — ai recapitulat deja comanda și userul TOCMAI ți-a confirmat („da/ok"). NU recapitula a doua oară și NU mai cere încă un „e corect așa?" — întârzii plata degeaba și sună robotic. Dacă ai tot ce-ți trebuie (destinatar + mesaj + email + pachet) → apelează `wizard_finalize` ACUM, în tura asta. Dacă mai lipsește exact un câmp, cere-l DIRECT și scurt, fără să reiei toată comanda.',
+          };
         }
       }
 
