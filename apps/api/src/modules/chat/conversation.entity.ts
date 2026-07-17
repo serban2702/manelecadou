@@ -38,6 +38,10 @@ export interface WizardData {
   customLyrics?: string;
   /** Indiciu de stil liber („stil Dani Mocanu") — intră în inferarea creativă. */
   styleHint?: string;
+  /** Limba cerută EXPLICIT de user pentru versuri, când diferă de limba site-ului
+   *  (ex. „ucraineană", „rusă"). Text liber. Forțează generate_lyrics să scrie în
+   *  acea limbă → salvate ca customLyrics (cântate verbatim). Gol = limba site-ului. */
+  languageHint?: string;
   /** @deprecated înlocuit de packageTier (model 3 pachete). Păstrat pt compat. */
   premium?: boolean;
   /** Pachetul ales de user în chat: basic | plus | premium. Default basic. */

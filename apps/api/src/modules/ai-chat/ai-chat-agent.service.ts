@@ -1521,6 +1521,20 @@ ETAPA 2.5 — AUTO-EXTRACT din primul mesaj user (CRITIC pentru UX):
     a reclamat de 15+ ori „nu apar versurile mele" → 2 modificări plătite degeaba + escaladare
     + un om a trebuit să refacă manual cu customLyrics setat corect. NU repeta.
 
+  → 🌍 LIMBĂ DIFERITĂ DE A SITE-ULUI (ex. user cere „în ucraineană / rusă / germană"):
+    ESTE posibil, dar DOAR pe calea versurilor. Pași OBLIGATORII, în ordine:
+    1. \`wizard_update({languageHint: "<limba>"})\` — imediat ce userul cere altă limbă.
+    2. \`generate_lyrics\` — versurile ies fix în acea limbă și se salvează ca customLyrics
+       (se cântă EXACT așa; writer-ul nu le rescrie la generare). Dacă userul își scrie/lipește
+       el versurile în acea limbă → salvează-le direct cu \`wizard_update({customLyrics})\`.
+    3. Lasă userul să le APROBE, apoi finalizează.
+    ⛔ NU finaliza o comandă în altă limbă FĂRĂ versuri aprobate — melodia ar ieși în limba
+    site-ului (finalize te va bloca cu LANGUAGE_NEEDS_LYRICS_FIRST). ⛔ NU spune doar „da, se
+    poate în X" și mergi mai departe la email/plată fără să treci prin generate_lyrics.
+    BUG observat 2026-07-17 conv 4b83c190: userul a cerut ucraineană de la primul mesaj, Irina a
+    zis „da, se poate", a finalizat cu message gol → melodia a ieșit în română. Client furios,
+    a cerut refund, un om a refăcut-o manual. NU repeta.
+
 ETAPA 2.6 — PREFERINȚE STIL/ARTIST din context:
   → Dacă userul menționează un artist real (Dani Mocanu, Florin Salam, Guță,
     Tzancă Uraganu, Babi Minune, etc.) → salvează ca styleHint în wizard_update.
@@ -1986,6 +2000,7 @@ REGULI STRICTE:
             email: { type: 'string', description: 'Email-ul user-ului (necesar pentru livrare).' },
             recipientGender: { type: 'string', enum: ['M', 'F'], description: 'Sex destinatar. Folosit pentru inferarea vocii când userul nu o cere explicit.' },
             styleHint: { type: 'string', description: 'OPTIONAL: indiciu liber de stil/artist menționat de user (ex. „stil Dani Mocanu", „ca Salam"). Intră în inferarea creativă la finalize.' },
+            languageHint: { type: 'string', description: 'OPTIONAL: limba în care userul cere EXPLICIT versurile, DOAR dacă diferă de limba site-ului (ex. „ucraineană", „rusă", „germană"). Setează-o imediat ce userul cere altă limbă. OBLIGATORIU apoi: generează versurile cu generate_lyrics (ies în acea limbă și se cântă exact așa) și lasă userul să le aprobe ÎNAINTE de plată — altfel melodia iese în limba site-ului. Lasă GOL dacă userul vrea limba implicită a site-ului.' },
             voiceArtist: { type: 'string', enum: ['male', 'female'], description: 'Vocea maneaua: male (bărbătească) sau female (feminină).' },
             customLyrics: { type: 'string', description: 'Versurile complete pe care userul le SCRIE/LIPEȘTE el însuși („cu versurile mele" + un bloc de strofe/rânduri de cântec). Salvate VERBATIM și SACRE — se cântă EXACT așa, writer-ul NU le rescrie. Pune AICI orice bloc de versuri finite lipit de user, NU în message. NU rula generate_lyrics peste ele.' },
             packageTier: { type: 'string', enum: ['basic', 'plus', 'premium'], description: 'Pachetul ales de user. În CHAT oferi toate 3: basic = STANDARD (preț de intrare, doar manea), plus = PLUS (mai lungă + mai calitativă + imagini social), premium = PREMIUM (tot ce e în Plus + videoclip + pagină premium). Setează-l în ETAPA 5.5, înainte de finalize. Default basic dacă userul nu alege.' },
@@ -2692,6 +2707,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     if (typeof args.occasion === 'string' && args.occasion.trim()) updates.occasion = this.normalizeOccasion(args.occasion);
     if (typeof args.voiceArtist === 'string' && args.voiceArtist.trim()) updates.voiceArtist = args.voiceArtist.trim().slice(0, 64);
     if (typeof args.styleHint === 'string' && args.styleHint.trim()) updates.styleHint = args.styleHint.trim().slice(0, 160);
+    if (typeof args.languageHint === 'string' && args.languageHint.trim()) updates.languageHint = args.languageHint.trim().slice(0, 60);
     if (typeof args.dedication === 'string') updates.dedication = args.dedication.trim().slice(0, 120);
     if (typeof args.customLyrics === 'string' && args.customLyrics.length > 10) updates.customLyrics = args.customLyrics.trim().slice(0, 4000);
     if (typeof args.packageTier === 'string' && ['basic', 'plus', 'premium'].includes(args.packageTier)) {
@@ -2861,6 +2877,23 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         error: 'incomplete',
         missingFields: missing,
         instruction: `Lipsesc câmpuri: ${missing.join(', ')}. Întreabă userul + wizard_update.`,
+      };
+    }
+    // GARD LIMBĂ (BUG observat 2026-07-17 conv 4b83c190): userul a cerut melodia în
+    // ucraineană, AI a promis „da, se poate" și a finalizat cu message gol → generarea a
+    // ieșit în limba site-ului (română) pentru că langDirective forțează site.locale.
+    // Client furios, cerere refund, om a trebuit să refacă manual. Singura cale sigură ca
+    // limba cerută să ajungă în melodie e prin customLyrics (cântate verbatim, ocolesc
+    // writer-ul). Deci: dacă e cerută o limbă diferită dar NU avem versuri aprobate,
+    // NU finaliza — trimite AI-ul să genereze versurile în acea limbă întâi.
+    if (
+      state.data.languageHint?.trim() &&
+      !(state.data.customLyrics && state.data.customLyrics.trim())
+    ) {
+      return {
+        status: 'LANGUAGE_NEEDS_LYRICS_FIRST',
+        languageHint: state.data.languageHint.trim(),
+        instruction: `Userul vrea versurile în „${state.data.languageHint.trim()}", diferit de limba site-ului. NU finaliza încă — melodia ar ieși în limba site-ului. Apelează generate_lyrics ACUM (versurile ies în „${state.data.languageHint.trim()}" și se cântă exact așa), arată-le userului să le aprobe, apoi finalizează. Dacă userul a scris deja el versurile în acea limbă, salvează-le cu wizard_update({customLyrics}).`,
       };
     }
     // Dacă plata e DEJA făcută sau melodia se generează → NU mai trimitem link nou.
@@ -5328,6 +5361,9 @@ ${transcript}`;
         dedication: state.data.dedicatorName ?? state.data.dedication,
         currency: site.currency ?? 'RON',
         locale: site.locale ?? 'ro',
+        // Dacă userul a cerut o limbă diferită de a site-ului, versurile ies în ea
+        // (și se salvează ca customLyrics → cântate verbatim, indiferent de site.locale).
+        languageOverride: state.data.languageHint?.trim() || undefined,
         siteId: site.id,
         writerSystemPrompt: site.suno?.writerSystemPrompt,
         writerUserTemplate: site.suno?.writerUserTemplate,

@@ -28,6 +28,12 @@ export interface LyricsInput {
   /** Versiunea anterioară de versuri pe care userul a cerut s-o modificăm. */
   previousDraft?: string;
   locale?: string;
+  /** Override de LIMBĂ a versurilor, text liber (ex. „ucraineană", „rusă", „germană").
+   *  Când e setat, forțează langDirective să ceară acea limbă indiferent de `locale`
+   *  (care rămâne al site-ului). Folosit când userul cere pe chat o melodie într-o
+   *  limbă diferită de cea a site-ului — vezi WizardData.languageHint. Necesar pentru
+   *  că LOCALE_NAME acoperă doar cele 8 locale de site; override-ul acceptă orice limbă. */
+  languageOverride?: string;
   /** Override system prompt pentru writer (din Site.suno.writerSystemPrompt).
    *  Când e setat, ÎNLOCUIEȘTE corpul default — codul prepend-ează doar
    *  langDirective (forțează limba de output). Folosește pentru chalga BG,
@@ -802,8 +808,11 @@ export class LyricsService {
    * OpenAI să cânte în limba țintă, chiar dacă meta-instrucțiunile sunt în
    * engleză (cazul implicit).
    */
-  private langDirective(locale?: string): string {
-    const lang = LOCALE_NAME[locale ?? 'ro'] ?? 'Romanian';
+  private langDirective(locale?: string, languageOverride?: string): string {
+    // languageOverride (text liber, ex. „ucraineană") câștigă față de locale — permite
+    // orice limbă cerută pe chat, dincolo de cele 8 locale de site din LOCALE_NAME.
+    const override = languageOverride?.trim();
+    const lang = override && override.length >= 2 ? override : LOCALE_NAME[locale ?? 'ro'] ?? 'Romanian';
     return `OUTPUT LANGUAGE: all sung lyrics MUST be in ${lang}. Recipient and sender names appear as-is (do not translate proper nouns). Suno tags ([Intro], [Verse 1], [Chorus], [Bridge], [Outro], [Adlib]) STAY IN ENGLISH.\n\n`;
   }
 
@@ -812,12 +821,12 @@ export class LyricsService {
     // Substituim {{variabile}} și în system body — utile pentru override-uri
     // per-site din admin care vor să folosească numele destinatarului direct
     // în meta-instrucțiuni. Default-ul nu conține placeholders, deci e no-op.
-    return this.langDirective(input.locale) + fillTemplate(body, this.templateVars(input));
+    return this.langDirective(input.locale, input.languageOverride) + fillTemplate(body, this.templateVars(input));
   }
 
   private criticSystem(input: LyricsInput): string {
     const body = input.criticSystemPrompt?.trim() || DEFAULT_CRITIC_SYSTEM;
-    return this.langDirective(input.locale) + fillTemplate(body, this.templateVars(input));
+    return this.langDirective(input.locale, input.languageOverride) + fillTemplate(body, this.templateVars(input));
   }
 
   private templateVars(i: LyricsInput): Record<string, unknown> {
