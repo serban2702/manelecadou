@@ -2677,6 +2677,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
   private async handleWizardUpdate(ctx: AgentCtx, args: Record<string, unknown>): Promise<unknown> {
     const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
     if (!conv) return { error: 'conversation gone' };
+    ctx.wizardUpdatedThisTurn = true;
     const state = this.getOrInitWizardState(conv);
     const updates: Partial<WizardData> = {};
 
@@ -3509,6 +3510,30 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         };
       }
 
+      // Treapta 0.65 — „am notat X" fără să fi apelat `wizard_update`. BUG observat
+      // 2026-07-17 conv fd9ab3d1: userul a zis „Petr Petru sotu meu Dorin", iar Irina a
+      // răspuns „Am notat: pentru sotul tau Dorin, de la Petr Petru" — fără niciun
+      // wizard_update. Starea a rămas goală, așa că două mesaje mai încolo a re-cerut
+      // exact numele pe care tocmai îl citase („Mai am nevoie doar de numele persoanei"),
+      // iar userul a trebuit să scrie „Dorin" a treia oară. Comanda a ajuns la 15 mesaje
+      // fără link de plată. Dacă anunți userul că ai notat ceva, informația TREBUIE să fie
+      // deja persistată — altfel minți clientul și pierzi datele.
+      const isNoteAck = /\b(am notat|am pus|am re[țt]inut|not[ae]z)\b/i.test(normalized);
+      if (isNoteAck && !ctx.wizardUpdatedThisTurn && !isEmailAck(normalized)) {
+        const fresh = await this.conv.findOne({ where: { id: ctx.conv.id } });
+        const wizData = (fresh?.wizardState as { data?: WizardData } | null)?.data ?? {};
+        if (!wizData.recipientName) {
+          this.logger.warn(`NOTE_ACK_WITHOUT_UPDATE blocked on conv=${ctx.conv.id.slice(0, 8)} — „am notat" fără wizard_update.`);
+          return {
+            sent: false,
+            messageType: 'noop',
+            status: 'NOTE_ACK_WITHOUT_WIZARD_UPDATE',
+            instruction:
+              'STAI — îi spui userului că ai „notat" datele, dar NU le-ai salvat: nu ai apelat `wizard_update` în tura asta, iar comanda nu are încă destinatarul. Dacă trimiți mesajul așa, informația se pierde și peste două mesaje o s-o re-ceri de la user — exact ce-l enervează. Apelează ACUM `wizard_update` cu tot ce ai extras din mesajele lui (recipientName = pentru cine e maneaua, dedicatorName = cine dedică, message, occasion...), ABIA APOI trimite confirmarea. Dacă nu ești sigur cine e destinatarul, NU scrie „am notat" — întreabă direct și scurt cine e.',
+          };
+        }
+      }
+
       // Treapta 0.7 — nudge de plată repetat (semantic, NU lexical). BUG observat
       // 2026-07-01 conv ddcbe197: după ce linkul de plată era trimis + explicat, userul a
       // dat un „Mulțumesc" pasiv, iar Irina a re-explicat pașii de plată de 2 ori la rând
@@ -3561,15 +3586,25 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         /recapitul/i.test(t) ||
         (/\bnotat\b/i.test(t) && /\bcorect\b/i.test(t)) ||
         isSendLinkConfirm(t);
+      // BUG observat 2026-07-17 conv fd9ab3d1: garda avea `!ctx.followUp`, deci follow-up-urile
+      // o ocoleau complet — Irina a trimis recapitularea de 2 ori la rând ca follow-up (la +5 și
+      // +10 min: „Bun, am notat tot: ... Daca e corect, iti trimit acum linkul de plata" →
+      // „Recapitulez scurt: ... E corect asa?" → „Recapitulez scurt: ... iti trimit acum linkul"),
+      // deși avea DEJA tot (destinatar + mesaj + email + preț confirmat) și trebuia doar să
+      // apeleze wizard_finalize. Excepția pe follow-up e justificată la nudge-ul de plată
+      // (Treapta 0.7 — un reminder spațiat e legitim), dar NU aici: o a 2-a recapitulare
+      // completă nu devine utilă pentru că a trecut timpul. Follow-up-ul legitim e un nudge
+      // scurt de o propoziție, nu reluarea întregii comenzi.
       const recentWasSendLinkConfirm = recentNorm.slice(0, 2).some((t) => isRecapConfirm(t));
-      if (!ctx.followUp && recentWasSendLinkConfirm && isRecapConfirm(normalized)) {
-        this.logger.warn(`RECAP_RECONFIRM blocked on conv=${ctx.conv.id.slice(0, 8)} — a 2-a reconfirmare „e corect, trimit linkul?".`);
+      if (recentWasSendLinkConfirm && isRecapConfirm(normalized)) {
+        this.logger.warn(`RECAP_RECONFIRM blocked on conv=${ctx.conv.id.slice(0, 8)} — a 2-a reconfirmare „e corect, trimit linkul?"${ctx.followUp ? ' (follow-up)' : ''}.`);
         return {
           sent: false,
           messageType: 'duplicate_text',
           status: 'RECAP_RECONFIRM_BLOCKED',
-          instruction:
-            'STAI — ai recapitulat DEJA comanda și ai cerut confirmarea („e corect?" / „daca e corect, iti trimit linkul"). NU recapitula A DOUA OARĂ — sună robotic și întârzie plata. Un detaliu mic adăugat de user NU cere o recapitulare completă nouă + reconfirmare: notează-l scurt și treci DIRECT la acțiune. Decide acum UNA din două: (a) dacă NU ai prezentat încă cele 3 pachete (ETAPA 5.5 — Standard/Plus/Premium), prezintă-le O SINGURĂ dată acum, apoi așteaptă alegerea; (b) dacă pachetele au fost deja prezentate (sau userul a ales), apelează `wizard_finalize` ca să trimiți linkul de plată (tool-ul verifică singur dacă mai lipsește ceva). NU mai trimite un al 2-lea mesaj de tip „recap + e corect?".',
+          instruction: ctx.followUp
+            ? 'STAI — ai recapitulat DEJA comanda și ai cerut confirmarea; userul a văzut mesajul și nu a răspuns. O A DOUA recapitulare ca follow-up nu ajută cu nimic — doar sună robotic. Verifică `wizard_get_state`: dacă ai tot ce trebuie (destinatar + mesaj + email), NU mai cere confirmarea a doua oară — apelează `wizard_finalize` ACUM și trimite-i linkul de plată, asta aștepta. Dacă lipsește exact un câmp, cere-l DIRECT într-o propoziție scurtă, fără să reiei toată comanda. Dacă n-ai nici linkul de trimis, nici un câmp concret de cerut → NU trimite nimic.'
+            : 'STAI — ai recapitulat DEJA comanda și ai cerut confirmarea („e corect?" / „daca e corect, iti trimit linkul"). NU recapitula A DOUA OARĂ — sună robotic și întârzie plata. Un detaliu mic adăugat de user NU cere o recapitulare completă nouă + reconfirmare: notează-l scurt și treci DIRECT la acțiune. Decide acum UNA din două: (a) dacă NU ai prezentat încă cele 3 pachete (ETAPA 5.5 — Standard/Plus/Premium), prezintă-le O SINGURĂ dată acum, apoi așteaptă alegerea; (b) dacă pachetele au fost deja prezentate (sau userul a ales), apelează `wizard_finalize` ca să trimiți linkul de plată (tool-ul verifică singur dacă mai lipsește ceva). NU mai trimite un al 2-lea mesaj de tip „recap + e corect?".',
         };
       }
 
@@ -5803,6 +5838,10 @@ interface AgentCtx {
    *  orice send_message ulterior în același tur. (2026-07-04, audit conv 8033ee7c: după
    *  quote a trimis instant „Perfect! Pe ce adresa de email..." presupunând acordul.) */
   priceQuotedThisTurn?: boolean;
+  /** A apelat `wizard_update` în acest run? Folosit de garda NOTE_ACK_WITHOUT_WIZARD_UPDATE:
+   *  un mesaj „am notat ..." fără update persistat = date pierdute + câmp re-cerut peste
+   *  două mesaje. (2026-07-17, audit conv fd9ab3d1.) */
+  wizardUpdatedThisTurn?: boolean;
   /** Rulare de tip follow-up (reminder spațiat după tăcerea userului) vs. run normal
    *  declanșat de un mesaj al userului. Unele guard-uri anti-repetiție se relaxează pe
    *  follow-up (un reminder spațiat e legitim, spre deosebire de 2 nudge-uri la rând). */
