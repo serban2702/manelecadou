@@ -103,12 +103,12 @@ function ShareGenerationViewInner() {
     if (!paymentId || success !== '1' || unlocking) return;
     setUnlocking(true);
     (async () => {
-      let paid: { amount: number; currency: string } | null = null;
+      let paid: { amount: number; currency: string; amountRonCents?: number | null } | null = null;
       for (let i = 0; i < 10; i++) {
         try {
           const p = await api.getPayment(paymentId);
           if (p?.status === 'paid') {
-            paid = { amount: p.amount, currency: p.currency };
+            paid = { amount: p.amount, currency: p.currency, amountRonCents: p.amountRonCents ?? null };
             break;
           }
         } catch {}
@@ -119,12 +119,16 @@ function ShareGenerationViewInner() {
         await refresh();
         if (paid && !purchaseTrackedRef.current) {
           purchaseTrackedRef.current = true;
+          // Raportăm în RON (curs BNR, calculat server-side) ca valoarea din
+          // browser să fie identică cu cea trimisă server-side pe același
+          // event_id → dedup corect. Fallback pe valuta nativă dacă lipsește.
+          const ronCents = paid.amountRonCents ?? null;
           track('Purchase', {
             content_id: params.id,
             content_name: 'Manea Cadou',
             content_type: 'product',
-            value: paid.amount / 100,
-            currency: paid.currency,
+            value: ronCents != null ? ronCents / 100 : paid.amount / 100,
+            currency: ronCents != null ? 'RON' : paid.currency,
             // event_id MATCH cu server-side webhook (`pay-${paymentId}`).
             // Dedup OK în Events Manager → un singur Purchase per achiziție.
             event_id: `pay-${paymentId}`,

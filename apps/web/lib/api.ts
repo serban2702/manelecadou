@@ -498,7 +498,14 @@ export const api = {
   priceQuote: (packageTier: PackageTier) =>
     request<PriceQuote>(`/payments/quote?packageTier=${packageTier}`),
   getPayment: (id: string) =>
-    request<{ id: string; status: string; amount: number; currency: string }>(`/payments/${id}`),
+    request<{
+      id: string;
+      status: string;
+      amount: number;
+      currency: string;
+      /** Suma în RON la cursul BNR de dinainte de data plății (pixelurile raportează în lei). */
+      amountRonCents?: number | null;
+    }>(`/payments/${id}`),
   createCheckoutSession: (input: {
     generationId?: string;
     /** Pachetul ales — necesar ca backend-ul să calculeze prețul corect

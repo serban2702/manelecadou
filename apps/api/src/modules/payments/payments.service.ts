@@ -766,6 +766,16 @@ export class PaymentsService {
             ? await this.sites.findById(siteIdForCapi).catch(() => null)
             : null;
 
+          // Raportăm la pixeluri în RON (curs BNR, persistat pe plată mai sus),
+          // ca valorile să fie consistente cross-tenant cu restul statisticilor.
+          // Meta/TikTok/GA convertesc singure la valuta contului de ads.
+          // Fallback: dacă lipsește conversia, trimitem valuta nativă (nu
+          // etichetăm greșit o sumă EUR ca RON).
+          const pixelRonCents = paymentRow?.amountRonCents ?? null;
+          const pixelValue = pixelRonCents != null ? pixelRonCents / 100 : amountRon;
+          const pixelCurrency =
+            pixelRonCents != null ? 'RON' : (session.currency ?? 'RON').toUpperCase();
+
           void this.metaCapi.sendEvent(
             'Purchase',
             {
@@ -783,8 +793,8 @@ export class PaymentsService {
               state: billingAddr?.state ?? null,
               zip: billingAddr?.postal_code ?? null,
               country: billingAddr?.country ?? null,
-              value: amountRon,
-              currency: (session.currency ?? 'RON').toUpperCase(),
+              value: pixelValue,
+              currency: pixelCurrency,
               contentName: 'Manea personalizată',
               contentIds: session.metadata?.generationId
                 ? [session.metadata.generationId]
@@ -871,6 +881,14 @@ export class PaymentsService {
           session.customer_details?.email ?? session.customer_email ?? null;
         const customerPhone = session.customer_details?.phone ?? null;
         const externalId = payment?.userId ?? payment?.guestId ?? null;
+
+        // Raportăm în RON (curs BNR persistat pe plată) către TikTok + GA4, ca
+        // valorile să fie consistente cu restul statisticilor. Fallback pe
+        // valuta nativă dacă lipsește conversia.
+        const ronCents = payment?.amountRonCents ?? null;
+        const pixelValueCents = ronCents ?? amount;
+        const pixelCurrency = ronCents != null ? 'RON' : currency;
+
         this.tiktok
           .trackEvent({
             site: siteForTracking,
@@ -882,8 +900,8 @@ export class PaymentsService {
             email: customerEmail,
             phone: customerPhone,
             externalId,
-            value: amount / 100,
-            currency,
+            value: pixelValueCents / 100,
+            currency: pixelCurrency,
             contentId: generationId ?? paymentId,
             contentName: 'Manea Cadou',
           })
@@ -904,8 +922,8 @@ export class PaymentsService {
             userId: payment?.userId ?? null,
             guestId: payment?.guestId ?? null,
             userEmail: customerEmail,
-            valueCents: amount,
-            currency,
+            valueCents: pixelValueCents,
+            currency: pixelCurrency,
             url: session.metadata?.siteDomain
               ? `https://${session.metadata.siteDomain}/`
               : null,

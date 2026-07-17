@@ -169,6 +169,9 @@ export class PaymentsController {
       status: p.status,
       amount: p.amount,
       currency: p.currency,
+      // Suma în RON la cursul BNR de dinainte de data plății — pixelurile
+      // raportează în lei, consistent cu statisticile (vezi FxRateService).
+      amountRonCents: p.amountRonCents ?? null,
       createdAt: p.createdAt,
     };
   }
