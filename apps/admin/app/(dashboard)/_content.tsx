@@ -163,7 +163,7 @@ export default function AdminDashboard() {
       <PageHeader
         title="Dashboard"
         description="Vânzări, generări și profitabilitate · datele încep pe 25 mai 2026"
-        actions={<DateRangePicker value={range} onChange={setRange} />}
+        actions={<DateRangePicker value={range} onChange={setRange} showTodayShortcut />}
       />
 
       {/* ===== KPI principale ===== */}

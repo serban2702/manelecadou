@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { format, subDays, startOfDay, endOfDay, startOfMonth } from 'date-fns';
 import { ro } from 'date-fns/locale';
-import { CalendarRange } from 'lucide-react';
+import { CalendarArrowUp, CalendarRange } from 'lucide-react';
 import type { DateRange } from 'react-day-picker';
 import { Button } from './button';
 import { Calendar } from './calendar';
@@ -69,9 +69,12 @@ interface DateRangePickerProps {
   value: DateRangeValue;
   onChange: (range: DateRangeValue) => void;
   className?: string;
+  /** Afișează un buton mic în dreapta care mută data de final la ziua curentă,
+   *  păstrând data de început neschimbată. */
+  showTodayShortcut?: boolean;
 }
 
-export function DateRangePicker({ value, onChange, className }: DateRangePickerProps) {
+export function DateRangePicker({ value, onChange, className, showTodayShortcut }: DateRangePickerProps) {
   const [open, setOpen] = React.useState(false);
   const [draft, setDraft] = React.useState<DateRange | undefined>({ from: value.from, to: value.to });
   // Pe telefon afișăm o singură lună și punem preset-urile deasupra calendarului.
@@ -102,7 +105,7 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
     }
   }
 
-  return (
+  const picker = (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="outline" className={cn('justify-start text-left font-normal h-9', className)}>
@@ -157,5 +160,24 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
         </div>
       </PopoverContent>
     </Popover>
+  );
+
+  if (!showTodayShortcut) return picker;
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {picker}
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className="shrink-0"
+        title="Adu data de final la ziua de azi (data de început rămâne)"
+        aria-label="Adu data de final la ziua de azi"
+        onClick={() => onChange({ from: value.from, to: endOfDay(new Date()) })}
+      >
+        <CalendarArrowUp className="opacity-70" />
+      </Button>
+    </div>
   );
 }

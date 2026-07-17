@@ -177,7 +177,7 @@ export default function AnalyticsPage() {
       <PageHeader
         title="Analytics"
         description="Sesiuni, conversii, revenue · cross-check Stripe + Pixel/GA4"
-        actions={<DateRangePicker value={range} onChange={setRange} />}
+        actions={<DateRangePicker value={range} onChange={setRange} showTodayShortcut />}
       />
 
       <ResponsiveTabs
