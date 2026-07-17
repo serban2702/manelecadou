@@ -23,6 +23,8 @@ const BNR_YEAR = (year: number) =>
 @Injectable()
 export class FxRateService implements OnModuleInit {
   private readonly logger = new Logger(FxRateService.name);
+  /** Cache in-memory pentru cursuri istorice (stabile). Cheie `CUR|yyyy-mm-dd`. */
+  private readonly rateCache = new Map<string, number | null>();
 
   constructor(
     @InjectRepository(FxRate)
@@ -79,6 +81,10 @@ export class FxRateService implements OnModuleInit {
     if (cur === 'RON') return 1;
     const dateStr = this.toRoDateStr(when);
 
+    const cacheKey = `${cur}|${dateStr}`;
+    const cached = this.rateCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
     // Ultimul Cube cu data STRICT < data plății (în timezone RO).
     const row = await this.repo
       .createQueryBuilder('fx')
@@ -87,7 +93,11 @@ export class FxRateService implements OnModuleInit {
       .orderBy('fx.date', 'DESC')
       .limit(1)
       .getOne();
-    if (row) return Number(row.rateToRon);
+    if (row) {
+      const v = Number(row.rateToRon);
+      this.rateCache.set(cacheKey, v);
+      return v;
+    }
 
     // Fallback: cel mai vechi curs disponibil (plată dinainte de istoricul importat).
     const oldest = await this.repo
@@ -100,7 +110,9 @@ export class FxRateService implements OnModuleInit {
       this.logger.warn(
         `getRateToRon(${cur}, ${dateStr}): fără curs < dată; folosesc cel mai vechi (${oldest.date}=${oldest.rateToRon})`,
       );
-      return Number(oldest.rateToRon);
+      const v = Number(oldest.rateToRon);
+      this.rateCache.set(cacheKey, v);
+      return v;
     }
     this.logger.warn(`getRateToRon(${cur}, ${dateStr}): niciun curs în DB`);
     return null;
@@ -145,6 +157,7 @@ export class FxRateService implements OnModuleInit {
       conflictPaths: ['date', 'currency'],
       skipUpdateIfNoValuesChanged: true,
     });
+    this.rateCache.clear(); // cursuri noi pot schimba lookup-urile pe date recente
     return rows.length;
   }
 

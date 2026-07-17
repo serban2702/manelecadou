@@ -126,6 +126,7 @@ export interface AdminGeneration {
     id: string;
     amount: number;
     currency: string;
+    amountRonCents?: number | null;
     status: string;
     provider: string;
     createdAt: string;
@@ -250,6 +251,8 @@ export interface AdminPayment {
   provider: string;
   amount: number;
   currency: string;
+  /** Suma în RON cents la cursul BNR de dinainte de data plății (null pentru plăți vechi nepopulate). */
+  amountRonCents?: number | null;
   status: string;
   userId: string | null;
   guestId: string | null;

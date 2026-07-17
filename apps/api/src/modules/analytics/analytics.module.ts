@@ -20,6 +20,7 @@ import { GeoIpService } from './geoip.service';
 import { AdminGuard } from '../../common/admin.guard';
 import { AuthModule } from '../auth/auth.module';
 import { SitesModule } from '../sites/sites.module';
+import { FxModule } from '../fx/fx.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { SitesModule } from '../sites/sites.module';
     ConfigModule,
     AuthModule,
     SitesModule,
+    FxModule,
   ],
   providers: [AnalyticsService, AdSpendService, AdPaymentService, ProfitabilityService, AnalyticsForwarders, AdminGuard, GeoIpService],
   controllers: [AnalyticsPublicController, AnalyticsAdminController],

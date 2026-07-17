@@ -478,6 +478,7 @@ export class AdminController {
               id: p.id,
               amount: p.amount,
               currency: p.currency,
+              amountRonCents: p.amountRonCents ?? null,
               status: p.status,
               provider: p.provider,
               createdAt: p.createdAt,

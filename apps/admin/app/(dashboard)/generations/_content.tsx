@@ -53,6 +53,14 @@ function voiceLabel(v: string | null | undefined): string {
   return v ?? '';
 }
 
+/** Suma plății în lei (curs BNR). Fallback pe valuta nativă dacă lipsește conversia. */
+function payMoneyRon(pay: { amount: number; currency: string; amountRonCents?: number | null }): string {
+  const cur = (pay.currency || 'RON').toUpperCase();
+  if (cur === 'RON') return `${(pay.amount / 100).toFixed(2)} lei`;
+  if (pay.amountRonCents == null) return `${(pay.amount / 100).toFixed(2)} ${cur}`;
+  return `${(pay.amountRonCents / 100).toFixed(2)} lei`;
+}
+
 /** Mapează pachetul la etichetă prietenoasă cu preț. Legacy/necunoscut → valoarea brută. */
 function packageLabel(t: string | null | undefined): string {
   if (t === 'basic') return 'Bază (29,99)';
@@ -198,7 +206,7 @@ export default function GenerationsPage() {
                 <div className="mt-1.5 flex items-center gap-3 text-xs">
                   {g.payment ? (
                     <span className="font-mono tabular-nums">
-                      {(g.payment.amount / 100).toFixed(2)} {g.payment.currency}
+                      {payMoneyRon(g.payment)}
                       <Badge variant={g.payment.status === 'paid' ? 'success' : g.payment.status === 'failed' ? 'destructive' : 'muted'} className="ml-1.5 text-[10px]">{g.payment.status}</Badge>
                     </span>
                   ) : g.type === 'demo' ? (
@@ -332,7 +340,7 @@ export default function GenerationsPage() {
                         title={`Payment ${g.payment.id} · ${g.payment.provider}`}
                       >
                         <span className="font-mono tabular-nums">
-                          {(g.payment.amount / 100).toFixed(2)} {g.payment.currency}
+                          {payMoneyRon(g.payment)}
                         </span>
                         <Badge variant={g.payment.status === 'paid' ? 'success' : g.payment.status === 'failed' ? 'destructive' : 'muted'} className="text-[10px]">
                           <CreditCard className="h-2.5 w-2.5" />

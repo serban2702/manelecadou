@@ -157,6 +157,17 @@ function CampaignCreativeCell({
   );
 }
 
+/**
+ * Afișează suma în lei (curs BNR). Pentru plăți în valută arată și suma nativă
+ * între paranteze, ca să nu se piardă cât a plătit efectiv clientul.
+ */
+function moneyRon(p: { amount: number; currency: string; amountRonCents?: number | null }): string {
+  const cur = (p.currency || 'RON').toUpperCase();
+  if (cur === 'RON') return `${(p.amount / 100).toFixed(2)} lei`;
+  if (p.amountRonCents == null) return `${(p.amount / 100).toFixed(2)} ${cur}`;
+  return `${(p.amountRonCents / 100).toFixed(2)} lei (${(p.amount / 100).toFixed(2)} ${cur})`;
+}
+
 /** Card pentru o plată — varianta mobilă a unui rând din tabel. */
 function PaymentCard({
   p,
@@ -176,7 +187,7 @@ function PaymentCard({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-sm font-mono font-semibold tabular-nums">
-            {(p.amount / 100).toFixed(2)} {p.currency}
+            {moneyRon(p)}
           </div>
           <div className="text-[11px] text-muted-foreground mt-0.5">
             {format(new Date(p.createdAt), "d MMM yyyy 'la' HH:mm", { locale: ro })}
@@ -463,7 +474,7 @@ export default function PaymentsPage() {
                   {p.ipAddress ?? '—'}
                 </TableCell>
                 <TableCell className="text-right font-mono tabular-nums">
-                  {(p.amount / 100).toFixed(2)} {p.currency}
+                  {moneyRon(p)}
                 </TableCell>
                 <TableCell className="w-[110px]">
                   <Badge

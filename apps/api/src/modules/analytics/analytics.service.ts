@@ -15,6 +15,7 @@ import { GeoIpService } from './geoip.service';
 import { parseUserAgent } from './ua-parser';
 import { evaluateBot } from './bot-detection';
 import { inferGenderFromName, inferGenderFromEmail } from './gender-infer';
+import { FxRateService } from '../fx/fx-rate.service';
 import {
   normalizeSourceSql,
   attributionOrderBySql,
@@ -61,6 +62,7 @@ export class AnalyticsService {
     private readonly forwarders: AnalyticsForwarders,
     private readonly settings: SettingsService,
     private readonly geoip: GeoIpService,
+    private readonly fx: FxRateService,
   ) {}
 
   private async getStripe(): Promise<Stripe | null> {
@@ -1927,6 +1929,26 @@ export class AnalyticsService {
     };
     const rows: Row[] = [];
 
+    // Toate sumele afișate se normalizează în RON la cursul BNR de dinainte de
+    // data plății (ca peste tot în analitice). Comparația de reconciliere
+    // (mismatch) rămâne pe valuta NATIVĂ (local.amount vs s.amount_total), ca
+    // să nu genereze diferențe false din conversie.
+    const localRonOf = async (p: Payment): Promise<number | null> => {
+      if (p.amountRonCents != null) return p.amountRonCents;
+      const conv = await this.fx.toRonCents(p.amount, p.currency, p.paidAt ?? p.createdAt);
+      return conv?.amountRonCents ?? null;
+    };
+    const stripeRonOf = async (
+      cents: number | null,
+      currency: string | null,
+      createdSec: number | null,
+    ): Promise<number | null> => {
+      if (cents == null) return null;
+      const when = createdSec ? new Date(createdSec * 1000) : new Date();
+      const conv = await this.fx.toRonCents(cents, currency ?? 'ron', when);
+      return conv?.amountRonCents ?? null;
+    };
+
     let stripePaid = 0;
     let stripeAmountCents = 0;
     let matched = 0;
@@ -1935,31 +1957,34 @@ export class AnalyticsService {
 
     for (const s of stripeSessions) {
       const isPaid = s.payment_status === 'paid';
+      const sRon = await stripeRonOf(s.amount_total, s.currency, s.created ?? null);
       if (isPaid) {
         stripePaid += 1;
-        stripeAmountCents += s.amount_total ?? 0;
+        stripeAmountCents += sRon ?? 0;
       }
       const local = localBySession.get(s.id);
       if (!local) {
         if (isPaid) missingInLocal += 1;
         rows.push({
           sessionId: s.id,
-          stripeAmountCents: s.amount_total,
+          stripeAmountCents: sRon,
           localAmountCents: null,
-          currency: s.currency ?? 'ron',
+          currency: 'ron',
           status: isPaid ? 'missing_local' : 'matched',
           paidAt: s.created ? new Date(s.created * 1000).toISOString() : null,
           localId: null,
         });
         continue;
       }
+      const lRon = await localRonOf(local);
+      // Comparație pe valuta NATIVĂ (nu pe RON convertit).
       if (isPaid && local.amount !== (s.amount_total ?? 0)) {
         amountMismatch += 1;
         rows.push({
           sessionId: s.id,
-          stripeAmountCents: s.amount_total,
-          localAmountCents: local.amount,
-          currency: local.currency.toLowerCase(),
+          stripeAmountCents: sRon,
+          localAmountCents: lRon,
+          currency: 'ron',
           status: 'amount_mismatch',
           paidAt: s.created ? new Date(s.created * 1000).toISOString() : null,
           localId: local.id,
@@ -1968,9 +1993,9 @@ export class AnalyticsService {
         matched += 1;
         rows.push({
           sessionId: s.id,
-          stripeAmountCents: s.amount_total,
-          localAmountCents: local.amount,
-          currency: local.currency.toLowerCase(),
+          stripeAmountCents: sRon,
+          localAmountCents: lRon,
+          currency: 'ron',
           status: 'matched',
           paidAt: s.created ? new Date(s.created * 1000).toISOString() : null,
           localId: local.id,
@@ -1984,17 +2009,18 @@ export class AnalyticsService {
     let localPaid = 0;
     let localAmountCents = 0;
     for (const p of localPayments) {
+      const lRon = p.status === 'paid' ? await localRonOf(p) : null;
       if (p.status === 'paid') {
         localPaid += 1;
-        localAmountCents += p.amount;
+        localAmountCents += lRon ?? 0;
       }
       if (p.providerSessionId && !stripeIds.has(p.providerSessionId) && p.status === 'paid') {
         missingInStripe += 1;
         rows.push({
           sessionId: p.providerSessionId,
           stripeAmountCents: null,
-          localAmountCents: p.amount,
-          currency: p.currency.toLowerCase(),
+          localAmountCents: lRon,
+          currency: 'ron',
           status: 'missing_stripe',
           paidAt: p.createdAt.toISOString(),
           localId: p.id,
