@@ -367,10 +367,18 @@ export class AdSpendService {
       fetchedAt: Date | null;
     }>();
 
-    // Venit din payments (paid) — aceeași logică ca overview, în moneda site-ului.
+    // Venit din payments (paid) — normalizat în RON la cursul BNR de dinainte
+    // de data plății (vezi FxRateService), ca ROAS-ul și „Revenue (Stripe)" să
+    // fie corecte și pe site-urile în valută (EUR pe BG/GR). Aceeași logică ca
+    // AnalyticsService.AMOUNT_RON.
+    const AMOUNT_RON_P = `CASE
+      WHEN p."amountRonCents" IS NOT NULL THEN p."amountRonCents"
+      WHEN upper(p.currency) = 'RON' THEN p.amount
+      WHEN p."exchangeRateToRon" IS NOT NULL THEN round(p.amount * p."exchangeRateToRon")::int
+      ELSE round(p.amount * 5.23)::int END`;
     const revQb = this.payments
       .createQueryBuilder('p')
-      .select('COALESCE(SUM(p.amount), 0)::int', 'sum')
+      .select(`COALESCE(SUM(${AMOUNT_RON_P}), 0)::int`, 'sum')
       .addSelect('COUNT(*)::int', 'count')
       .where('p.status = :s', { s: 'paid' })
       .andWhere('p.createdAt BETWEEN :from AND :to', { from: range.from, to: range.to });
