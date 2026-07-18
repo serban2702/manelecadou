@@ -2959,12 +2959,38 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         // nu reflectau asta. Sincronizăm aici message + customLyrics pe comanda neplătită
         // (customLyrics=null dacă a fost invalidat de wizard_update → writer-ul rescrie
         // proaspăt din message la generare, la fel ca la finalize inițial).
-        if (state.generationId) {
+        //
+        // BUG observat 2026-07-18 conv 7135b0e5: sync-ul de mai sus atingea DOAR
+        // message/customLyrics — style/occasion/voiceArtist/dedication rămâneau înghețate
+        // la valorile din finalize-ul inițial. Userul a cerut ulterior „stil ca Guță sau
+        // Salam" + „din partea lui marius vecinul" (wizard_update le-a salvat pe
+        // wizardState.data), AI a zis „Am notat", dar melodia finală a ieșit cu style-ul
+        // vechi ("Comercială") și fără dedicație — nimic din ce a cerut userul post-link
+        // nu ajungea vreodată pe Generation. Acum re-inferăm style/occasion/voiceArtist
+        // (styleHint proaspăt influențează inferarea) și re-scriem dedication, alături de
+        // message/customLyrics.
+        if (state.generationId && conv.siteId) {
           try {
+            const syncSite = await this.sites.findById(conv.siteId);
+            if (!syncSite) throw new Error('site not found');
+            const resync = await this.inferCreativeFields(conv, state.data, syncSite);
             await this.generations['repo']
               .createQueryBuilder()
               .update('generations')
-              .set({ message: state.data.message, customLyrics: state.data.customLyrics ?? null })
+              .set({
+                message: state.data.message,
+                customLyrics: state.data.customLyrics ?? null,
+                style: resync.style.value,
+                occasion: resync.occasion.value,
+                voiceArtist: resync.voiceArtist.value,
+                dedication: state.data.dedicatorName ?? state.data.dedication ?? null,
+              })
+              .where('id = :id AND "paidUnlocked" = false', { id: state.generationId })
+              .execute();
+            await this.generations['repo']
+              .createQueryBuilder()
+              .update('generations')
+              .set({ dedicatorName: state.data.dedicatorName ?? null, recipientGender: state.data.recipientGender ?? null })
               .where('id = :id AND "paidUnlocked" = false', { id: state.generationId })
               .execute();
           } catch (e) {
@@ -3080,7 +3106,11 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           recipientName: state.data.recipientName!,
           message: inference.message.value, // mesaj posibil enrich-uit cu context
           voiceArtist: inference.voiceArtist.value,
-          dedication: state.data.dedication,
+          // BUG 2026-07-18 (vezi și sync-ul din LINK_ALREADY_SENT mai sus): tool-ul
+          // wizard_update expune AI-ului doar `dedicatorName`, niciodată `dedication` —
+          // state.data.dedication era mereu undefined, deci dedicația se pierdea la
+          // finalize-ul inițial deși userul o dăduse ("din partea lui X").
+          dedication: state.data.dedicatorName ?? state.data.dedication,
           customLyrics: finalCustomLyrics,
           packageTier: tier,
           locale: site.locale,
