@@ -3561,7 +3561,14 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       // formulările diferă lexical destul cât să scape de NEAR_DUP (Jaccard ~0.43). Dacă
       // ultimul mesaj AI confirma deja primirea emailului ȘI cel curent tot îl confirmă →
       // blocăm: cere direct câmpul lipsă, fără să re-mulțumești pentru email.
-      const isEmailAck = (t: string) => /\bnotat\b/i.test(t) && /e-?mail/i.test(t);
+      // FIX 2026-07-19 conv b788e6a7: regex-ul original ("notat" + "email" oriunde în text)
+      // prindea fals CERERI de email care doar conțineau "notat" într-o propoziție anterioară
+      // fără legătură (ex. „Perfect, le-am notat [versurile]. Mai am doar email-ul tau...").
+      // Guard-ul a blocat un follow-up legitim de cerere email, iar AI a sărit direct la
+      // quote_price_with_offer, lăsând comanda fără email colectat. Acum cerem ca „notat" să
+      // fie la max ~30 caractere (fără punct între) de „email" — adică să se refere EFECTIV
+      // la email, nu la altceva notat anterior în alt enunț.
+      const isEmailAck = (t: string) => /\bnotat\b[^.!?]{0,30}e-?mail/i.test(t);
       if (lastAiNorm && isEmailAck(lastAiNorm) && isEmailAck(normalized)) {
         this.logger.warn(`EMAIL_ACK_REPEAT blocked on conv=${ctx.conv.id.slice(0, 8)} — a 2-a confirmare a emailului.`);
         return {
