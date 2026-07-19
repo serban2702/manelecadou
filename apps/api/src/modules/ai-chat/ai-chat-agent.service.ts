@@ -5489,14 +5489,30 @@ ${transcript}`;
     changes: string,
     label: string,
     newRecipientName: string | null,
+    existingLyrics?: string | null,
   ): string {
     const nameLine = newRecipientName
       ? `\n- Numele CORECT al destinatarului este „${newRecipientName}". Folosește EXACT acest nume în versuri; ignoră orice alt nume din varianta veche.`
       : '';
+    // BUG observat 2026-07-19 conv 26d29981: fără versurile EXISTENTE în prompt, writer-ul
+    // compunea o piesă COMPLET nouă din `baseMessage` (doar dorința inițială), pierzând
+    // structura deja aprobată, și la o cerere de „pronunție greșită" a stricat ortografia
+    // („optispră zece" în loc de „optsprezece") crezând că respelling-ul ajută Suno —
+    // pronunția pentru Suno se ajustează separat, fonetic (vezi toPhonetic), NU prin
+    // alterarea ortografiei versurilor afișate clientului.
+    const trimmedLyrics = (existingLyrics ?? '').trim();
     return [
       `⚠️ ${label} — CORECȚII OBLIGATORII, cu PRIORITATE ABSOLUTĂ asupra versiunii anterioare.`,
-      `Aplică EXACT schimbările de mai jos și păstrează tot restul la fel:`,
+      `Aplică EXACT schimbările de mai jos și păstrează tot restul IDENTIC (aceleași versuri, structură, rime — NU compune o piesă nouă de la zero):`,
       `- ${changes}${nameLine}`,
+      `NU modifica ortografia niciunui cuvânt ca să „corectezi" pronunția audio (ex. nu scrie „optispră zece" în loc de „optsprezece") — ortografia corectă rămâne neschimbată; pronunția pentru Suno se ajustează separat de sistem, nu prin versuri greșit scrise.`,
+      ...(trimmedLyrics
+        ? [
+            ``,
+            `Versurile EXISTENTE (aprobate deja de client) — pornește STRICT de la ele, editează DOAR ce cere corecția de mai sus, restul rămâne verbatim:`,
+            trimmedLyrics,
+          ]
+        : []),
       ``,
       `Context original al comenzii (pentru referință, dar corecțiile de mai sus au prioritate):`,
       baseMessage,
@@ -5533,12 +5549,12 @@ ${transcript}`;
     // Găsește generarea țintă: explicită → wizard → ultima PLĂTITĂ a owner-ului.
     let genRow: {
       id: string; paidUnlocked: boolean; status: string; recipientName: string;
-      message: string; freeRemakeUsedAt: Date | null;
+      message: string; freeRemakeUsedAt: Date | null; lyrics?: string | null; customLyrics?: string | null;
     } | null = null;
     const candidateIds = [args.generationId, state.generationId].filter(Boolean) as string[];
     for (const gid of candidateIds) {
       const rows = await this.conv.manager.query(
-        `SELECT id, "paidUnlocked", status, "recipientName", message, "freeRemakeUsedAt"
+        `SELECT id, "paidUnlocked", status, "recipientName", message, "freeRemakeUsedAt", lyrics, "customLyrics"
          FROM generations WHERE id = $1 LIMIT 1`,
         [gid],
       );
@@ -5546,7 +5562,7 @@ ${transcript}`;
     }
     if ((!genRow || !genRow.paidUnlocked) && ownerId) {
       const rows = await this.conv.manager.query(
-        `SELECT id, "paidUnlocked", status, "recipientName", message, "freeRemakeUsedAt"
+        `SELECT id, "paidUnlocked", status, "recipientName", message, "freeRemakeUsedAt", lyrics, "customLyrics"
          FROM generations
          WHERE ("ownerUserId" = $1 OR "ownerGuestId" = $1) AND "paidUnlocked" = true
          ORDER BY "createdAt" DESC LIMIT 1`,
@@ -5569,6 +5585,8 @@ ${transcript}`;
           recipientName: g.recipientName,
           message: g.message,
           freeRemakeUsedAt: (g as { freeRemakeUsedAt?: Date | null }).freeRemakeUsedAt ?? null,
+          lyrics: g.lyrics ?? null,
+          customLyrics: g.customLyrics ?? null,
         };
       }
     }
@@ -5609,7 +5627,13 @@ ${transcript}`;
         const remakeLabel = args.isOurError
           ? 'CORECTURĂ (refacere gratuită — greșeala noastră)'
           : 'REFACERE GRATUITĂ UNICĂ (gest comercial — clientul nemulțumit)';
-        const newMessage = this.buildModificationMessage(genRow.message, changes, remakeLabel, newRecipientName);
+        const newMessage = this.buildModificationMessage(
+          genRow.message,
+          changes,
+          remakeLabel,
+          newRecipientName,
+          genRow.lyrics ?? genRow.customLyrics,
+        );
         const regen = await this.generations.adminRegenerate(genRow.id, {
           target: 'overwrite',
           lyricsMode: 'rewrite',

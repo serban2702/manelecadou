@@ -1194,21 +1194,40 @@ export class ChatService implements OnModuleInit {
           try {
             const { GenerationsService } = await import('../generations/generations.service');
             const generations = this.moduleRef.get(GenerationsService, { strict: false });
-            const rows: Array<{ message: string }> = await this.conv.manager.query(
-              `SELECT message FROM generations WHERE id = $1`,
-              [modGenId],
-            );
+            const rows: Array<{ message: string; lyrics: string | null; customLyrics: string | null }> =
+              await this.conv.manager.query(
+                `SELECT message, lyrics, "customLyrics" FROM generations WHERE id = $1`,
+                [modGenId],
+              );
             const baseMessage = rows[0]?.message ?? '';
+            const existingLyrics = (rows[0]?.lyrics ?? rows[0]?.customLyrics ?? '').trim();
             // Corecțiile PRIMELE, imperativ, cu prioritate absolută asupra versiunii vechi —
             // altfel writer-ul diluează modificarea (BUG 2026-07-06 conv 4581c882). Numele
             // corectat merge și pe câmpul structurat recipientName (semnalul dominant).
             const nameLine = modNewName
               ? `\n- Numele CORECT al destinatarului este „${modNewName}". Folosește EXACT acest nume; ignoră orice alt nume din varianta veche.`
               : '';
+            // BUG observat 2026-07-19 conv 26d29981: fără versurile EXISTENTE în prompt,
+            // writer-ul compunea o piesă COMPLET nouă din `baseMessage` (doar dorința
+            // inițială a clientului), pierzând structura/versurile deja aprobate și, la
+            // o cerere de „pronunție greșită", a AJUNS SĂ STRICE ortografia cuvântului
+            // (a scris „optispră zece" în loc de „optsprezece") crezând că respelling-ul
+            // ajută Suno — pronunția pentru Suno se gestionează separat, fonetic, DOAR pe
+            // `sunoLyrics` (vezi generations.processor.ts toPhonetic), NU prin alterarea
+            // ortografiei versurilor afișate clientului. Acum pasăm versurile existente ca
+            // bază obligatorie de editat surgical, cu interdicție explicită de respelling.
             const newMessage = [
               `⚠️ MODIFICĂRI PLĂTITE DE CLIENT — CORECȚII OBLIGATORII, cu PRIORITATE ABSOLUTĂ asupra versiunii anterioare.`,
-              `Aplică EXACT schimbările de mai jos și păstrează tot restul la fel:`,
+              `Aplică EXACT schimbările de mai jos și păstrează tot restul IDENTIC (aceleași versuri, structură, rime — NU compune o piesă nouă de la zero):`,
               `- ${modChanges}${nameLine}`,
+              `NU modifica ortografia niciunui cuvânt ca să „corectezi" pronunția audio (ex. nu scrie „optispră zece" în loc de „optsprezece") — ortografia corectă rămâne neschimbată; pronunția pentru Suno se ajustează separat de sistem, nu prin versuri greșit scrise.`,
+              ...(existingLyrics
+                ? [
+                    ``,
+                    `Versurile EXISTENTE (aprobate deja de client) — pornește STRICT de la ele, editează DOAR ce cere corecția de mai sus, restul rămâne verbatim:`,
+                    existingLyrics,
+                  ]
+                : []),
               ``,
               `Context original al comenzii (pentru referință, dar corecțiile de mai sus au prioritate):`,
               baseMessage,
