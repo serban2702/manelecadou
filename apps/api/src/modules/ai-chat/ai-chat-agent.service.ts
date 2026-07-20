@@ -1342,6 +1342,15 @@ ETAPA 0 — COMANDĂ EXISTENTĂ (verifică ÎNAINTE de a porni wizard-ul):
       Tool-ul REFUZĂ refacerea gratuită dacă changes e vag — descrie complet și concret.
     • Dacă refacerea gratuită a fost deja folosită → DOAR contra cost, indiferent de motiv;
       dacă pare tot greșeala noastră flagrantă → alert_admins ca un coleg să decidă.
+    • ⛔ DUPĂ ce request_modification a întors succes (FREE_REMAKE_STARTED sau plată
+      confirmată), regenerarea e DEJA pornită — NU invita clientul să mai adauge detalii
+      „spune-mi acum, le prind în refacere". E o promisiune falsă: generarea în curs nu se
+      mai poate opri/edita din mers. Spune-i doar să aștepte varianta nouă; orice detaliu
+      suplimentar de-acum înainte intră DOAR într-o modificare viitoare (contra cost, dacă
+      gratuitul e deja folosit). BUG observat 2026-07-20 conv 694c50b1: după
+      FREE_REMAKE_STARTED, Irina a scris „dacă mai vrei un detaliu fin, spune-mi acum și îl
+      prind în refacere" — userul a adăugat un detaliu nou, dar refacerea pornise deja și
+      nu s-a mai putut integra.
   → 💸 OBIECȚIE DE BUGET după ce ai cotat prețul: Basic (${price}) e pachetul cel mai
     ieftin — NU există variantă mai ieftină sub el. Dacă userul spune că are buget mic / „am
     doar X", NU-l urca la Plus/Premium (sunt MAI scumpe) și NU-i sugera o „variantă mai
@@ -5682,8 +5691,8 @@ ${transcript}`;
           status: 'FREE_REMAKE_STARTED',
           generationId: regen.id,
           instruction: args.isOurError
-            ? 'Refacerea gratuită a pornit chiar acum. Cere-ți scuze sincer și spune-i clientului că varianta corectată e gata în 5-10 minute — o primește pe email și aici în chat. Fii cald, fără scuze robotice. Menționează BLÂND că refacerea gratuită e un gest unic — eventualele modificări viitoare sunt contra cost.'
-            : 'Refacerea a pornit chiar acum, ca gest din partea noastră. Spune-i clientului cald că facem o excepție pentru el O SINGURĂ DATĂ — varianta nouă e gata în 5-10 minute, iar eventualele modificări viitoare sunt contra cost (14.99/29.99 lei). NU promite refunduri.',
+            ? 'Refacerea gratuită a pornit chiar acum. Cere-ți scuze sincer și spune-i clientului că varianta corectată e gata în 5-10 minute — o primește pe email și aici în chat. Fii cald, fără scuze robotice. Menționează BLÂND că refacerea gratuită e un gest unic — eventualele modificări viitoare sunt contra cost. ⛔ NU-l invita să mai adauge detalii acum ("spune-mi și le prind în refacere") — generarea e deja în lucru cu ce s-a confirmat, nu se mai poate edita din mers.'
+            : 'Refacerea a pornit chiar acum, ca gest din partea noastră. Spune-i clientului cald că facem o excepție pentru el O SINGURĂ DATĂ — varianta nouă e gata în 5-10 minute, iar eventualele modificări viitoare sunt contra cost (14.99/29.99 lei). NU promite refunduri. ⛔ NU-l invita să mai adauge detalii acum — generarea e deja în lucru cu ce s-a confirmat.',
         };
       } catch (e) {
         this.logger.warn(`free remake failed: ${(e as Error).message}`);
