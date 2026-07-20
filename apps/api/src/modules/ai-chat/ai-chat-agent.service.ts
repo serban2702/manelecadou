@@ -5633,7 +5633,11 @@ ${transcript}`;
       if (genRow.freeRemakeUsedAt) {
         return {
           status: 'FREE_REMAKE_ALREADY_USED',
-          instruction: 'Refacerea gratuită a fost DEJA folosită pe această comandă — următoarele modificări sunt DOAR contra cost (small 14.99 / large 29.99), indiferent de motiv. Comunică asta cu mult tact. Dacă pare o greșeală flagrantă a noastră, alert_admins ca un coleg să decidă o excepție — tu NU mai poți reface gratuit.',
+          // BUG observat 2026-07-20 conv 694c50b1: Irina promitea „pot trimite imediat
+          // varianta de modificare", clientul zicea „Bine" (accept plată), dar AI-ul nu mai
+          // apela request_modification a 2-a oară cu isOurError=false → niciun link de plată
+          // nu ajungea vreodată la client, deși acceptase să plătească.
+          instruction: 'Refacerea gratuită a fost DEJA folosită pe această comandă — următoarele modificări sunt DOAR contra cost (small 14.99 / large 29.99), indiferent de motiv. Comunică asta cu mult tact. Dacă clientul e de acord să plătească (ex. „bine", „da", „ok", „hai să facem așa") sau ai promis că „trimiți imediat varianta de modificare" → TREBUIE să apelezi din nou request_modification cu ACELEAȘI changes dar isOurError=false (NU true) ca să generezi efectiv linkul de plată — NU te opri la un mesaj de status, altfel clientul rămâne fără link deși a acceptat să plătească. Dacă pare o greșeală flagrantă a noastră, alert_admins ca un coleg să decidă o excepție — tu NU mai poți reface gratuit.',
         };
       }
       // Guard context complet: gratuitul e unic, deci refacerea TREBUIE să acopere tot
