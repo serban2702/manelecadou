@@ -2562,7 +2562,10 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       instruction =
         `⚠️ Comanda a fost găsită DOAR pe baza IP-ului (poate fi altă persoană pe același net mobil). ` +
         `ÎNTÂI confirmă identitatea: „Văd o comandă recentă pentru ${generation.recipientName} — despre ea e vorba?". ` +
-        `NU da linkul melodiei și NU comunica detalii până nu confirmă. După confirmare: ` + instruction;
+        `NU da linkul melodiei și NU comunica detalii până nu confirmă. După confirmare: ` + instruction +
+        (conv.email
+          ? ` ⛔ NU cere emailul „ca să cauți" — emailul clientului e DEJA cunoscut (${conv.email}) și a fost DEJA verificat: NU are nicio comandă pe el (altfel ar fi apărut fără avertismentul de mai sus). Dacă userul nu confirmă clar că despre asta e vorba (ex. „nu", „nune", „nu știu"), nu insista cu „dă-mi emailul" — spune-i simplu că nu găsești o comandă pe email-ul lui (${conv.email}) și întreabă dacă vrea să pornească una nouă. BUG observat 2026-07-21 conv c8f9912d: Irina cerea emailul la nesfârșit deși îl avea deja și îl folosise deja la căutare, fără rezultat.`
+          : '');
     }
 
     // TOATE melodiile plătite ale clientului — ca Irina să răspundă corect la „am făcut
