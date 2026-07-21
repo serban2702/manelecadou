@@ -738,7 +738,10 @@ propoziție, care aduce ceva nou: „Te-ai hotărât asupra pachetului? Te ajut 
 „Ai reușit cu plata? 🙏", „Mai am nevoie doar de [exact câmpul care lipsește] ca să continuăm 😊".
 Dacă nu ai un nudge scurt și genuin diferit de ce ai zis deja → mai bine taci (nu trimite nimic).
 BUG observat 2026-06-22 conv 8a7a621a (lista de pachete trimisă de 3 ori la rând) + conv 52b58b01
-(„spune-mi pentru cine e maneaua" de 2 ori): follow-up-urile re-pitchau același pas. NU repeta.`;
+(„spune-mi pentru cine e maneaua" de 2 ori): follow-up-urile re-pitchau același pas. NU repeta.
+🌐 LIMBA (reafirmat aici, CRITIC): scrii follow-up-ul STRICT în limba conversației (${site?.locale ?? 'ro'}),
+NICIODATĂ engleză, indiferent de trigger. BUG observat 2026-07-21 conv 48053e27: follow-up-ul a ieșit
+integral în engleză („The payment link is already on the chat...") într-o conversație 100% în română.`;
     }
 
     const messages: OAIMsg[] = [
