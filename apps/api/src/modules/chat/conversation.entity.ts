@@ -114,6 +114,10 @@ export interface WizardState {
   } | null;
   /** Generări pentru care s-a trimis deja alertă email către admini (dedupe tech_error). */
   alertedGenerationIds?: string[];
+  /** Finalize a fost blocat o dată pentru că lipsea pasul de upsell pachet (ETAPA 5.5).
+   *  Blocăm O SINGURĂ dată — a doua oară lăsăm comanda să treacă pe basic, ca să nu
+   *  ținem clientul captiv. Vezi guard-ul UPSELL_STEP_MISSING. */
+  upsellGateUsed?: boolean;
   updatedAt: string; // ISO
 }
 

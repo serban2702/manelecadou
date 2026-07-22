@@ -1605,6 +1605,19 @@ ETAPA 4 — PARSE RĂSPUNS USER:
   → Dacă userul a inclus DETALII de context („ne-am cunoscut la sere în 2018",
     „are 2 copii", „sărbătorim 18 ani de căsătorie") — păstrează-le în message
     NATURAL, nu le ignora.
+  → 🆘 „nu mă descurc" / „ajută-mă tu să scriu" / „nu știu ce să zic" NU e mesajul melodiei
+    — e o cerere de AJUTOR. NU o salva ca \`message\` (versurile ar ieși despre faptul că
+    userul nu se descurcă). Ajută-l concret: într-un SINGUR mesaj cald pune-i 2 întrebări
+    ușoare („De cât timp sunteți împreună?" + „Ce-ți place cel mai mult la el / o amintire
+    dragă sau o poreclă?"), apoi construiești TU \`message\` din răspunsul lui. Dacă tot nu
+    vrea să dea detalii, scrie un \`message\` scurt DESPRE DESTINATAR („Pentru soțul meu
+    Daniel, o manea de dragoste, să-i spună cât de mult înseamnă pentru mine").
+  → ⛔ \`message\` = ce transmite DEDICATORUL destinatarului. NICIODATĂ o descriere la
+    persoana a 3-a a userului sau a conversației. Cuvinte INTERZISE în \`message\`:
+    „userul", „clientul", „utilizatorul", „are nevoie de ajutor", „nu se descurcă".
+    BUG observat 2026-07-22 conv fd00e2cb: clienta a cerut ajutor la compunere, iar Irina a
+    salvat message = „Userul vrea sa-si surprinda sotul… spune ca nu se descurca singura si
+    are nevoie de ajutor" — melodia ar fi ieșit despre asta, nu despre soțul ei. NU repeta.
   → ⛔ NU PIERDE NICIUN NUME PROPRIU. Dacă userul enumeră mai multe persoane (mai mulți
     destinatari, copii, nepoți, soț/soție, prieteni cu nume) → TOATE numele trebuie să
     ajungă în comandă, exact cum le-a scris userul. recipientName ia destinatarul/destinatarii
@@ -1833,6 +1846,17 @@ REGULI STRICTE:
     ca declanșator și a ignorat complet întrebarea, continuând mecanic cu „Cum se numește
     persoana principală...". Userul a rămas confuz, a intervenit un admin uman manual
     și clientul a plecat nemulțumit fără comandă.
+22bis. DATE CERUTE ÎN PAGINA DE PLATĂ („de ce îmi cere și adresa / numele / telefonul /
+    codul poștal / țara?"): sunt câmpuri ale procesatorului de plăți (Stripe), cerute
+    pentru factură și pentru verificarea cardului — NU trimitem nimic fizic prin poștă.
+    Răspunde exact așa, scurt și liniștitor: „Sunt datele de facturare cerute de
+    procesatorul de plăți pentru card — nu-ți trimitem nimic prin poștă, maneaua vine pe
+    email și aici în chat. Poți pune adresa ta obișnuită, e doar pentru factură."
+    ⚠️ NU confunda „adresa" din pagina de plată cu adresa de EMAIL. Dacă userul e la
+    checkout și zice „îmi cere adresa", vorbește despre adresa de facturare — a-i explica
+    de ce ai nevoie de email e răspuns pe lângă întrebare și îl lasă blocat.
+    BUG observat 2026-07-22 conv fd00e2cb: la „Dc îmi cere și adresa" Irina a răspuns
+    despre email („ca să n-o pierzi dacă închizi chatul") — clienta n-a plătit.
 23. ABUZ / LIMBAJ VULGAR: dacă userul îți răspunde abuziv („sugi pula", „sunteți proști",
     insulte) → la primul mesaj abuziv, răspunde calm și redirecționează la subiect. La
     al doilea mesaj abuziv pe rând → apelează escalate_to_human cu motivul „client abuziv"
@@ -2732,6 +2756,25 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     if (typeof args.recipientName === 'string' && args.recipientName.trim()) updates.recipientName = args.recipientName.trim().slice(0, 120);
     if (typeof args.dedicatorName === 'string' && args.dedicatorName.trim()) updates.dedicatorName = args.dedicatorName.trim().slice(0, 120);
     if (typeof args.message === 'string' && args.message.trim()) updates.message = args.message.trim().slice(0, 4000);
+
+    // GUARD anti-brief META (BUG observat 2026-07-22 conv fd00e2cb): userul a zis „Aș dori
+    // să mă ajuți dacă se poate, nu prea mă descurc" — adică cerea AJUTOR ca să compună
+    // mesajul. Irina a luat asta LITERAL ca fiind conținutul melodiei și a salvat
+    // message = „Userul vrea sa-si surprinda sotul... spune ca nu se descurca singura si
+    // are nevoie de ajutor ca sa iasa personal". Versurile ar fi ieșit despre neputința
+    // clientei de a scrie un mesaj, nu despre soțul ei. `message` trebuie să fie MEREU ce
+    // transmite DEDICATORUL destinatarului — niciodată o descriere la persoana a 3-a a
+    // userului sau a situației din chat.
+    // Celelalte câmpuri din ACELAȘI apel (recipientName, email…) se salvează normal — doar
+    // `message` e respins, ca să nu pierdem datele bune colectate odată cu el.
+    let metaBriefRejected = false;
+    if (typeof updates.message === 'string' && this.isMetaBriefText(updates.message)) {
+      this.logger.warn(
+        `META_BRIEF_REJECTED conv=${conv.id.slice(0, 8)} — message descria userul/cererea de ajutor, nu melodia`,
+      );
+      delete updates.message;
+      metaBriefRejected = true;
+    }
     if (typeof args.recipientGender === 'string' && (args.recipientGender === 'M' || args.recipientGender === 'F')) {
       updates.recipientGender = args.recipientGender;
     }
@@ -2842,15 +2885,20 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     const correctionNote = emailAutoCorrected
       ? ` Am corectat automat email-ul din „${emailAutoCorrected.from}" în „${emailAutoCorrected.to}" (greșeală evidentă de domeniu). NU întreba userul care e adresa corectă — folosește ${emailAutoCorrected.to}. Poți confirma scurt „Am notat: ${emailAutoCorrected.to}".`
       : '';
+    const metaBriefNote = metaBriefRejected
+      ? ' ⛔ Textul pe care l-ai pus în `message` descria USERUL sau faptul că are nevoie de ajutor („userul vrea…", „nu se descurcă", „are nevoie de ajutor") — NU l-am salvat, pentru că versurile ar fi ieșit exact despre asta. `message` = ce vrea DEDICATORUL să-i transmită DESTINATARULUI (sentimente, amintiri, calități, nume proprii), niciodată o descriere a conversației. Userul ți-a cerut AJUTOR să compună → ajută-l concret: într-un SINGUR mesaj cald pune-i 2 întrebări ușoare („De cât timp sunteți împreună?" + „Ce-ți place cel mai mult la el / o amintire dragă sau o poreclă?"), apoi construiești TU `message` din răspunsul lui și îl salvezi cu wizard_update. Dacă tot nu vrea să dea detalii, salvează un `message` scurt DESPRE DESTINATAR („Pentru soțul meu Daniel, o manea de dragoste, să-i spună cât de mult înseamnă pentru mine").'
+      : '';
     return {
       updated: Object.keys(updates),
       emailUpdated,
       emailAutoCorrected,
+      metaBriefRejected,
       data: state.data,
       missingFields: missing,
       readyToFinalize: missing.length === 0 && (emailUpdated || !!conv.email),
       lyricsInvalidated,
       instruction:
+        metaBriefNote +
         (missing.length === 0
           ? 'Toate câmpurile sunt complete. Recapitulează datele în send_message + cere confirmare, apoi wizard_finalize.'
           : `Mai întreabă: ${missing[0]} (un singur câmp pe mesaj).`) +
@@ -2876,6 +2924,33 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       .toLowerCase()
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  /**
+   * `message` (brief-ul melodiei) e de fapt o descriere META a conversației — despre user
+   * și despre faptul că are nevoie de ajutor — în loc de conținutul destinat destinatarului.
+   * Vezi guard-ul META_BRIEF_REJECTED (conv fd00e2cb, 2026-07-22).
+   */
+  private isMetaBriefText(text: string): boolean {
+    const t = (text || '')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase();
+    // (a) Referire la user la persoana a 3-a — brief-ul nu vorbește NICIODATĂ despre „user".
+    if (/\b(userul|user-ul|user ul|clientul|clienta|utilizatorul|utilizatoarea)\b/.test(t)) return true;
+    // (b) Cererea de ajutor a userului preluată ca și conținut al melodiei.
+    if (
+      /\bnu (ma|se) descurc/.test(t) ||
+      /\bnu prea (ma|se) descurc/.test(t) ||
+      /are nevoie de ajutor/.test(t) ||
+      /\bcere ajutor\b/.test(t) ||
+      /nu stie ce sa (scrie|zic|spun)/.test(t) ||
+      /nu stiu ce sa (scriu|zic|spun)/.test(t) ||
+      /\bsa (ma|o|il) ajut[ae]?\b.*\b(sa scri|cu mesaj|cu versuri)/.test(t)
+    ) {
+      return true;
+    }
+    return false;
   }
 
   private detectConfirmedTierFromText(text: string): PackageTier | null {
@@ -3079,6 +3154,45 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       }
     } catch (e) {
       this.logger.warn(`package mismatch guard failed (non-fatal): ${(e as Error).message}`);
+    }
+
+    // GUARD ETAPA 5.5 SĂRITĂ (BUG observat 2026-07-22 conv fd00e2cb): Irina a finalizat
+    // direct pe basic fără să prezinte vreodată cele 3 pachete, apoi — după ce linkul de
+    // plată era deja trimis — a scos lista de pachete la un „Ok" al clientei. Rezultat:
+    // client confuz („Ce-a cu 29,99"), upsell ratat și un link deja emis pe pachetul greșit.
+    // Aici blocăm finalize O SINGURĂ dată dacă pachetul nu a fost nici ales, nici prezentat.
+    if (!state.data.packageTier && !state.upsellGateUsed) {
+      let upsellShown = false;
+      try {
+        const adminMsgs = await this.msg.find({
+          where: { conversationId: conv.id, authorRole: 'admin' },
+          order: { createdAt: 'DESC' },
+          take: 12,
+        });
+        upsellShown = adminMsgs.some((m) => {
+          const t = (m.body || '').toLowerCase();
+          return /standard/.test(t) && /\bplus\b/.test(t) && /premium/.test(t);
+        });
+      } catch (e) {
+        this.logger.warn(`upsell gate lookup failed (non-fatal): ${(e as Error).message}`);
+        upsellShown = true; // fail-open — nu bloca plata dacă lookup-ul pică
+      }
+      if (!upsellShown) {
+        state.upsellGateUsed = true;
+        await this.conv
+          .createQueryBuilder()
+          .update(Conversation)
+          .set({ wizardState: state })
+          .where('id = :id', { id: conv.id })
+          .execute();
+        conv.wizardState = state;
+        this.logger.warn(`UPSELL_STEP_MISSING conv=${conv.id.slice(0, 8)} — finalize blocat o dată pentru ETAPA 5.5`);
+        return {
+          status: 'UPSELL_STEP_MISSING',
+          instruction:
+            'STAI — n-ai prezentat încă cele 3 pachete (ETAPA 5.5) și userul n-a ales niciunul. Trimite ACUM, o singură dată, mesajul cu Standard / Plus / Premium exact cum e în ETAPA 5.5 și AȘTEAPTĂ alegerea userului. NU finaliza în acest tur. După ce alege: wizard_update({packageTier}) → wizard_finalize. Pachetele se prezintă ÎNAINTE de linkul de plată — după link ajung doar să-l zăpăcească pe client.',
+        };
+      }
     }
 
     // Dedup 30 min: dacă deja există un link identic (aceeași sumă) trimis în ultimele
@@ -3332,6 +3446,38 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         status: 'ABORTED_MANUAL_MODE',
         instruction: 'Conversation switched to manual. STOP IMMEDIATELY — do not send any message and do not call any other tool.',
       };
+    }
+
+    // GUARD listă de pachete DUPĂ linkul de plată (BUG observat 2026-07-22 conv fd00e2cb):
+    // linkul de plată pe Standard era deja trimis; clienta a zis doar „Ok" la o explicație,
+    // iar Irina i-a servit lista completă de pachete nesolicitată → „Ce-a cu 29,99", client
+    // derutat, plata amânată. După ce linkul e trimis, pachetele se prezintă DOAR dacă
+    // userul întreabă el de ele / de un upgrade.
+    {
+      const t = trimmed.toLowerCase();
+      const listsAllPackages = /standard/.test(t) && /\bplus\b/.test(t) && /premium/.test(t);
+      if (listsAllPackages && ctx.conv.wizardState?.step === 'payment_sent') {
+        let userAsked = false;
+        try {
+          const lastUser = await this.msg.findOne({
+            where: { conversationId: ctx.conv.id, authorRole: 'user' },
+            order: { createdAt: 'DESC' },
+          });
+          const u = (lastUser?.body || '').toLowerCase();
+          userAsked = /pachet|varian|upgrade|premium|\bplus\b|ce ofer|mai bun|mai bine|diferen/.test(u);
+        } catch {
+          userAsked = true; // fail-open
+        }
+        if (!userAsked) {
+          return {
+            sent: false,
+            messageType: 'noop',
+            status: 'PACKAGE_LIST_AFTER_LINK_BLOCKED',
+            instruction:
+              'STAI — linkul de plată e DEJA trimis, iar userul nu te-a întrebat de pachete. Nu-i mai lista acum Standard/Plus/Premium: îl derutează („dar cu 29.99 ce era?") și amână plata. Răspunde SCURT la ce a spus el și lasă-l să dea click pe linkul de mai sus. Pachetele le prezinți doar dacă întreabă el de variante/upgrade.',
+          };
+        }
+      }
     }
 
     const isFirst = ctx.sentRealMessages === 0 && !ctx.suggestionMsgId;
