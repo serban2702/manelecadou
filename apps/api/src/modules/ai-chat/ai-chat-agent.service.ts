@@ -1991,7 +1991,18 @@ REGULI STRICTE:
     valabile. Fără asta, instrucțiunea retrasă rămâne pe link și SE EXECUTĂ după plată.
     BUG observat 2026-07-08 conv 7d48c0fe: user a cerut schimbare de versuri, apoi a zis
     explicit „Nu schimbati versurile" — AI a confirmat verbal dar n-a curățat linkul, iar
-    după plată versurile au fost rescrise contra voinței clientului.`;
+    după plată versurile au fost rescrise contra voinței clientului.
+34. „NU VREAU MANEA" / „NU-MI PLAC MANELELE" NU E UN NU FINAL — e cea mai frecventă
+    PRECONCEPȚIE, nu un refuz. Majoritatea oamenilor asociază „manea" strict cu petrecerea
+    tare, cu orga și trompeta. Realitatea: facem tot spectrul, de la baladă lentă romantică
+    și piesă lăutărească de suflet (pentru mamă, aniversare, nuntă, cerere în căsătorie)
+    până la petrecere sau ceva modern, urban. NU capitula din prima cu „atunci nu e pentru
+    tine" — asta pierde clientul instantaneu. Răspunde scurt și cald: spune-i că piesa se
+    face pe stilul lui (de la baladă calmă la petrecere) și întreabă-l concret PENTRU CINE
+    e și cu ce OCAZIE — de acolo continui tunelul normal. Doar dacă spune a DOUA oară
+    explicit că nu vrea (sau „nu, mulțumesc") închizi politicos, o SINGURĂ dată, fără
+    insistență. BUG observat 2026-07-22 conv 0243873e: la „Și dacă nu vreau manea?" Irina a
+    răspuns „Înțeleg, atunci nu e pentru tine 😊" și a pierdut lead-ul din prima replică.`;
 
     return this.appendMemoryAndContacts(basePrompt, memory, site);
   }
@@ -3669,6 +3680,38 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           instruction:
             'STAI — mesajul ăsta e o parafrază aproape identică cu ULTIMUL mesaj pe care l-ai trimis. NU repeta aceeași asigurare reformulată, sună robotic. Dacă aștepți o generare blocată și ai anunțat deja echipa / ai escaladat, NU mai trimite încă un „revin imediat" — userul a primit deja mesajul. Verifică statusul real (check_order_status): ori spui ceva CONCRET nou (linkul melodiei dacă e gata, un timp estimat clar diferit), ori NU mai trimite niciun mesaj acum.',
         };
+      }
+
+      // Treapta 0.52 — COADĂ DE POLITEȚE. BUG observat 2026-07-22 conv 0243873e: userul a
+      // zis „Nu, mulțumesc" → Irina „Cu drag, o zi bună!" → userul „La fel!" → Irina
+      // „Mulțumesc, la fel!". Ultimul mesaj e umplutură pură: conversația era deja închisă
+      // de ambele părți, iar userul doar întorcea urarea. Regula 30 din prompt cere deja UN
+      // SINGUR mesaj de încheiere, dar modelul nu rezistă tentației de a răspunde la orice
+      // politețe → mutăm detecția în cod. Dacă ultimul mesaj al userului e o urare/politețe
+      // fără conținut ȘI ultimul mesaj AI era deja un la-revedere, nu mai trimitem nimic.
+      const CLOSING_PLEASANTRY_USER =
+        /^(la fel|si tie|și ție|si voua|și vouă|asemenea|multumesc|mulțumesc|multumesc frumos|mersi|merci|pa|pa pa|numai bine|toate bune|o zi buna|o zi bună|o zi frumoasa|o zi frumoasă|seara buna|seara bună|noapte buna|noapte bună|spor|bafta|baftă|ok multumesc|ok mulțumesc|nu multumesc|nu mulțumesc)[\s!.,😊🙂❤️🙏✨👍]*$/i;
+      const AI_SAID_GOODBYE =
+        /(o zi (bun[aă]|frumoas[aă])|numai bine|toate bune|cu drag|cu pl[aă]cere|weekend pl[aă]cut|seara bun[aă]|noapte bun[aă]|spor la)/i;
+      // Cerem ca ultimul mesaj AI să fie SCURT: „cu drag / cu plăcere" apar des și în
+      // mijlocul conversației („Cu plăcere! Îți trimit acum linkul…") — acolo userul care
+      // zice „mulțumesc" poate aștepta legitim continuarea. Un la-revedere real e scurt.
+      if (lastAiNorm && lastAiNorm.length <= 120 && AI_SAID_GOODBYE.test(lastAiNorm)) {
+        const lastUserMsg = await this.msg.findOne({
+          where: { conversationId: ctx.conv.id, authorRole: 'user' },
+          order: { createdAt: 'DESC' },
+        });
+        const lastUserNorm = (lastUserMsg?.body ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+        if (lastUserNorm && CLOSING_PLEASANTRY_USER.test(lastUserNorm)) {
+          this.logger.warn(`CLOSING_PLEASANTRY blocked on conv=${ctx.conv.id.slice(0, 8)} — coadă de politețe după la-revedere.`);
+          return {
+            sent: false,
+            messageType: 'duplicate_text',
+            status: 'CLOSING_PLEASANTRY_BLOCKED',
+            instruction:
+              'STAI — conversația e deja închisă politicos de ambele părți, iar userul doar a întors urarea. NU mai trimite niciun mesaj acum: încă un „mulțumesc, la fel" e umplutură și sună robotic. Termină turul fără să trimiți nimic.',
+          };
+        }
       }
 
       // Treapta 0.55 — același link de melodie (/m/<id>) repetat. BUG observat 2026-07-08
