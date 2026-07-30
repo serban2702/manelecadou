@@ -10,7 +10,7 @@ import { ChatGateway } from '../chat/chat.gateway';
 import { Conversation, WizardData, WizardState } from '../chat/conversation.entity';
 import { ChatMessage, ChatMessagePayload } from '../chat/message.entity';
 import { PaymentsService } from '../payments/payments.service';
-import { normalizeTier, packageLabel, chatPackageUpsellRo, packageCompareAtCents, type PackageTier } from '../payments/packages';
+import { normalizeTier, packageLabel, packageDef, currencyWord, chatPackageUpsellRo, packageCompareAtCents, type PackageTier } from '../payments/packages';
 import { packageTotalCents } from '../payments/pricing';
 import { GenerationsService } from '../generations/generations.service';
 import { Generation } from '../generations/generation.entity';
@@ -1983,6 +1983,17 @@ REGULI STRICTE:
     melodiei" — AI a înțeles pe jumătate cauza („nu e activat colajul pentru pachet") dar n-a
     comis-o; a cerut email/link de 4× la rând și a escaladat, în loc să spună direct că pozele
     nu sunt în Standard și ce pachet îi trebuie.
+    ⛔ OBLIGATORIU ÎNAINTE de orice răspuns despre poze/colaj: apelează \`check_order_status\`
+    și citește câmpul \`packageInfo\` — acolo scrie EXACT pachetul clientului și dacă include
+    sau nu încărcarea de poze (\`canUploadPhotos\`). NU ghici, NU presupune că „se poate".
+    Dacă \`canUploadPhotos\` e false → spui o SINGURĂ dată, clar, că la pachetul lui nu e
+    inclusă partea cu poze și ce pachet îi trebuie, apoi întrebi dacă vrea upgrade.
+    BUG observat 2026-07-23 conv eb815130: client pe Standard, „vreau să pun o fotografie și
+    pe fundal să fie melodia" → Irina a confirmat de 3 ori la rând, reformulat, că „se poate
+    pune poza pe pagina piesei", a promis ghidaj pas-cu-pas și a inventat un „buton de colaj"
+    care la Standard nu există; un coleg uman a trebuit să intre și s-o contrazică în fața
+    clientului. Pe deasupra a cerut și emailul „ca să verifice", deși comanda era DEJA
+    identificată. Acum pachetul vine în check_order_status → folosește-l.
 33. RETRAGEREA UNEI MODIFICĂRI CERUTE (link de modificare NEPLĂTIT încă): schimbările se
     ACUMULEAZĂ pe linkul de plată existent la fiecare request_modification. Dacă userul
     RETRAGE sau schimbă ceva cerut anterior („nu mai schimba versurile", „las-o cum era cu
@@ -2152,7 +2163,7 @@ REGULI STRICTE:
       },
       {
         name: 'check_order_status',
-        description: 'Verifică statusul ultimei comenzi din conversația curentă (plată + generare manea). Folosește când userul întreabă „unde-i melodia?", „a ajuns plata?", „cât mai durează?", sau înainte să raportezi progresul. Returnează: paid (true/false), generationStatus, audioReady, linkToSong.',
+        description: 'Verifică statusul ultimei comenzi din conversația curentă (plată + generare manea). Folosește când userul întreabă „unde-i melodia?", „a ajuns plata?", „cât mai durează?", înainte să raportezi progresul, ȘI OBLIGATORIU înainte de orice răspuns despre POZE / COLAJ / imagini (packageInfo îți spune dacă pachetul clientului le include). Returnează: paid (true/false), generationStatus, audioReady, linkToSong, packageInfo {tier, label, canUploadPhotos, socialImages, videoCollage}.',
         parameters: { type: 'object', properties: {} },
       },
       {
@@ -2658,6 +2669,47 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       this.logger.warn(`pending modification check failed: ${(e as Error).message}`);
     }
 
+    // 📦 PACHETUL comenzii. Fără el, Irina nu are cum să știe ce livrabile are clientul și
+    // improvizează — cel mai periculos la POZE/COLAJ, care există DOAR la Plus/Premium.
+    // BUG observat 2026-07-23 conv eb815130: client pe Basic (29.99) a întrebat „vreau să pun
+    // o fotografie și pe fundal să fie melodia"; check_order_status nu returna pachetul, iar
+    // regula 32 din prompt („spune-i ce pachet îl are") era inaplicabilă → Irina a confirmat
+    // de 3 ori la rând, reformulat, că „se poate pune poza pe pagina piesei" și a promis
+    // ghidaj pas-cu-pas către un buton care nu există la Basic. Un coleg uman a trebuit să
+    // intre și să contrazică AI-ul în fața clientului.
+    const tier = normalizeTier((generation as { packageTier?: string | null }).packageTier);
+    const def = packageDef(tier);
+    const packageInfo = {
+      tier,
+      label: packageLabel(tier),
+      socialImages: def.socialImage,
+      videoCollage: def.video,
+      premiumPage: def.premiumPage,
+      canUploadPhotos: def.socialImage || def.video,
+    };
+    let upgradePrices = '';
+    try {
+      const site = conv.siteId ? await this.sites.findById(conv.siteId).catch(() => null) : null;
+      const overrides = site?.packagePricesCents ?? null;
+      const cur = currencyWord(site?.currency ?? null);
+      upgradePrices =
+        ` Prețuri: Plus ${(packageTotalCents('plus', overrides) / 100).toFixed(2)} ${cur}, ` +
+        `Premium ${(packageTotalCents('premium', overrides) / 100).toFixed(2)} ${cur}.`;
+    } catch {
+      /* fără prețuri e ok — regula rămâne validă */
+    }
+    instruction +=
+      `\n\n📦 PACHETUL comenzii: ${packageInfo.label} (${tier}). ` +
+      (packageInfo.canUploadPhotos
+        ? `INCLUDE poze: ${def.socialImage ? 'imagini social-media auto' : ''}${def.socialImage && def.video ? ' + ' : ''}${def.video ? 'colaj video din pozele clientului (le încarcă singur de pe pagina piesei, gratuit)' : ''}. ` +
+          `Dacă întreabă de poze/colaj → confirmă și îndrumă-l pe pagina piesei${linkToSong ? ` (${linkToSong})` : ''}.`
+        : `⛔ NU include NICIO încărcare de poze / colaj video / imagini social — clientul NU are butonul de poze pe pagina piesei. ` +
+          `Dacă întreabă „pot pune o fotografie / poză de fundal / colaj?" → răspunde DIRECT și o SINGURĂ dată: la pachetul ${packageInfo.label} nu e inclusă partea de poze; pentru imagini social îi trebuie Plus, iar pentru colaj video cu pozele lui — Premium.${upgradePrices} ` +
+          `⛔ NU-i spune „da, se poate", NU-i promite ghidaj pas-cu-pas și NU inventa un „buton de colaj" — nu există la pachetul lui. Nu repeta explicația reformulat: spui o dată, clar, apoi întrebi dacă vrea upgrade.`) +
+      (ctx.conv.email
+        ? ` ⛔ Comanda e DEJA identificată — NU cere emailul „ca să verifici/cauți" (îl ai: ${ctx.conv.email}). Răspunde direct la ce a întrebat.`
+        : ` ⛔ Comanda e DEJA identificată în conversație — NU cere emailul „ca să verifici". Răspunde direct la ce a întrebat.`);
+
     return {
       hasOrder: true,
       generationId: generation.id,
@@ -2667,6 +2719,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       linkToSong,
       allSongs,
       pendingModification,
+      packageInfo,
       humanStatus,
       healthCategory,
       ageSeconds,
@@ -3487,6 +3540,51 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
             instruction:
               'STAI — linkul de plată e DEJA trimis, iar userul nu te-a întrebat de pachete. Nu-i mai lista acum Standard/Plus/Premium: îl derutează („dar cu 29.99 ce era?") și amână plata. Răspunde SCURT la ce a spus el și lasă-l să dea click pe linkul de mai sus. Pachetele le prezinți doar dacă întreabă el de variante/upgrade.',
           };
+        }
+      }
+    }
+
+    // GUARD anti-PROMISIUNE DE POZE pe un pachet care NU le include. Încărcarea de poze /
+    // colajul video există DOAR la Plus (imagini social) și Premium (colaj video). Pe Basic
+    // butonul nu există deloc, deci orice „da, se poate pune poza pe pagina piesei" e o
+    // promisiune imposibilă — clientul o încearcă, nu găsește nimic și un coleg uman trebuie
+    // să contrazică AI-ul în fața lui. BUG observat 2026-07-23 conv eb815130: client pe Basic
+    // („vreau să pun o fotografie și pe fundal să fie melodia") → Irina a confirmat de 3 ori
+    // reformulat că se poate și a inventat un „buton de colaj" inexistent la pachetul lui;
+    // adminul a intervenit cu „pentru poză trebuie maneaua premium". Regula 32 din prompt
+    // cerea deja să spună ce pachet are userul, dar AI-ul nu AVEA datele pachetului — de
+    // aceea le expunem acum în check_order_status, iar aici punem plasa de siguranță.
+    {
+      const t = trimmed.toLowerCase();
+      const mentionsPhotos = /\b(poz[aăe]|poze|pozele|fotografi|colaj|slideshow)\b/.test(t);
+      // Afirmativ = spune că SE POATE / promite ghidaj, fără să nege disponibilitatea.
+      const affirms = /\b(se poate|po[țt]i|pute[țt]i|putem|adaugi|adăugi|încarci|incarci|urci|butonul)\b/.test(t);
+      // „denies" e larg intenționat: orice mesaj care numește Plus/Premium ca soluție e deja
+      // un upsell corect (nu o promisiune falsă pe pachetul curent) → îl lăsăm să treacă.
+      const denies = /(nu (se poate|e inclus|este inclus|include|ai|are|exist)|nu e disponibil|nu face parte|premium|\bplus\b|upgrade)/.test(t);
+      if (mentionsPhotos && affirms && !denies) {
+        try {
+          const convFresh = await this.conv.findOne({ where: { id: ctx.conv.id } });
+          const resolved = convFresh ? await this.resolveCustomerGeneration(convFresh) : null;
+          if (resolved) {
+            const gTier = normalizeTier((resolved.generation as { packageTier?: string | null }).packageTier);
+            const gDef = packageDef(gTier);
+            if (!gDef.socialImage && !gDef.video) {
+              this.logger.warn(`PHOTO_PROMISE blocked on conv=${ctx.conv.id.slice(0, 8)} — pachet ${gTier} fără poze.`);
+              return {
+                sent: false,
+                messageType: 'noop',
+                status: 'PHOTO_PROMISE_ON_BASIC_BLOCKED',
+                instruction:
+                  `STAI — clientul are pachetul ${packageLabel(gTier)}, care NU include încărcarea de poze / colaj video / imagini social. ` +
+                  `Mesajul tău îi promitea că „se poate" pune poza — pe pagina lui butonul ăla NU există, deci l-ai trimite după o funcție inexistentă și un coleg uman ar trebui să te contrazică în fața lui. ` +
+                  `Spune-i ADEVĂRUL, scurt și o SINGURĂ dată: la pachetul ${packageLabel(gTier)} nu e inclusă partea cu poze; pentru imagini social e nevoie de Plus, iar pentru colaj video cu pozele lui — Premium. ` +
+                  `Apoi întreabă-l dacă vrea upgrade. ⛔ NU reformula aceeași confirmare greșită și NU inventa pași de urmat.`,
+              };
+            }
+          }
+        } catch {
+          /* fail-open — dacă nu putem determina pachetul, lăsăm mesajul să treacă */
         }
       }
     }
