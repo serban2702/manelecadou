@@ -850,10 +850,18 @@ integral în engleză („The payment link is already on the chat...") într-o c
         // finalContent, fără tool call). Guard-ul din handleSendMessage exista din 2026-07-10
         // (conv a8970739) dar nu acoperea calea asta. Junk → cădem pe textul neutru.
         const finalRaw = (result.finalContent ?? '').trim();
-        const fallback =
-          finalRaw && !isJunkText(finalRaw)
-            ? finalRaw.slice(0, 800)
-            : 'Înțeleg, lasă-mă o secundă să verific și revin imediat.';
+        // Textul de rezervă NU trebuie să promită o revenire pe care nimeni n-o face. BUG
+        // observat 2026-07-30 conv dbf701dd: „Înțeleg, lasă-mă o secundă să verific și revin
+        // imediat." a fost trimis de 2 ori pe mesaje scrise prost, pe care modelul nu le
+        // înțelesese („Iubitul meu iti multumrsc prntr") — nicio verificare, nicio revenire,
+        // clienta a rămas să aștepte. Când chiar am verificat ceva în turul ăsta
+        // (check_order_status), formularea de așteptare rămâne corectă; altfel cerem o
+        // reformulare, care e exact ce lipsea.
+        const didCheckStatus = result.toolCalls.some((t) => t.request.name === 'check_order_status');
+        const neutralFallback = didCheckStatus
+          ? 'Verific acum și îți spun imediat cum stă comanda ta 🙂'
+          : 'Sunt aici 🙂 Spune-mi te rog încă o dată, în câteva cuvinte, ce ai nevoie — vreau să fiu sigură că am înțeles bine.';
+        const fallback = finalRaw && !isJunkText(finalRaw) ? finalRaw.slice(0, 800) : neutralFallback;
         // GUARD anti-duplicat pe safety net. Safety net-ul persistă finalContent-ul DIRECT
         // (msg.save de mai jos), ocolind complet dedup-ul din handleSendMessage (EXACT_DUP /
         // NEAR_DUP). Tipic: userul dă un „Bine/Ok" pasiv, send_message al AI-ului e blocat ca
@@ -1757,6 +1765,19 @@ Dacă userul cere un DEMO PERSONALIZAT înainte de plată („fă-mi o mostră c
     (email/pachet/finalize). Melodia finală se va cânta EXACT pe versurile aprobate de el.
   → Versurile sunt cel mai puternic instrument de vânzare — odată ce omul își vede povestea
     scrisă, conversia e aproape făcută. Folosește-le și proactiv la clienții indeciși.
+  → ⚠️ SPUNE-I EXPLICIT, O DATĂ, CĂ AUDIO-UL VINE DOAR DUPĂ PLATĂ. Declanșatorii sunt adesea
+    scurți și scriși prost: „vreau sa aud", „vreau sa aud si muzica", „nu vreau mai inainte
+    sa aud ce canta ca daca nu imi place", „sa o ascult intai". Nu trata asta ca pe o cerere
+    de versuri și NU o ocoli cu formulări vagi („ți-o trimit și aici în chat după ce e gata").
+    Răspunde clar și cald, o singură dată: „Melodia cu vocea ta personalizată se face abia
+    după plată — de asta nu ți-o pot da la ascultat înainte. Ce pot să-ți dau ACUM, gratuit,
+    sunt versurile exacte care se vor cânta, iar dacă vrei îți trimit și o mostră audio cu
+    stilul/vocea de pe site ca să auzi cum sună." → apoi \`generate_lyrics\` (+ \`play_sample\`
+    dacă vrea să audă vocea). Dacă userul repetă cererea a doua sau a treia oară, înseamnă că
+    NU a primit răspunsul — nu-i mai trimite alte versuri, spune-i explicit regula de mai sus.
+    BUG observat 2026-07-30 conv dbf701dd: clienta a cerut de 4 ori să audă înainte de plată;
+    Irina i-a trimis versuri și „îți citesc mai clar pe scurt", fără să-i spună niciodată că
+    audio-ul nu se poate înainte de plată — comanda a rămas neplătită.
   → ⚠️ ORICE corectură cerută la versuri TREBUIE persistată printr-un tool ÎNAINTE să
     confirmi „am scos / am schimbat / am pus": cât mai ai drafturi → generate_lyrics cu
     revisionNotes = cerințele lui exacte; după limita de drafturi → wizard_update({message:
@@ -1846,6 +1867,17 @@ REGULI STRICTE:
     ca declanșator și a ignorat complet întrebarea, continuând mecanic cu „Cum se numește
     persoana principală...". Userul a rămas confuz, a intervenit un admin uman manual
     și clientul a plecat nemulțumit fără comandă.
+22ter. AMÂNARE DE PLATĂ ≠ PROBLEMĂ DE REZOLVAT DE UN OM. Dacă userul spune că plătește mai
+    târziu („nu am cardul la mine", „nu am cardul acasă", „te anunț eu", „plătesc diseară",
+    „când ajung acasă", „vorbesc cu soțul/soția") → NU escalada și NU alerta pe nimeni. Nu e
+    o metodă de plată alternativă (regula 22), e doar o amânare. Răspunde scurt și relaxat:
+    „Nicio problemă, linkul rămâne aici în chat — îl deschizi când ai cardul la îndemână. Dacă
+    expiră, îți trimit altul într-o secundă." și lasă conversația deschisă. Escaladarea aici e
+    dăunătoare: oprește AI-ul, iar userul care revine peste 2 minute cu „cum pot să plătesc?"
+    rămâne fără răspuns până apucă un coleg uman să vadă chatul.
+    BUG observat 2026-07-30 conv dbf701dd: la „Te anunt eu ca nu am cardul acasa" Irina a
+    escaladat la om; clienta a scris de 4 ori după aceea („Gata", „Hei", „Cum pot sa platesc")
+    și nu i-a mai răspuns nimeni ~10 minute — a plecat și a deschis o conversație nouă de la zero.
 22bis. DATE CERUTE ÎN PAGINA DE PLATĂ („de ce îmi cere și adresa / numele / telefonul /
     codul poștal / țara?"): sunt câmpuri ale procesatorului de plăți (Stripe), cerute
     pentru factură și pentru verificarea cardului — NU trimitem nimic fizic prin poștă.
@@ -3924,6 +3956,30 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         }
       }
 
+      // Treapta 0.67 — „îți trimit ACUM linkul de plată" fără să fi trimis vreun link în
+      // tura asta. BUG observat 2026-07-30 conv dbf701dd: după ce clienta a aprobat versurile
+      // („Este perfect asa"), Irina a scris „Bun, am notat. Îți trimit acum linkul de plată și
+      // pornesc comanda." — fără NICIUN tool call — iar în mesajul următor a raportat fapta ca
+      // făcută („Gata, ți-am trimis linkul de plată mai sus"). Clienta a rămas să caute un link
+      // care nu venise, apoi conversația s-a împotmolit. Regula 13 („DACĂ PROMIȚI O ACȚIUNE,
+      // FĂ-O") acoperea deja cazul în prompt, dar modelul o încalcă → mutăm detecția în cod.
+      // Blocăm DOAR promisiunea fermă și iminentă („acum/imediat"); condiționalele legitime de
+      // dinaintea confirmării („dacă e ok așa, îți trimit imediat linkul") trec neatinse.
+      const promisesLinkNow =
+        /\b(î|i)[țt]i trimit\b[^.!?]{0,30}\blink/i.test(normalized) &&
+        /\b(acum|imediat)\b/i.test(normalized) &&
+        !/\bdac[aă]\b/i.test(normalized);
+      if (promisesLinkNow && !ctx.paymentLinkSent) {
+        this.logger.warn(`LINK_PROMISE_WITHOUT_SEND blocked on conv=${ctx.conv.id.slice(0, 8)} — „îți trimit acum linkul" fără wizard_finalize/resend.`);
+        return {
+          sent: false,
+          messageType: 'noop',
+          status: 'LINK_PROMISE_WITHOUT_SEND',
+          instruction:
+            'STAI — îi promiți userului că îi trimiți ACUM linkul de plată, dar nu ai trimis niciunul în tura asta (n-ai apelat `wizard_finalize` / `resend_payment_link`). Dacă trimiți mesajul așa, omul caută un link care nu există și pierzi vânzarea. Fă ACUM una din trei: (a) comanda nu e finalizată → apelează `wizard_finalize` (tool-ul verifică singur ce mai lipsește) și ABIA APOI confirmă; (b) comanda e finalizată dar userul nu găsește linkul → `resend_payment_link`; (c) cardul de plată e deja în chat și e valabil → NU promite că-l trimiți, spune-i simplu că linkul e deja mai sus în chat, cu butonul „Plătește acum".',
+        };
+      }
+
       // Treapta 0.7 — nudge de plată repetat (semantic, NU lexical). BUG observat
       // 2026-07-01 conv ddcbe197: după ce linkul de plată era trimis + explicat, userul a
       // dat un „Mulțumesc" pasiv, iar Irina a re-explicat pașii de plată de 2 ori la rând
@@ -5552,6 +5608,48 @@ ${transcript}`;
         instruction: 'Comanda e deja plătită — nu mai e nimic de plătit. check_order_status pentru statusul melodiei.',
       };
     }
+    // GUARD anti-resend REFLEX. BUG observat 2026-07-30 conv bf86284f + dbf701dd: linkul de
+    // plată a fost retrimis de 4 ori în ~4 minute, iar 3 din 4 retrimiteri au fost declanșate
+    // de mesaje care NU cereau linkul — „Insa nu vreau sami trimiti qcasa" (clienta se temea
+    // că-i trimitem maneaua prin poștă), „Nu vreau sa aud mai inainte" și un simplu „Ok".
+    // Tiparul: la orice mesaj ambiguu/nemulțumit al userului, modelul cade pe reflexul „mai
+    // trimit o dată linkul" — clientul primește un teanc de carduri identice și se blochează
+    // și mai tare. Dacă un card de plată e deja în chat de sub 5 minute, retrimiterea are voie
+    // DOAR când userul chiar o cere (link/plată/„nu merge"/„trimite") și NU refuză ceva.
+    try {
+      const freshLink = await this.msg
+        .createQueryBuilder('m')
+        .where('m."conversationId" = :cid', { cid: conv.id })
+        .andWhere(`m."messageType" = 'payment_link'`)
+        .andWhere(`m."createdAt" > now() - interval '5 minutes'`)
+        .orderBy('m."createdAt"', 'DESC')
+        .getOne();
+      if (freshLink) {
+        const lastUser = await this.msg.findOne({
+          where: { conversationId: conv.id, authorRole: 'user' },
+          order: { createdAt: 'DESC' },
+        });
+        const lastUserBody = (lastUser?.body ?? '').trim().toLowerCase();
+        // „nu merge / nu se deschide" NU intră aici (alea SUNT motive legitime de resend) —
+        // doar refuzul explicit al userului față de ceva ce i-am propus.
+        const userRefuses = /\bnu\s+(mai\s+)?(vreau|doresc|vream|as\s+vrea|a[șs]\s+vrea)\b|\bnu[-\s]?mi\s+trimit/i.test(lastUserBody);
+        const userAsksForLink =
+          /\b(link|linku|lincu|likr|lynk|plat|pl[aă]t|card|checkout|trimit|retrimit|expir|nu\s+merge|nu\s+funct|nu\s+se\s+deschide|nu\s+pot\s+plat|cum\s+plat)/i.test(
+            lastUserBody,
+          );
+        if (userRefuses || !userAsksForLink) {
+          this.logger.warn(`RESEND_LINK_REFLEX blocked on conv=${conv.id.slice(0, 8)} — card de plată trimis acum <5 min, iar userul nu l-a cerut.`);
+          return {
+            status: 'PAYMENT_LINK_RESEND_BLOCKED',
+            instruction:
+              'STAI — cardul de plată e DEJA în chat, trimis acum câteva minute, iar userul NU ți-a cerut să-l retrimiți. Încă un card identic nu-l ajută cu nimic și pare că nu-l asculți. Citește ultimul lui mesaj și răspunde la CE A SPUS EL: dacă se teme de ceva (că-i trimitem ceva acasă, că nu aude melodia înainte, că trebuie să dea adresa) → liniștește-l concret, la obiect; dacă a zis doar „ok/bine" → nu mai trimite nimic sau întreabă-l scurt dacă a reușit să deschidă linkul; dacă are o problemă REALĂ la plată (nu merge / nu se deschide / a expirat) → abia atunci retrimite. NU retrimite linkul ca reflex.',
+          };
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`resend reflex guard failed: ${(e as Error).message}`);
+    }
+
     const site = await this.sites.findById(ctx.conv.siteId);
     if (!site) return { error: 'site_not_found' };
 
