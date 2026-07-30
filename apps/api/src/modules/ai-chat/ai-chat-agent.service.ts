@@ -71,9 +71,14 @@ const VOICE_DEFAULTS = {
 } as const;
 
 /** Confirmări scurte, fără conținut propriu — userul doar validează, nu dă info nouă. */
+// BUG observat 2026-07-30 conv 1e1319a9: userul a confirmat recapitularea cu „K", care
+// lipsea din listă → guard-ul RECAP_REPEAT n-a prins și Irina a recapitulat a doua oară,
+// cerând încă o confirmare pentru exact aceleași date. Includem prescurtările reale.
 const AFFIRM_ONLY = new Set([
   'da', 'ok', 'okay', 'nu', 'bine', 'da da', 'sigur', 'mda', 'yes', 'yep',
   'merci', 'mersi', 'multumesc', 'mulțumesc', 'da.', 'ok.', 'nuu', 'daa',
+  'k', 'k.', 'kk', 'oki', 'okey', 'ok ok', 'corect', 'exact', 'perfect', 'super',
+  'de acord', 'sunt de acord', 'asa e', 'așa e', 'bineinteles', 'bineînțeles', '👍', '✅',
 ]);
 
 /** Mesaj fără niciun caracter real după curățarea formatării markdown. Un mesaj
@@ -1035,6 +1040,10 @@ formular mascat și nu a avansat deloc. NU repeta.`;
     if (d.recipientGender) fields.push(`• Voce: ${d.recipientGender === 'F' ? 'feminină' : 'masculină'}`);
     if (d.customLyrics && d.customLyrics.trim()) {
       fields.push('• Versuri draft în chat: DA — finalize le va folosi EXACT pe acestea');
+    } else if (ws?.lyricsPromisedAt) {
+      fields.push(
+        '⚠️ Versuri PROMISE userului și NEtrimise încă — datorie deschisă: apelează `generate_lyrics` imediat ce ai destinatarul + mesajul, ÎNAINTE de pachete/link de plată.',
+      );
     }
 
     const { stepLabel, nextAction } = this.computeFunnelNextAction(conv, ctx);
@@ -1129,6 +1138,17 @@ Mostre audio pentru play_sample → stiluri: [${ctx.styleSampleIds.join(', ') ||
         stepLabel: 'COLECTARE — lipsește ce să transmită melodia',
         nextAction:
           'Întreabă SCURT, o singură dată, ce vrea să-i transmită („câteva cuvinte din suflet, restul aranjez eu 🙂"). Când îți dă ceva real (chiar și o poveste scurtă), salvează-l în `message` cu wizard_update și mergi mai departe — NU insista pe „mesajul exact".',
+      };
+    }
+    // Datorie deschisă: i-ai promis versurile și încă nu i le-ai trimis. BUG conv 1e1319a9
+    // (2026-07-30) — promisiune repetată de 3 ori, apoi funnel-ul a mers mai departe spre
+    // pachete/plată și clienta a scris „Nu am primit nimic". Versurile trec ÎNAINTEA
+    // pachetului: sunt gratuite, sunt exact ce a cerut și decid dacă mai cumpără.
+    if (ws?.lyricsPromisedAt && !hasLyrics && hasRecipient && hasMessage) {
+      return {
+        stepLabel: 'DATORIE — i-ai promis versurile și încă nu le-a primit',
+        nextAction:
+          'Apelează `generate_lyrics` ACUM. Ai destinatarul și povestea, iar userul așteaptă versurile pe care i le-ai promis. NU trece la pachete, recapitulare sau link de plată înainte să le primească — pentru el arată ca o promisiune încălcată.',
       };
     }
     if (!hasTier) {
@@ -2892,6 +2912,25 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     // Email collection — pentru guest fără email
     let emailUpdated = false;
     let emailAutoCorrected: { from: string; to: string } | null = null;
+    // GUARD spațiu în partea LOCALĂ (BUG observat 2026-07-30 conv 1e1319a9): userul a
+    // scris „ana ask30@gmail.com", `autoCorrectEmail` a compactat spațiile silent în
+    // „anaask30@gmail.com" și Irina a mers mai departe cu adresa greșită — adevărata
+    // adresă era „ana.ask30@gmail.com" (spațiul ținea locul unui punct). Un spațiu
+    // înainte de @ e AMBIGUU (punct lipsă / cuvinte lipite), iar o adresă greșită =
+    // melodie plătită nelivrată. Nu ghicim: cerem userului să o rescrie. Celelalte
+    // câmpuri din ACELAȘI apel se salvează normal (ca la META_BRIEF_REJECTED).
+    let emailAmbiguousNote = '';
+    if (typeof args.email === 'string' && args.email.includes('@')) {
+      const trimmed = args.email.trim();
+      const localRaw = trimmed.slice(0, trimmed.lastIndexOf('@'));
+      if (/\s/.test(localRaw)) {
+        const compacted = `${localRaw.replace(/\s+/g, '')}${trimmed.slice(trimmed.lastIndexOf('@'))}`;
+        const dotted = `${localRaw.replace(/\s+/g, '.')}${trimmed.slice(trimmed.lastIndexOf('@'))}`;
+        this.logger.warn(`EMAIL_AMBIGUOUS_SPACE conv=${conv.id.slice(0, 8)} — „${trimmed}" nesalvat`);
+        emailAmbiguousNote = ` ⛔ Adresa de email primită are un spațiu înainte de @ („${trimmed}") — NU am salvat-o, pentru că nu se știe dacă acolo era un punct sau nimic. NU ghici și NU o repeta ca și cum ar fi bună. Întreabă-l scurt pe user care variantă e corectă („${compacted}" sau „${dotted}"?) ori roagă-l s-o rescrie legat, apoi re-apelează wizard_update cu adresa confirmată. O adresă greșită = melodie plătită care nu ajunge la client.`;
+        delete (args as { email?: unknown }).email;
+      }
+    }
     if (typeof args.email === 'string' && args.email.includes('@')) {
       // Auto-corectează greșeli evidente de domeniu (gamil→gmail, yahoo.con→yahoo.com).
       // NU mai întrebăm userul care e adresa corectă — o reparăm direct pe domeniu.
@@ -2984,17 +3023,27 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     const metaBriefNote = metaBriefRejected
       ? ' ⛔ Textul pe care l-ai pus în `message` descria USERUL sau faptul că are nevoie de ajutor („userul vrea…", „nu se descurcă", „are nevoie de ajutor") — NU l-am salvat, pentru că versurile ar fi ieșit exact despre asta. `message` = ce vrea DEDICATORUL să-i transmită DESTINATARULUI (sentimente, amintiri, calități, nume proprii), niciodată o descriere a conversației. Userul ți-a cerut AJUTOR să compună → ajută-l concret: într-un SINGUR mesaj cald pune-i 2 întrebări ușoare („De cât timp sunteți împreună?" + „Ce-ți place cel mai mult la el / o amintire dragă sau o poreclă?"), apoi construiești TU `message` din răspunsul lui și îl salvezi cu wizard_update. Dacă tot nu vrea să dea detalii, salvează un `message` scurt DESPRE DESTINATAR („Pentru soțul meu Daniel, o manea de dragoste, să-i spună cât de mult înseamnă pentru mine").'
       : '';
+    // Datorie deschisă „i-am promis versurile" (vezi handleGenerateLyrics MISSING_FIELDS,
+    // bug conv 1e1319a9): odată ce destinatarul + mesajul sunt complete, versurile trec
+    // ÎNAINTEA oricărui alt pas — altfel userul e împins spre plată cu promisiunea în aer.
+    const lyricsDebtNote =
+      state.lyricsPromisedAt && !state.data.customLyrics && state.data.recipientName && state.data.message
+        ? ' ⚠️ I-ai PROMIS userului versurile și încă nu le-a primit. Acum ai destinatarul + povestea → apelează `generate_lyrics` ACUM, înainte de email, pachete, recapitulare sau link de plată.'
+        : '';
     return {
       updated: Object.keys(updates),
       emailUpdated,
       emailAutoCorrected,
       metaBriefRejected,
+      emailAmbiguous: !!emailAmbiguousNote,
       data: state.data,
       missingFields: missing,
       readyToFinalize: missing.length === 0 && (emailUpdated || !!conv.email),
       lyricsInvalidated,
       instruction:
         metaBriefNote +
+        emailAmbiguousNote +
+        lyricsDebtNote +
         (missing.length === 0
           ? 'Toate câmpurile sunt complete. Recapitulează datele în send_message + cere confirmare, apoi wizard_finalize.'
           : `Mai întreabă: ${missing[0]} (un singur câmp pe mesaj).`) +
@@ -4028,9 +4077,16 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       // fel. Un singur recap rămâne permis; abia al 2-lea consecutiv forțează finalize.
       const isSendLinkConfirm = (t: string) =>
         /\?/.test(t) && /\blink/i.test(t) && /\btrimit/i.test(t) && /\b(corect|ok|bine|a[șs]a)\b/i.test(t);
+      // BUG observat 2026-07-30 conv 1e1319a9: „Recapitulare scurta: … E corect asa?" (prins)
+      // urmată imediat de „Perfect, am notat: … E ok asa?" — a doua a scăpat pentru că cerea
+      // confirmarea cu „ok", nu cu „corect", și n-avea „link". Userul confirmase deja („K"),
+      // deci a fost întrebat de 2 ori la rând același lucru. Orice „am notat …" încheiat cu o
+      // întrebare de confirmare (corect / ok / bine / așa / exact) e o reconfirmare de recap.
+      const isConfirmQuestion = (t: string) =>
+        /\?/.test(t) && /\b(corect|ok|bine|a[șs]a|exact)\b/i.test(t);
       const isRecapConfirm = (t: string) =>
         /recapitul/i.test(t) ||
-        (/\bnotat\b/i.test(t) && /\bcorect\b/i.test(t)) ||
+        (/\bnotat\b/i.test(t) && (/\bcorect\b/i.test(t) || isConfirmQuestion(t))) ||
         isSendLinkConfirm(t);
       // BUG observat 2026-07-17 conv fd9ab3d1: garda avea `!ctx.followUp`, deci follow-up-urile
       // o ocoleau complet — Irina a trimis recapitularea de 2 ori la rând ca follow-up (la +5 și
@@ -5761,10 +5817,29 @@ ${transcript}`;
     if (!conv) return { error: 'conversation gone' };
     const state = this.getOrInitWizardState(conv);
     if (!state.data.recipientName || !state.data.message) {
+      // Marcăm promisiunea ca NEONORATĂ. BUG observat 2026-07-30 conv 1e1319a9: userul a
+      // zis „aș vrea mai întâi să aud cum sună" + „vreau să aud cum se aude cu numele lui",
+      // Irina a promis versurile de 3 ori, `generate_lyrics` a picat pe MISSING_FIELDS, iar
+      // după ce userul a dat numele ea a trecut direct la email → pachete → link de plată.
+      // Versurile promise n-au mai venit niciodată (userul a scris „Nu am primit nimic").
+      // Flag-ul persistă și e re-injectat în instrucțiunea de la wizard_update.
+      if (!state.lyricsPromisedAt) {
+        state.lyricsPromisedAt = new Date().toISOString();
+        state.updatedAt = state.lyricsPromisedAt;
+        conv.wizardState = state;
+        await this.conv
+          .createQueryBuilder()
+          .update(Conversation)
+          .set({ wizardState: state })
+          .where('id = :id', { id: conv.id })
+          .execute();
+        ctx.conv = conv;
+      }
       return {
         status: 'MISSING_FIELDS',
         missingFields: ['recipientName', 'message'].filter((f) => !state.data[f as keyof WizardData]),
-        instruction: 'Înainte de versuri am nevoie de pentru cine e melodia + mesajul. Întreabă-le întâi (wizard_update), apoi generate_lyrics.',
+        instruction:
+          'Înainte de versuri am nevoie de pentru cine e melodia + mesajul. Întreabă-le întâi (wizard_update), apoi generate_lyrics. ⚠️ I-ai PROMIS userului versurile — e o datorie deschisă: în clipa în care ai destinatarul + mesajul, apelezi `generate_lyrics` ÎNAINTE de orice altceva (email, pachete, recapitulare, link de plată). NU-l duce spre plată cu promisiunea neonorată.',
       };
     }
     // GUARD anti-burst per tur: dacă am trimis DEJA un draft în acest run, nu mai
@@ -5847,6 +5922,7 @@ ${transcript}`;
     // userul mai adaugă poveste DUPĂ asta (altfel finalize ar trimite versuri stale).
     state.lyricsBasedOnMessage = state.data.message ?? '';
     state.lyricsDraftCount = (state.lyricsDraftCount ?? 0) + 1;
+    state.lyricsPromisedAt = null; // datoria „i-am promis versuri" e achitată
     ctx.lyricsSentThisTurn = true; // anti-burst: max 1 draft per tur (vezi guard sus)
     if (state.step === 'idle') state.step = 'collecting';
     state.updatedAt = new Date().toISOString();

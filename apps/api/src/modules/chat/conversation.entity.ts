@@ -94,6 +94,12 @@ export interface WizardState {
   appliedPromoCode?: string | null;
   /** Câte drafturi de versuri a generat AI-ul în chat (cap 3 — control cost). */
   lyricsDraftCount?: number;
+  /** Userul a cerut versurile (sau AI i le-a promis) dar încă NU le-a primit, pentru
+   *  că lipseau destinatarul/mesajul la momentul apelului `generate_lyrics`. Rămâne
+   *  setat până când draftul chiar pleacă în chat — vezi bug conv 1e1319a9 (2026-07-30),
+   *  unde Irina a promis versurile de 3 ori, apoi a trecut la email/pachete/plată și
+   *  nu le-a trimis niciodată. ISO timestamp = promisiune neonorată. */
+  lyricsPromisedAt?: string | null;
   /** Snapshot al `message`-ului din care s-a scris ULTIMUL draft de versuri (AI) —
    *  ca să detectăm când draftul devine stale (userul a mai dat poveste DUPĂ ce a
    *  fost generat). Non-null ⇒ `customLyrics` curent e draft AI (nu versuri lipite
