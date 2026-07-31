@@ -37,7 +37,12 @@ export interface PackageDef {
 export const PACKAGES: Record<PackageTier, PackageDef> = {
   basic: {
     tier: 'basic',
-    label: 'Basic',
+    // Label-ul VIZIBIL clientului. Cheia internă rămâne `basic`, dar peste tot în chat
+    // (chatPackageUpsellRo) și pe site pachetul de intrare se numește „Standard".
+    // BUG observat 2026-07-31 conv 18e99e1e: Irina i-a prezentat clientei „Standard 29.99",
+    // ea a ales „Pachetul standard", iar cardul de plată i-a venit „pachet Basic" — un nume
+    // de pachet pe care nu-l auzise niciodată, chiar în momentul plății.
+    label: 'Standard',
     priceCents: 2999,
     durationSec: 90,
     instrumental: false,
@@ -58,7 +63,7 @@ export const PACKAGES: Record<PackageTier, PackageDef> = {
     premiumPage: false,
     deliveryLabel: '10-15 min',
     featuresRo: [
-      'Tot ce e în Basic',
+      'Tot ce e în Standard',
       'Manea mai calitativă, cu instrumental mai bun și puțin mai lungă',
       '4 imagini social-media (TikTok/Instagram/Facebook)',
       'Livrare mai rapidă',

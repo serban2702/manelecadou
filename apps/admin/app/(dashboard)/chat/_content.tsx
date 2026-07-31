@@ -72,13 +72,13 @@ const presenceKey = (c: { userId: string | null; guestId: string | null }) =>
   c.userId ? `u:${c.userId}` : c.guestId ? `g:${c.guestId}` : '';
 
 const PACKAGE_OPTIONS: { tier: PackageTier; label: string; defaultCents: number; features: string }[] = [
-  { tier: 'basic', label: 'Basic', defaultCents: 2999, features: 'Manea + versuri + livrare email' },
+  { tier: 'basic', label: 'Standard', defaultCents: 2999, features: 'Manea + versuri + livrare email' },
   { tier: 'plus', label: 'Plus', defaultCents: 4999, features: '+ 4 imagini social-media' },
   { tier: 'premium', label: 'Premium', defaultCents: 6999, features: '+ videoclip + pagină premium + colaj' },
 ];
 
 const PACKAGE_DEFAULT_CENTS: Record<PackageTier, number> = { basic: 2999, plus: 4999, premium: 6999 };
-const PACKAGE_LABELS: Record<PackageTier, string> = { basic: 'Basic', plus: 'Plus', premium: 'Premium' };
+const PACKAGE_LABELS: Record<PackageTier, string> = { basic: 'Standard', plus: 'Plus', premium: 'Premium' };
 
 function packagePriceCents(site: unknown, tier: PackageTier): number {
   const overrides = (site as { packagePricesCents?: Partial<Record<PackageTier, number>> } | null | undefined)
@@ -1839,7 +1839,7 @@ function fmtGenValue(field: string, raw: string): string {
   if (field === 'occ') return GEN_OCCASIONS.find((o) => o.id === raw)?.name ?? raw;
   if (field === 'voice') return GEN_VOICES.find((v) => v.id === raw)?.name ?? raw;
   if (field === 'packageTier') {
-    return { basic: 'Basic', plus: 'Plus', premium: 'Premium' }[raw] ?? raw;
+    return { basic: 'Standard', plus: 'Plus', premium: 'Premium' }[raw] ?? raw;
   }
   return raw;
 }

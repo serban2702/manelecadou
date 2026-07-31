@@ -1382,10 +1382,10 @@ ETAPA 0 — COMANDĂ EXISTENTĂ (verifică ÎNAINTE de a porni wizard-ul):
       FREE_REMAKE_STARTED, Irina a scris „dacă mai vrei un detaliu fin, spune-mi acum și îl
       prind în refacere" — userul a adăugat un detaliu nou, dar refacerea pornise deja și
       nu s-a mai putut integra.
-  → 💸 OBIECȚIE DE BUGET după ce ai cotat prețul: Basic (${price}) e pachetul cel mai
+  → 💸 OBIECȚIE DE BUGET după ce ai cotat prețul: Standard (${price}) e pachetul cel mai
     ieftin — NU există variantă mai ieftină sub el. Dacă userul spune că are buget mic / „am
     doar X", NU-l urca la Plus/Premium (sunt MAI scumpe) și NU-i sugera o „variantă mai
-    ieftină" inexistentă. Liniștește-l că Basic e deja cea mai accesibilă opțiune și că
+    ieftină" inexistentă. Liniștește-l că Standard e deja cea mai accesibilă opțiune și că
     linkul e cel de mai sus. Dacă bugetul menționat e în ALTĂ monedă (ex. „am 16€"),
     convertește mental: ${price} e o sumă mică, aproape orice buget rezonabil o acoperă —
     nu trata din reflex ca „insuficient". BUG observat 2026-06-28 conv 1f2bf005: user a zis
@@ -4005,6 +4005,84 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         }
       }
 
+      // Treapta 0.66 — destinatarul dat de user, dar PIERDUT sau RE-CERUT. BUG observat
+      // 2026-07-31 conv 18e99e1e: Irina a întrebat „Cum se numește persoana pentru care vrei
+      // maneaua?", userul a răspuns „Marius", iar Irina a trecut direct la pitch-ul de pachete
+      // FĂRĂ `wizard_update` → numele s-a pierdut. Două mesaje mai încolo l-a re-cerut de DOUĂ
+      // ori la rând, parafrazat („Bun, am notat standard. Pentru cine e exact maneaua?" → „Bun,
+      // am pus pachetul standard. Pentru cine e maneaua?", Jaccard ≈0.64, sub pragul NEAR_DUP
+      // 0.72). Userul s-a zăpăcit și a răspuns „Pt soțul meu" → recipientName a ajuns „soțul
+      // meu" în loc de „Marius", corectat abia 2 mesaje mai târziu. Garda 0.65 nu prinde cazul:
+      // se declanșează doar pe „am notat" cu recipientName gol, iar aici AI chiar apelase
+      // `wizard_update` — dar pentru packageTier, nu pentru nume.
+      const asksRecipient = (t: string) =>
+        /(pentru cine (e|este|[îi]i|vrei|o vrei|faci|urmeaz)|cui [îi]i (dedic|faci|e)|cum (se nume[șs]te|[îi]l cheam[ăa]|o cheam[ăa])|numele (persoanei|celui|celei|destinatarului|s[ăa]rb[ăa]toritului))/i.test(t);
+      // „soțul meu" / „iubita mea" nu sunt nume proprii — acolo re-cererea numelui e legitimă.
+      // (mama/tata rămân în afara listei: sunt destinatari valizi ca atare în manele.)
+      const isRelationNotName = (t: string) =>
+        /^(pt\.?\s+|pentru\s+)?(so[țt]ul|so[țt]ia|so[țt]u|iubitul|iubita|prietenul|prietena|b[ăa]rbatul|b[ăa]rbatu|nevasta|nevast[ăa]|logodnicul|logodnica|fratele|sora|cumnatul|cumnata|na[șs]ul|na[șs]a|fiul|fiica|b[ăa]iatul|fata|copilul)\s*(meu|mea|mia)?\s*$/i.test(t.trim());
+      if (!ctx.recipientGuardFired) {
+        const freshConv = await this.conv.findOne({ where: { id: ctx.conv.id } });
+        const wizData = (freshConv?.wizardState as { data?: WizardData } | null)?.data ?? {};
+        const knownRecipient = (wizData.recipientName ?? '').trim();
+        const hasRealName = !!knownRecipient && !isRelationNotName(knownRecipient);
+        const lastAiAskedRecipient = !!lastAiNorm && asksRecipient(lastAiNorm);
+
+        // (a) Re-ceri un destinatar pe care îl AI DEJA salvat cu nume propriu.
+        if (asksRecipient(normalized) && hasRealName) {
+          ctx.recipientGuardFired = true;
+          this.logger.warn(`RECIPIENT_REASKED blocked on conv=${ctx.conv.id.slice(0, 8)} — re-cere destinatarul deja salvat („${knownRecipient}").`);
+          return {
+            sent: false,
+            messageType: 'noop',
+            status: 'RECIPIENT_ALREADY_KNOWN',
+            instruction:
+              `STAI — ȘTII deja pentru cine e maneaua: „${knownRecipient}" (e salvat în comandă). NU re-cere numele, e exact ce enervează clientul — i-l ceri a doua oară după ce ți l-a spus. Folosește numele în mesaj („pentru ${knownRecipient}") și cere câmpul care CHIAR lipsește (mesajul melodiei / emailul / pachetul), sau treci la pasul următor. Dacă ai nevoie de ALTCEVA decât numele (relația cu el, ocazia), întreabă exact acel lucru, formulat clar — nu „pentru cine e maneaua?". SINGURA situație în care întrebarea e legitimă: userul vrea o comandă NOUĂ, pentru altcineva — atunci apelează întâi \`start_new_order\` (resetează comanda) și abia apoi întreabă pentru cine e melodia nouă.`,
+          };
+        }
+
+        // (b) Ai cerut numele, userul a răspuns, iar tu îl re-ceri parafrazat.
+        if (asksRecipient(normalized) && !knownRecipient && lastAiAskedRecipient && !ctx.wizardUpdatedThisTurn) {
+          ctx.recipientGuardFired = true;
+          this.logger.warn(`RECIPIENT_REASK_LOOP blocked on conv=${ctx.conv.id.slice(0, 8)} — a 2-a cerere consecutivă a destinatarului, fără wizard_update.`);
+          return {
+            sent: false,
+            messageType: 'noop',
+            status: 'RECIPIENT_REASK_LOOP',
+            instruction:
+              'STAI — ai cerut DEJA în mesajul anterior pentru cine e maneaua, iar userul ți-a răspuns între timp. Nu-l întreba a doua oară reformulat. Recitește ultimul lui mesaj: dacă a spus un nume, salvează-l ACUM cu `wizard_update({recipientName})` și mergi mai departe. Dacă ți-a spus doar relația („soțul meu", „fina mea"), notează relația și cere numele propriu O SINGURĂ dată, explicit („Cum îl cheamă? îi pun numele în melodie"). Dacă a răspuns cu totul altceva (o întrebare, un preț), răspunde-i mai întâi LUI, nu repeta întrebarea ta.',
+          };
+        }
+
+        // (c) Cauza rădăcină: ai cerut numele, userul ți-a răspuns scurt (deci cu numele),
+        // iar tu avansezi la alt subiect fără să-l salvezi → informația se pierde.
+        if (!asksRecipient(normalized) && !knownRecipient && lastAiAskedRecipient && !ctx.wizardUpdatedThisTurn) {
+          const lastUserMsg = await this.msg.findOne({
+            where: { conversationId: ctx.conv.id, authorRole: 'user' },
+            order: { createdAt: 'DESC' },
+          });
+          const lastUserBody = (lastUserMsg?.body ?? '').trim();
+          const looksLikeNameAnswer =
+            !!lastUserBody &&
+            lastUserBody.length <= 60 &&
+            !/\?/.test(lastUserBody) &&
+            lastUserBody.split(/\s+/).length <= 5 &&
+            !AFFIRM_ONLY.has(lastUserBody.toLowerCase()) &&
+            !/\b(nu [șs]tiu|habar|mai t[âa]rziu|las[ăa]|nu conteaz)/i.test(lastUserBody);
+          if (looksLikeNameAnswer) {
+            ctx.recipientGuardFired = true;
+            this.logger.warn(`RECIPIENT_ANSWER_UNSAVED blocked on conv=${ctx.conv.id.slice(0, 8)} — nume primit („${lastUserBody.slice(0, 40)}") și nesalvat.`);
+            return {
+              sent: false,
+              messageType: 'noop',
+              status: 'RECIPIENT_ANSWER_UNSAVED',
+              instruction:
+                `STAI — tocmai ai întrebat pentru cine e maneaua, iar userul ți-a răspuns: „${lastUserBody.slice(0, 60)}". Dacă treci la alt subiect fără să salvezi, informația se pierde și peste două mesaje o s-o re-ceri — exact ce-l enervează pe client. Apelează ACUM \`wizard_update\` cu ce ți-a spus (recipientName = numele destinatarului; dacă ți-a dat și relația sau cine dedică, pune-le și pe alea), ABIA APOI trimite mesajul următor. Dacă răspunsul lui e o relație fără nume („soțul meu"), salveaz-o oricum și cere numele propriu în același mesaj.`,
+            };
+          }
+        }
+      }
+
       // Treapta 0.67 — „îți trimit ACUM linkul de plată" fără să fi trimis vreun link în
       // tura asta. BUG observat 2026-07-30 conv dbf701dd: după ce clienta a aprobat versurile
       // („Este perfect asa"), Irina a scris „Bun, am notat. Îți trimit acum linkul de plată și
@@ -6437,6 +6515,10 @@ interface AgentCtx {
    *  un mesaj „am notat ..." fără update persistat = date pierdute + câmp re-cerut peste
    *  două mesaje. (2026-07-17, audit conv fd9ab3d1.) */
   wizardUpdatedThisTurn?: boolean;
+  /** S-a declanșat deja o gardă pe destinatar (Treapta 0.66) în acest run? Un singur
+   *  nudge per tur — altfel, dacă modelul insistă cu același mesaj, blocajul ar putea
+   *  bucla în interiorul aceluiași tur. (2026-07-31, audit conv 18e99e1e.) */
+  recipientGuardFired?: boolean;
   /** Rulare de tip follow-up (reminder spațiat după tăcerea userului) vs. run normal
    *  declanșat de un mesaj al userului. Unele guard-uri anti-repetiție se relaxează pe
    *  follow-up (un reminder spațiat e legitim, spre deosebire de 2 nudge-uri la rând). */
