@@ -1965,8 +1965,14 @@ REGULI STRICTE:
     n-a aplicat nicio reducere — link plin de 49.99. NU repeta asta.
     → Dacă userul ÎNTREABĂ cum/unde să pună un cod sau de ce nu poate („de ce nu pot pune
       codul", „cum aplic codul", „unde pun codul") fără să fi scris încă codul → invită-l
-      cald să-l scrie direct în chat („Scrie-mi codul aici și ți-l aplic eu pe loc ✨"),
-      apoi apply_user_code. NU răspunde cu „prețul a fost deja cotat, nu pot recota" — n-are
+      cald să-l scrie direct în chat („Scrie-mi codul aici și ți-l aplic eu pe loc ✨") — UN
+      SINGUR mesaj — și ATÂT: aștepți codul, NU apelezi apply_user_code în tura asta.
+      ⛔ apply_user_code se apelează DOAR cu un cod propriu-zis (un singur cuvânt, gen
+      FRATE10), NICIODATĂ cu textul întrebării lui. BUG observat 2026-07-31 conv 18e99e1e:
+      la „Oare unde scrie codul" Irina a apelat apply_user_code({code:"OARE UNDE SCRIE
+      CODUL"}) → invalid, apoi a trimis DOUĂ mesaje la rând care spuneau același lucru
+      („Dacă ai un cod, scrie-mi-l aici..." + „Scrie-mi codul exact aici..."). Unul singur.
+      NU răspunde cu „prețul a fost deja cotat, nu pot recota" — n-are
       legătură cu întrebarea lui și îl zăpăcește (BUG observat 2026-06-16 conv af0b5a7d).
 29. ⛔ REFUND / BANII ÎNAPOI — INTERZIS să promiți. NU spune NICIODATĂ „primești banii
     înapoi", „îți returnăm banii", „refund garantat" — sub nicio formă, în niciun context.
@@ -3981,6 +3987,41 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         };
       }
 
+      // Treapta 0.62 — ACEEAȘI ÎNTREBARE repusă cu alt ambalaj. BUG observat 2026-07-31 conv
+      // 18e99e1e: „Bun, am notat standard. Pentru cine e exact maneaua?" urmat imediat de
+      // „Bun, am pus pachetul standard. Pentru cine e maneaua?". Pe mesajul ÎNTREG Jaccard e
+      // ≈0.64 — sub NEAR_DUP (0.72) — pentru că preambulul diferă („am notat" vs „am pus
+      // pachetul"). Dar întrebarea propriu-zisă e practic identică, iar userul primește de
+      // două ori la rând același lucru. Comparăm DOAR nucleul interogativ (ultima propoziție
+      // terminată cu „?"), unde overlap-ul iese 0.75. Nu blocăm mut: îi cerem să reformuleze
+      // CONCRET (cu un exemplu), pentru că dacă userul n-a răspuns prima dată, întrebarea
+      // pusă la fel a doua oară n-are cum să meargă mai bine.
+      // Excludem follow-up-urile: acolo reluarea unei întrebări rămase fără răspuns e chiar
+      // scopul mesajului (AiFollowupService), nu o repetiție robotică în același schimb.
+      const lastQuestionOf = (t: string): string | null => {
+        const qs = t.match(/[^.?!]*\?/g);
+        if (!qs?.length) return null;
+        const q = qs[qs.length - 1].trim();
+        return q.length >= 12 ? q : null;
+      };
+      const currentQuestion = !ctx.followUp ? lastQuestionOf(normalized) : null;
+      if (currentQuestion) {
+        const repeatedQuestion = recentNorm.slice(0, 2).some((prev) => {
+          const prevQ = lastQuestionOf(prev);
+          return !!prevQ && textOverlap(prevQ, currentQuestion) >= 0.7;
+        });
+        if (repeatedQuestion) {
+          this.logger.warn(`SAME_QUESTION blocked on conv=${ctx.conv.id.slice(0, 8)} — aceeași întrebare repusă cu alt ambalaj.`);
+          return {
+            sent: false,
+            messageType: 'duplicate_text',
+            status: 'SAME_QUESTION_BLOCKED',
+            instruction:
+              'STAI — ai pus DEJA exact întrebarea asta acum un mesaj; doar ai schimbat ambalajul din jurul ei. Dacă userul nu ți-a răspuns la ea, e pentru că nu i-a fost clară — pusă la fel a doua oară n-are cum să meargă mai bine. Fă UNA din două: (a) reformuleaz-o CONCRET, cu un exemplu de răspuns („Cum îl cheamă? — ex. Marius, Ana...") sau cu variante din care să aleagă; (b) dacă din ce ți-a scris deja poți deduce răspunsul, NU mai întreba — notează-l cu `wizard_update` și treci la pasul următor. Verifică întâi `wizard_get_state`: poate ai deja informația și o ceri degeaba.',
+          };
+        }
+      }
+
       // Treapta 0.65 — „am notat X" fără să fi apelat `wizard_update`. BUG observat
       // 2026-07-17 conv fd9ab3d1: userul a zis „Petr Petru sotu meu Dorin", iar Irina a
       // răspuns „Am notat: pentru sotul tau Dorin, de la Petr Petru" — fără niciun
@@ -5166,11 +5207,61 @@ ${transcript}`;
     const check = await this.assertNotManual(ctx);
     if (check.aborted) return { aborted: true };
     if (!ctx.conv.siteId) return { error: 'no_site' };
-    const code = rawCode.trim().replace(/\s+/g, '');
-    if (!code) {
+    // BUG observat 2026-07-31 conv 18e99e1e: userul a ÎNTREBAT „Oare unde scrie codul", iar
+    // Irina a apelat apply_user_code({code: "OARE UNDE SCRIE CODUL"}) — vechiul
+    // `.replace(/\s+/g,'')` lipea propoziția într-un pseudo-cod („OAREUNDESCRIECODUL"), care
+    // pica pe CODE_INVALID. Efect secundar: modelul, convins că userul chiar i-a dat un cod,
+    // a mai trimis un mesaj „scrie-mi codul aici" imediat după unul care spunea același lucru.
+    // Un cod promo e MEREU un singur token. Când primim mai multe cuvinte NU ghicim lexical
+    // care e codul — încercăm în DB toate variantele plauzibile (textul lipit, apoi fiecare
+    // cuvânt care nu e umplutură) și lăsăm baza să decidă. Așa merg și „CRACIUN 2026" (cod
+    // scris cu spațiu) și „aplică VARA20" (verb + cod). Dacă NICIO variantă nu e validă și
+    // textul n-are niciun cuvânt care să semene a cod, userul întreabă DESPRE coduri.
+    const rawTrimmed = rawCode.trim();
+    const words = rawTrimmed.split(/\s+/).filter(Boolean);
+    // Cuvinte funcționale din frazele despre coduri — niciunul nu e vreodată un cod în sine.
+    const FILLER = new Set([
+      'oare', 'unde', 'cum', 'ce', 'care', 'cand', 'când', 'daca', 'dacă', 'este', 'esti', 'ești',
+      'cod', 'codul', 'coduri', 'codurile', 'scrie', 'scriu', 'pun', 'pune', 'bag', 'introduc',
+      'reducere', 'reducerea', 'discount', 'voucher', 'promo', 'promotie', 'promoție', 'cupon', 'cuponul',
+      'aveti', 'aveți', 'ai', 'am', 'are', 'vreau', 'poate', 'pot', 'poti', 'poți', 'trebuie',
+      'aplic', 'aplica', 'aplică', 'aplicati', 'aplicați', 'foloseste', 'folosește', 'folosesc',
+      'incearca', 'încearcă', 'verifica', 'verifică', 'primit', 'gasit', 'găsit', 'zis', 'spus',
+      'dat', 'trimis', 'scris', 'uite', 'iata', 'iată', 'gata', 'salut', 'buna', 'bună', 'multumesc',
+      'mai', 'nu', 'da', 'un', 'una', 'unu', 'meu', 'mea', 'tau', 'tău', 'aici', 'acolo',
+      'pentru', 'despre', 'cu', 'la', 'de', 'pe', 'in', 'în', 'si', 'și', 'sa', 'să', 'se',
+      'imi', 'îmi', 'iti', 'îți', 'mi', 'ti', 'te', 'ma', 'mă', 'eu', 'tu', 'el', 'ea', 'coleg',
+    ]);
+    const wordCandidates = words
+      .map((w) => w.replace(/[^\p{L}\p{N}_-]+/gu, ''))
+      .filter((w) => w.length >= 3 && w.length <= 24 && !FILLER.has(w.toLowerCase()));
+    const glued = rawTrimmed.replace(/\s+/g, '');
+    const variants = [...new Set([glued, ...wordCandidates].filter((v) => v && v.length <= 24))];
+    if (!variants.length) {
       return { status: 'NO_CODE', instruction: 'Userul nu a dat un cod clar. Întreabă-l scurt care e codul.' };
     }
-    const usable = await this.lookupUsablePromoCode(code, ctx.conv.siteId, ctx.conv.email);
+
+    let usable: Awaited<ReturnType<typeof this.lookupUsablePromoCode>> = null;
+    let code = wordCandidates[0] ?? glued;
+    for (const variant of variants) {
+      const found = await this.lookupUsablePromoCode(variant, ctx.conv.siteId, ctx.conv.email);
+      if (found) {
+        usable = found;
+        code = variant;
+        break;
+      }
+    }
+
+    // Nicio variantă validă + niciun cuvânt care să semene a cod → e o întrebare, nu un cod.
+    if (!usable && !wordCandidates.length && words.length > 1) {
+      this.logger.warn(`NOT_A_CODE on conv=${ctx.conv.id.slice(0, 8)} — „${rawTrimmed.slice(0, 60)}" e o frază, nu un cod.`);
+      return {
+        status: 'NOT_A_CODE',
+        received: rawTrimmed.slice(0, 80),
+        instruction:
+          'Userul NU ți-a dat un cod — textul ăsta e o întrebare/o frază despre coduri (ex. „unde scriu codul?", „aveți vreun cod?"). NU-l trata ca pe un cod și NU-i spune că e invalid. Răspunde la ce a întrebat efectiv, o SINGURĂ dată: dacă vrea să știe unde se introduce, spune-i scurt că i-l aplici tu direct aici în chat, doar să ți-l scrie. Dacă i-ai spus deja asta în mesajul anterior, NU repeta — înseamnă că întreabă altceva sau că nu are cod, caz în care poți să-i faci tu o ofertă (`issue_discount_offer`). NU mai apela `apply_user_code` până nu-ți scrie efectiv un cod.',
+      };
+    }
     if (!usable) {
       return {
         status: 'CODE_INVALID',
