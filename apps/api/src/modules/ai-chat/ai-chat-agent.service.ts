@@ -866,7 +866,19 @@ integral în engleză („The payment link is already on the chat...") într-o c
         const neutralFallback = didCheckStatus
           ? 'Verific acum și îți spun imediat cum stă comanda ta 🙂'
           : 'Sunt aici 🙂 Spune-mi te rog încă o dată, în câteva cuvinte, ce ai nevoie — vreau să fiu sigură că am înțeles bine.';
-        const fallback = finalRaw && !isJunkText(finalRaw) ? finalRaw.slice(0, 800) : neutralFallback;
+        // Textul refuzat de garduri în turul ăsta NU are voie să intre pe ușa din dos.
+        // Vezi comentariul de pe `handleSendMessage` (conv 8a0f906d, 2026-08-02): dacă
+        // toate send_message-urile au fost blocate, finalContent e aproape mereu exact
+        // textul blocat, iar safety net-ul îl livra ocolind garda. Cădem pe textul
+        // neutru — userul primește tot un răspuns, dar nu cel interzis.
+        const blockedNorm = (ctx.blockedTexts ?? []).map((b) => b.toLowerCase().replace(/\s+/g, ' '));
+        const finalNorm = finalRaw.toLowerCase().replace(/\s+/g, ' ');
+        const wasBlockedThisTurn =
+          !!finalNorm && blockedNorm.some((b) => b === finalNorm || textOverlap(b, finalNorm) >= 0.7);
+        if (wasBlockedThisTurn) {
+          this.logger.warn(`AI auto safety-net: finalContent respins de un guard în turul curent pentru conv=${conv.id.slice(0, 8)} — trimit textul neutru.`);
+        }
+        const fallback = finalRaw && !isJunkText(finalRaw) && !wasBlockedThisTurn ? finalRaw.slice(0, 800) : neutralFallback;
         // GUARD anti-duplicat pe safety net. Safety net-ul persistă finalContent-ul DIRECT
         // (msg.save de mai jos), ocolind complet dedup-ul din handleSendMessage (EXACT_DUP /
         // NEAR_DUP). Tipic: userul dă un „Bine/Ok" pasiv, send_message al AI-ului e blocat ca
@@ -2529,9 +2541,39 @@ REGULI STRICTE:
 
     const resolved = await this.resolveCustomerGeneration(conv);
     if (!resolved) {
+      // „Fără generare" ≠ „fără comandă". Comanda poate fi în plin tunel în chat
+      // (date deja colectate în wizard, link de plată gata de trimis) — generarea
+      // se creează abia la finalize. BUG observat 2026-08-02 conv 8a0f906d: userul
+      // dăduse „Ok" la „mai lipsește doar un ok și îți trimit linkul de plată", AI a
+      // apelat check_order_status, a primit textul de mai jos și i-a răspuns userului
+      // „n-am găsit nicio comandă aici […] o luăm de la capăt" — deși wizard-ul avea
+      // recipientName + message + versurile lui custom. Vânzare pierdută pe un mesaj
+      // fals. Aici îi spunem explicit ce are salvat și îi interzicem formularea.
+      const wizard = this.getOrInitWizardState(conv);
+      const collected = Object.entries(wizard.data ?? {})
+        .filter(([, v]) => typeof v === 'string' && v.trim())
+        .map(([k]) => k);
+      if (collected.length > 0 || wizard.step !== 'idle') {
+        const missing = this.missingWizardFields(wizard.data ?? {});
+        return {
+          hasOrder: false,
+          orderInProgressInChat: true,
+          wizardStep: wizard.step,
+          collectedFields: collected,
+          missingFields: missing,
+          instruction:
+            'ATENȚIE — NU-i spune userului că „nu ai găsit nicio comandă" și NU o lua de la capăt: ' +
+            `comanda lui e ÎN LUCRU chiar aici, cu datele deja salvate (${collected.join(', ') || 'în curs'}). ` +
+            (missing.length
+              ? `Continuă tunelul normal: mai lipsește ${missing.join(', ')} — cere doar ce lipsește, într-un singur mesaj.`
+              : 'Datele sunt complete — mergi mai departe cu emailul (dacă lipsește) și wizard_finalize pentru linkul de plată.'),
+        };
+      }
       return {
         hasOrder: false,
-        instruction: 'Nu există comandă în această conversație. Dacă userul vrea să comande, începe wizard_get_state.',
+        instruction:
+          'Nu există comandă în această conversație. Dacă userul vrea să comande, începe wizard_get_state. ' +
+          'NU raporta userului stări interne („nu am găsit nimic în sistem") ca și cum ar fi o problemă a lui — pune-i pur și simplu următoarea întrebare din tunel.',
       };
     }
     const generation = resolved.generation;
@@ -3571,7 +3613,24 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     return { aborted: false };
   }
 
+  /** Wrapper peste `handleSendMessageInner`: ține minte textele pe care gardurile
+   *  le-au REFUZAT în turul curent. Safety net-ul din `runAgent` persistă
+   *  `finalContent` direct (msg.save), ocolind toate gardurile de aici — iar când
+   *  toate send_message-urile sunt blocate, `sentRealMessages` rămâne 0 și modelul
+   *  pune fix textul refuzat ca răspuns final. Rezultat: garda e complet anulată.
+   *  BUG observat 2026-08-02 conv 8a0f906d: „Spune-mi te rog numele persoanei pentru
+   *  care e melodia 🙂" a fost blocat cu RECIPIENT_REASK_LOOP și a ajuns totuși la
+   *  user, byte-identic, prin safety net — a treia oară la rând când era întrebat
+   *  același lucru. Lista e citită în safety net înainte să trimită finalContent. */
   private async handleSendMessage(ctx: AgentCtx, text: string): Promise<{ sent: boolean; messageType: string; status: string; instruction?: string }> {
+    const res = await this.handleSendMessageInner(ctx, text);
+    if (!res.sent && res.status !== 'EMPTY_TEXT_IGNORED' && text.trim()) {
+      (ctx.blockedTexts ??= []).push(text.trim().slice(0, 1200));
+    }
+    return res;
+  }
+
+  private async handleSendMessageInner(ctx: AgentCtx, text: string): Promise<{ sent: boolean; messageType: string; status: string; instruction?: string }> {
     const trimmed = text.trim().slice(0, 1200);
     if (!trimmed) return { sent: false, messageType: 'noop', status: 'EMPTY_TEXT_IGNORED' };
 
@@ -6583,6 +6642,10 @@ interface AgentCtx {
   suggestionMsgId: string | null;
   sentRealMessages: number;
   sentTexts: string[]; // ce a fost trimis pe acest run — pentru dedupe
+  /** Textele pe care gardurile din `handleSendMessage` le-au REFUZAT în turul curent.
+   *  Safety net-ul le verifică înainte să livreze `finalContent`, ca un text blocat să
+   *  nu ajungă la user pe ruta care ocolește gardurile. (2026-08-02, audit conv 8a0f906d.) */
+  blockedTexts?: string[];
   escalated: boolean;
   paymentLinkSent: boolean;
   requireApprovalForPayment: boolean;
