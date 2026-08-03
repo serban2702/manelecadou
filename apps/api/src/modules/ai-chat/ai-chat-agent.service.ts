@@ -391,6 +391,11 @@ export class AIChatAgentService {
       .set({ aiFollowupCount: () => '"aiFollowupCount" + 1' })
       .where('id = :id', { id: conversationId })
       .execute();
+    // Sincronizează contorul și pe obiectul din memorie: `runAgent` îl citește ca să știe
+    // AL CÂTELEA follow-up e din fereastra curentă de tăcere (1 = primul, 2 = al doilea).
+    // Fără asta ar rămâne la valoarea de dinaintea incrementului și garda de la Treapta
+    // 0.62 n-ar mai putea distinge reminderul legitim de a doua repetare a întrebării.
+    conv.aiFollowupCount = (conv.aiFollowupCount ?? 0) + 1;
     this.runningRuns.add(conversationId);
     try {
       await this.runAgent(conv, null, { followUp: true });
@@ -747,6 +752,16 @@ BUG observat 2026-06-22 conv 8a7a621a (lista de pachete trimisă de 3 ori la râ
 🌐 LIMBA (reafirmat aici, CRITIC): scrii follow-up-ul STRICT în limba conversației (${site?.locale ?? 'ro'}),
 NICIODATĂ engleză, indiferent de trigger. BUG observat 2026-07-21 conv 48053e27: follow-up-ul a ieșit
 integral în engleză („The payment link is already on the chat...") într-o conversație 100% în română.`;
+      if ((conv.aiFollowupCount ?? 1) >= 2) {
+        sysPrompt += `
+🛑 E AL DOILEA REMINDER la rând (userul n-a răspuns nici la primul). NU mai repune întrebarea —
+nici parafrazată. Dacă nu ți-a dat detaliul cerut de două ori, ori nu știe ce să scrie, ori nu are chef.
+Scoate-i TU obstacolul din drum: propune-i un draft gata făcut din ce știi deja („Îți fac una de suflet
+pentru [destinatar], cu urări din partea ta — zi-mi doar «ok» și pornesc 🙂") sau, dacă detaliul e
+opțional, mergi mai departe fără el. Dacă n-ai nimic genuin nou de spus → NU trimite nimic.
+BUG observat 2026-08-03 conv 1a8e89ac: aceeași cerere („spune-mi 2-3 idei") trimisă de 3 ori la rând,
+zero răspunsuri de la user între ele.`;
+      }
     }
 
     const messages: OAIMsg[] = [
@@ -774,6 +789,7 @@ integral în engleză („The payment link is already on the chat...") într-o c
         (await this.settings.get('AI_CHAT_REQUIRE_APPROVAL_FOR_PAYMENT')).toLowerCase() !== 'false',
       alertSentThisTurn: false,
       followUp: opts.followUp === true,
+      followUpIndex: opts.followUp ? (conv.aiFollowupCount ?? 1) : 0,
     };
 
     const tools = this.toolDefinitions();
@@ -1719,6 +1735,20 @@ ETAPA 4 — PARSE RĂSPUNS USER:
   → Apelează \`wizard_update\` cu TOATE câmpurile parsate dintr-un singur call:
     recipientName, dedicatorName (dacă a zis), message, email.
   → Dacă lipsește ceva → întreabă scurt doar ce lipsește (1 întrebare).
+  → 🙅 \`dedicatorName\` DOAR dacă userul spune EXPLICIT cine dedică („eu sunt Maria",
+    „de la Andrei", „scrie că e de la mine, Ionuț"). NU-l deduce NICIODATĂ din adresa de
+    email (alexdumitru80@ NU înseamnă că userul se numește Alex — poate fi contul soției,
+    al firmei sau o poreclă) și nu recicla un nume pe care userul îl atribuise ALTCUIVA.
+    Câmpul ajunge literal în versuri („de la X") și pe pagina melodiei — un nume greșit
+    acolo strică tot cadoul. E OPȚIONAL: mai bine gol decât ghicit.
+  → 🙅 Nu i te adresa userului pe nume dacă nu ți l-a spus el despre SINE. „Am notat, Alex"
+    când Alex era de fapt numele altcuiva sună fals și îl derutează.
+  → ❓ Dacă un nume îți vine în două roluri contradictorii (userul zice „pentru cumnatul
+    Alex", apoi la „cum îl cheamă?" răspunde „Marius") → NU alege tu în tăcere. Întreabă
+    scurt care e numele care intră în melodie („Deci maneaua e pentru Marius, da? Alex
+    rămâne cine — tu?"). BUG observat 2026-08-03 conv 1a8e89ac: „alex" din primul mesaj
+    (unde era cumnatul) a ajuns \`dedicatorName\`, iar Irina a început să-i zică userului
+    „Alex" fără ca acesta să se fi prezentat vreodată așa.
   → Dacă userul a inclus DETALII de context („ne-am cunoscut la sere în 2018",
     „are 2 copii", „sărbătorim 18 ani de căsătorie") — păstrează-le în message
     NATURAL, nu le ignora.
@@ -4137,28 +4167,41 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       // terminată cu „?"), unde overlap-ul iese 0.75. Nu blocăm mut: îi cerem să reformuleze
       // CONCRET (cu un exemplu), pentru că dacă userul n-a răspuns prima dată, întrebarea
       // pusă la fel a doua oară n-are cum să meargă mai bine.
-      // Excludem follow-up-urile: acolo reluarea unei întrebări rămase fără răspuns e chiar
+      // PRIMUL follow-up e exclus: acolo reluarea unei întrebări rămase fără răspuns e chiar
       // scopul mesajului (AiFollowupService), nu o repetiție robotică în același schimb.
+      // AL DOILEA follow-up (și următoarele) intră ÎNSĂ sub gardă. BUG observat 2026-08-03
+      // conv 1a8e89ac: Irina a cerut „Spune-mi 2-3 cuvinte ce vrei sa-i transmiti in melodie"
+      // (12:44), userul a tăcut, follow-up #1 a repus-o parafrazat (12:49, Jaccard pe mesajul
+      // întreg ≈0.5 — sub NEAR_DUP), iar follow-up #2 (12:54) a încercat mesajul IDENTIC (prins
+      // de Treapta 0), apoi a trecut cu o a treia formulare a aceleiași întrebări. Rezultat: 3
+      // mesaje consecutive de la Irina cu aceeași cerere și zero răspunsuri de la user — clasic
+      // spam de bot. Dacă userul a ignorat întrebarea de două ori, a treia oară n-o mai pune:
+      // ori îi scoate obstacolul din drum (îi propune tu un draft și îi ceri doar un „ok"),
+      // ori tace.
       const lastQuestionOf = (t: string): string | null => {
         const qs = t.match(/[^.?!]*\?/g);
         if (!qs?.length) return null;
         const q = qs[qs.length - 1].trim();
         return q.length >= 12 ? q : null;
       };
-      const currentQuestion = !ctx.followUp ? lastQuestionOf(normalized) : null;
+      const repeatFollowUp = ctx.followUp && (ctx.followUpIndex ?? 0) >= 2;
+      const currentQuestion = !ctx.followUp || repeatFollowUp ? lastQuestionOf(normalized) : null;
       if (currentQuestion) {
         const repeatedQuestion = recentNorm.slice(0, 2).some((prev) => {
           const prevQ = lastQuestionOf(prev);
           return !!prevQ && textOverlap(prevQ, currentQuestion) >= 0.7;
         });
         if (repeatedQuestion) {
-          this.logger.warn(`SAME_QUESTION blocked on conv=${ctx.conv.id.slice(0, 8)} — aceeași întrebare repusă cu alt ambalaj.`);
+          this.logger.warn(
+            `SAME_QUESTION blocked on conv=${ctx.conv.id.slice(0, 8)} — aceeași întrebare repusă cu alt ambalaj${repeatFollowUp ? ` (follow-up #${ctx.followUpIndex})` : ''}.`,
+          );
           return {
             sent: false,
             messageType: 'duplicate_text',
             status: 'SAME_QUESTION_BLOCKED',
-            instruction:
-              'STAI — ai pus DEJA exact întrebarea asta acum un mesaj; doar ai schimbat ambalajul din jurul ei. Dacă userul nu ți-a răspuns la ea, e pentru că nu i-a fost clară — pusă la fel a doua oară n-are cum să meargă mai bine. Fă UNA din două: (a) reformuleaz-o CONCRET, cu un exemplu de răspuns („Cum îl cheamă? — ex. Marius, Ana...") sau cu variante din care să aleagă; (b) dacă din ce ți-a scris deja poți deduce răspunsul, NU mai întreba — notează-l cu `wizard_update` și treci la pasul următor. Verifică întâi `wizard_get_state`: poate ai deja informația și o ceri degeaba.',
+            instruction: repeatFollowUp
+              ? 'STAI — e al DOILEA reminder la rând pentru exact aceeași întrebare, iar userul a ignorat-o deja de două ori. A treia oară îl pierzi de tot. NU o mai pune. Fă UNA din două: (a) ia-i tu munca din brațe — propune-i un draft concret din ce știi deja („Îți fac una de suflet pentru [destinatar], cu urări de la tine — zi-mi doar «ok» și pornesc") ca să nu mai trebuiască să scrie nimic, sau, dacă informația lipsă e opțională, mergi mai departe fără ea; (b) dacă n-ai un mesaj genuin NOU și util → NU trimite nimic, termină turul. Tăcerea e mai bună decât a treia repetare.'
+              : 'STAI — ai pus DEJA exact întrebarea asta acum un mesaj; doar ai schimbat ambalajul din jurul ei. Dacă userul nu ți-a răspuns la ea, e pentru că nu i-a fost clară — pusă la fel a doua oară n-are cum să meargă mai bine. Fă UNA din două: (a) reformuleaz-o CONCRET, cu un exemplu de răspuns („Cum îl cheamă? — ex. Marius, Ana...") sau cu variante din care să aleagă; (b) dacă din ce ți-a scris deja poți deduce răspunsul, NU mai întreba — notează-l cu `wizard_update` și treci la pasul următor. Verifică întâi `wizard_get_state`: poate ai deja informația și o ceri degeaba.',
           };
         }
       }
@@ -6772,4 +6815,9 @@ interface AgentCtx {
    *  declanșat de un mesaj al userului. Unele guard-uri anti-repetiție se relaxează pe
    *  follow-up (un reminder spațiat e legitim, spre deosebire de 2 nudge-uri la rând). */
   followUp?: boolean;
+  /** Al câtelea follow-up din fereastra curentă de tăcere (1 = primul, 2 = al doilea; 0 =
+   *  run normal). Primul reminder are voie să reia întrebarea rămasă fără răspuns; al
+   *  doilea NU — dacă userul a ignorat deja de două ori aceeași întrebare, a treia oară e
+   *  spam. (2026-08-03, audit conv 1a8e89ac.) */
+  followUpIndex?: number;
 }
