@@ -855,6 +855,59 @@ integral în engleză („The payment link is already on the chat...") într-o c
         // finalContent, fără tool call). Guard-ul din handleSendMessage exista din 2026-07-10
         // (conv a8970739) dar nu acoperea calea asta. Junk → cădem pe textul neutru.
         const finalRaw = (result.finalContent ?? '').trim();
+
+        // ── RETRY pe tur MUT (model care nu produce nici tool call, nici text) ──
+        // Când modelul se întoarce complet gol, textul neutru de mai jos îi cere clientului să
+        // reformuleze — deși întrebarea lui a fost perfectă. BUG observat 2026-08-03 conv
+        // 8649ce73: la „Standard cat timp o sa aiba melodia" (întrebare clară, zero tool calls în
+        // audit) clientul a primit „Spune-mi te rog încă o dată... ce ai nevoie". Vina cade pe
+        // client pentru o pană de-a noastră, iar întrebarea rămâne fără răspuns. Reîncercăm O
+        // dată, cu reasoning minimal (bugetul de tokeni consumat pe reasoning e cauza probabilă
+        // a răspunsului gol) și cu instrucțiunea explicită de a răspunde prin send_message.
+        const turnWasMute = result.toolCalls.length === 0 && (!finalRaw || isJunkText(finalRaw));
+        if (turnWasMute) {
+          this.logger.warn(`AI auto: tur MUT pe conv=${conv.id.slice(0, 8)} (0 tool calls, finalContent gol/junk) — reîncerc o dată cu reasoning minimal.`);
+          try {
+            const retry = await this.openai.chatWithTools({
+              messages: [
+                ...messages,
+                {
+                  role: 'system',
+                  content:
+                    'Turul precedent nu a produs niciun mesaj (eroare de-a noastră, nu a clientului). ' +
+                    'Răspunde ACUM la ULTIMUL mesaj al clientului, direct și concret, apelând `send_message`. ' +
+                    'Dacă a întrebat o cifră (durată, preț, termen), dă cifra reală din contextul de mai sus. ' +
+                    'NU-i cere să reformuleze și NU-l întreba ce are nevoie — a spus deja clar.',
+                },
+              ],
+              tools,
+              toolHandlers,
+              temperature: isFinite(temperature) ? temperature : 0.4,
+              reasoningEffort: 'minimal',
+              maxIterations: 3,
+              maxTokens,
+            });
+            await this.persistAudit({
+              ctx,
+              toolCalls: retry.toolCalls,
+              model: retry.model,
+              tokensIn: retry.usage?.prompt ?? null,
+              tokensOut: retry.usage?.completion ?? null,
+            });
+            const retryRaw = (retry.finalContent ?? '').trim();
+            if (ctx.sentRealMessages === 0 && retry.toolCalls.length === 0 && retryRaw && !isJunkText(retryRaw)) {
+              await this.handleSendMessage(ctx, retryRaw);
+            }
+            if (ctx.sentRealMessages > 0 || ctx.escalated) {
+              this.logger.log(`AI auto: retry pe tur mut a reușit pe conv=${conv.id.slice(0, 8)} — fără fallback.`);
+              return;
+            }
+            this.logger.warn(`AI auto: retry pe tur mut a rămas fără mesaj pe conv=${conv.id.slice(0, 8)} — cad pe textul neutru.`);
+          } catch (e) {
+            this.logger.warn(`AI auto: retry pe tur mut a eșuat pe conv=${conv.id.slice(0, 8)}: ${(e as Error).message}`);
+          }
+        }
+
         // Textul de rezervă NU trebuie să promită o revenire pe care nimeni n-o face. BUG
         // observat 2026-07-30 conv dbf701dd: „Înțeleg, lasă-mă o secundă să verific și revin
         // imediat." a fost trimis de 2 ori pe mesaje scrise prost, pe care modelul nu le
@@ -1196,6 +1249,20 @@ Mostre audio pentru play_sample → stiluri: [${ctx.styleSampleIds.join(', ') ||
     const plusCompareCents = packageCompareAtCents('plus', compareOverrides, overrides);
     const plusOldPrice = plusCompareCents ? `${(plusCompareCents / 100).toFixed(2)} ${cur}` : null;
     const packageUpsell = chatPackageUpsellRo(overrides, { compareAt: compareOverrides, currency: cur });
+    // Durata REALĂ a piesei per pachet, derivată din PACKAGES.durationSec (nu hardcodată).
+    // Fără ea, Irina confirma cifra propusă de client (vezi bug-ul din blocul PACHETE).
+    // Prezentăm un INTERVAL (85%..100% din țintă) pentru că `durationSec` e ținta cerută
+    // generatorului, iar livrarea reală cade puțin sub ea: media pe 30 zile la 3 aug 2026 era
+    // 85s pe Standard (țintă 90) și 128s / 119s pe Plus / Premium (țintă 150). O cifră exactă
+    // ar fi o supra-promisiune în celălalt sens.
+    const humanDuration = (targetSec: number) => {
+      const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+      const low = Math.round((targetSec * 0.85) / 10) * 10;
+      return `${mmss(low)}–${mmss(targetSec)} min`;
+    };
+    const basicDuration = humanDuration(packageDef('basic').durationSec);
+    const plusDuration = humanDuration(packageDef('plus').durationSec);
+    const premiumDuration = humanDuration(packageDef('premium').durationSec);
 
     // Stil Irina — extras din analiza datelor reale: 146 mesaje "Buna, sunt Irina!👋",
     // colocvial RO fără diacritice obligatoriu, prietenos, max 2-3 fraze, emoji moderat.
@@ -1275,11 +1342,21 @@ banilor și nu spune că are „drept de refund 30 zile" (vezi regula 29). BUG o
 conv 9d844ab9: AI a spus clientului că are drept de refund 30 zile — fals, nu oferim refund.
 
 PACHETE (în chat le prezinți pe TOATE 3 — chiar înainte de linkul de plată, vezi ETAPA 5.5):
-- STANDARD = ${price} (preț de intrare — maneaua personalizată).
-- PLUS = ${plusPrice}${plusOldPrice ? ` (REDUS de la ${plusOldPrice} — ofertă valabilă încă 3 zile)` : ''} (mai lungă și mai calitativă + imagini pentru social media).
-- PREMIUM = ${premiumPrice} (tot ce e în Plus + videoclip + pagină premium de ascultare).
+- STANDARD = ${price} (preț de intrare — maneaua personalizată), durează ${basicDuration}.
+- PLUS = ${plusPrice}${plusOldPrice ? ` (REDUS de la ${plusOldPrice} — ofertă valabilă încă 3 zile)` : ''} (mai lungă și mai calitativă + imagini pentru social media), durează ${plusDuration}.
+- PREMIUM = ${premiumPrice} (tot ce e în Plus + videoclip + pagină premium de ascultare), durează ${premiumDuration}.
 Când userul întreabă „cât costă?", spune că prețul PLEACĂ DE LA ${price} (Standard) și că
-sunt 3 pachete din care alege — nu ascunde variantele Plus și Premium.${plusOldPrice ? `
+sunt 3 pachete din care alege — nu ascunde variantele Plus și Premium.
+
+⏱️ CÂT DUREAZĂ MELODIA (lungimea piesei — NU confunda cu timpul de generare de 5-10 min):
+Standard ${basicDuration}, Plus ${plusDuration}, Premium ${premiumDuration} — durate aproximative, dar REALE.
+⛔ NU inventa și NU CONFIRMA o durată propusă de client dacă nu e cea reală. Dacă întreabă „durează
+3 min?" la Standard, răspunsul corect e „la Standard piesa e cam ${basicDuration}; dacă vrei mai lungă,
+Plus și Premium sunt cam ${plusDuration}" — NU „da, cam 3 minute e ok". BUG observat 2026-08-03 conv
+8649ce73: clientul a întrebat de 3 ori cât durează piesa la Standard; Irina a ocolit întrebarea de
+două ori („ai melodia personalizată simplă"), apoi i-a confirmat cifra propusă de el („Da, cam 3
+minute e o variantă ok pentru Standard") — dublul duratei reale, adică o promisiune pe care piesa
+livrată n-o respectă. Când clientul întreabă o CIFRĂ concretă, dă cifra reală din lista de mai sus.${plusOldPrice ? `
 OFERTĂ PLUS: pachetul Plus e acum ${plusPrice} în loc de ${plusOldPrice} — reducere pe timp limitat (mai e ~3 zile). Menționeaz-o ca argument real când userul ezită între pachete, dar fără presiune agresivă.` : ''}
 
 ═══════════════════════════════════════════════════════════════════════
@@ -3791,6 +3868,11 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     // („da-mi te rog emailul de livrare si iti trimit linkul de plata" imediat după ce a
     // întrebat pentru cine, fără să aștepte răspunsul). Nu prinde lookup-ul unei comenzi
     // existente („emailul folosit la comandă") — acela n-are link/plată/livrare.
+    // BUG observat 2026-08-03 conv 8649ce73: mesajul blocat conținea DOUĂ lucruri — răspunsul la
+    // întrebarea clientului („cum o să primesc melodia") ȘI cererea prematură de email. Blocajul a
+    // aruncat tot mesajul, iar instrucțiunea („întreabă primul câmp care lipsește") a dus AI-ul să
+    // abandoneze răspunsul: clientul a repetat întrebarea de 2 ori până a primit un răspuns.
+    // Instrucțiunea cere acum explicit păstrarea răspunsului și tăierea doar a cererii de email.
     const asksDeliveryEmail =
       /e-?mail/i.test(trimmed) &&
       /(link|pl[aă]t|livrare|vrei\s+s[aă]\s+prime[sș]ti)/i.test(trimmed) &&
@@ -3812,7 +3894,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
               messageType: 'noop',
               status: 'PREMATURE_EMAIL_BLOCKED',
               instruction:
-                `STAI — NU cere emailul de livrare și NU anunța linkul de plată încă: mai lipsește ${missingHuman}. Emailul + plata sunt ULTIMUL pas — nu ai ce livra dacă nu știi ce melodie faci. Întreabă ACUM, scurt și doar câte un câmp pe mesaj, primul lucru care lipsește. Emailul îl ceri abia după ce ai și destinatarul și mesajul.`,
+                `STAI — NU cere emailul de livrare și NU anunța linkul de plată încă: mai lipsește ${missingHuman}. Emailul + plata sunt ULTIMUL pas — nu ai ce livra dacă nu știi ce melodie faci. Întreabă ACUM, scurt și doar câte un câmp pe mesaj, primul lucru care lipsește. Emailul îl ceri abia după ce ai și destinatarul și mesajul. ⚠️ DACĂ mesajul blocat RĂSPUNDEA la o întrebare a clientului (cum primește melodia, dacă o poate descărca, cât durează, ce include pachetul): PĂSTREAZĂ răspunsul — retrimite-l ACUM fără propoziția care cere emailul, și adaugă în ACELAȘI mesaj întrebarea pentru câmpul care lipsește. Clientul TREBUIE să primească răspuns la ce a întrebat; e interzis să tratezi blocajul ăsta ca pe un ordin de a-i ignora întrebarea.`,
             };
           }
         }
@@ -4162,10 +4244,23 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
             order: { createdAt: 'DESC' },
           });
           const lastUserBody = (lastUserMsg?.body ?? '').trim();
+          // Mulți clienți scriu întrebări FĂRĂ semnul întrebării („Cum voi primi melodia",
+          // „Cat dureaza", „Si ce inseamna simpla") — scurte, ≤5 cuvinte, deci treceau drept
+          // „răspuns cu numele destinatarului". BUG observat 2026-08-03 conv 8649ce73: „Cum voi
+          // primi melodia" a declanșat RECIPIENT_ANSWER_UNSAVED, blocând mesajul care chiar
+          // răspundea la întrebare. Detectăm întrebarea după cuvântul interogativ de la început.
+          // Cerem ≥2 cuvinte pentru varianta fără „?": un singur cuvânt poate fi chiar numele
+          // destinatarului („Cati" = Cătălina), și nu vrem să ratăm salvarea lui.
+          const looksLikeQuestion =
+            /\?/.test(lastUserBody) ||
+            (lastUserBody.split(/\s+/).length >= 2 &&
+              /^\s*(?:si|[șs]i|dar|ok|bine|deci)?\s*(cum|ce|c[âa]nd|c[âa]t|c[âa][țt]i|c[âa]te|unde|cine|care|de\s+ce|oare|pot|po[țt]i|se\s+poate|exist[ăa]|ave[țt]i|aveti|am\s+voie|e\s+posibil)\b/i.test(
+                lastUserBody,
+              ));
           const looksLikeNameAnswer =
             !!lastUserBody &&
             lastUserBody.length <= 60 &&
-            !/\?/.test(lastUserBody) &&
+            !looksLikeQuestion &&
             lastUserBody.split(/\s+/).length <= 5 &&
             !AFFIRM_ONLY.has(lastUserBody.toLowerCase()) &&
             !/\b(nu [șs]tiu|habar|mai t[âa]rziu|las[ăa]|nu conteaz)/i.test(lastUserBody);
