@@ -58,6 +58,22 @@ class CreateUserDto {
  */
 const STATS_EPOCH = new Date('2026-05-25T00:00:00+03:00');
 
+/**
+ * Emailul clientului pentru un rând din admin, din toate sursele posibile, în
+ * ordinea încrederii: contul → sesiunea guest → emailul din Stripe Checkout.
+ *
+ * Ultimul fallback e obligatoriu: când clientul revine printr-un link de
+ * recovery de pe alt device (sau după ce s-a golit localStorage), primește o
+ * sesiune guest NOUĂ, fără email, iar plata se leagă de ea. Emailul real există
+ * doar în `payments.customerEmail` (populat din webhook-ul Stripe). Fără
+ * fallback, rândul apare gol în admin deși știm perfect cine e clientul.
+ *
+ * Tratăm și string-ul gol, nu doar null: `guest_sessions.email` e '' pentru
+ * sesiunile fără email, iar `??` sare doar peste null/undefined.
+ */
+const clientEmail = (...candidates: Array<string | null | undefined>): string | null =>
+  candidates.find((e) => !!e && e.trim().length > 0)?.trim() ?? null;
+
 /** Suma plății în bani RON indiferent de valută (alias `t`) — aceeași logică cu
  *  ProfitabilityService.AMOUNT_RON (amountRonCents → RON → curs Stripe → fallback EUR). */
 const AMOUNT_RON_SQL = `
@@ -465,11 +481,11 @@ export class AdminController {
 
     return gens.map((g) => {
       const p = g.paymentId ? payById.get(g.paymentId) : undefined;
-      const email = g.ownerUserId
-        ? userEmail.get(g.ownerUserId) ?? null
-        : g.ownerGuestId
-          ? guestEmail.get(g.ownerGuestId) ?? null
-          : null;
+      const email = clientEmail(
+        g.ownerUserId ? userEmail.get(g.ownerUserId) : null,
+        g.ownerGuestId ? guestEmail.get(g.ownerGuestId) : null,
+        p?.customerEmail,
+      );
       return {
         ...g,
         ownerEmail: email,
@@ -525,9 +541,13 @@ export class AdminController {
 
     if (search && search.trim()) {
       const term = `%${search.trim().toLowerCase()}%`;
+      // Căutăm în toate sursele afișate în coloana „Email" (vezi `clientEmail`),
+      // inclusiv `customerEmail` din Stripe — altfel plățile legate de o sesiune
+      // guest nouă (revenire prin recovery) rămân negăsibile după email.
       qb.andWhere(
         `(
-          EXISTS (SELECT 1 FROM users u WHERE u.id = p."userId" AND LOWER(u.email) LIKE :term)
+          LOWER(p."customerEmail") LIKE :term
+          OR EXISTS (SELECT 1 FROM users u WHERE u.id = p."userId" AND LOWER(u.email) LIKE :term)
           OR EXISTS (SELECT 1 FROM guest_sessions g WHERE g.id = p."guestId" AND LOWER(g.email) LIKE :term)
         )`,
         { term },
@@ -770,11 +790,11 @@ export class AdminController {
       const attr = attrByPaymentId.get(p.id) ?? null;
       return {
         ...p,
-        email: p.userId
-          ? userEmail.get(p.userId) ?? null
-          : p.guestId
-            ? guestEmail.get(p.guestId) ?? null
-            : null,
+        email: clientEmail(
+          p.userId ? userEmail.get(p.userId) : null,
+          p.guestId ? guestEmail.get(p.guestId) : null,
+          p.customerEmail,
+        ),
         attribution: attr,
         invoice: invoiceByPaymentId.get(p.id) ?? null,
         generation: g
