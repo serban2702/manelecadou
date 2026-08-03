@@ -4038,6 +4038,38 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         };
       }
 
+      // Treapta 0.51 — FOLLOW-UP CARE RE-EXPLICĂ. BUG observat 2026-08-03 conv b52a8a53:
+      // userul a întrebat „aici trebuie sa pun versurile apoi imi generati melodia?", Irina i-a
+      // răspuns complet (07:15), userul n-a mai scris, iar follow-up-ul (07:20) a retrimis
+      // ACELAȘI răspuns reformulat („aici imi scrii versurile tale daca le ai, iar noi le
+      // folosim exact asa..."). Jaccard pe mesajul întreg ≈0.48 — sub NEAR_DUP (0.72) — iar
+      // Treapta 0.62 (SAME_QUESTION) nu prinde nici ea: mesajul n-are „?", plus primul
+      // follow-up e exclus acolo. Rezultat: userul a primit de două ori aceeași explicație
+      // fără să fi scris nimic între ele.
+      // Un follow-up legitim e un nudge SCURT care aduce ceva NOU (exact ce cere promptul:
+      // „UN nudge scurt, uman, de O propoziție"). Deci blocăm două tipare clar patologice:
+      //   • re-explicare LUNGĂ (>140 caractere) cu overlap ≥0.42 față de ultimul mesaj AI;
+      //   • practic aceeași frază (overlap ≥0.55), indiferent de lungime.
+      // Un nudge real („Ai reușit cu plata? 🙏", „Mai am nevoie doar de numele persoanei 😊")
+      // are overlap sub 0.2 față de un mesaj lung anterior, deci nu e atins. Reluarea SCURTĂ
+      // a unei întrebări rămase fără răspuns — scopul declarat al primului follow-up — rămâne
+      // permisă (sub 140 caractere și cu alte cuvinte decât explicația precedentă).
+      if (ctx.followUp && lastAiNorm) {
+        const fuOverlap = textOverlap(lastAiNorm, normalized);
+        if (fuOverlap >= 0.55 || (normalized.length > 140 && fuOverlap >= 0.42)) {
+          this.logger.warn(
+            `FOLLOWUP_REEXPLAIN blocked on conv=${ctx.conv.id.slice(0, 8)} — follow-up #${ctx.followUpIndex ?? 1} re-explică ultimul mesaj (overlap ${fuOverlap.toFixed(2)}).`,
+          );
+          return {
+            sent: false,
+            messageType: 'duplicate_text',
+            status: 'FOLLOWUP_REEXPLAIN_BLOCKED',
+            instruction:
+              'STAI — ăsta e un FOLLOW-UP (userul nu ți-a scris nimic între timp), iar mesajul tău re-explică exact ce ai spus deja în ultimul mesaj, doar cu alte cuvinte. Userul l-a citit o dată; a doua oară sună a bot. Un follow-up bun e UN nudge scurt, de o propoziție, care aduce ceva NOU: fie îi scoți obstacolul din drum („Îți fac eu un draft și zi-mi doar dacă îți place 🙂"), fie întrebi concret doar ce lipsește („Mai am nevoie doar de [câmpul exact] 😊"), fie verifici o acțiune de-a lui („Ai reușit cu plata? 🙏"). Dacă n-ai un astfel de nudge genuin nou → NU trimite nimic, termină turul. Tăcerea e corectă aici.',
+          };
+        }
+      }
+
       // Treapta 0.52 — COADĂ DE POLITEȚE. BUG observat 2026-07-22 conv 0243873e: userul a
       // zis „Nu, mulțumesc" → Irina „Cu drag, o zi bună!" → userul „La fel!" → Irina
       // „Mulțumesc, la fel!". Ultimul mesaj e umplutură pură: conversația era deja închisă
