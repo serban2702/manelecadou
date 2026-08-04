@@ -121,6 +121,33 @@ function formatLastMessageDate(d: Date): string {
   return format(d, 'd MMM yyyy', { locale: ro });
 }
 
+/**
+ * Timestamp-ul din bula de mesaj. Doar ora pentru mesajele de azi; pentru
+ * restul prefixăm data, altfel un „19:22" pe o conversație veche de câteva
+ * zile pare de azi și derutează la citirea firului.
+ */
+function formatMessageTimestamp(d: Date): string {
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (sameDay) return format(d, 'HH:mm');
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday =
+    d.getFullYear() === yesterday.getFullYear() &&
+    d.getMonth() === yesterday.getMonth() &&
+    d.getDate() === yesterday.getDate();
+  if (isYesterday) return `ieri ${format(d, 'HH:mm')}`;
+
+  if (d.getFullYear() === now.getFullYear()) {
+    return format(d, 'd MMM, HH:mm', { locale: ro });
+  }
+  return format(d, 'd MMM yyyy, HH:mm', { locale: ro });
+}
+
 function playAdminPing() {
   if (typeof window === 'undefined') return;
   try {
@@ -1694,7 +1721,10 @@ function ChatBubble({
       )}
       <div className="text-[10px] uppercase tracking-wider opacity-60 mb-1 flex items-center gap-1 flex-wrap">
         {fromAdmin ? <Crown className="h-3 w-3" /> : <User className="h-3 w-3" />}
-        {fromAdmin ? 'Admin' : 'User'} · {format(new Date(m.createdAt), 'HH:mm', { locale: ro })}
+        {fromAdmin ? 'Admin' : 'User'} ·{' '}
+        <span title={format(new Date(m.createdAt), 'd MMMM yyyy, HH:mm:ss', { locale: ro })}>
+          {formatMessageTimestamp(new Date(m.createdAt))}
+        </span>
         {m.editedAt && (
           <span className="italic opacity-70 normal-case tracking-normal">(editat)</span>
         )}
