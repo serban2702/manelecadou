@@ -130,6 +130,20 @@ export class PaymentsService {
     return (await this.getStripe()) !== null;
   }
 
+  /**
+   * Emailul clientului pentru coloana `customerEmail`, normalizat (varchar 320).
+   *
+   * Îl persistăm la CREAREA plății, nu doar din webhook: dacă clientul abandonează
+   * Stripe Checkout, `checkout.session.completed` nu mai vine niciodată și plata
+   * rămâne fără email în admin, deși îl știam în momentul în care am pornit
+   * checkout-ul (din cont, din sesiunea guest sau din owner-ul generării).
+   * Webhook-ul suprascrie ulterior cu emailul real tastat în Stripe, dacă diferă.
+   */
+  private static customerEmailValue(email?: string | null): string | null {
+    const e = (email ?? '').trim().toLowerCase();
+    return e ? e.slice(0, 320) : null;
+  }
+
   /** Suprataxă pe dedicație. Folosește valorile DIN site config
    *  (tipSurchargePercent + cap) cu fallback la constantele globale dacă DB
    *  nu are valori setate. Se aplică pentru orice monedă — fiecare site își
@@ -221,6 +235,7 @@ export class PaymentsService {
         userId: input.userId,
         guestId: input.guestId,
         siteId: site.id,
+        customerEmail: PaymentsService.customerEmailValue(input.email),
       }),
     );
 
@@ -338,6 +353,9 @@ export class PaymentsService {
         userId: input.userId,
         guestId: input.guestId,
         siteId: site.id,
+        // Emailul știut în momentul checkout-ului (cont / sesiune guest / owner-ul
+        // generării). Fără el, o plată abandonată rămâne anonimă în admin.
+        customerEmail: PaymentsService.customerEmailValue(resolvedEmail),
         // Meta Pixel attribution — persistăm la create ca să fie disponibile în
         // webhook-ul Purchase (server→server, fără cookies de browser).
         fbp: input.fbp ?? null,
@@ -571,6 +589,7 @@ export class PaymentsService {
         userId: input.userId,
         guestId: input.guestId,
         siteId: site.id,
+        customerEmail: PaymentsService.customerEmailValue(input.email),
         // Meta Pixel attribution — persistăm la create ca să fie disponibile în
         // webhook-ul Purchase (server→server, fără cookies de browser).
         fbp: input.fbp ?? null,
