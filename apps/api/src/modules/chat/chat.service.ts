@@ -1881,6 +1881,18 @@ export class ChatService implements OnModuleInit {
     // cere confirmarea corecturii în loc să sărbătorească.
     const remakeVariant =
       'Am refăcut-o cum ai cerut 🙏 Ascultă te rog ULTIMA versiune de pe pagina melodiei (reîncarcă pagina) și spune-mi dacă acum e totul ok.';
+    // Variante pentru CLIENTUL CARE REVINE (a 2-a comandă plătită încolo pe aceeași
+    // conversație). Textele de mai sus sunt scrise pentru prima comandă — „Mulțumim că
+    // ne-ai dat o șansă", „Mulțumesc că ne-ai ales!" — și sună ca și cum nu-l recunoști
+    // pe omul care e la a cincea manea. BUG observat 2026-08-04 conv 0bba7f26: client cu
+    // 8 comenzi plătite (5 doar în seara aia), fiecare livrare întâmpinată cu formula de
+    // client nou, plus „Mă bucur tare că ți-a ieșit!" repetat la 35 de minute distanță.
+    const returningVariants = [
+      'Gata și asta! 🎵 Mulțumesc că te tot întorci la noi, chiar înseamnă mult. Dacă vrei ceva schimbat la ea, zi-mi.',
+      'Încă una gata! 🎶 Îmi place că ai prins gustul. Spune-mi dacă vrei să ajustăm ceva.',
+      'Livrată! ✨ Mersi că ne ești alături de fiecare dată. Sunt aici dacă mai facem una.',
+      'S-a făcut și asta! 🎤 Sper să iasă cadoul perfect. Orice ai nevoie, mă găsești aici.',
+    ];
     let isRemakeDelivery = false;
     if (generationId) {
       try {
@@ -1948,27 +1960,54 @@ export class ChatService implements OnModuleInit {
         authorRole: 'admin',
         messageType: 'text',
         aiGenerated: true,
-        body: In([...variants, remakeVariant]),
+        body: In([...variants, ...returningVariants, remakeVariant]),
         createdAt: MoreThan(new Date(Date.now() - 3 * 60 * 1000)),
       },
     });
     if (recentThankYou) return;
 
-    // Evită repetarea IDENTICĂ a ultimei mulțumiri: clientul care primește a 2-a
+    // Livrare pentru un client care a mai primit o melodie pe conversația asta → ton de
+    // client fidel, nu de prim contact. (Refacerile au deja `remakeVariant` mai sus.)
+    let isReturningCustomer = false;
+    if (!isRemakeDelivery && generationId) {
+      try {
+        const priorRows: { id: string }[] = await this.msg.manager.query(
+          `SELECT id FROM chat_messages
+           WHERE "conversationId" = $1 AND "messageType" = 'song_preview'
+             AND payload->>'generationId' IS NOT NULL
+             AND payload->>'generationId' <> $2
+           LIMIT 1`,
+          [conversationId, generationId],
+        );
+        isReturningCustomer = !!priorRows[0];
+      } catch {
+        /* best-effort — fallback pe variantele standard */
+      }
+    }
+
+    // Evită repetarea unei mulțumiri folosite RECENT: clientul care primește a 2-a
     // melodie (ex. încă o generare pe site, mai târziu) primea exact același text
     // („Mă bucur că totul a ieșit cum trebuie!" de 2x — 2026-06-18, audit conv
-    // 40db5e6a). Exclude varianta folosită ultima dată în această conversație.
-    const lastThankYou = await this.msg.findOne({
+    // 40db5e6a). Excluderea doar a ULTIMEI variante nu era de ajuns la clienții cu multe
+    // comenzi: în conv 0bba7f26 „Mă bucur tare că ți-a ieșit!" a ieșit de două ori în
+    // aceeași seară, la 35 de minute distanță (o singură livrare între ele). Excludem
+    // ultimele 3 mulțumiri din conversație — cu 4-5 variante în pool, un client nu mai
+    // aude aceeași frază decât după 4 comenzi.
+    const lastThankYous = await this.msg.find({
       where: {
         conversationId,
         authorRole: 'admin',
         messageType: 'text',
         aiGenerated: true,
-        body: In(variants),
+        body: In([...variants, ...returningVariants]),
       },
       order: { createdAt: 'DESC' },
+      take: 3,
     });
-    const pool = lastThankYou ? variants.filter((v) => v !== lastThankYou.body) : variants;
+    const usedRecently = new Set(lastThankYous.map((m) => m.body));
+    const basePool = isReturningCustomer ? returningVariants : variants;
+    const fresh = basePool.filter((v) => !usedRecently.has(v));
+    const pool = fresh.length > 0 ? fresh : basePool;
     const text = isRemakeDelivery ? remakeVariant : pool[Math.floor(Math.random() * pool.length)];
     const conv = await this.conv.findOne({ where: { id: conversationId } });
     if (!conv) return;

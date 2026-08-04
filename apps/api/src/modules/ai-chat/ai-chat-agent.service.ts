@@ -4070,6 +4070,58 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         }
       }
 
+      // Treapta 0.515 — FOLLOW-UP #2 CARE RE-CERE ACELAȘI CÂMP DE COMANDĂ. Toate gardurile
+      // de mai sus sunt LEXICALE (Jaccard / semnul întrebării) și de aceea ratează exact
+      // cazul cel mai frecvent: modelul re-cere aceeași informație cu alte cuvinte.
+      // BUG observat 2026-08-04 conv 906f6eed: Irina a cerut mesajul pentru Marian de TREI
+      // ori la rând — „Spune-mi te rog și ce vrei să-i transmită melodia" (21:06, run normal),
+      // „Spune-mi pe scurt ce vrei sa-i transmiti lui Marian in melodie" (21:11, follow-up #1),
+      // „Perfect, am nevoie doar de mesajul pentru Marian: ce vrei sa-i spună melodia?"
+      // (21:16, follow-up #2) — zero răspunsuri de la user între ele, apoi userul a plecat.
+      // De ce a scăpat de tot: Jaccard între ultimele două ≈0.07 (flexiuni diferite:
+      // „melodie/melodia", „scurt/scurtă", „spune/spună", „frumos/frumoasă" sunt tokeni
+      // distincți), iar Treapta 0.62 (SAME_QUESTION) cere ca mesajul ANTERIOR să aibă „?" —
+      // follow-up #1 formulase cererea la imperativ, fără semn de întrebare.
+      // Fix de fond: nu mai comparăm TEXTE, ci ne uităm la STARE. La follow-up #2 userul n-a
+      // scris nimic de două ori la rând, deci `missingFields` e prin definiție neschimbat —
+      // orice re-cerere a unui câmp încă lipsă e a treia solicitare consecutivă, indiferent
+      // cum e ambalată. Promptul îi spune deja asta (blocul „E AL DOILEA REMINDER"), dar
+      // modelul o ignoră → detecția se mută în cod.
+      // Un follow-up bun la pasul ăsta NU cere date: propune un draft gata făcut („Îți fac
+      // eu una de suflet pentru Marian — zi-mi doar «ok»") și rămâne permis, pentru că nu
+      // menționează câmpul lipsă. La fel „Ai reușit cu plata? 🙏" (nu e cerere de date).
+      if (ctx.followUp && (ctx.followUpIndex ?? 1) >= 2) {
+        try {
+          const convFresh = await this.conv.findOne({ where: { id: ctx.conv.id } });
+          const missing = convFresh ? this.missingWizardFields(this.getOrInitWizardState(convFresh).data) : [];
+          if (missing.length > 0) {
+            const asksForData =
+              /(spune|zi[-\s]?mi|scrie[-\s]?mi|d[aă][-\s]?mi|trimite[-\s]?mi|am nevoie|mai am nevoie|lipse[sș]te|a[sș]tept de la tine)/i.test(trimmed) ||
+              /\b(ce|cine|cum|care)\b[^.?!]*\?/i.test(trimmed);
+            const FIELD_HINTS: Record<string, RegExp> = {
+              recipientName: /(nume|cheam[aă]|pentru cine|destinatar|persoana)/i,
+              message: /(mesaj|transmit|s[aă][-\s]?i (spun|zic)|spun[aă] melodia|poveste)/i,
+            };
+            const repeatedField = missing.find((f) => FIELD_HINTS[f as string]?.test(trimmed));
+            if (asksForData && repeatedField) {
+              const human =
+                repeatedField === 'recipientName' ? 'numele persoanei' : 'mesajul / povestea pentru melodie';
+              this.logger.warn(
+                `FOLLOWUP_SAME_FIELD blocked on conv=${ctx.conv.id.slice(0, 8)} — follow-up #${ctx.followUpIndex} re-cere „${String(repeatedField)}".`,
+              );
+              return {
+                sent: false,
+                messageType: 'duplicate_text',
+                status: 'FOLLOWUP_SAME_FIELD_BLOCKED',
+                instruction: `STAI — ceri din nou ${human}, dar userul a ignorat deja cererea asta de DOUĂ ori (n-a mai scris nimic între timp). A treia oară, oricât de frumos ai reformula-o, îl pierzi de tot. NU o mai pune. Fă UNA din două: (a) ia-i tu munca din brațe — scrie-i o propunere CONCRETĂ din ce știi deja despre comandă și cere-i doar un „ok" („Îți fac una de suflet, cu tot ce simți pentru el — zi-mi doar «ok» și mă apuc 🙂"); dacă spune ok, salvezi tu propunerea cu \`wizard_update({message: ...})\` și mergi mai departe; (b) dacă n-ai un mesaj genuin nou și util → NU trimite nimic, termină turul. Tăcerea e mai bună decât a treia cerere.`,
+              };
+            }
+          }
+        } catch {
+          /* best-effort — dacă lookup-ul pică, mesajul trece prin restul gardurilor */
+        }
+      }
+
       // Treapta 0.52 — COADĂ DE POLITEȚE. BUG observat 2026-07-22 conv 0243873e: userul a
       // zis „Nu, mulțumesc" → Irina „Cu drag, o zi bună!" → userul „La fel!" → Irina
       // „Mulțumesc, la fel!". Ultimul mesaj e umplutură pură: conversația era deja închisă
