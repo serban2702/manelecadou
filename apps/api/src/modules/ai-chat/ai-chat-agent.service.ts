@@ -2166,6 +2166,16 @@ REGULI STRICTE:
     prima (Gabriella, email greșit), apoi „am și melodie pt Mihaela, aceeași situație" → AI a
     cotat 29.99 ca pentru comandă nouă și a ignorat „am plătit melodia pt Mihaela", revenind
     haotic la Gabriella. Mihaela nu exista în sistem → trebuia inspect_customer_data + escalate.
+    🔎 Semnal automat: \`check_order_status\` întoarce \`paymentClaimUnverified: true\` când userul
+    tocmai a reclamat o plată (sumă/„acum") pe care sistemul NU o vede. Când vezi flag-ul,
+    aplici procedura de mai sus AD LITTERAM. ⛔ În special: NU-i retrimite melodia veche cu
+    „Gata, e aici 🎵" și NU spune „ți-am trimis-o și pe email" — nu ai trimis nimic acum, iar
+    pentru client sună a confirmare că i-ai procesat comanda reclamată.
+    BUG observat 2026-08-05 conv fe06d874: client cu o comandă din iulie (Raul Blaga) scrie „am
+    făcut plata pentru fratele meu Bodor" → „Acuma am făcut plata 69 de roni". Nicio plată nouă
+    în sistem. Irina i-a trimis linkul melodiei vechi cu „ți-am trimis-o și pe email" și i-a
+    repetat de 2 ori că la comanda asta apare Raul Blaga — fără să caute plata reclamată și fără
+    să anunțe echipa. Clientul a rămas convins că a plătit 69 lei degeaba.
 32. ⛔ POZE / IMAGINI / COLAJ VIDEO NU SUNT MODIFICARE DE MELODIE. Pozele de share și
     colajul video sunt FEATURE-URI DE PACHET pe pagina melodiei (/m/...): imaginile de
     social media se generează automat la pachetele Plus/Premium, iar colajul video cu pozele
@@ -2781,26 +2791,49 @@ REGULI STRICTE:
     // linkul, userul a zis „Bine" → check_order_status a re-întors instrucțiunea „ok" care
     // cerea MEREU „Trimite linkul Gata e aici" → AI a retrimis mesajul byte-identic. Branch-urile
     // in_progress aveau deja gardul ăsta (conv de41034b), branch-ul ok nu-l avea.
+    // BUG observat 2026-08-05 conv fe06d874: filtrul de mai jos cerea `messageType='text'`
+    // ȘI `aiGenerated=true`, dar livrarea REALĂ a melodiei se face printr-un mesaj
+    // `song_preview` emis de SISTEM (post-generare), nu de AI. Deci linkAlreadyDelivered
+    // era mereu false după livrarea automată → AI relivra „Gata, e aici 🎵" ca și cum ar
+    // fi o livrare nouă (aici: la 13 zile după, în plin conflict pe „am mai plătit o dată").
+    // Acum ne uităm la TOATE mesajele către user (orice authorRole admin/system, orice tip).
     let linkAlreadyDelivered = false;
+    let lastDeliveryAgeMinutes: number | null = null;
     if (linkToSong) {
       try {
-        const recentAi = await this.msg.find({
-          where: { conversationId: ctx.conv.id, authorRole: 'admin', aiGenerated: true, messageType: 'text' as ChatMessage['messageType'] },
+        const recentOut = await this.msg.find({
+          where: { conversationId: ctx.conv.id, authorRole: In(['admin', 'system']) as unknown as ChatMessage['authorRole'] },
           order: { createdAt: 'DESC' },
-          take: 4,
+          take: 12,
         });
-        linkAlreadyDelivered = recentAi.some((m) => m.body.includes(linkToSong));
+        const delivered = recentOut.find((m) => (m.body ?? '').includes(linkToSong));
+        linkAlreadyDelivered = !!delivered;
+        if (delivered) {
+          lastDeliveryAgeMinutes = Math.floor((Date.now() - new Date(delivered.createdAt).getTime()) / 60000);
+        }
       } catch {
         /* ignore */
       }
     }
+    // Livrarea e „proaspătă" doar dacă melodia tocmai a fost făcută. Pe o comandă veche,
+    // „ți-am trimis-o și pe email" sună ca o acțiune executată ACUM (nu e) și îl face pe
+    // client să creadă că i s-a procesat o comandă nouă — vezi același conv fe06d874.
+    const freshDelivery = ageMinutes <= 60 && (lastDeliveryAgeMinutes === null || lastDeliveryAgeMinutes <= 60);
 
     // Instrucțiune pentru AI bazată pe healthCategory — diferențiat clar
     let instruction: string;
     if (healthCategory === 'ok') {
       instruction = linkAlreadyDelivered
-        ? `Manea pentru ${generation.recipientName} e gata și i-ai trimis DEJA linkul ${linkToSong} într-un mesaj recent. ⛔ NU retrimite același link / același mesaj „Gata, e aici" — sună robotic și e spam. Dacă userul DOAR confirmă/mulțumește („ok", „bine", „mersi", „am înțeles") FĂRĂ o întrebare nouă → răspunde foarte scurt o singură dată (ex. „Cu drag! 🙂 Dacă mai vrei ceva, sunt aici.") sau, dacă deja ai zis asta, NU mai trimite nimic. Dacă pune o întrebare NOUĂ (ex. cum o pune pe TikTok, vrea o modificare) → răspunde la acea întrebare concret, NU relivra linkul. Comanda e pentru „${generation.recipientName}" — folosește EXACT acest nume.`
-        : `Manea pentru ${generation.recipientName} e gata. Trimite userului link-ul ${linkToSong} cu un mesaj cald („Gata, e aici 🎵 - ${linkToSong}"). Menționează scurt că a primit-o și pe email. ⚠️ Comanda LIVRATĂ e pentru „${generation.recipientName}" (numele REAL din comandă) — NU spune alt nume. BUG observat 2026-06-20 conv eae31c0f: AI alterna haotic între 2 nume pe ACEEAȘI piesă. Dacă userul insistă că a vrut pentru ALTCINEVA → NU nega, NU inventa: recunoaște clar că piesa livrată e pentru ${generation.recipientName} și oferă-i o comandă nouă (start_new_order) sau request_modification pentru destinatarul corect.`;
+        ? `Manea pentru ${generation.recipientName} e gata și i-a fost DEJA livrat linkul ${linkToSong}${
+            lastDeliveryAgeMinutes !== null && lastDeliveryAgeMinutes >= 1440
+              ? ` (acum ${Math.floor(lastDeliveryAgeMinutes / 1440)} zile — deci NU e o livrare de acum, nu o prezenta ca fiind proaspătă)`
+              : ' într-un mesaj recent'
+          }. ⛔ NU retrimite același link / același mesaj „Gata, e aici" — sună robotic și e spam. Dacă userul DOAR confirmă/mulțumește („ok", „bine", „mersi", „am înțeles") FĂRĂ o întrebare nouă → răspunde foarte scurt o singură dată (ex. „Cu drag! 🙂 Dacă mai vrei ceva, sunt aici.") sau, dacă deja ai zis asta, NU mai trimite nimic. Dacă pune o întrebare NOUĂ (ex. cum o pune pe TikTok, vrea o modificare) → răspunde la acea întrebare concret, NU relivra linkul. Comanda e pentru „${generation.recipientName}" — folosește EXACT acest nume.`
+        : `Manea pentru ${generation.recipientName} e gata. Trimite userului link-ul ${linkToSong} cu un mesaj cald („Gata, e aici 🎵 - ${linkToSong}"). ${
+            freshDelivery
+              ? 'Menționează scurt că a primit-o și pe email.'
+              : `⛔ Melodia asta a fost livrată acum ${ageMinutes >= 1440 ? `${Math.floor(ageMinutes / 1440)} zile` : `${ageMinutes} min`} — NU spune „ți-am trimis-o (acum) și pe email" și NU o prezenta ca pe o livrare nouă; sună ca și cum tocmai i-ai procesat o comandă, ceea ce e fals. Spune simplu că e melodia din comanda de atunci.`
+          } ⚠️ Comanda LIVRATĂ e pentru „${generation.recipientName}" (numele REAL din comandă) — NU spune alt nume. BUG observat 2026-06-20 conv eae31c0f: AI alterna haotic între 2 nume pe ACEEAȘI piesă. Dacă userul insistă că a vrut pentru ALTCINEVA → NU nega, NU inventa: recunoaște clar că piesa livrată e pentru ${generation.recipientName} și oferă-i o comandă nouă (start_new_order) sau request_modification pentru destinatarul corect.`;
     } else if (healthCategory === 'in_progress') {
       instruction = `Plata e ok, se generează acum maneaua pentru ${generation.recipientName} (rulează de ${ageMinutes} min, normal 5-10 min total). Răspunde NATURAL și variat — alterneză:
 - „Se generează acum, durează 5-10 minute în total. O primești pe email și aici."
@@ -2947,6 +2980,30 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         ? ` ⛔ Comanda e DEJA identificată — NU cere emailul „ca să verifici/cauți" (îl ai: ${ctx.conv.email}). Răspunde direct la ce a întrebat.`
         : ` ⛔ Comanda e DEJA identificată în conversație — NU cere emailul „ca să verifici". Răspunde direct la ce a întrebat.`);
 
+    // 💸 Userul reclamă o plată RECENTĂ pe care noi n-o vedem nicăieri (regula 31, dar
+    // detectată în cod — modelul o rata). BUG observat 2026-08-05 conv fe06d874: clientul
+    // avea o comandă veche (Raul Blaga, 29.99 din iulie) și a scris „Am făcut plata pentru
+    // o manea pentru fratele meu bodor" → „Acuma am făcut plata 69 de roni". Nu exista
+    // NICIO plată nouă în DB. Irina i-a trimis melodia VECHE cu „Gata, e aici 🎵 ...
+    // ți-am trimis-o și pe email" și i-a repetat că e pentru Raul Blaga — adică i-a
+    // confirmat implicit o comandă inexistentă, în loc să verifice și să escaladeze.
+    // Risc direct de „mi-ați luat banii" / chargeback.
+    const paymentClaim = await this.detectUnverifiedPaymentClaim(conv);
+    if (paymentClaim.unverified) {
+      instruction =
+        `🚨 PLATĂ RECLAMATĂ DAR NEGĂSITĂ. Userul tocmai a spus că A PLĂTIT${paymentClaim.amountText ? ` (${paymentClaim.amountText})` : ''}, ` +
+        `dar în sistem NU există nicio plată nouă pe contul lui` +
+        (paymentClaim.lastPaidAtText ? ` — ultima (și singura) plată e din ${paymentClaim.lastPaidAtText}.` : '.') +
+        ` ⛔ NU-i confirma comanda reclamată, ⛔ NU-i trimite melodia veche ca și cum ar fi ea („Gata, e aici"), ` +
+        `⛔ NU spune „ți-am trimis-o pe email" (n-ai trimis nimic acum) și ⛔ NU-l pune să plătească din nou. ` +
+        `Procedură OBLIGATORIE, în ordinea asta: 1) apelează \`inspect_customer_data\` — plata poate fi pe alt email / alt device; ` +
+        `2) dacă tot n-o găsești, întreabă-l CALM și CONCRET un singur lucru: cu ce email (sau nume de pe card) a făcut plata acum, ` +
+        `ca s-o poți căuta; 3) dacă insistă că a plătit → \`alert_admins\` + \`escalate_to_human\` cu rezumat (ce destinatar reclamă, ce sumă, ce ai găsit) ` +
+        `și spune-i diplomat „Verific imediat cu echipa plata asta și revin — mulțumesc de răbdare 🙏". ` +
+        `Dacă destinatarul reclamat diferă de cel din comanda găsită, spune deschis ce vezi tu, fără să-l contrazici agresiv, și clarifică-i că nu e nevoie să mai plătească până nu verificăm.` +
+        `\n\n--- Context comandă găsită (informativ, NU i-o prezenta ca fiind cea reclamată) ---\n` + instruction;
+    }
+
     return {
       hasOrder: true,
       generationId: generation.id,
@@ -2954,6 +3011,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       generationStatus: generation.status,
       audioReady,
       linkToSong,
+      linkAlreadyDelivered,
       allSongs,
       pendingModification,
       packageInfo,
@@ -2963,11 +3021,62 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       isStuck,
       retryCount,
       identityConfidence,
+      paymentClaimUnverified: paymentClaim.unverified,
       freeRemakeAvailable: paid && !(generation as { freeRemakeUsedAt?: Date | null }).freeRemakeUsedAt,
       recipientName: generation.recipientName,
       currentEmail: ctx.conv.email ?? null,
       instruction,
     };
+  }
+
+  /**
+   * Detectează cazul „clientul zice că a plătit ACUM, dar noi nu vedem nicio plată nouă".
+   * Regula 31 din prompt cere inspect_customer_data + escalate în situația asta, dar
+   * modelul o rata când plata reclamată venea peste o comandă veche deja livrată
+   * (conv fe06d874, 2026-08-05). Verificarea e deterministă: revendicare de plată în
+   * ultimul mesaj al userului + marker de recență SAU sumă concretă, iar cea mai recentă
+   * plată reușită a clientului e mai veche de 2 ore (sau nu există deloc).
+   */
+  private async detectUnverifiedPaymentClaim(
+    conv: Conversation,
+  ): Promise<{ unverified: boolean; amountText?: string; lastPaidAtText?: string }> {
+    try {
+      const lastUser = await this.msg.findOne({
+        where: { conversationId: conv.id, authorRole: 'user' },
+        order: { createdAt: 'DESC' },
+      });
+      const body = (lastUser?.body ?? '').trim();
+      if (!body) return { unverified: false };
+      const claimsPayment =
+        /\b(am (f[aă]cut|efectuat|dat|trimis) plata|am pl[aă]tit|am achitat|plata (a fost )?(f[aă]cut[aă]|efectuat[aă]|trimis[aă])|am dat banii|am trimis banii)\b/i.test(
+          body,
+        );
+      if (!claimsPayment) return { unverified: false };
+      const recent = /\b(acum|acuma|tocmai|azi|ast[aă]zi|adineauri|adineaori|chiar acum|de cur[aâ]nd)\b/i.test(body);
+      const amountMatch = body.match(/\b\d{1,4}([.,]\d{1,2})?\s*(lei|ron|roni|euro|eur|€)\b/i);
+      if (!recent && !amountMatch) return { unverified: false };
+
+      const rows: { paidAt: Date | null }[] = await this.conv.manager.query(
+        `SELECT MAX("paidAt") AS "paidAt" FROM payments
+          WHERE status = 'paid'
+            AND ( ($1::uuid IS NOT NULL AND "userId" = $1::uuid)
+               OR ($2::uuid IS NOT NULL AND "guestId" = $2::uuid)
+               OR ($3::text IS NOT NULL AND "customerEmail" = $3::text) )`,
+        [conv.userId ?? null, conv.guestId ?? null, conv.email ?? null],
+      );
+      const lastPaidAt = rows?.[0]?.paidAt ? new Date(rows[0].paidAt) : null;
+      const ageHours = lastPaidAt ? (Date.now() - lastPaidAt.getTime()) / 3_600_000 : Infinity;
+      if (ageHours <= 2) return { unverified: false }; // plata reclamată chiar există
+
+      return {
+        unverified: true,
+        amountText: amountMatch ? amountMatch[0] : undefined,
+        lastPaidAtText: lastPaidAt ? lastPaidAt.toISOString().slice(0, 10) : undefined,
+      };
+    } catch (e) {
+      this.logger.warn(`payment claim check failed: ${(e as Error).message}`);
+      return { unverified: false };
+    }
   }
 
   // ============== WIZARD HANDLERS ==============
@@ -3381,6 +3490,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         state.paymentId = null;
         state.linkReissueCount = 0;
         state.priceQuotedCount = 0;
+        state.lastRecapSig = null; // comandă nouă → o recapitulare nouă e legitimă
         await this.conv
           .createQueryBuilder()
           .update(Conversation)
@@ -4538,6 +4648,56 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
             ? 'STAI — ai recapitulat DEJA comanda și ai cerut confirmarea; userul a văzut mesajul și nu a răspuns. O A DOUA recapitulare ca follow-up nu ajută cu nimic — doar sună robotic. Verifică `wizard_get_state`: dacă ai tot ce trebuie (destinatar + mesaj + email), NU mai cere confirmarea a doua oară — apelează `wizard_finalize` ACUM și trimite-i linkul de plată, asta aștepta. Dacă lipsește exact un câmp, cere-l DIRECT într-o propoziție scurtă, fără să reiei toată comanda. Dacă n-ai nici linkul de trimis, nici un câmp concret de cerut → NU trimite nimic.'
             : 'STAI — ai recapitulat DEJA comanda și ai cerut confirmarea („e corect?" / „daca e corect, iti trimit linkul"). NU recapitula A DOUA OARĂ — sună robotic și întârzie plata. Un detaliu mic adăugat de user NU cere o recapitulare completă nouă + reconfirmare: notează-l scurt și treci DIRECT la acțiune. Decide acum UNA din două: (a) dacă NU ai prezentat încă cele 3 pachete (ETAPA 5.5 — Standard/Plus/Premium), prezintă-le O SINGURĂ dată acum, apoi așteaptă alegerea; (b) dacă pachetele au fost deja prezentate (sau userul a ales), apelează `wizard_finalize` ca să trimiți linkul de plată (tool-ul verifică singur dacă mai lipsește ceva). NU mai trimite un al 2-lea mesaj de tip „recap + e corect?".',
         };
+      }
+
+      // Treapta 0.65 — recapitulare cu EXACT aceleași date ale comenzii, a doua oară.
+      // Gărzile 0.55b / RECAP_RECONFIRM prind doar cazurile în care userul confirmase cu
+      // un „da/ok" simplu, respectiv în care recapitulările sunt lipite una de alta. BUG
+      // observat 2026-08-05 conv fe06d874: Irina a recapitulat de 3 ori aceeași comandă
+      // (destinatar Raul Blaga, mama Gheorghița, 39 de ani) — a 3-a oară imediat după ce
+      // userul alesese pachetul („Standar"), deci ultimul mesaj user nu era AFFIRM_ONLY și
+      // între recapitulări se strecurase mesajul cu pachetele. Userul, derutat, a răspuns
+      // „29" în loc de „da". Aici comparăm ce contează de fapt: DATELE recapitulate. Dacă
+      // nu s-a schimbat nimic real de la ultima recapitulare, a doua nu aduce nimic —
+      // alegerea pachetului NU e un motiv să reiei toată comanda.
+      const asksRecapConfirmation = isRecapConfirm(normalized) || (asksConfirmation(normalized) && /\?/.test(trimmed));
+      if (asksRecapConfirmation) {
+        const freshForRecap = await this.conv.findOne({ where: { id: ctx.conv.id } });
+        const stRecap = freshForRecap ? this.getOrInitWizardState(freshForRecap) : null;
+        if (stRecap && !['paid', 'generating', 'completed'].includes(stRecap.step)) {
+          const dRecap = stRecap.data ?? {};
+          const sig = [dRecap.recipientName, dRecap.dedicatorName, dRecap.message, freshForRecap?.email]
+            .map((v) => (v ?? '').toString().trim().toLowerCase())
+            .join('|');
+          // Excepție: userul CERE explicit să-i reiei comanda — atunci recapitularea e utilă.
+          const lastUserMsg = await this.msg.findOne({
+            where: { conversationId: ctx.conv.id, authorRole: 'user' },
+            order: { createdAt: 'DESC' },
+          });
+          const userAskedRecap = /\b(recapitul|ce ai notat|mai zi o dat[aă]|repet[aă]|cum arat[aă] comanda|ce am comandat)\b/i.test(
+            lastUserMsg?.body ?? '',
+          );
+          if (!userAskedRecap && stRecap.lastRecapSig && stRecap.lastRecapSig === sig && sig.replace(/\|/g, '').trim()) {
+            this.logger.warn(`RECAP_SAME_DATA blocked on conv=${ctx.conv.id.slice(0, 8)} — recapitulare cu date identice cu cea precedentă.`);
+            return {
+              sent: false,
+              messageType: 'duplicate_text',
+              status: 'RECAP_SAME_DATA_BLOCKED',
+              instruction:
+                'STAI — ai recapitulat DEJA comanda cu EXACT aceleași date (destinatar, dedicator, mesaj, email) și userul a văzut-o. Nimic real nu s-a schimbat de atunci, deci o a doua recapitulare + „e corect?" doar întârzie plata și sună robotic. Alegerea pachetului NU cere o recapitulare nouă — confirmă pachetul într-o propoziție scurtă și AVANSEAZĂ: dacă ai destinatar + mesaj + email + pachet → apelează `wizard_finalize` ACUM și trimite linkul de plată. Dacă lipsește exact un câmp, cere-l direct, într-o singură frază.',
+            };
+          }
+          if (freshForRecap && stRecap.lastRecapSig !== sig) {
+            stRecap.lastRecapSig = sig;
+            stRecap.updatedAt = new Date().toISOString();
+            await this.conv
+              .createQueryBuilder()
+              .update(Conversation)
+              .set({ wizardState: stRecap })
+              .where('id = :id', { id: freshForRecap.id })
+              .execute();
+          }
+        }
       }
 
       const similarCount = recentNorm.filter((prev) => textOverlap(prev, normalized) > 0.7).length;

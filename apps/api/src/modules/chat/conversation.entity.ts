@@ -109,6 +109,13 @@ export interface WizardState {
    *  isRetentionOffer) — guard „nu încasa pentru o schimbare deja aplicată"
    *  (CHANGE_ALREADY_APPLIED_BY_REMAKE în ai-chat-agent.service.ts). */
   lastFreeRemakeChanges?: string | null;
+  /** Semnătura datelor comenzii (destinatar|dedicator|mesaj|email) la ULTIMA
+   *  recapitulare trimisă userului. Dacă AI vrea să recapituleze din nou cu EXACT
+   *  aceleași date, e o repetare robotică → RECAP_SAME_DATA_BLOCKED. Vezi conv
+   *  fe06d874 (2026-08-05): a 3-a recapitulare identică a trecut de gărzile
+   *  existente pentru că userul răspunsese între timp „Standar" (alegerea
+   *  pachetului), nu un „da" simplu. */
+  lastRecapSig?: string | null;
   /** Modificare contra cost în așteptarea plății (request_modification). */
   modification?: {
     generationId: string;
