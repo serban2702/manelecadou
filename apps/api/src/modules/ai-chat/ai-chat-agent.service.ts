@@ -32,6 +32,36 @@ const OCCASIONS = [
 ];
 
 /**
+ * Ocaziile FACTUALE — cele care fac versurile să AFIRME un eveniment real din viața
+ * clientului („de ziua ta", „la mulți ani", „casă de piatră"). Dacă evenimentul nu
+ * există, melodia îl minte pe client în fața destinatarului și el trebuie să ceară
+ * corectură (arde un draft din 3 și, dacă nu observă, plătește o manea greșită).
+ * Le acceptăm din INFERENȚĂ doar cu dovadă pozitivă în ce a scris userul.
+ * Ocaziile tonale (Declarație, Roast prieten, Motivațională, Pentru șef) nu afirmă
+ * nimic factual, deci nu cer dovadă. Cheile multilingve acoperă cele 8 locale.
+ *
+ * BUG observat 2026-08-05 conv 55b4a018: user a cerut o manea pentru soacră („țin
+ * mult la ea, e cea mai bună mamă"), zero mențiuni de aniversare — inferența a ales
+ * totuși „Zi de naștere", iar draftul 1 a ieșit cu „de ziua ei cea frumoasă" + „La
+ * mulți ani". Userul a răspuns „Dar nu e ziua ei". Guard-ul `birthdayNegated` de mai
+ * jos prinde cazul abia DUPĂ reclamație; ăsta îl previne.
+ */
+const OCCASION_EVIDENCE: Record<string, RegExp> = {
+  'Zi de naștere':
+    /na[șs]tere|\bziua\b|la\s+mul[țt][iî]\s*ani|\bmul[țt][iî]\s+ani\b|anivers|[îi]mpline[șs]t|face\s+\d+\s+ani|birthday|рожден|годишнина|γενέθλια|χρόνια\s+πολλά|ro[đdj]endan|do[ğg]um\s*g[üu]n|iyi\s+ki\s+do[ğg]dun|rojstni\s+dan/i,
+  'Nuntă':
+    /nunt|mirea[sș]|\bmire\b|cununi|cas[ăa]\s+de\s+piatr[ăa]|wedding|сватб|γάμο|vjen[čc]anj|ven[čc]anj|d[üu][ğg][üu]n|poroka/i,
+  'Botez':
+    /botez|cre[șs]tinare|baptism|кръщен|βάπτισ|kr[šs]tenj|vaftiz|\bkrst\b/i,
+  'Cumătrie': /cum[ăa]tri|cumetri|cum[ăa]tr/i,
+  'Aniversare cuplu':
+    /anivers|[îi]mpreun[ăa]|c[ăa]s[ăa]tori|c[ăa]snicie|\d+\s+ani\b|годишнина|επέτειο|godi[šs]njic|y[ıi]ld[öo]n[üu]m[üu]|obletnic|anniversar/i,
+  'Înmormântare':
+    /[îi]nmorm[âa]nt|decedat|a\s+murit|s-a\s+stins|pomenire|parastas|regretat|in\s+memoriam|funeral|погреб|κηδεί|sahran|cenaze|pogreb/i,
+  'Naș/fin': /\bna[șs]\b|\bna[șs]i\b|\bna[șs]a\b|\bfin\b|\bfin[ăa]\b|\bfini\b|godfather|\bкум\b|νονό|\bkum\b|kirve|\bboter\b/i,
+};
+
+/**
  * Câmpurile minime cerute pentru a putea face wizard_finalize.
  * Notă (2026-05-27, refactor Irina): scoatem `style`/`occasion`/`voiceArtist` din
  * câmpuri obligatorii cerute userului — sunt INFERATE automat la finalize din
@@ -4309,7 +4339,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
             messageType: 'noop',
             status: 'NOTE_ACK_WITHOUT_WIZARD_UPDATE',
             instruction:
-              'STAI — îi spui userului că ai „notat" datele, dar NU le-ai salvat: nu ai apelat `wizard_update` în tura asta, iar comanda nu are încă destinatarul. Dacă trimiți mesajul așa, informația se pierde și peste două mesaje o s-o re-ceri de la user — exact ce-l enervează. Apelează ACUM `wizard_update` cu tot ce ai extras din mesajele lui (recipientName = pentru cine e maneaua, dedicatorName = cine dedică, message, occasion...), ABIA APOI trimite confirmarea. Dacă nu ești sigur cine e destinatarul, NU scrie „am notat" — întreabă direct și scurt cine e.',
+              'STAI — îi spui userului că ai „notat" datele, dar NU le-ai salvat: nu ai apelat `wizard_update` în tura asta, iar comanda nu are încă destinatarul. Dacă trimiți mesajul așa, informația se pierde și peste două mesaje o s-o re-ceri de la user — exact ce-l enervează. Apelează ACUM `wizard_update` cu EXACT lucrul pe care ai zis că l-ai notat, pe câmpul lui: vocea → `voiceArtist` („feminina"/"masculina" → female/male), stilul sau artistul → `styleHint`, ocazia → `occasion`, pentru cine e → `recipientName`, cine dedică → `dedicatorName`, povestea → `message`. ABIA APOI trimite confirmarea. ⚠️ NU retrimite mesajul identic fără să fi apelat `wizard_update` — se blochează la fel. Dacă ce ai „notat" nu se potrivește pe niciun câmp (sau nu ești sigur cine e destinatarul), scoate „am notat" din text și trimite doar întrebarea următoare, scurt.',
           };
         }
       }
@@ -5017,6 +5047,25 @@ ${transcript}`;
     ) {
       occasionResult.value = this.normalizeOccasion(fallbackOccasion);
       occasionResult.source = 'default';
+    }
+
+    // Guard „dovadă pozitivă" pentru ocaziile FACTUALE (vezi OCCASION_EVIDENCE sus).
+    // Regula din promptul de inferență („NU presupune un eveniment pe care userul nu
+    // l-a menționat") era ignorată de model: în 2026-08-05 conv 55b4a018 a ales „Zi de
+    // naștere" dintr-un „țin mult la ea, e cea mai bună mamă". Aici nu mai cerem
+    // ABSENȚA unei negări, ci PREZENȚA unui indiciu — dacă userul n-a pomenit nicăieri
+    // evenimentul, cădem pe ocazia neutră și lăsăm mesajul lui să dicteze tema.
+    // Ce vine explicit de la user (wizard web sau spus în chat) rămâne neatins.
+    const occasionEvidence = OCCASION_EVIDENCE[occasionResult.value];
+    if (occasionEvidence && occasionResult.source !== 'user_said') {
+      const haystack = [transcript, wizardData.message ?? '', wizardData.styleHint ?? ''].join('\n');
+      if (!occasionEvidence.test(haystack)) {
+        this.logger.warn(
+          `OCCASION_UNSUPPORTED conv=${conv.id.slice(0, 8)} — inferența a propus „${occasionResult.value}" fără niciun indiciu în ce a scris userul; folosesc „${fallbackOccasion}".`,
+        );
+        occasionResult.value = this.normalizeOccasion(fallbackOccasion);
+        occasionResult.source = 'default';
+      }
     }
 
     // Voice: doar male/female. Matching simplu pe transcript pentru preferință
