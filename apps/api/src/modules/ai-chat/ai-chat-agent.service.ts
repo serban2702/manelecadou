@@ -87,6 +87,12 @@ const MAX_MESSAGES_BEFORE_HUMAN = 120;
 /** Câte drafturi de versuri poate genera AI-ul per conversație (control cost). */
 const MAX_LYRICS_DRAFTS = 3;
 
+/** Câte caractere de conținut REAL (scrise de client despre melodie — fără „da"/„ok",
+ *  email, alegerea pachetului, întrebări) trebuie să existe înainte de linkul de plată.
+ *  Sub prag, brief-ul e prea sărac ca să iasă o manea personalizată și guard-ul
+ *  THIN_BRIEF_MISSING_DETAILS cere o dată detalii. Vezi conv 47bd8657 (2026-08-06). */
+const MIN_USER_BRIEF_CHARS = 40;
+
 /** Prețuri modificare melodie plătită (cents, moneda site-ului). */
 const MODIFICATION_PRICE_SMALL_CENTS = 1499;
 const MODIFICATION_PRICE_LARGE_CENTS = 2999;
@@ -1939,6 +1945,19 @@ ETAPA 4 — PARSE RĂSPUNS USER:
     BUG observat 2026-07-22 conv fd00e2cb: clienta a cerut ajutor la compunere, iar Irina a
     salvat message = „Userul vrea sa-si surprinda sotul… spune ca nu se descurca singura si
     are nevoie de ajutor" — melodia ar fi ieșit despre asta, nu despre soțul ei. NU repeta.
+  → ⛔ NU COMPUNE TU \`message\` DIN NIMIC. Dacă tot ce ți-a spus clientul e relația și
+    ocazia („pt soțul meu de ziua lui"), NU umple \`message\` cu o parafrază a ocaziei
+    („o manea caldă și personalizată, cu urări frumoase de aniversare") — sunt cuvinte
+    goale, iar melodia iese generică deși clientul plătește exact pentru personalizare.
+    \`message\` trebuie să conțină informație venită DE LA CLIENT. Dacă nu ai niciuna,
+    cere-i UN detaliu concret („o poreclă, o amintire, ce-ți place cel mai mult la el").
+  → ⛔ \`recipientName\` = NUMELE PROPRIU, nu relația. „soțul meu" / „mama" ajung LITERAL în
+    versuri, deci maneaua ar cânta „soțul meu". Dacă userul ți-a dat doar relația, notează-o
+    și cere numele O SINGURĂ dată, natural: „Cum îl cheamă? Îi pun numele în melodie 😊".
+    Dacă refuză sau insistă că e ok așa → mergi mai departe cu ce ai, NU întreba a doua oară.
+    BUG observat 2026-08-06 conv 47bd8657: comandă trimisă la plată cu recipientName „soțul
+    meu" și un \`message\` inventat integral de Irina — clientul ar fi primit o manea fără
+    numele lui și fără nimic personal. Gardul THIN_BRIEF_MISSING_DETAILS blochează asta acum.
   → ⛔ NU PIERDE NICIUN NUME PROPRIU. Dacă userul enumeră mai multe persoane (mai mulți
     destinatari, copii, nepoți, soț/soție, prieteni cu nume) → TOATE numele trebuie să
     ajungă în comandă, exact cum le-a scris userul. recipientName ia destinatarul/destinatarii
@@ -3521,6 +3540,78 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
   }
 
   /**
+   * `recipientName` e doar o RELAȚIE („soțul meu", „mama", „fina mea"), fără niciun nume
+   * propriu. Câmpul ajunge literal în versuri, deci maneaua ar cânta „soțul meu" în loc de
+   * numele lui. Vezi guard-ul THIN_BRIEF_MISSING_DETAILS (conv 47bd8657, 2026-08-06).
+   * Câmp gol ⇒ false: de acela se ocupă `missingWizardFields`.
+   */
+  private isRelationOnlyName(name?: string | null): boolean {
+    const t = (name || '')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9 ]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!t) return false;
+    const FILLER =
+      /^(meu|mea|mei|mele|lui|ei|lor|nostru|noastra|nostri|noastre|cel|cea|cei|cele|mai|drag|draga|dragul|draguta|scump|scumpa|scumpul|bun|buna|bunul|un|o|de|la|si|pentru|al|a|ai|ale|acum)$/;
+    const RELATION =
+      /^(sot|sotul|sotie|sotia|sotii|sotului|sotiei|nevasta|nevasta|barbat|barbatul|femeia|iubit|iubita|iubitul|logodnic|logodnica|partener|partenera|prieten|prietena|prietenul|prietenii|prietenele|amic|amica|mama|mami|mamica|muma|tata|tatal|tati|tatic|parinte|parinti|parintii|frate|fratele|frati|fratii|sora|surioara|surori|surorile|fiu|fiul|fiica|baiat|baiatul|fata|fetita|copil|copilul|copii|copiii|bunic|bunicul|bunica|bunici|bunicii|nepot|nepotul|nepoata|nepoti|nepotii|nas|nasul|nasa|nasii|fin|finul|fina|cumnat|cumnatul|cumnata|unchi|unchiul|matusa|tanti|var|vara|verisor|verisoara|coleg|colega|colegul|sef|sefu|seful|sefa|socru|soacra|ginere|nora|profesor|profesoara|doctor|doctorita|vecin|vecina|patron|patronul|patroana|familia|persoana|cineva|el|ea)$/;
+    const meaningful = t.split(' ').filter((w) => w && !FILLER.test(w) && !RELATION.test(w));
+    return meaningful.length === 0;
+  }
+
+  /**
+   * Câte caractere de conținut REAL despre melodie a scris efectiv clientul. Ignoră
+   * confirmările („da", „ok"), emailul, alegerea pachetului, răspunsul de voce și
+   * întrebările puse Irinei — niciunul nu e material pentru versuri. Folosit de guard-ul
+   * THIN_BRIEF_MISSING_DETAILS ca să nu plece la plată o comandă în care tot ce știm
+   * despre destinatar a fost inventat de AI. Fail-open: dacă lookup-ul pică, nu blocăm.
+   */
+  private async userBriefSubstance(conversationId: string): Promise<number> {
+    try {
+      const msgs = await this.msg.find({
+        where: { conversationId, authorRole: 'user', messageType: 'text' },
+        order: { createdAt: 'ASC' },
+        take: 60,
+      });
+      let total = 0;
+      for (const m of msgs) {
+        const raw = (m.body || '').trim();
+        if (!raw || raw.length <= 3) continue;
+        const t = raw
+          .normalize('NFD')
+          .replace(/[̀-ͯ]/g, '')
+          .toLowerCase()
+          .replace(/[,;:]+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (/@/.test(t)) continue; // email
+        if (/\?\s*$/.test(raw)) continue; // întrebare către Irina, nu poveste
+        if (
+          /^(da|nu|ok|okay|okey|bine|sigur|perfect|super|misto|mersi|multumesc|multam|salut|buna|hello|hey|start|gata|corect|exact|asa|astept|te rog|da te rog|desigur|normal|clar|s a facut|am inteles)[\s.!]*$/.test(t)
+        ) {
+          continue;
+        }
+        if (
+          /^(standard|basic|plus|premium|pachet(ul)? \w+|varianta \d+|optiunea \d+|\d+([.,]\d+)?( ?(lei|ron|eur|euro))?)[\s.!]*$/.test(t)
+        ) {
+          continue;
+        }
+        if (/^(m|f|barbat|barbateasca|masculin|masculina|femeie|feminina|feminin|voce (de )?(barbat|femeie))[\s.!]*$/.test(t)) {
+          continue;
+        }
+        total += raw.length;
+      }
+      return total;
+    } catch (e) {
+      this.logger.warn(`userBriefSubstance lookup failed (non-fatal): ${(e as Error).message}`);
+      return Number.MAX_SAFE_INTEGER; // fail-open — nu bloca plata dacă lookup-ul pică
+    }
+  }
+
+  /**
    * `message` (brief-ul melodiei) e de fapt o descriere META a conversației — despre user
    * și despre faptul că are nevoie de ajutor — în loc de conținutul destinat destinatarului.
    * Vezi guard-ul META_BRIEF_REJECTED (conv fd00e2cb, 2026-07-22).
@@ -3749,6 +3840,55 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       }
     } catch (e) {
       this.logger.warn(`package mismatch guard failed (non-fatal): ${(e as Error).message}`);
+    }
+
+    // GUARD BRIEF GOL — comandă fără substanță personală (BUG observat 2026-08-06 conv
+    // 47bd8657): userul a scris în TOATĂ conversația un singur lucru despre melodie — „Pt
+    // soțul meu de ziua lui". Irina a apelat wizard_update cu recipientName = „soțul meu"
+    // (relația, nu un nume) și message = „De ziua lui, din partea soției, o manea caldă și
+    // personalizată, cu urări frumoase pentru aniversare" — text INVENTAT de ea, o parafrază
+    // a ocaziei, fără nicio informație venită de la client. `missingWizardFields` vede ambele
+    // câmpuri completate → readyToFinalize → link de plată. Clientul ar fi plătit 29.99 lei
+    // pentru o manea generică, fără numele soțului și fără nimic despre el — exact opusul
+    // produsului „personalizat". Regulile ETAPA 4 („cere numele propriu", „nu inventa") există
+    // deja în prompt, dar AI le-a sărit; deci verificăm în cod, unde nu se poate sări.
+    // Blocăm O SINGURĂ dată: dacă userul chiar nu vrea să dea detalii, a doua oară trece.
+    if (!state.thinBriefGateUsed && !(state.data.customLyrics && state.data.customLyrics.trim())) {
+      const needsName = this.isRelationOnlyName(state.data.recipientName);
+      const userSubstance = await this.userBriefSubstance(conv.id);
+      const thinStory = userSubstance < MIN_USER_BRIEF_CHARS;
+      if (needsName || thinStory) {
+        state.thinBriefGateUsed = true;
+        await this.conv
+          .createQueryBuilder()
+          .update(Conversation)
+          .set({ wizardState: state })
+          .where('id = :id', { id: conv.id })
+          .execute();
+        conv.wizardState = state;
+        this.logger.warn(
+          `THIN_BRIEF conv=${conv.id.slice(0, 8)} — finalize blocat o dată (needsName=${needsName}, userSubstance=${userSubstance})`,
+        );
+        const asks = [
+          needsName ? 'cum îl/o cheamă (numele propriu, ca să-l pun în versuri)' : null,
+          thinStory ? 'un detaliu personal — o poreclă, o amintire, ce-ți place cel mai mult la el/ea' : null,
+        ].filter(Boolean);
+        return {
+          status: 'THIN_BRIEF_MISSING_DETAILS',
+          instruction:
+            `STAI — comanda asta n-are încă nimic personal în ea, iar maneaua ar ieși generică (clientul plătește exact pentru personalizare). ` +
+            (needsName
+              ? '`recipientName` e o RELAȚIE („soțul meu"), nu un nume — în versuri s-ar cânta „soțul meu", nu numele lui. '
+              : '') +
+            (thinStory
+              ? 'Iar `message` nu are nicio informație venită de la client — dacă l-ai compus TU din ocazie, e o parafrază goală, nu o poveste. '
+              : '') +
+            `Trimite ACUM un SINGUR mesaj scurt și cald în care ceri: ${asks.join(' + ')}. ` +
+            `Exemplu de ton: „Ca să iasă cu adevărat a lui, spune-mi cum îl cheamă și un lucru drag despre el — o poreclă, o amintire, ceva ce-i place. 😊". ` +
+            `NU cere mai mult de atât și NU relua toată comanda. După ce răspunde: wizard_update cu ce ți-a spus (numele în recipientName, detaliile EXACT cum le-a zis el în message), apoi wizard_finalize. ` +
+            `Dacă răspunde că nu știe / nu vrea să dea detalii sau repetă că e ok așa → NU insista a doua oară, finalizează cu ce ai.`,
+        };
+      }
     }
 
     // GUARD ETAPA 5.5 SĂRITĂ (BUG observat 2026-07-22 conv fd00e2cb): Irina a finalizat
@@ -4782,11 +4922,26 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       // confirmarea cu „ok", nu cu „corect", și n-avea „link". Userul confirmase deja („K"),
       // deci a fost întrebat de 2 ori la rând același lucru. Orice „am notat …" încheiat cu o
       // întrebare de confirmare (corect / ok / bine / așa / exact) e o reconfirmare de recap.
+      // BUG observat 2026-08-06 conv 47bd8657 (FALS POZITIV): „Bine, am notat emailul. Pentru
+      // cine vrei maneaua?" era clasificat drept recap+reconfirmare — „bine" (interjecție de
+      // deschidere) + „notat" + un „?" care aparținea unei întrebări NOI de colectare. Efect:
+      // prima recapitulare REALĂ a Irinei, două mesaje mai târziu, a fost blocată ca fiind „a
+      // doua", iar clientul a primit linkul de plată fără să vadă vreodată ce s-a notat în
+      // comanda lui. Deci: cuvântul de confirmare trebuie să fie ÎN propoziția interogativă,
+      // nu oriunde în mesaj — „...notat emailul. Pentru cine...?" nu mai declanșează garda,
+      // „...notat: X, Y, Z. E corect așa?" da.
       const isConfirmQuestion = (t: string) =>
-        /\?/.test(t) && /\b(corect|ok|bine|a[șs]a|exact)\b/i.test(t);
+        /\?/.test(t) &&
+        t
+          .split(/(?<=[.!?])\s*/)
+          .some((s) => /\?/.test(s) && /\b(corect|ok|bine|a[șs]a|exact)\b/i.test(s));
+      // La fel, „corect" contează doar în construcție de reconfirmare („dacă e corect, îți
+      // trimit linkul" — recapul din conv ef943e46, care n-are „?"), NU în „am notat corect".
+      const confirmsCorrectness = (t: string) =>
+        /\b(dac[aă]|e|este|s[aă] fie|totul|tot)\s+(e\s+)?corect\b/i.test(t) || /\bcorect\s*\?/i.test(t);
       const isRecapConfirm = (t: string) =>
         /recapitul/i.test(t) ||
-        (/\bnotat\b/i.test(t) && (/\bcorect\b/i.test(t) || isConfirmQuestion(t))) ||
+        (/\bnotat\b/i.test(t) && (confirmsCorrectness(t) || isConfirmQuestion(t))) ||
         isSendLinkConfirm(t);
       // BUG observat 2026-07-17 conv fd9ab3d1: garda avea `!ctx.followUp`, deci follow-up-urile
       // o ocoleau complet — Irina a trimis recapitularea de 2 ori la rând ca follow-up (la +5 și

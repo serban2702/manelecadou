@@ -131,6 +131,11 @@ export interface WizardState {
    *  Blocăm O SINGURĂ dată — a doua oară lăsăm comanda să treacă pe basic, ca să nu
    *  ținem clientul captiv. Vezi guard-ul UPSELL_STEP_MISSING. */
   upsellGateUsed?: boolean;
+  /** Finalize a fost blocat o dată pentru că brief-ul comenzii era gol de substanță
+   *  personală (destinatar fără nume propriu / poveste inexistentă, inventată de AI).
+   *  Blocăm O SINGURĂ dată — dacă userul chiar nu vrea să dea detalii, comanda trece.
+   *  Vezi guard-ul THIN_BRIEF_MISSING_DETAILS. */
+  thinBriefGateUsed?: boolean;
   updatedAt: string; // ISO
 }
 
