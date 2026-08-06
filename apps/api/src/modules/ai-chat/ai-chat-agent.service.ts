@@ -146,6 +146,58 @@ function isAffirmOnly(raw: string): boolean {
   return words.every((w) => AFFIRM_FILLER.has(w));
 }
 
+/** Subset AFFIRM_FILLER care înseamnă ACCEPT (nu „nu"). `isAffirmOnly` tratează la fel
+ *  „da" și „nu" (ambele = fără info nouă); pentru „userul a acceptat ce i-am oferit" ne
+ *  trebuie distincția. */
+const YES_WORDS = new Set([
+  'da', 'daa', 'dada', 'ok', 'oki', 'okk', 'okey', 'okay', 'k', 'kk', 'yes', 'yep', 'yup',
+  'sure', 'sigur', 'bine', 'bn', 'desigur', 'bineinteles', 'clar', 'acord', 'perfect',
+  'exact', 'corect', 'mda', 'super', 'vreau', 'hai', 'te', 'rog', 'arata', 'spune', 'zi',
+]);
+
+/** `true` dacă mesajul e o acceptare scurtă („da", „ok", „sigur", „da te rog", „hai arata"). */
+function isYesOnly(raw: string): boolean {
+  const words = normLoose(raw).replace(/[^a-z0-9 ]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0 || words.length > 5) return false;
+  if (words.some((w) => w === 'nu' || w === 'nuu')) return false;
+  if (!words.every((w) => AFFIRM_FILLER.has(w) || YES_WORDS.has(w))) return false;
+  return words.some((w) => YES_WORDS.has(w));
+}
+
+/** Oferte pe care Irina le face SINGURĂ („pot să-ți arăt…", „vrei să vezi…?"). Verbul e la
+ *  persoana I (ce face EA pentru user), ca să nu confundăm cu întrebările de tunel („îmi
+ *  spui pentru cine e?"). Dacă userul răspunde „da" la o astfel de ofertă, ea TREBUIE
+ *  onorată în turul următor — altfel userul e ignorat. */
+const OFFER_PATTERNS: RegExp[] = [
+  // „(dacă vrei,) pot să-ți arăt…", „vrei să-ți trimit…?" (normLoose scoate cratimele)
+  /\b(pot|as putea|as vrea|vrei|doresti) sa (ti|iti) (arat|arata|trimit|trimite|spun|spune|dau|scriu|scrie|zic|explic|explica|prezint|prezenta|detaliez|generez|pregatesc)/,
+  /\b(iti|ti) (pot|as putea) (arata|trimite|spune|scrie|explica|prezenta|detalia)/,
+  /\bvrei sa (vezi|auzi|asculti)/,
+  // afirmații-ofertă fără interogativ explicit („îți arăt și pachetele Plus/Premium")
+  /\b(iti|sa ti) (arat|prezint|explic|detaliez)\b/,
+];
+
+/** Ultimul mesaj al Irinei conținea o ofertă, iar userul tocmai i-a răspuns „da" fără ca
+ *  ea să o fi onorat? Întoarce textul ofertei (pentru prompt), altfel `null`.
+ *  BUG observat 2026-08-06 conv a7211164: Irina a scris „dacă vrei, pot să-ți arăt și ce
+ *  primești în Plus sau Premium", userul a răspuns „Da", iar ea a sărit la „cum se numește
+ *  persoana pentru care e maneaua?" — a ignorat propria ofertă și clientul a abandonat. */
+function detectPendingOffer(history: { authorRole: string; messageType?: string | null; body?: string | null }[]): string | null {
+  const real = history.filter(
+    (m) => m.messageType !== 'system' && m.messageType !== 'ai_suggestion' && typeof m.body === 'string' && m.body.trim().length > 0,
+  );
+  const last = real[real.length - 1];
+  if (!last || last.authorRole === 'admin' || last.authorRole === 'system') return null;
+  if (!isYesOnly(last.body ?? '')) return null;
+  // Ultimul mesaj al Irinei dinaintea „da"-ului
+  const prevAdmin = [...real.slice(0, -1)].reverse().find((m) => m.authorRole === 'admin');
+  if (!prevAdmin) return null;
+  const norm = normLoose(prevAdmin.body ?? '');
+  if (!OFFER_PATTERNS.some((re) => re.test(norm))) return null;
+  const text = (prevAdmin.body ?? '').trim();
+  return text.length > 240 ? `${text.slice(0, 240)}…` : text;
+}
+
 /** Jaccard pe „stemuri" (primele 5 litere ale fiecărui cuvânt) — tolerant la flexiunile
  *  românești. Modelul rescrie povestea comenzii de la persoana a III-a la a II-a între
  *  tururi („îl iubește / vrea / poartă" → „il iubesti / vrei / porti"): `textOverlap` vede
@@ -819,12 +871,15 @@ export class AIChatAgentService {
         !isAffirmOnly(m.body),
     ).length;
     const hasEmail = !!conv.email || !!conv.userId;
+    // Ofertă proprie neonorată („pot să-ți arăt pachetele?" + „Da" de la user).
+    const pendingOffer = detectPendingOffer(last20);
 
     sysPrompt += this.buildOrderStateBlock(conv, {
       userSubstantiveMsgs,
       hasEmail,
       styleSampleIds,
       voiceSampleIds,
+      pendingOffer,
     });
 
     // ── POZIȚIE PE SITE (presence live din gateway, fallback DB) — Irina vede
@@ -900,6 +955,7 @@ zero răspunsuri de la user între ele.`;
       alertSentThisTurn: false,
       followUp: opts.followUp === true,
       followUpIndex: opts.followUp ? (conv.aiFollowupCount ?? 1) : 0,
+      pendingOffer,
     };
 
     const tools = this.toolDefinitions();
@@ -1206,6 +1262,8 @@ formular mascat și nu a avansat deloc. NU repeta.`;
       hasEmail: boolean;
       styleSampleIds: string[];
       voiceSampleIds: string[];
+      /** Oferta proprie la care userul tocmai a spus „da" și pe care NU a onorat-o încă. */
+      pendingOffer?: string | null;
     },
   ): string {
     const ws = conv.wizardState;
@@ -1239,13 +1297,19 @@ formular mascat și nu a avansat deloc. NU repeta.`;
 
     const { stepLabel, nextAction } = this.computeFunnelNextAction(conv, ctx);
 
+    // Userul a spus „da" la ceva ce TU i-ai oferit → oferta bate pasul de tunel. A o
+    // ignora e cel mai vizibil mod de a suna a robot (conv a7211164, 2026-08-06).
+    const action = ctx.pendingOffer
+      ? `⚠️ ONOREAZĂ-ȚI ÎNTÂI OFERTA. În ultimul tău mesaj i-ai propus userului ceva: «${ctx.pendingOffer}» — iar el tocmai ți-a răspuns „da". FĂ EXACT acel lucru ACUM, în acest tur (dacă i-ai oferit pachetele → prezintă-le pe cele 3 din ETAPA 5.5; dacă i-ai oferit versuri → generate_lyrics; dacă i-ai oferit o mostră → play_sample). ABIA DUPĂ ce ai livrat ce ai promis, continuă tunelul: ${nextAction}`
+      : nextAction;
+
     return `
 
 ══════════ STAREA COMENZII (SURSĂ DE ADEVĂR — CITEȘTE-O ÎNAINTE DE A SCRIE ORICE) ══════════
 ${fields.join('\n')}
 
 📍 PASUL CURENT: ${stepLabel}
-👉 UNICA TA ACȚIUNE ACUM: ${nextAction}
+👉 UNICA TA ACȚIUNE ACUM: ${action}
 
 ⛔ REGULI DE FIER (le încalci = client pierdut, exact reclamația adminului):
 • Câmpurile cu ✓ sunt DEJA colectate — NU le re-cere NICIODATĂ. Dacă ești pe punctul să
@@ -2310,7 +2374,18 @@ REGULI STRICTE:
     e și cu ce OCAZIE — de acolo continui tunelul normal. Doar dacă spune a DOUA oară
     explicit că nu vrea (sau „nu, mulțumesc") închizi politicos, o SINGURĂ dată, fără
     insistență. BUG observat 2026-07-22 conv 0243873e: la „Și dacă nu vreau manea?" Irina a
-    răspuns „Înțeleg, atunci nu e pentru tine 😊" și a pierdut lead-ul din prima replică.`;
+    răspuns „Înțeleg, atunci nu e pentru tine 😊" și a pierdut lead-ul din prima replică.
+35. ⛔ ONOREAZĂ-ȚI PROPRIA OFERTĂ. Dacă TU i-ai propus ceva în ultimul mesaj („pot să-ți arăt
+    și ce primești în Plus sau Premium", „vrei să vezi versurile?", „vrei să-ți trimit o
+    mostră?") și userul răspunde „da" / „ok" / „sigur" / „te rog" → FĂ EXACT acel lucru în
+    turul următor, ÎNAINTE de orice pas din tunel. Un „da" e un răspuns la ULTIMA ta
+    întrebare, nu o permisiune generică de a schimba subiectul. NU-l trata ca acord de preț
+    și NU sări la următorul câmp lipsă (nume/mesaj/email) lăsând promisiunea neonorată — e
+    exact senzația de robot care nu ascultă. Abia după ce ai livrat ce ai promis reiei
+    tunelul. BUG observat 2026-08-06 conv a7211164: la obiecția de preț Irina a oferit „pot
+    să-ți arăt și ce primești în Plus sau Premium", userul a răspuns „Da", iar ea a întrebat
+    „cum se numește persoana pentru care e maneaua?" — pachetele n-au fost arătate niciodată
+    și clientul a abandonat conversația.`;
 
     return this.appendMemoryAndContacts(basePrompt, memory, site);
   }
@@ -4927,7 +5002,9 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           sent: false,
           messageType: 'price_reconfirm_blocked',
           status: 'PRICE_ALREADY_QUOTED',
-          instruction: fresh?.email
+          instruction: ctx.pendingOffer
+            ? `Prețul a fost deja cotat — NU-l recota. Userul tocmai a spus „da" la ce i-ai oferit TU: «${ctx.pendingOffer}». Onorează ACUM acea ofertă, apoi continuă tunelul.`
+            : fresh?.email
             ? 'Prețul a fost deja cotat și userul l-a văzut. NU-l recota și NU mai întreba „ești de acord?". Avansează: apelează wizard_finalize ca să trimiți linkul de plată.'
             : missingAfterQuote.length > 0
               ? `Prețul a fost deja cotat. NU-l recota. Continuă tunelul: mai lipsește ${missingAfterQuote.join(' și ')} — întreabă ACUM primul câmp lipsă (un singur câmp pe mesaj). Emailul îl ceri ABIA după ce ai și destinatarul și mesajul.`
@@ -5596,6 +5673,18 @@ ${transcript}`;
       const missingAfterQuote = freshConv
         ? this.missingWizardFields(this.getOrInitWizardState(freshConv).data)
         : [];
+      // BUG observat 2026-08-06 conv a7211164: Irina i-a oferit userului să-i arate
+      // pachetele Plus/Premium, el a zis „Da", ea a apelat quote → guard-ul a trimis-o
+      // imperativ la „întreabă primul câmp lipsă", deci a ignorat exact ce ceruse userul
+      // (a întrebat numele destinatarului) și clientul a abandonat. Oferta acceptată bate
+      // redirecționarea spre tunel.
+      if (ctx.pendingOffer) {
+        return {
+          sent: false,
+          status: 'PRICE_ALREADY_QUOTED',
+          instruction: `Prețul a fost deja cotat — NU-l recota. Userul tocmai a spus „da" la ce i-ai oferit TU: «${ctx.pendingOffer}». Onorează ACUM acea ofertă (dacă i-ai promis pachetele → prezintă cele 3 din ETAPA 5.5 cu textul exact de upsell). ABIA DUPĂ aceea continuă tunelul${missingAfterQuote.length > 0 ? ` (mai lipsește ${missingAfterQuote.join(' și ')})` : ''}.`,
+        };
+      }
       return {
         sent: false,
         status: 'PRICE_ALREADY_QUOTED',
@@ -7247,6 +7336,11 @@ interface AgentCtx {
    *  orice send_message ulterior în același tur. (2026-07-04, audit conv 8033ee7c: după
    *  quote a trimis instant „Perfect! Pe ce adresa de email..." presupunând acordul.) */
   priceQuotedThisTurn?: boolean;
+  /** Oferta proprie („pot să-ți arăt pachetele?") la care userul a răspuns „da" în mesajul
+   *  curent și care NU a fost încă onorată. Gardurile care redirecționează AI-ul spre pasul
+   *  de tunel trebuie să NU o suprascrie — altfel userul e ignorat imediat după ce a acceptat.
+   *  (2026-08-06, audit conv a7211164.) */
+  pendingOffer?: string | null;
   /** A apelat `wizard_update` în acest run? Folosit de garda NOTE_ACK_WITHOUT_WIZARD_UPDATE:
    *  un mesaj „am notat ..." fără update persistat = date pierdute + câmp re-cerut peste
    *  două mesaje. (2026-07-17, audit conv fd9ab3d1.) */
