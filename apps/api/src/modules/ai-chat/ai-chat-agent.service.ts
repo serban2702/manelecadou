@@ -111,6 +111,86 @@ const AFFIRM_ONLY = new Set([
   'de acord', 'sunt de acord', 'asa e', 'așa e', 'bineinteles', 'bineînțeles', '👍', '✅',
 ]);
 
+/** Normalizare „slabă" pentru comparații semantice: fără diacritice, lowercase,
+ *  punctuația colapsată în spații. Păstrează `@` și `.` ca să nu spargă emailurile. */
+function normLoose(s: string): string {
+  return (s ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9@.]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+/** Cuvinte care, singure sau combinate, nu aduc informație nouă — userul doar validează. */
+const AFFIRM_FILLER = new Set([
+  'da', 'daa', 'dada', 'ok', 'oki', 'okk', 'okey', 'okay', 'k', 'kk', 'nu', 'nuu',
+  'bine', 'bn', 'sigur', 'mda', 'yes', 'yep', 'yup', 'sure', 'e', 'este', 'ii', 'i',
+  'asa', 'corect', 'exact', 'perfect', 'super', 'de', 'acord', 'sunt', 'totul', 'tot',
+  'merci', 'mersi', 'multumesc', 'multumim', 'multam', 'thanks', 'thx', 'ty',
+  'bineinteles', 'desigur', 'clar', 'minunat', 'frumos', 'misto', 'fain', 'va', 'rog',
+]);
+
+/** `true` dacă mesajul userului e DOAR o confirmare/negație, fără conținut propriu.
+ *  BUG observat 2026-08-05 conv fb0fe628: userul a confirmat recapitularea cu „Da este ok"
+ *  — formă compusă absentă din lista de fraze exacte AFFIRM_ONLY — deci garda RECAP_REPEAT
+ *  (Treapta 0.55b) n-a prins, iar Irina a recapitulat a doua oară EXACT aceleași date.
+ *  O listă de fraze exacte nu poate acoperi combinațiile naturale („da e bine", „da, asa e",
+ *  „ok perfect", „da sunt de acord"), așa că verificăm dacă TOATE cuvintele sunt umplutură. */
+function isAffirmOnly(raw: string): boolean {
+  const exact = (raw ?? '').trim().toLowerCase();
+  if (AFFIRM_ONLY.has(exact)) return true;
+  const words = normLoose(raw).replace(/[^a-z0-9 ]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0 || words.length > 5) return false;
+  return words.every((w) => AFFIRM_FILLER.has(w));
+}
+
+/** Jaccard pe „stemuri" (primele 5 litere ale fiecărui cuvânt) — tolerant la flexiunile
+ *  românești. Modelul rescrie povestea comenzii de la persoana a III-a la a II-a între
+ *  tururi („îl iubește / vrea / poartă" → „il iubesti / vrei / porti"): `textOverlap` vede
+ *  tokeni complet diferiți (0.53 pe conv fb0fe628), stemurile îi văd identici (0.69). */
+function stemOverlap(a: string, b: string): number {
+  const stems = (s: string): Set<string> =>
+    new Set(
+      normLoose(s)
+        .replace(/[^a-z0-9 ]+/g, ' ')
+        .split(/\s+/)
+        .filter((w) => w.length >= 3)
+        .map((w) => w.slice(0, 5)),
+    );
+  const sa = stems(a);
+  const sb = stems(b);
+  if (sa.size === 0 || sb.size === 0) return 0;
+  let intersect = 0;
+  for (const w of sa) if (sb.has(w)) intersect++;
+  const union = sa.size + sb.size - intersect;
+  return union === 0 ? 0 : intersect / union;
+}
+
+/** Semnătura datelor deja recapitulate, în două părți: `who` (destinatar + dedicator +
+ *  email — trebuie să fie identice) și `msg` (povestea — comparată fuzzy).
+ *  BUG observat 2026-08-05 conv fb0fe628: semnătura veche era textul brut concatenat, iar
+ *  modelul rescrie `message` între tururi (diacritice scoase, persoana a III-a → a II-a:
+ *  „i le poartă dedicatoarea" → „i le porti"). Semnătura se schimba deși comanda era
+ *  IDENTICĂ, deci garda RECAP_SAME_DATA nu se declanșa niciodată în practică. */
+function buildRecapSig(who: string, msg: string): string {
+  return `${who}§${msg}`;
+}
+
+/** Compară semnătura salvată cu datele curente, tolerant la reformularea poveștii.
+ *  Semnăturile în formatul vechi (fără `§`) returnează `false` — fail-open o singură dată,
+ *  apoi se rescriu în formatul nou. */
+function recapSigEquals(prev: string | null | undefined, who: string, msg: string): boolean {
+  if (!prev || !prev.includes('§')) return false;
+  const idx = prev.indexOf('§');
+  const prevWho = prev.slice(0, idx);
+  const prevMsg = prev.slice(idx + 1);
+  if (prevWho !== who) return false;
+  if (!prevMsg && !msg) return true;
+  return prevMsg === msg || stemOverlap(prevMsg, msg) >= 0.62;
+}
+
 /** Mesaj fără niciun caracter real după curățarea formatării markdown. Un mesaj
  *  valid are cel puțin o literă sau cifră. */
 function isJunkText(s: string): boolean {
@@ -736,7 +816,7 @@ export class AIChatAgentService {
         m.messageType !== 'system' &&
         typeof m.body === 'string' &&
         m.body.trim().length >= 12 &&
-        !AFFIRM_ONLY.has(m.body.trim().toLowerCase()),
+        !isAffirmOnly(m.body),
     ).length;
     const hasEmail = !!conv.email || !!conv.userId;
 
@@ -3825,7 +3905,12 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         status: 'PAYMENT_LINK_SENT',
         generationId: generation.id,
         instruction:
-          'Comanda finalizată cu succes. Linkul de plată e DEJA trimis ca un card separat cu buton (mai sus). Spune userului scurt că linkul de plată e mai sus + că după plată melodia se generează în 5-10 minute și o va primi pe email + apare aici în chat. NU scrie URL-ul Stripe în text (cardul are deja butonul). TERMINĂ TURUL. NU folosi „90 secunde" sau „1-2 minute".',
+          // BUG observat 2026-08-05 conv fb0fe628: instrucțiunea cerea și „spune userului
+          // scurt", și „TERMINĂ TURUL" — modelul a ales a doua parte, deci clienta a primit
+          // cardul de plată gol, fără nicio explicație, timp de 4 minute (până a acoperit
+          // follow-up-ul automat). Ordinea acțiunilor e acum explicită: întâi mesajul, apoi
+          // stop. (23% din linkurile de plată din ultimele 14 zile n-au avut text însoțitor.)
+          'Comanda finalizată cu succes. Linkul de plată e DEJA trimis ca un card separat cu buton (mai sus). ACUM, ÎNAINTE de a termina turul, trimite OBLIGATORIU un ultim `send_message` scurt: că linkul de plată e mai sus + că după plată melodia se generează în 5-10 minute și o primește pe email + apare aici în chat. NU relua datele comenzii (nume/poveste/email) — userul le-a citit deja. NU scrie URL-ul Stripe în text (cardul are deja butonul). NU folosi „90 secunde" sau „1-2 minute". După acel mesaj, TERMINĂ TURUL.',
       };
     } catch (e) {
       this.logger.warn(`wizard_finalize failed: ${(e as Error).message}`);
@@ -4343,7 +4428,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           order: { createdAt: 'DESC' },
         });
         const lastUserBody = (lastUser?.body ?? '').trim().toLowerCase();
-        if (lastUserBody && AFFIRM_ONLY.has(lastUserBody)) {
+        if (lastUserBody && isAffirmOnly(lastUserBody)) {
           this.logger.warn(`RECAP_REPEAT blocked on conv=${ctx.conv.id.slice(0, 8)} — a 2-a cerere de confirmare după ce userul confirmase deja.`);
           return {
             sent: false,
@@ -4529,7 +4614,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
             lastUserBody.length <= 60 &&
             !looksLikeQuestion &&
             lastUserBody.split(/\s+/).length <= 5 &&
-            !AFFIRM_ONLY.has(lastUserBody.toLowerCase()) &&
+            !isAffirmOnly(lastUserBody) &&
             !/\b(nu [șs]tiu|habar|mai t[âa]rziu|las[ăa]|nu conteaz)/i.test(lastUserBody);
           if (looksLikeNameAnswer) {
             ctx.recipientGuardFired = true;
@@ -4661,14 +4746,76 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       // nu s-a schimbat nimic real de la ultima recapitulare, a doua nu aduce nimic —
       // alegerea pachetului NU e un motiv să reiei toată comanda.
       const asksRecapConfirmation = isRecapConfirm(normalized) || (asksConfirmation(normalized) && /\?/.test(trimmed));
+      // Treapta 0.66 — RECAP FOLOSIT CA PREAMBUL. Toate gărzile de recapitulare de mai sus
+      // se declanșează doar dacă mesajul NOU cere din nou confirmarea („e ok așa?"). BUG
+      // observat 2026-08-05 conv fb0fe628: Irina a recapitulat („Am notat: pentru Manuel,
+      // mesaj despre cat de mult il iubesti, emailul X. E ok asa?"), userul a confirmat
+      // („Da este ok"), iar mesajul următor a REÎNCEPUT cu exact aceleași date („Am notat
+      // tot: pentru Manuel, mesajul despre cat de mult il iubesti, pe emailul X.") și abia
+      // apoi a prezentat pachetele; al treilea mesaj le-a reluat a treia oară („Bun, am notat
+      // Premium pentru Manuel, cu mesajul despre cat de mult il iubesti."). Nicio gardă n-a
+      // prins: mesajele nu mai cereau confirmare (se terminau cu „Ce alegi?" / „iti trimit
+      // linkul"), iar Jaccard pe mesajul întreg e mic (~0.2) fiindcă partea nouă e lungă.
+      // Clientul citește însă aceleași date de 3 ori în 80 de secunde.
+      // Aici NU blocăm conținutul nou (pachetele/linkul sunt utile) — îi cerem să retrimită
+      // mesajul fără preambulul deja citit.
+      const recapPreambleRe = /\b(am notat|notat|recapitul|am pus|am salvat|am re[țt]inut)\b/i;
+      if (!ctx.recapPreambleFired && !asksRecapConfirmation && recapPreambleRe.test(normalized)) {
+        const freshPre = await this.conv.findOne({ where: { id: ctx.conv.id } });
+        const stPre = freshPre ? this.getOrInitWizardState(freshPre) : null;
+        if (stPre && !['paid', 'generating', 'completed'].includes(stPre.step)) {
+          const dPre = stPre.data ?? {};
+          const whoPre = [dPre.recipientName, dPre.dedicatorName, freshPre?.email]
+            .map((v) => normLoose((v ?? '').toString()))
+            .join('|');
+          const msgPre = normLoose((dPre.message ?? '').toString());
+          const recipientNorm = normLoose((dPre.recipientName ?? '').toString());
+          // Prima frază a mesajului nou (emailul nu rupe split-ul: „.com" n-are spațiu după punct).
+          const firstSentence = trimmed.split(/(?<=[.!?])\s+/)[0] ?? '';
+          const firstNorm = normLoose(firstSentence);
+          const restNew = trimmed.slice(firstSentence.length).trim();
+          // Numele ca CUVÂNT întreg, nu ca subșir („Ana" să nu se potrivească în „banana").
+          const recipientRe = recipientNorm
+            ? new RegExp(`\\b${recipientNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
+            : null;
+          const preambleRepeatsOrder =
+            !!recipientRe &&
+            recipientNorm.length >= 3 &&
+            recipientRe.test(firstNorm) &&
+            recapPreambleRe.test(firstNorm) &&
+            !!lastAiNorm &&
+            recapPreambleRe.test(lastAiNorm) &&
+            recipientRe.test(normLoose(lastAiNorm)) &&
+            recapSigEquals(stPre.lastRecapSig, whoPre, msgPre);
+          if (preambleRepeatsOrder) {
+            ctx.recapPreambleFired = true;
+            this.logger.warn(
+              `RECAP_PREAMBLE blocked on conv=${ctx.conv.id.slice(0, 8)} — mesajul reia datele comenzii deja recapitulate în mesajul precedent.`,
+            );
+            return {
+              sent: false,
+              messageType: 'duplicate_text',
+              status: 'RECAP_PREAMBLE_BLOCKED',
+              instruction:
+                restNew.length >= 60
+                  ? 'STAI — mesajul tău ÎNCEPE cu aceleași date pe care i le-ai recapitulat DEJA în mesajul precedent (destinatar + mesaj + email), iar userul le-a citit și ți-a confirmat. Partea a doua e utilă, preambulul nu — clientul are impresia că vorbește cu un robot care o ia de la capăt. RETRIMITE ACUM același mesaj, dar FĂRĂ fraza de recapitulare: începe direct cu partea nouă (pachetele / linkul / întrebarea). Ai voie maxim o confirmare de 3-4 cuvinte („Perfect!", „Super, am notat 👌") — fără să reiei numele, povestea sau emailul.'
+                  : 'STAI — reiei a doua oară aceleași date pe care i le-ai recapitulat deja (destinatar + mesaj + email) și userul le-a confirmat. NU repeta comanda — AVANSEAZĂ: dacă ai destinatar + mesaj + email + pachet, apelează `wizard_finalize` ACUM și trimite linkul, însoțit de o singură propoziție scurtă („Perfect! Îți trimit linkul de plată 👇"). Dacă mai lipsește exact un câmp, cere-l direct, într-o frază, fără recapitulare.',
+            };
+          }
+        }
+      }
       if (asksRecapConfirmation) {
         const freshForRecap = await this.conv.findOne({ where: { id: ctx.conv.id } });
         const stRecap = freshForRecap ? this.getOrInitWizardState(freshForRecap) : null;
         if (stRecap && !['paid', 'generating', 'completed'].includes(stRecap.step)) {
           const dRecap = stRecap.data ?? {};
-          const sig = [dRecap.recipientName, dRecap.dedicatorName, dRecap.message, freshForRecap?.email]
-            .map((v) => (v ?? '').toString().trim().toLowerCase())
+          // Semnătura are `who` (nume/dedicator/email — comparate exact) separat de `msg`
+          // (povestea — comparată fuzzy), ca reformulările modelului să nu mai ocolească garda.
+          const sigWho = [dRecap.recipientName, dRecap.dedicatorName, freshForRecap?.email]
+            .map((v) => normLoose((v ?? '').toString()))
             .join('|');
+          const sigMsg = normLoose((dRecap.message ?? '').toString());
+          const sig = buildRecapSig(sigWho, sigMsg);
           // Excepție: userul CERE explicit să-i reiei comanda — atunci recapitularea e utilă.
           const lastUserMsg = await this.msg.findOne({
             where: { conversationId: ctx.conv.id, authorRole: 'user' },
@@ -4677,7 +4824,11 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           const userAskedRecap = /\b(recapitul|ce ai notat|mai zi o dat[aă]|repet[aă]|cum arat[aă] comanda|ce am comandat)\b/i.test(
             lastUserMsg?.body ?? '',
           );
-          if (!userAskedRecap && stRecap.lastRecapSig && stRecap.lastRecapSig === sig && sig.replace(/\|/g, '').trim()) {
+          if (
+            !userAskedRecap &&
+            recapSigEquals(stRecap.lastRecapSig, sigWho, sigMsg) &&
+            (sigWho.replace(/\|/g, '').trim() || sigMsg)
+          ) {
             this.logger.warn(`RECAP_SAME_DATA blocked on conv=${ctx.conv.id.slice(0, 8)} — recapitulare cu date identice cu cea precedentă.`);
             return {
               sent: false,
@@ -4687,7 +4838,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
                 'STAI — ai recapitulat DEJA comanda cu EXACT aceleași date (destinatar, dedicator, mesaj, email) și userul a văzut-o. Nimic real nu s-a schimbat de atunci, deci o a doua recapitulare + „e corect?" doar întârzie plata și sună robotic. Alegerea pachetului NU cere o recapitulare nouă — confirmă pachetul într-o propoziție scurtă și AVANSEAZĂ: dacă ai destinatar + mesaj + email + pachet → apelează `wizard_finalize` ACUM și trimite linkul de plată. Dacă lipsește exact un câmp, cere-l direct, într-o singură frază.',
             };
           }
-          if (freshForRecap && stRecap.lastRecapSig !== sig) {
+          if (freshForRecap && !recapSigEquals(stRecap.lastRecapSig, sigWho, sigMsg)) {
             stRecap.lastRecapSig = sig;
             stRecap.updatedAt = new Date().toISOString();
             await this.conv
@@ -7100,6 +7251,10 @@ interface AgentCtx {
    *  un mesaj „am notat ..." fără update persistat = date pierdute + câmp re-cerut peste
    *  două mesaje. (2026-07-17, audit conv fd9ab3d1.) */
   wizardUpdatedThisTurn?: boolean;
+  /** S-a declanșat deja garda RECAP_PREAMBLE (Treapta 0.66) în acest run? Un singur blocaj
+   *  per tur: dacă modelul insistă cu preambulul, îl lăsăm să treacă a doua oară — mai bine
+   *  un mesaj redundant decât niciun mesaj. (2026-08-05, audit conv fb0fe628.) */
+  recapPreambleFired?: boolean;
   /** S-a declanșat deja o gardă pe destinatar (Treapta 0.66) în acest run? Un singur
    *  nudge per tur — altfel, dacă modelul insistă cu același mesaj, blocajul ar putea
    *  bucla în interiorul aceluiași tur. (2026-07-31, audit conv 18e99e1e.) */
