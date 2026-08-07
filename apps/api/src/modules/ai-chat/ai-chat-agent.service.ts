@@ -1745,6 +1745,16 @@ ETAPA 2 — PREȚ + OFERTĂ (CRITIC — NICIODATĂ SKIPPED, MEREU prin TOOL):
     detaliile. Userul trebuie să confirme ${price} cât mai repede, nu să se sperie la final.
   → ⚠️ OBLIGATORIU: înainte de a cere DETALII (nume, mesaj, email), TREBUIE să
     anunți prețul și să primești confirmare „da/ok/de acord".
+  → 🫀 NICIODATĂ PREȚ SEC PESTE UN MESAJ PERSONAL. Dacă userul ți-a scris cine e persoana,
+    ce ocazie sau ce vrea să-i transmită, prima ta reacție e OMENEASCĂ, nu comercială:
+    pui în parametrul \`lead\` al tool-ului o propoziție scurtă care arată că ai ascultat
+    („Ce frumos 🥰 Am prins: e pentru Răzvan, din partea lui Flory."), iar tool-ul lipește
+    prețul după ea, în ACELAȘI mesaj. ⚠️ ÎNAINTE de quote apelezi \`wizard_update\` cu tot
+    ce ai extras — altfel informația se pierde și i-o re-ceri peste trei mesaje.
+    BUG observat 2026-08-07 (conv 915fba4d, 1a8e89ac, 2d501628): userul a scris „Buna iubitu
+    meu razvan din partea amea flory iubesc foarte mult", iar singurul răspuns primit a fost
+    „Maneaua costa 29.99 lei. Sunteti de acord?" — un bon de casă peste o dedicație. Nu a mai
+    răspuns niciodată. Toate trei conversațiile au murit exact în acel punct, cu wizardul gol.
   → ⚠️ MEREU prin tool \`quote_price_with_offer\` — NU scrie tu prețul în text liber.
     Tool-ul verifică automat dacă userul are cod câștigat la roata norocului și
     aplică reducerea în mesaj. Dacă scrii tu „Manea costă 29.99 RON", PIERZI
@@ -2235,6 +2245,17 @@ REGULI STRICTE:
     re-cotare — e o alegere de upgrade și E PERMIS chiar dacă prețul a fost deja confirmat.
     Se face O SINGURĂ dată, înainte de finalize. NU trimite NICIODATĂ de două ori la rând
     același mesaj de cotare a prețului de bază.
+24bis. CINE AVANSEAZĂ COMANDA A ACCEPTAT PREȚUL (confirmare implicită). După „Sunteti de
+    acord?", NU aștepta neapărat cuvântul „da". Dacă userul răspunde aducând DETALII sau
+    CERINȚE („și cu mesaj", „vreau să fie de petrecere", „pentru soția mea Ana", „poți pune
+    și numele copiilor?") — ăsta e acordul lui, exprimat prin fapte. Continuă tunelul normal
+    (notează cu \`wizard_update\`, cere pe rând ce lipsește). ⛔ INTERZIS să condiționezi
+    pasul următor de o confirmare ceremonială: „după ce confirmi prețul, îmi trimiți și
+    mesajul" e un blocaj artificial care oprește un client deja pornit.
+    Re-întrebi acordul DOAR în două cazuri: (a) userul tace complet; (b) se plânge explicit
+    de preț („e scump", „mă mai gândesc").
+    BUG observat 2026-08-07 conv 8c3fc88a: la „Și cu mesaj" Irina a răspuns „Da, sigur. Dupa
+    ce confirmi prețul, imi trimiti si mesajul" — clientul nu a mai scris nimic.
 25. „CUM PLĂTESC?" = INTENȚIE DE CUMPĂRARE, NU întrebare de preț. Dacă userul întreabă
     „cum pot plăti", „cum plătesc", „unde plătesc", „vreau să plătesc", „cum fac plata" →
     NU re-cota prețul. Asta înseamnă că userul vrea linkul de plată ACUM. Avansează direct:
@@ -2481,8 +2502,16 @@ REGULI STRICTE:
       },
       {
         name: 'quote_price_with_offer',
-        description: 'Verifică dacă userul are deja un cod promo activ (câștigat la roata norocului) și formulează automat anunțul de preț cu/fără ofertă. AI doar îl apelează — NU mai trimite manual mesajul cu preț, tool-ul îl trimite singur.',
-        parameters: { type: 'object', properties: {} },
+        description: 'Verifică dacă userul are deja un cod promo activ (câștigat la roata norocului) și formulează automat anunțul de preț cu/fără ofertă. AI doar îl apelează — NU mai trimite manual mesajul cu preț, tool-ul îl trimite singur. ⚠️ Dacă userul ți-a dat DEJA context (pentru cine e, ce ocazie, ce mesaj vrea), pune OBLIGATORIU acel context în `lead` — altfel primește un preț sec după ce ți-a povestit ceva personal și pleacă.',
+        parameters: {
+          type: 'object',
+          properties: {
+            lead: {
+              type: 'string',
+              description: 'O propoziție SCURTĂ (max ~20 cuvinte), caldă și în cuvintele tale, care arată că ai ascultat ce ți-a scris userul — ex. „Ce frumos 🥰 Am prins: e pentru Răzvan, din partea lui Flory." Se pune ÎNAINTE de preț, în ACELAȘI mesaj. NU pune sume/prețuri în ea (le adaugă tool-ul) și NU pune întrebări în ea (întrebarea e „Sunteti de acord?").',
+            },
+          },
+        },
       },
       {
         name: 'issue_discount_offer',
@@ -2641,7 +2670,7 @@ REGULI STRICTE:
       force_open_chat: async (args) => this.handleForceOpen(ctx, String(args.reason ?? '')),
       check_order_status: async () => this.handleCheckOrderStatus(ctx),
       change_email_and_resend: async (args) => this.handleChangeEmailAndResend(ctx, String(args.newEmail ?? '')),
-      quote_price_with_offer: async () => this.handleQuotePrice(ctx),
+      quote_price_with_offer: async (args) => this.handleQuotePrice(ctx, typeof args.lead === 'string' ? args.lead : undefined),
       issue_discount_offer: async (args) => this.handleIssueDiscount(ctx, Number(args.percentage ?? 0)),
       apply_user_code: async (args) => this.handleApplyUserCode(ctx, String(args.code ?? '')),
       play_sample: async (args) => this.handlePlaySample(ctx, String(args.kind ?? 'voice'), String(args.id ?? '')),
@@ -4291,13 +4320,23 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     // observat 2026-07-04 conv 8033ee7c: după quote a trimis instant „Perfect! Pe ce
     // adresa de email sa-ti trimit melodia?" presupunând acordul, deși userul nu
     // confirmase nimic — sperie clientul și pune 2 întrebări deodată.
+    // FIX 2026-08-07 (audit conv 915fba4d): garda arunca și mesajele care NU cereau nimic, ci
+    // doar recunoșteau ce spusese userul („Am prins deja: e pentru Razvan, din partea Flory").
+    // Clientul rămânea doar cu prețul sec, iar datele — necitite de `wizard_update` — se
+    // pierdeau de tot (`wizardState.data` = {}). Blocajul rămâne (ancorarea îi este locul în
+    // `lead`-ul quote-ului, nu într-un al doilea mesaj), dar instrucțiunea cere acum salvarea
+    // informației în loc s-o lase să dispară.
     if (ctx.priceQuotedThisTurn) {
+      const looksLikeAnchor = /\b(am prins|am (notat|re[țt]inut)|deci e pentru|ce frumos|super)\b/i.test(trimmed);
       return {
         sent: false,
         messageType: 'noop',
         status: 'AWAIT_PRICE_CONFIRMATION',
         instruction:
-          'STAI — tocmai ai cotat prețul și ai întrebat „Sunteti de acord?". TERMINĂ TURUL și AȘTEAPTĂ ca userul să confirme („da/ok/de acord") ÎNAINTE de a cere emailul sau orice alt detaliu. NU presupune acordul, NU trimite „Perfect! Pe ce adresa de email...". NU mai apela niciun tool.',
+          'STAI — tocmai ai cotat prețul și ai întrebat „Sunteti de acord?". TERMINĂ TURUL și AȘTEAPTĂ ca userul să confirme („da/ok/de acord") ÎNAINTE de a cere emailul sau orice alt detaliu. NU presupune acordul, NU trimite „Perfect! Pe ce adresa de email...".' +
+          (looksLikeAnchor
+            ? ' ⚠️ Mesajul tău recunoștea date pe care userul ți le-a dat: apelează ACUM `wizard_update` cu ele (recipientName / dedicatorName / occasion / message), altfel se pierd și i le vei re-cere degeaba. Data viitoare pune ancorarea asta în `lead`-ul lui `quote_price_with_offer`, ca să ajungă la user ÎMPREUNĂ cu prețul. După update, NU mai trimite niciun mesaj.'
+            : ' NU mai apela niciun tool.'),
       };
     }
 
@@ -4327,6 +4366,44 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         }
       } catch {
         /* best-effort — dacă lookup-ul pică, lăsăm mesajul să treacă prin restul gardurilor */
+      }
+    }
+
+    // GUARD anti-„CONFIRMĂ ÎNTÂI PREȚUL": userul a răspuns la cotare aducând detalii despre
+    // comandă, iar Irina refuză să avanseze până nu aude un „da" formal. Un client care
+    // continuă să-ți spună ce vrea în melodie a acceptat deja prețul — a-i cere o confirmare
+    // ceremonială îl blochează exact când era pornit. BUG observat 2026-08-07 conv 8c3fc88a:
+    // după „Maneaua costa 29.99 lei. Sunteti de acord?" userul a scris „Și cu mesaj", iar
+    // Irina a răspuns „Da, sigur. Dupa ce confirmi prețul, imi trimiti si mesajul" — clientul
+    // nu a mai scris niciodată. Doar tăcerea sau o obiecție pe preț justifică re-întrebarea.
+    if (!ctx.followUp && !ctx.priceQuotedThisTurn) {
+      const n = normLoose(trimmed);
+      const conditionsOnPriceConfirm =
+        /\b(dupa ce|cand|dupa) (imi )?(confirmi|confirmati|esti de acord|sunteti de acord|accepti)\b/.test(n) ||
+        /\b(confirmi|confirma|confirmati) (te rog )?(pretul|si pretul)\b/.test(n) ||
+        /\bastept (doar )?confirmarea (ta )?(pentru )?(pret|pretul)\b/.test(n);
+      if (conditionsOnPriceConfirm) {
+        const lastUser = await this.msg.findOne({
+          where: { conversationId: ctx.conv.id, authorRole: 'user' },
+          order: { createdAt: 'DESC' },
+        });
+        const lastUserRaw = (lastUser?.body ?? '').trim();
+        const lastUserNorm = normLoose(lastUserRaw);
+        const objectsToPrice =
+          /\b(scump|prea mult|nu am bani|nu imi permit|nu mi permit|reducere|mai ieftin|ma gandesc|ma mai gandesc|renunt|nu vreau|prea)\b/.test(lastUserNorm) ||
+          /\bnu\b/.test(lastUserNorm.split(' ').slice(0, 2).join(' '));
+        const bringsContent =
+          lastUserNorm.split(' ').filter((w) => w.length > 1 && !AFFIRM_FILLER.has(w)).length >= 1;
+        if (lastUserRaw && bringsContent && !objectsToPrice) {
+          this.logger.warn(`PRICE_CONFIRM_GATE blocked on conv=${ctx.conv.id.slice(0, 8)} — cere confirmare formală peste un user care avansează.`);
+          return {
+            sent: false,
+            messageType: 'noop',
+            status: 'PRICE_CONFIRM_GATE_BLOCKED',
+            instruction:
+              'STAI — userul NU ți-a obiectat la preț, ci ți-a răspuns aducând detalii despre comandă. Asta ESTE acceptarea prețului: cine tot îți spune ce vrea în melodie a trecut peste sumă. NU-i mai cere un „confirmă prețul" ceremonial și NU condiționa pasul următor de el — îl oprești exact când era pornit. Preia ce ți-a spus (`wizard_update` dacă e informație nouă) și continuă tunelul normal: cere-i pe rând ce mai lipsește (destinatar → mesaj → email). Re-întrebi acordul DOAR dacă userul tace de tot sau se plânge explicit de preț.',
+          };
+        }
       }
     }
 
@@ -5803,8 +5880,10 @@ ${transcript}`;
     }
   }
 
-  /** Quote price + verifică dacă userul are deja un cod câștigat la roată. */
-  private async handleQuotePrice(ctx: AgentCtx): Promise<unknown> {
+  /** Quote price + verifică dacă userul are deja un cod câștigat la roată.
+   *  `lead` = propoziția de ancorare scrisă de AI (ce a înțeles din mesajul userului),
+   *  lipită ÎNAINTE de preț în ACELAȘI mesaj — vezi garda QUOTE_NEEDS_CONTEXT. */
+  private async handleQuotePrice(ctx: AgentCtx, lead?: string): Promise<unknown> {
     const check = await this.assertNotManual(ctx);
     if (check.aborted) return { aborted: true, status: 'ABORTED_MANUAL_MODE' };
     const gate = this.assertCanSendMessage(ctx, 'quote_price_with_offer');
@@ -5849,6 +5928,43 @@ ${transcript}`;
             ? `Prețul a fost deja cotat și userul îl știe. NU-l recota. Continuă tunelul: mai lipsește ${missingAfterQuote.join(' și ')} — întreabă ACUM primul câmp lipsă (un singur câmp pe mesaj). Emailul îl ceri ABIA după ce ai și destinatarul și mesajul.`
             : 'Prețul a fost deja cotat și userul îl știe. NU-l recota. Cere DOAR email-ul printr-un send_message scurt („Perfect! Dă-mi adresa ta de email și îți trimit linkul de plată imediat."), apoi wizard_finalize.',
       };
+    }
+
+    // GUARD anti-QUOTE SEC: userul a povestit ceva personal, iar singurul răspuns pe care-l
+    // primește e „Maneaua costa 29.99 lei. Sunteti de acord?" — un bon de casă peste o
+    // dedicație. BUG observat 2026-08-07, tipar pe 3 conversații moarte instant după quote:
+    // conv 915fba4d (userul a scris „Buna iubitu meu razvan din partea amea flory iubesc
+    // foarte mult" — adică destinatar + expeditor + mesaj, tot ce ne trebuie), conv 1a8e89ac
+    // („pentru cumnatul alex"), conv 2d501628. În toate, `wizardState.data` a rămas `{}` (zero
+    // `wizard_update`), iar în 915fba4d mesajul care recunoștea datele („Am prins deja: e
+    // pentru Razvan, din partea Flory") a fost trimis DUPĂ quote și aruncat de garda
+    // AWAIT_PRICE_CONFIRMATION. Rezultat: clientul a scris o dedicație, a primit un preț sec
+    // și nu a mai răspuns niciodată. Ancorarea trebuie să fie ÎN mesajul de preț (`lead`), nu
+    // un al doilea mesaj, iar datele trebuie salvate ÎNAINTE, altfel se pierd definitiv.
+    if (!lead?.trim() && !ctx.quoteContextNudged) {
+      const lastUserMsg = await this.msg.findOne({
+        where: { conversationId: ctx.conv.id, authorRole: 'user' },
+        order: { createdAt: 'DESC' },
+      });
+      const userText = (lastUserMsg?.body ?? '').trim();
+      // „Context substanțial" = userul a scris ceva propriu, nu doar „vreau o melodie"/„da".
+      const contentWords = normLoose(userText)
+        .split(' ')
+        .filter((w) => w.length > 1 && !AFFIRM_FILLER.has(w));
+      const wizData = (freshConv?.wizardState as { data?: WizardData } | null)?.data ?? {};
+      const wizardEmpty = !wizData.recipientName && !wizData.message && !wizData.dedicatorName;
+      if (contentWords.length >= 5 && wizardEmpty && !ctx.wizardUpdatedThisTurn) {
+        ctx.quoteContextNudged = true; // o singură dată per run — nu blocăm quote-ul la infinit
+        this.logger.warn(`QUOTE_NEEDS_CONTEXT on conv=${ctx.conv.id.slice(0, 8)} — quote sec peste un mesaj cu context.`);
+        return {
+          sent: false,
+          status: 'QUOTE_NEEDS_CONTEXT',
+          instruction:
+            'STAI — userul tocmai ți-a scris ceva personal (pentru cine e / ce ocazie / ce vrea să-i transmită), iar tu erai gata să-i răspunzi DOAR cu prețul. Un preț sec peste o dedicație sună a bon de casă și clientul pleacă. Fă acum, în ACEEAȘI tură, DOUĂ lucruri: ' +
+            '1) `wizard_update` cu TOT ce poți extrage din mesajul lui (recipientName / dedicatorName / occasion / message — vezi ETAPA 2.5; `message` DOAR dacă a spus explicit ce să conțină, nu-l inventa). Dacă nu-l salvezi acum, informația se pierde și i-o vei re-cere peste 3 mesaje. ' +
+            '2) Reapelează `quote_price_with_offer` cu `lead` = o propoziție scurtă și caldă care arată că ai ascultat („Ce frumos 🥰 Am prins: e pentru Răzvan, din partea lui Flory."). Fără sume în `lead` — prețul îl pune tool-ul.',
+        };
+      }
     }
 
     // Prețul de intrare anunțat = pachetul basic (29.99). Irina face upsell-ul de
@@ -5913,6 +6029,20 @@ ${transcript}`;
       // — scoasă 2026-06-04 la cererea ownerului: suna ca un robot care promite oferte
       // pe care nu le dă concret; oferta reală apare doar când userul are cod la roată).
       msgText = `Maneaua costa ${baseFormatted}. Sunteti de acord?`;
+    }
+
+    // Ancorarea scrisă de AI se lipește ÎNAINTE de preț, în același mesaj. Sanitizare:
+    // (a) fără sume/monedă în lead — prețul îl stabilește EXCLUSIV tool-ul, altfel AI poate
+    //     halucina o sumă lângă cea reală (vezi regula anti-echivalare din ETAPA 2);
+    // (b) fără întrebare proprie — singura întrebare a mesajului rămâne „Sunteti de acord?",
+    //     altfel userul primește două întrebări deodată și răspunde la una singură;
+    // (c) tăiat la 200 caractere — un lead lung îneacă prețul.
+    const leadClean = (lead ?? '').trim().replace(/\s+/g, ' ').slice(0, 200);
+    const leadHasPrice = /\d{1,4}([.,]\d{1,2})?\s*(ron|lei|eur|euro|€)|\d\s*(ron|lei|eur|€)/i.test(leadClean);
+    if (leadClean && !leadHasPrice && !leadClean.includes('?')) {
+      msgText = `${leadClean} ${msgText}`;
+    } else if (leadClean) {
+      this.logger.warn(`quote lead dropped on conv=${ctx.conv.id.slice(0, 8)} — ${leadHasPrice ? 'conținea o sumă' : 'conținea o întrebare'}.`);
     }
 
     // Trimite mesajul direct (bypass send_message dedupe — e o acțiune distinctă)
@@ -7491,6 +7621,11 @@ interface AgentCtx {
    *  orice send_message ulterior în același tur. (2026-07-04, audit conv 8033ee7c: după
    *  quote a trimis instant „Perfect! Pe ce adresa de email..." presupunând acordul.) */
   priceQuotedThisTurn?: boolean;
+  /** S-a cerut deja, în acest run, ca quote-ul să fie precedat de ancorarea contextului
+   *  (garda QUOTE_NEEDS_CONTEXT)? Un singur nudge per tur: dacă modelul reapelează tot fără
+   *  `lead`, prețul pleacă oricum — mai bine un quote sec decât un tur fără niciun mesaj.
+   *  (2026-08-07, audit conv 915fba4d / 1a8e89ac / 2d501628.) */
+  quoteContextNudged?: boolean;
   /** Oferta proprie („pot să-ți arăt pachetele?") la care userul a răspuns „da" în mesajul
    *  curent și care NU a fost încă onorată. Gardurile care redirecționează AI-ul spre pasul
    *  de tunel trebuie să NU o suprascrie — altfel userul e ignorat imediat după ce a acceptat.
