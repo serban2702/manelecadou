@@ -5021,12 +5021,55 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       // făcută („Gata, ți-am trimis linkul de plată mai sus"). Clienta a rămas să caute un link
       // care nu venise, apoi conversația s-a împotmolit. Regula 13 („DACĂ PROMIȚI O ACȚIUNE,
       // FĂ-O") acoperea deja cazul în prompt, dar modelul o încalcă → mutăm detecția în cod.
-      // Blocăm DOAR promisiunea fermă și iminentă („acum/imediat"); condiționalele legitime de
-      // dinaintea confirmării („dacă e ok așa, îți trimit imediat linkul") trec neatinse.
-      const promisesLinkNow =
-        /\b(î|i)[țt]i trimit\b[^.!?]{0,30}\blink/i.test(normalized) &&
-        /\b(acum|imediat)\b/i.test(normalized) &&
-        !/\bdac[aă]\b/i.test(normalized);
+      // Blocăm promisiunea fermă și iminentă („acum/imediat").
+      // BUG observat 2026-08-08 conv 52c47f2f: excepția de mai jos pe condițional
+      // (`!/\bdac[aă]\b/`) lăsa să treacă exact forma cea mai frecventă — „Daca e ok asa, iti
+      // trimit linkul de plata imediat." Irina a trimis-o de TREI ori în două minute (12:20,
+      // 12:22, plus varianta „Dacă e corect așa, îți trimit acum linkul"), de fiecare dată
+      // închizând turul în loc să apeleze `wizard_finalize`. La a treia avea deja TOT (Victor +
+      // povestea + emailul + pachetul Standard ales de client) — nu mai era nimic de confirmat,
+      // iar clientul, care răspunsese „Standard", a rămas 4 minute fără link; a plecat doar
+      // pentru că l-a scos follow-up-ul automat de la minutul 4. Un condițional e legitim doar
+      // cât timp chiar mai lipsește ceva de confirmat, deci decizia se ia pe STARE, nu pe text:
+      //   • comandă completă → condiționalul e o amânare inutilă: finalize în ACELAȘI tur;
+      //   • comandă incompletă → promisiunea e falsă („Ok"-ul userului nu aduce niciun link):
+      //     cere direct câmpul care lipsește, fără să anunți linkul.
+      const promisesLinkPhrase =
+        /\b(î|i)[țt]i trimit\b[^.!?]{0,30}\blink/i.test(normalized) && /\b(acum|imediat)\b/i.test(normalized);
+      const promisesLinkNow = promisesLinkPhrase && !/\bdac[aă]\b/i.test(normalized);
+      if (promisesLinkPhrase && !promisesLinkNow && !ctx.paymentLinkSent && !ctx.linkPromiseGateFired) {
+        const freshLink = await this.conv.findOne({ where: { id: ctx.conv.id } });
+        const stLink = freshLink ? this.getOrInitWizardState(freshLink) : null;
+        if (stLink && !['paid', 'generating', 'completed'].includes(stLink.step) && !stLink.modification) {
+          const missingLink = this.missingWizardFields(stLink.data);
+          const needsEmail = !freshLink?.email;
+          const needsPackage = !stLink.data.packageTier;
+          ctx.linkPromiseGateFired = true;
+          if (missingLink.length === 0 && !needsEmail && !needsPackage) {
+            this.logger.warn(`LINK_PROMISE_CONDITIONAL blocked on conv=${ctx.conv.id.slice(0, 8)} — comandă completă, dar amână linkul cu „dacă e ok".`);
+            return {
+              sent: false,
+              messageType: 'noop',
+              status: 'LINK_PROMISE_CONDITIONAL_COMPLETE',
+              instruction:
+                'STAI — condiționezi linkul de plată de încă un „dacă e ok/corect așa", dar comanda e DEJA completă: ai destinatarul, mesajul, emailul și pachetul ales de user. Nu mai e nimic de confirmat — userul ți-a răspuns deja, iar o confirmare în plus îl lasă să aștepte un link care nu vine. Apelează `wizard_finalize` ACUM, în ACELAȘI tur, și trimite-i linkul; după ce pleacă, o singură propoziție scurtă („Gata, ți-am trimis linkul de plată mai sus 👆"). NU retrimite mesajul de recapitulare.',
+            };
+          }
+          const lipsaHuman = [
+            ...missingLink.map((f) => (f === 'recipientName' ? 'numele persoanei' : 'ce vrei să-i transmită melodia')),
+            ...(needsEmail ? ['emailul de livrare'] : []),
+            ...(needsPackage ? ['pachetul (Standard / Plus / Premium — ETAPA 5.5)'] : []),
+          ].join(', ');
+          this.logger.warn(`LINK_PROMISE_CONDITIONAL blocked on conv=${ctx.conv.id.slice(0, 8)} — promite linkul deși lipsește ${lipsaHuman}.`);
+          return {
+            sent: false,
+            messageType: 'noop',
+            status: 'LINK_PROMISE_CONDITIONAL_INCOMPLETE',
+            instruction:
+              `STAI — îi promiți linkul de plată („îți trimit acum/imediat"), dar nu ai ce trimite: mai lipsește ${lipsaHuman}. Userul o să-ți răspundă „Ok" așteptând linkul, n-o să primească nimic și o să creadă că l-ai lăsat baltă. Retrimite ACUM același mesaj FĂRĂ propoziția care anunță linkul: păstrează confirmarea scurtă a ce ai notat (max o frază, fără să reiei toată comanda) și cere DIRECT, într-o singură întrebare, doar primul lucru care lipsește. Linkul îl anunți abia în mesajul în care chiar îl trimiți (după \`wizard_finalize\`).`,
+          };
+        }
+      }
       if (promisesLinkNow && !ctx.paymentLinkSent) {
         this.logger.warn(`LINK_PROMISE_WITHOUT_SEND blocked on conv=${ctx.conv.id.slice(0, 8)} — „îți trimit acum linkul" fără wizard_finalize/resend.`);
         return {
@@ -6740,9 +6783,41 @@ ${transcript}`;
     const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
     if (!conv) return { error: 'conversation gone' };
     const old = this.getOrInitWizardState(conv);
+    // GUARD reset dublu (BUG observat 2026-08-08 conv 52c47f2f): Irina a apelat
+    // `start_new_order` de două ori la 30 de secunde distanță pentru ACEEAȘI comandă nouă
+    // („Asi mai dori o melodie" → reset, apoi „Pentru cumnata mea Aurica" → încă un reset).
+    // Acolo a scăpat ieftin — datele erau tocmai în tool call-ul următor — dar dacă userul
+    // apucase să dea numele și povestea, al doilea reset le-ar fi șters în tăcere și Irina
+    // le-ar fi re-cerut. Dacă wizard-ul e DEJA o comandă nouă proaspătă (fără plată/generare
+    // în curs, resetat în ultimele 15 minute), nu mai e nimic de curățat: păstrăm ce s-a
+    // colectat între timp. Răzgândirea reală („de fapt e pentru altcineva") se rezolvă cu
+    // `wizard_update`, care suprascrie câmpurile — fără să piardă restul.
+    const lastReset = old.newOrderStartedAt ? Date.parse(old.newOrderStartedAt) : 0;
+    const freshlyReset =
+      !!lastReset &&
+      Date.now() - lastReset < 15 * 60 * 1000 &&
+      old.step === 'collecting' &&
+      !old.generationId &&
+      !old.paymentId;
+    if (freshlyReset) {
+      const have = Object.entries(old.data ?? {})
+        .filter(([, v]) => typeof v === 'string' && v.trim())
+        .map(([k]) => k);
+      this.logger.log(`start_new_order NO_OP conv=${conv.id.slice(0, 8)} — comandă nouă deja începută (${have.join(',') || 'gol'}).`);
+      return {
+        ok: true,
+        status: 'NEW_ORDER_ALREADY_STARTED',
+        emailOnFile: conv.email ?? null,
+        collected: have,
+        instruction:
+          `Comanda NOUĂ e deja începută — nu am resetat nimic, ca să nu pierzi ce ai colectat între timp${have.length ? ` (${have.join(', ')})` : ''}. NU reapela \`start_new_order\` pentru aceeași comandă. Continuă tunelul de unde ai rămas: salvează cu \`wizard_update\` ce ți-a spus userul acum și cere-i următorul câmp care lipsește.` +
+          (conv.email ? ` Emailul există deja (${conv.email}) — NU-l mai cere.` : ''),
+      };
+    }
     const fresh: WizardState = {
       step: 'collecting',
       data: {},
+      newOrderStartedAt: new Date().toISOString(),
       generationId: null,
       paymentId: null,
       linkReissueCount: 0,
@@ -7765,6 +7840,10 @@ interface AgentCtx {
    *  nudge per tur — altfel, dacă modelul insistă cu același mesaj, blocajul ar putea
    *  bucla în interiorul aceluiași tur. (2026-07-31, audit conv 18e99e1e.) */
   recipientGuardFired?: boolean;
+  /** S-a declanșat deja garda pe promisiunea CONDIȚIONATĂ de link („dacă e ok așa, îți
+   *  trimit acum linkul") în acest run? Un singur blocaj per tur, ca modelul să nu rămână
+   *  fără niciun mesaj dacă insistă cu aceeași formulare. (2026-08-08, audit conv 52c47f2f.) */
+  linkPromiseGateFired?: boolean;
   /** Rulare de tip follow-up (reminder spațiat după tăcerea userului) vs. run normal
    *  declanșat de un mesaj al userului. Unele guard-uri anti-repetiție se relaxează pe
    *  follow-up (un reminder spațiat e legitim, spre deosebire de 2 nudge-uri la rând). */

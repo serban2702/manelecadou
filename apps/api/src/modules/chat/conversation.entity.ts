@@ -121,6 +121,10 @@ export interface WizardState {
    *  existente pentru că userul răspunsese între timp „Standar" (alegerea
    *  pachetului), nu un „da" simplu. */
   lastRecapSig?: string | null;
+  /** Momentul (ISO) la care `start_new_order` a resetat ultima oară wizard-ul pentru o
+   *  comandă NOUĂ. Un al doilea reset la câteva secunde distanță ar șterge exact datele
+   *  colectate între timp pentru comanda nouă → NO_OP. Vezi conv 52c47f2f (2026-08-08). */
+  newOrderStartedAt?: string | null;
   /** Modificare contra cost în așteptarea plății (request_modification). */
   modification?: {
     generationId: string;
