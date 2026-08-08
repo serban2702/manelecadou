@@ -284,6 +284,38 @@ function textOverlap(a: string, b: string): number {
   return union === 0 ? 0 : intersect / union;
 }
 
+/**
+ * Spune dacă o descriere de modificare (`changes` din request_modification) conține o
+ * schimbare CONCRETĂ, aplicabilă — sau e doar o parafrază meta a nemulțumirii clientului.
+ *
+ * Refacerea gratuită e UNICĂ per melodie, deci nu are voie să plece pe o descriere vidă:
+ * BUG observat 2026-08-08 conv 486bb25f — clientul a scris doar „e o greșeală în melodia
+ * mea, cum o pot schimba?", iar Irina a apelat request_modification în ACELAȘI tur în care
+ * întreba ce e greșit, cu changes = „Corectare greșeală în melodia personalizată. Clientul
+ * spune că e o greșeală în muzică și vrea să fie schimbată corect." (118 caractere, deci a
+ * trecut de gardul pe lungime, dar zero instrucțiuni). Refacerea a ieșit identică, iar când
+ * clientul a spus în sfârșit ce voia („în loc de Arp să zică Arpii") gratuitul era consumat
+ * și AI-ul i-a cerut 14.99 lei pentru corectura pe care nu o primise niciodată → înjurături
+ * + escaladare.
+ *
+ * Cerem cel puțin un „ancoraj": un nume structurat, un citat, sau un cuvânt care numește
+ * CE se schimbă / o formulă de substituție. Fals-negativul e ieftin (AI-ul cere detaliul
+ * concret și reapelează); fals-pozitivul arde gratuitul irecuperabil.
+ */
+function describesConcreteChange(changes: string, newRecipientName?: string | null): boolean {
+  if (newRecipientName && newRecipientName.trim().length >= 2) return true;
+  const t = (changes ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase();
+  if (!t.trim()) return false;
+  // Citat cu conținut („Arp" → „Arpii", 'x', "y") = clientul a dat textul exact.
+  if (/[„“"'‘][^„“”"'‘’]{2,}[”“"'’]/.test(changes)) return true;
+  const anchors =
+    /\bvers|strof|refren|voce|voci|vocal|cor\b|stil|ritm|tempo|instrument|melodic|nume|prenume|diminutiv|se scrie|se pronunt|pronunt|in loc de|sa zica|sa spuna|sa zici|sa cante|corect e|corect este|corect se|mai lent|mai rapid|mai vesel|mai trist|mai manea|dedicatie|mesaj(ul|ului)?\b|varsta|ani\b|localitate|oras/;
+  return anchors.test(t);
+}
+
 /** Distanță Levenshtein (edit distance) — pentru fuzzy-match domenii email. */
 function levenshtein(a: string, b: string): number {
   const m = a.length;
@@ -1656,8 +1688,26 @@ ETAPA 0 — COMANDĂ EXISTENTĂ (verifică ÎNAINTE de a porni wizard-ul):
       3) spune-i CLAR că e un gest unic: „refacerea asta e din partea noastră, o singură
          dată — următoarele modificări sunt contra cost".
       Tool-ul REFUZĂ refacerea gratuită dacă changes e vag — descrie complet și concret.
+    • ⛔⛔ NU apela request_modification în ACELAȘI tur în care întrebi „ce anume e greșit".
+      La un mesaj de tipul „e o greșeală în melodia mea, cum o schimb?" NU știi încă NIMIC
+      concret: pui întrebarea, te OPREȘTI, și aștepți răspunsul lui. \`changes\` trebuie să
+      conțină instrucțiunea EXACTĂ primită de la client („în loc de «Arp» să zică «Arpii»"),
+      nu o parafrază a nemulțumirii lui („clientul spune că e o greșeală și vrea corectat")
+      — aia nu schimbă nimic în melodie. BUG observat 2026-08-08 conv 486bb25f: Irina a
+      pornit refacerea gratuită în același tur cu întrebarea, cu changes fără nicio
+      instrucțiune → piesa a ieșit identică, iar când clientul a spus în sfârșit ce voia,
+      gratuitul era consumat și i s-au cerut 14.99 lei pentru corectura pe care o ceruse de
+      la început → înjurături + escaladare.
+    • ⛔ NU-i spune clientului „acum e corectat / am refăcut cum ai cerut" dacă refacerea NU
+      a plecat cu acea corectură în \`changes\`. \`check_order_status\` îți spune doar că
+      generarea a reușit, NU că schimbarea cerută a fost aplicată. Dacă clientul insistă că
+      problema persistă, crede-l: nu-l contrazice, nu-l trimite să dea refresh a doua oară —
+      aplică corectura concret (request_modification) sau alert_admins + escalate_to_human.
     • Dacă refacerea gratuită a fost deja folosită → DOAR contra cost, indiferent de motiv;
       dacă pare tot greșeala noastră flagrantă → alert_admins ca un coleg să decidă.
+      EXCEPȚIE (o dă tool-ul singur, nu tu): dacă gratuitul plecase fără instrucțiunea
+      clientului, tool-ul întoarce FREE_REMAKE_REPAIR_STARTED și reface GRATUIT — atunci NU
+      cere bani și nu mai pomeni că „gratuitul a fost folosit".
     • ⛔ DUPĂ ce request_modification a întors succes (FREE_REMAKE_STARTED sau plată
       confirmată), regenerarea e DEJA pornită — NU invita clientul să mai adauge detalii
       „spune-mi acum, le prind în refacere". E o promisiune falsă: generarea în curs nu se
@@ -7333,8 +7383,28 @@ ${transcript}`;
     // CAZ 1: refacere GRATUITĂ — doar greșeala noastră SAU gest de retenție.
     // O singură dată per melodie, indiferent de motiv (freeRemakeUsedAt).
     const wantsFree = args.isOurError || args.isRetentionOffer === true;
+    // Refacere de REPARAȚIE: gratuitul a fost consumat de AI pe o descriere VAGĂ (fără
+    // cererea concretă a clientului), deci corectura cerută n-a fost niciodată aplicată.
+    // Nu e o a doua favoare comercială — e repararea unei erori de-a noastră, deci NU
+    // cerem bani pentru ea. O singură dată (freeRemakeRepairAt), doar dacă acum avem
+    // instrucțiunea concretă și doar pe greșeala noastră.
+    // BUG 2026-08-08 conv 486bb25f: gratuit ars cu changes gol → clientului i s-au cerut
+    // 14.99 lei pentru „Arp"→„Arpii", corectura pe care o ceruse de la început.
+    let isRepairRemake = false;
+    if (wantsFree && genRow.freeRemakeUsedAt) {
+      const priorWasVague =
+        !!state.lastFreeRemakeChanges && !describesConcreteChange(state.lastFreeRemakeChanges, null);
+      const remakeWithin24h =
+        Date.now() - new Date(genRow.freeRemakeUsedAt).getTime() < 24 * 60 * 60 * 1000;
+      isRepairRemake =
+        args.isOurError === true &&
+        priorWasVague &&
+        remakeWithin24h &&
+        !state.freeRemakeRepairAt &&
+        describesConcreteChange(changes, newRecipientName);
+    }
     if (wantsFree) {
-      if (genRow.freeRemakeUsedAt) {
+      if (genRow.freeRemakeUsedAt && !isRepairRemake) {
         return {
           status: 'FREE_REMAKE_ALREADY_USED',
           // BUG observat 2026-07-20 conv 694c50b1: Irina promitea „pot trimite imediat
@@ -7347,17 +7417,22 @@ ${transcript}`;
       // Guard context complet: gratuitul e unic, deci refacerea TREBUIE să acopere tot
       // ce vrea clientul. Refuzăm descrieri vagi — AI-ul adună întâi toate detaliile
       // și confirmă cu clientul (politică owner: a doua oară doar pe bani).
-      if (changes.length < 40) {
+      // Lungimea singură nu e de ajuns: o parafrază meta („clientul spune că e o greșeală
+      // și vrea schimbată") trece de 40 de caractere fără să conțină nicio instrucțiune
+      // (BUG 2026-08-08 conv 486bb25f — vezi describesConcreteChange).
+      if (!isRepairRemake && (changes.length < 40 || !describesConcreteChange(changes, newRecipientName))) {
         return {
           status: 'NEED_FULL_CONTEXT',
           instruction:
-            'Refacerea gratuită e UNICĂ — înainte să o pornești, adună TOT contextul de la client: ce anume nu i-a plăcut și ce schimbăm EXACT (versuri? stil? voce? nume? mesaj? ce rămâne la fel?). Recapitulează lista de schimbări, cere confirmarea lui („Deci refac cu: ... — corect?") și spune-i clar că e un gest unic, următoarele modificări fiind contra cost. Abia apoi apelează din nou request_modification cu changes COMPLET (toate detaliile confirmate).',
+            'STOP — nu am pornit nimic. Descrierea modificării NU conține încă o schimbare concretă, aplicabilă (ce cuvânt/nume/vers/voce/stil se schimbă și în ce anume). Refacerea gratuită e UNICĂ: dacă pleacă fără instrucțiunea exactă, iese identică și clientul rămâne cu problema lui, iar gratuitul e consumat. Întreabă-l ÎNTÂI concret („Ce anume e greșit — un nume, un vers? Cum ar trebui să fie corect?"), AȘTEAPTĂ răspunsul lui în mesajul următor, recapitulează („Deci refac cu: ... — corect?") și spune-i că e un gest unic. Abia DUPĂ ce ai de la el textul exact, apelează din nou request_modification cu changes complet (și newRecipientName dacă se schimbă numele). ⛔ NU apela request_modification în același tur în care întrebi ce e greșit.',
         };
       }
       try {
-        const remakeLabel = args.isOurError
-          ? 'CORECTURĂ (refacere gratuită — greșeala noastră)'
-          : 'REFACERE GRATUITĂ UNICĂ (gest comercial — clientul nemulțumit)';
+        const remakeLabel = isRepairRemake
+          ? 'CORECTURĂ DE REPARAȚIE (refacerea anterioară a plecat fără instrucțiunea clientului — aplică EXACT corectura de mai jos)'
+          : args.isOurError
+            ? 'CORECTURĂ (refacere gratuită — greșeala noastră)'
+            : 'REFACERE GRATUITĂ UNICĂ (gest comercial — clientul nemulțumit)';
         const newMessage = this.buildModificationMessage(
           genRow.message,
           changes,
@@ -7381,6 +7456,7 @@ ${transcript}`;
         // Reține CE a aplicat refacerea gratuită — guard-ul din calea contra cost refuză
         // să încaseze pentru aceeași schimbare imediat după (CHANGE_ALREADY_APPLIED_BY_REMAKE).
         state.lastFreeRemakeChanges = changes;
+        if (isRepairRemake) state.freeRemakeRepairAt = new Date().toISOString();
         state.updatedAt = new Date().toISOString();
         await this.conv
           .createQueryBuilder()
@@ -7389,16 +7465,20 @@ ${transcript}`;
           .where('id = :id', { id: conv.id })
           .execute();
         this.notifyAdminsUrgent(conv, {
-          reason: args.isOurError
-            ? 'Refacere GRATUITĂ pornită de AI (greșeala noastră)'
-            : 'Refacere GRATUITĂ de RETENȚIE pornită de AI (client nemulțumit, gest unic)',
+          reason: isRepairRemake
+            ? 'Refacere de REPARAȚIE pornită de AI (gratuitul precedent plecase fără instrucțiunea clientului)'
+            : args.isOurError
+              ? 'Refacere GRATUITĂ pornită de AI (greșeala noastră)'
+              : 'Refacere GRATUITĂ de RETENȚIE pornită de AI (client nemulțumit, gest unic)',
           details: `Generation ${genRow.id} — modificări: ${changes}`,
         });
         return {
           ok: true,
-          status: 'FREE_REMAKE_STARTED',
+          status: isRepairRemake ? 'FREE_REMAKE_REPAIR_STARTED' : 'FREE_REMAKE_STARTED',
           generationId: regen.id,
-          instruction: args.isOurError
+          instruction: isRepairRemake
+            ? 'Am pornit refacerea GRATUIT — corectura cerută nu fusese aplicată la refacerea anterioară, deci e din vina noastră și NU se plătește. Recunoaște-o simplu și fără scuze robotice („Ai dreptate, prima refacere nu a prins corectura — am pornit-o acum corect, gratuit"), spune-i că varianta bună vine în 5-10 minute pe email și în chat. ⛔ NU-i cere bani pentru corectura asta și NU-i mai spune că „gratuitul a fost folosit". ⛔ NU-l invita să adauge alte detalii acum — generarea e deja în lucru.'
+            : args.isOurError
             ? 'Refacerea gratuită a pornit chiar acum. Cere-ți scuze sincer și spune-i clientului că varianta corectată e gata în 5-10 minute — o primește pe email și aici în chat. Fii cald, fără scuze robotice. Menționează BLÂND că refacerea gratuită e un gest unic — eventualele modificări viitoare sunt contra cost. ⛔ NU-l invita să mai adauge detalii acum ("spune-mi și le prind în refacere") — generarea e deja în lucru cu ce s-a confirmat, nu se mai poate edita din mers.'
             : 'Refacerea a pornit chiar acum, ca gest din partea noastră. Spune-i clientului cald că facem o excepție pentru el O SINGURĂ DATĂ — varianta nouă e gata în 5-10 minute, iar eventualele modificări viitoare sunt contra cost (14.99/29.99 lei). NU promite refunduri. ⛔ NU-l invita să mai adauge detalii acum — generarea e deja în lucru cu ce s-a confirmat.',
         };

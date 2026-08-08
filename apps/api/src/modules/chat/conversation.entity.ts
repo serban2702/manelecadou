@@ -109,6 +109,11 @@ export interface WizardState {
    *  isRetentionOffer) — guard „nu încasa pentru o schimbare deja aplicată"
    *  (CHANGE_ALREADY_APPLIED_BY_REMAKE în ai-chat-agent.service.ts). */
   lastFreeRemakeChanges?: string | null;
+  /** ISO timestamp al refacerii gratuite de REPARAȚIE — acordată o singură dată când
+   *  gratuitul inițial a fost consumat de AI pe o descriere vagă (fără cererea concretă
+   *  a clientului), deci clientul nu a primit niciodată corectura pe care o cerea.
+   *  Vezi conv 486bb25f (2026-08-08). */
+  freeRemakeRepairAt?: string | null;
   /** Semnătura datelor comenzii (destinatar|dedicator|mesaj|email) la ULTIMA
    *  recapitulare trimisă userului. Dacă AI vrea să recapituleze din nou cu EXACT
    *  aceleași date, e o repetare robotică → RECAP_SAME_DATA_BLOCKED. Vezi conv

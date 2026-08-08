@@ -1867,6 +1867,25 @@ export class ChatService implements OnModuleInit {
    * dialog natural în UI.
    */
   private async sendThankYouAfterGeneration(conversationId: string, siteId: string | null, generationId?: string): Promise<void> {
+    // Conversație preluată de un OM (escalare AI) → niciun mesaj automat. Livrarea făcută
+    // manual de coleg o comunică el, cu tonul potrivit situației. BUG observat 2026-08-08
+    // conv 486bb25f: client care înjura fiindcă nu i se corectase numele a fost escaladat,
+    // colegul a refăcut piesa manual (generare nouă, dar cu paymentId-ul comenzii vechi →
+    // detecția de „refacere" de mai jos a ratat-o) și clientul a primit „Încă una gata! 🎶
+    // Îmi place că ai prins gustul." la 7 minute după escaladare.
+    try {
+      const escalated: { id: string }[] = await this.msg.manager.query(
+        `SELECT id FROM chat_messages
+         WHERE "conversationId" = $1 AND "authorRole" = 'system' AND "messageType" = 'system'
+           AND body LIKE '%escalează la operator uman%'
+           AND "createdAt" > now() - interval '2 hours'
+         LIMIT 1`,
+        [conversationId],
+      );
+      if (escalated[0]) return;
+    } catch {
+      /* best-effort — dacă query-ul pică, continuăm cu logica normală */
+    }
     const variants = [
       'Mă bucur tare că ți-a ieșit! 🎵 Sper să le placă și celor pentru care e dedicată. Mulțumesc că ne-ai ales! ❤️',
       'Gata, mulțumim mult! ✨ Sper să-i placă tare. Dacă vrei să mai faci una pentru cineva drag, mă găsești aici. 🎶',
@@ -1944,6 +1963,22 @@ export class ChatService implements OnModuleInit {
             );
             if (priorDelivery[0]) isRemakeDelivery = true;
           }
+        }
+        // Refacerea manuală a unui coleg pornește adesea o generare NOUĂ care REFOLOSEȘTE
+        // paymentId-ul comenzii inițiale (nu s-a mai plătit nimic) → criteriul
+        // `paymentId IS NULL` de mai sus o rata. O comandă nouă legitimă are întotdeauna
+        // o plată proprie, deci un paymentId nefolosit de o generare anterioară.
+        // (Bonusul NU e o generare separată — stă pe `bonusAudioUrl` al aceluiași rând —
+        // deci nu produce fals-pozitiv aici.)
+        if (!isRemakeDelivery) {
+          const reusedPayment: { id: string }[] = await this.msg.manager.query(
+            `SELECT g2.id FROM generations g1
+               JOIN generations g2 ON g2."paymentId" = g1."paymentId" AND g2.id <> g1.id
+             WHERE g1.id = $1 AND g1."paymentId" IS NOT NULL AND g2."createdAt" < g1."createdAt"
+             LIMIT 1`,
+            [generationId],
+          );
+          if (reusedPayment[0]) isRemakeDelivery = true;
         }
       } catch {
         /* best-effort — fallback pe celebrare */
