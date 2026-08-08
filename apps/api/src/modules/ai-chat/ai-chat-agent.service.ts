@@ -3428,6 +3428,20 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         delete (args as { email?: unknown }).email;
       }
     }
+    // GUARD „ce mi-ai dat NU e un email" (BUG observat 2026-08-08 conv 29ffdaf9): userul
+    // a scris „Ds" (typo de la „Da") ca răspuns scurt de acceptare, iar Irina l-a pasat ca
+    // `email`. Fără „@" toate ramurile de salvare se sar SILENT — tool-ul răspundea
+    // `emailUpdated:false` fără NICIUN semnal, iar AI-ul a trecut mai departe la numele
+    // destinatarului convins că bifase emailul (conv.email a rămas gol, `data` = {}).
+    // Adresa de livrare e singura cale prin care melodia plătită ajunge la client, deci
+    // eșecul trebuie să fie zgomotos, nu tăcut.
+    let emailInvalidNote = '';
+    if (typeof args.email === 'string' && args.email.trim() && !args.email.includes('@')) {
+      const bad = args.email.trim().slice(0, 60);
+      this.logger.warn(`EMAIL_NOT_AN_EMAIL conv=${conv.id.slice(0, 8)} — „${bad}" nesalvat`);
+      emailInvalidNote = ` ⛔ „${bad}" NU e o adresă de email (nu are @) — NU am salvat-o. Probabil era un răspuns scurt al userului („da", „ok", o scăpare de tastatură), nu adresa lui. NU-l trata ca email, NU-l repeta ca și cum ar fi bun și NU bifa pasul de email. Când ajungi la pasul de livrare, cere-i adresa clar („Pe ce adresă de email să-ți trimit melodia?") și re-apelează wizard_update abia cu adresa reală.`;
+      delete (args as { email?: unknown }).email;
+    }
     if (typeof args.email === 'string' && args.email.includes('@')) {
       // Auto-corectează greșeli evidente de domeniu (gamil→gmail, yahoo.con→yahoo.com).
       // NU mai întrebăm userul care e adresa corectă — o reparăm direct pe domeniu.
@@ -3533,6 +3547,8 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       emailAutoCorrected,
       metaBriefRejected,
       emailAmbiguous: !!emailAmbiguousNote,
+      emailInvalid: !!emailInvalidNote,
+      emailOnFile: conv.email ?? null,
       data: state.data,
       missingFields: missing,
       readyToFinalize: missing.length === 0 && (emailUpdated || !!conv.email),
@@ -3540,6 +3556,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       instruction:
         metaBriefNote +
         emailAmbiguousNote +
+        emailInvalidNote +
         lyricsDebtNote +
         (missing.length === 0
           ? 'Toate câmpurile sunt complete. Recapitulează datele în send_message + cere confirmare, apoi wizard_finalize.'
@@ -4420,9 +4437,16 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     // aruncat tot mesajul, iar instrucțiunea („întreabă primul câmp care lipsește") a dus AI-ul să
     // abandoneze răspunsul: clientul a repetat întrebarea de 2 ori până a primit un răspuns.
     // Instrucțiunea cere acum explicit păstrarea răspunsului și tăierea doar a cererii de email.
+    // BUG observat 2026-08-08 conv 29ffdaf9: „Perfect! Pe ce adresa de email sa-ti trimit
+    // melodia?" a trecut nestingherit — cea mai frecventă formulare a cererii de email nu
+    // conține niciunul dintre cuvintele „link/plată/livrare". Irina a cerut emailul imediat
+    // după acceptarea prețului (wizard gol), apoi în ACELAȘI tur a mai trimis un mesaj cu
+    // „cum o cheamă?" — clientul a rămas cu două întrebări deodată și fără niciun pas închis.
     const asksDeliveryEmail =
       /e-?mail/i.test(trimmed) &&
-      /(link|pl[aă]t|livrare|vrei\s+s[aă]\s+prime[sș]ti)/i.test(trimmed) &&
+      /(link|pl[aă]t|livrare|vrei\s+s[aă]\s+prime[sș]ti|s[aă]\s*-?\s*[țt]i\s+trimit|s[aă]\s+[îi][țt]i\s+trimit|trimit\s+(melodia|piesa|c[âa]ntecul|maneaua)|prime[sș]ti\s+(melodia|piesa|c[âa]ntecul|maneaua))/i.test(
+        trimmed,
+      ) &&
       !/\bnotat\b/i.test(trimmed);
     if (asksDeliveryEmail) {
       try {
@@ -4468,6 +4492,24 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         messageType: 'duplicate_text',
         status: 'DUPLICATE_TEXT_BLOCKED',
         instruction: 'You already sent this exact text. STOP — do not repeat.',
+      };
+    }
+
+    // GUARD două întrebări în același tur (BUG observat 2026-08-08 conv 29ffdaf9): Irina a
+    // trimis „Pe ce adresa de email sa-ti trimit melodia?" și, la 5 secunde, „Cum o cheamă?".
+    // Clientul primește două cereri diferite deodată, nu știe la care să răspundă, iar
+    // răspunsul lui scurt se lipește de câmpul greșit (acolo: „Ds" ajuns în `email`).
+    // Regula turului permite un al 2-lea mesaj doar ca urmare naturală a unei confirmări
+    // scurte — deci întrebare peste întrebare e mereu greșit. Prima întrebare rămâne
+    // trimisă; o tăiem doar pe a doua.
+    if (ctx.sentRealMessages >= 1 && trimmed.includes('?') && ctx.sentTexts.some((t) => t.includes('?'))) {
+      this.logger.warn(`DOUBLE_QUESTION blocked on conv=${ctx.conv.id.slice(0, 8)} — a 2-a întrebare în același tur.`);
+      return {
+        sent: false,
+        messageType: 'noop',
+        status: 'DOUBLE_QUESTION_BLOCKED',
+        instruction:
+          'STAI — ai pus DEJA o întrebare userului în acest tur. Nu-i mai trimite o a doua întrebare: ar avea două cereri deodată, n-ar ști la care să răspundă, iar răspunsul lui scurt s-ar lipi de câmpul greșit. Un singur câmp pe mesaj. TERMINĂ TURUL acum și așteaptă răspunsul la prima întrebare. (Al 2-lea mesaj e permis doar când NU e întrebare — ex. o confirmare scurtă.)',
       };
     }
 
