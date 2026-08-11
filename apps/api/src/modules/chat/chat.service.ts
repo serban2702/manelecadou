@@ -1886,6 +1886,65 @@ export class ChatService implements OnModuleInit {
     } catch {
       /* best-effort — dacă query-ul pică, continuăm cu logica normală */
     }
+
+    // GUARD — CERERE A CLIENTULUI RĂMASĂ FĂRĂ RĂSPUNS ÎNAINTE DE LIVRARE. Mesajul de aici
+    // pleacă la 2s după song_preview și afirmă implicit că totul e rezolvat („Am refăcut-o
+    // cum ai cerut", „Mă bucur că totul a ieșit cum trebuie"). Dacă între timp clientul a
+    // scris o nemulțumire NOUĂ pe care n-a văzut-o încă nimeni, afirmația e pur și simplu
+    // falsă: piesa care tocmai s-a livrat a pornit ÎNAINTE de mesajul lui.
+    // BUG observat 2026-08-11 conv e28efea6: la 11:38:09 clientul a scris că versurile zic
+    // „de la 17 ani suntem împreună" în loc de „de la 17 ani a umblat după mine"; la
+    // 11:38:11 s-a livrat piesa pornită la 11:34:45 și la 11:38:13 a plecat „Am refăcut-o
+    // cum ai cerut 🙏 Ascultă ULTIMA versiune... spune-mi dacă acum e totul ok" — deși
+    // refacerea lui a pornit abia la 11:42. Omul e trimis să reasculte degeaba și rămâne cu
+    // impresia că i-am ignorat cererea.
+    // Un ack anterior (mesajul „🎵 Generăm acum maneaua...", tot admin/text) oprește garda:
+    // acolo refacerea chiar a plecat DUPĂ cererea lui, deci mesajul e corect.
+    try {
+      const pending: { body: string }[] = await this.msg.manager.query(
+        `SELECT u.body FROM chat_messages u
+         WHERE u."conversationId" = $1 AND u."authorRole" = 'user' AND u."deletedAt" IS NULL
+           AND u."createdAt" > now() - interval '30 minutes'
+           AND NOT EXISTS (
+             SELECT 1 FROM chat_messages r
+             WHERE r."conversationId" = u."conversationId" AND r."authorRole" = 'admin'
+               AND r."messageType" = 'text' AND r."deletedAt" IS NULL
+               AND r."createdAt" > u."createdAt"
+           )
+         ORDER BY u."createdAt" DESC LIMIT 1`,
+        [conversationId],
+      );
+      const lastUnanswered = pending[0]?.body ?? null;
+      // „Ok, mulțumesc frumos" în timpul generării NU e o cerere — pe acelea mesajul cald
+      // rămâne binevenit. Blocăm doar ce arată a conținut real (o plângere, o corectură,
+      // o întrebare). Fals-pozitivul costă un mesaj de politețe nespus; fals-negativul îi
+      // spune clientului o minciună.
+      if (lastUnanswered) {
+        const s = lastUnanswered
+          .normalize('NFD')
+          .replace(/[̀-ͯ]/g, '')
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        const politeness = new Set([
+          'ok', 'oki', 'okey', 'okay', 'bine', 'da', 'daa', 'sigur', 'mersi', 'merci',
+          'multumesc', 'multumim', 'frumos', 'mult', 'super', 'perfect', 'excelent',
+          'bun', 'buna', 'minunat', 'nice', 'thanks', 'ms', 'asa', 'e', 'si', 'eu',
+        ]);
+        const isPolitenessOnly =
+          s.length === 0 || (s.length <= 40 && s.split(' ').every((w) => politeness.has(w)));
+        if (!isPolitenessOnly) {
+          this.logger.warn(
+            `THANKYOU_SKIPPED_UNANSWERED_USER conv=${conversationId.slice(0, 8)} — clientul a scris ceva neadresat înainte de livrare: „${lastUnanswered.slice(0, 80)}"`,
+          );
+          return;
+        }
+      }
+    } catch {
+      /* best-effort — dacă query-ul pică, continuăm cu logica normală */
+    }
+
     const variants = [
       'Mă bucur tare că ți-a ieșit! 🎵 Sper să le placă și celor pentru care e dedicată. Mulțumesc că ne-ai ales! ❤️',
       'Gata, mulțumim mult! ✨ Sper să-i placă tare. Dacă vrei să mai faci una pentru cineva drag, mă găsești aici. 🎶',
