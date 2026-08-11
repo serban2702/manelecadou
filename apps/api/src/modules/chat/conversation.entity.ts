@@ -109,6 +109,11 @@ export interface WizardState {
    *  isRetentionOffer) — guard „nu încasa pentru o schimbare deja aplicată"
    *  (CHANGE_ALREADY_APPLIED_BY_REMAKE în ai-chat-agent.service.ts). */
   lastFreeRemakeChanges?: string | null;
+  /** Numele destinatarului cu care a plecat ULTIMA refacere gratuită. Dacă clientul revine
+   *  cerând ACELAȘI nume scris altfel (doar diacritice/majuscule diferite), înseamnă că
+   *  refacerea n-a prins corectura lui ortografică → reparația e gratuită, nu contra cost.
+   *  Vezi conv e28efea6 (2026-08-11). */
+  lastFreeRemakeRecipientName?: string | null;
   /** ISO timestamp al refacerii gratuite de REPARAȚIE — acordată o singură dată când
    *  gratuitul inițial a fost consumat de AI pe o descriere vagă (fără cererea concretă
    *  a clientului), deci clientul nu a primit niciodată corectura pe care o cerea.

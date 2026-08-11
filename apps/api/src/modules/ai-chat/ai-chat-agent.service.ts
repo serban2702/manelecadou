@@ -302,6 +302,47 @@ function textOverlap(a: string, b: string): number {
  * CE se schimbă / o formulă de substituție. Fals-negativul e ieftin (AI-ul cere detaliul
  * concret și reapelează); fals-pozitivul arde gratuitul irecuperabil.
  */
+/** Numele destinatarului normalizat pentru comparație „e chiar același nume?": trim,
+ *  spații colapsate, lowercase — dar CU diacriticele păstrate („Ghita" ≠ „Ghiță"). */
+function normRecipientName(s: string): string {
+  return s.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** Aceeași formă ignorând diacriticele („Ghita" vs „Ghiță") — folosit ca să recunoaștem
+ *  o corectură PUR ortografică pe același nume, nu un destinatar diferit. */
+function sameNameIgnoringDiacritics(a: string, b: string): boolean {
+  const strip = (s: string): string =>
+    normRecipientName(s)
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '');
+  return strip(a) === strip(b);
+}
+
+/** Descrierea modificării cere și altceva în afară de numele destinatarului (vocea,
+ *  stilul, o strofă rescrisă, alt mesaj)? Dacă da, refacerea are ce aplica chiar dacă
+ *  numele rămâne neschimbat.
+ *
+ *  Atenție la ancorele slabe: „vers/strofă/refren" apar constant în cereri care sunt
+ *  DOAR despre nume („în versuri să apară numele corect: X"), deci simpla lor prezență
+ *  nu dovedește nimic — le cerem însoțite de un verb de rescriere sau de un număr
+ *  („schimbă strofa 2", „rescrie refrenul"). Fals-negativul e ieftin (AI-ul cere forma
+ *  exactă și reapelează); fals-pozitivul lasă o refacere no-op să ardă gratuitul. */
+function describesNonNameChange(changes: string): boolean {
+  const t = (changes ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase();
+  const strongAnchors =
+    /voce|voci|vocal|stil|ritm|tempo|instrument|melodic|mai lent|mai rapid|mai vesel|mai trist|mai manea|varsta|\bani\b|localitate|oras|relatie|porecla|amintire|dedicatie/;
+  if (strongAnchors.test(t)) return true;
+  // Cerere reală pe text: verb de rescriere lângă vers/strofă/refren/mesaj, ori un vers
+  // identificat prin număr („versul 2", „strofa a doua").
+  if (/(schimb|modific|rescri|inlocui|scoate|adaug|alt|nou)\w*\s+(\w+\s+){0,2}(vers|strof|refren|mesaj)/.test(t))
+    return true;
+  if (/(vers|strof|refren)\w*\s*(\d|[ai]\s+(doua|treia|patra))/.test(t)) return true;
+  return false;
+}
+
 function describesConcreteChange(changes: string, newRecipientName?: string | null): boolean {
   if (newRecipientName && newRecipientName.trim().length >= 2) return true;
   const t = (changes ?? '')
@@ -1669,6 +1710,24 @@ ETAPA 0 — COMANDĂ EXISTENTĂ (verifică ÎNAINTE de a porni wizard-ul):
       3 ori „o refacem acum", apoi a descoperit că nu există comandă plătită în chat și a dat
       înapoi (client derutat); a apelat request_modification de 4 ori inutil + a re-cerut
       emailul de 3 ori înainte să escaladeze.
+    • ✍️ CORECTURĂ DE SCRIERE A NUMELUI („nu X ci Y", „cu ț nu cu t", „fără ă", „se scrie
+      altfel"): NU ghici direcția. Formulările astea sunt ambigue și e ușor să inversezi ce
+      e greșit cu ce e corect — iar dacă trimiți la refacere exact numele care e deja în
+      melodie, piesa iese identică, gratuitul se consumă degeaba și clientul se enervează
+      pe bună dreptate. Întreabă-l scurt care e forma FINALĂ, exact cum vrea să apară („Cum
+      să-l scriu — «Ghita» sau «Ghiță»? Scrie-mi-l tu exact cum vrei 🙏"), AȘTEAPTĂ
+      răspunsul, și abia atunci apelează request_modification cu acea formă în
+      \`newRecipientName\`. Tool-ul refuză oricum (MODIFICATION_NAME_UNCHANGED) dacă numele
+      trimis e identic cu cel din melodie. BUG observat 2026-08-11 conv e28efea6: clientul
+      voia „Ghiță" (piesa zicea „Ghita"), Irina a citit invers și a ars refacerea gratuită
+      pe „Ghita" → melodie neschimbată, apoi i-a cerut 14.99 lei pentru corectura reală.
+    • 💬 PRIMUL „da" la o cerere de modificare pe o melodie DEJA LIVRATĂ spune ȘI cum stă cu
+      banii, în aceeași frază. NU răspunde „Da, se poate, spune-mi ce vrei schimbat și
+      ajustez" — clientul înțelege că e inclus, îți scrie cererea și apoi primește un link
+      de plată din senin. Formula corectă: „Sigur că se poate 🙂 Dacă e ceva ce am greșit
+      noi, o refac gratuit; dacă e o schimbare nouă, refacerea e 14.99 lei (corectură mică)
+      sau 29.99 lei (mai amplă). Ce ai vrea schimbat exact?" BUG observat 2026-08-11 conv
+      5b0c7341.
     • REGULA DEFAULT: modificările se PLĂTESC — mică (nume/o strofă/dedicație) = 14.99 lei,
       mare (alt mesaj/stil/refacere amplă) = 29.99 lei. Explică DIPLOMAT: „melodia se
       regenerează de la zero, de-asta e un cost mic". request_modification cu scope.
@@ -4731,6 +4790,42 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         }
       }
 
+      // Treapta 0.517 — FOLLOW-UP CARE RE-ANUNȚĂ CĂ LINKUL DE PLATĂ E ÎN CHAT. La fel ca
+      // 0.515, garda se uită la STARE (linkul e deja trimis, userul n-a scris nimic de
+      // atunci), nu la text — pentru că fraze scurte cu sinonime scapă de Jaccard.
+      // BUG observat 2026-08-11 conv efb6b115: userul a zis „Scz am esit din link", Irina a
+      // retrimis cardul + „Ți l-am retrimis mai sus..." (08:52), apoi follow-up #1 (08:57)
+      // „Linkul e din nou mai sus în chat..." și follow-up #2 (09:02) „Ți-am retrimis
+      // linkul, e mai sus în chat acum..." — trei mesaje cu ACELAȘI conținut, zero cuvinte
+      // de la user între ele. Overlap-urile: 0.25 și 0.42, sub pragurile de la 0.51/0.5.
+      // Un nudge legitim („Ai reușit cu plata? 🙏") nu afirmă unde e linkul, deci trece.
+      if (ctx.followUp) {
+        const stripDia = (t: string): string =>
+          t
+            .normalize('NFD')
+            .replace(/[̀-ͯ]/g, '')
+            .toLowerCase();
+        const assertsLinkIsThere = (t: string): boolean => {
+          const s = stripDia(t);
+          return (
+            /(link|linku|cardul de plata|butonul de plata|l[- ]?am retrimis|l[- ]?am trimis)/.test(s) &&
+            /(mai sus|in chat|retrimis|e acolo|il vezi|din nou|il trimit)/.test(s)
+          );
+        };
+        if (assertsLinkIsThere(normalized) && recentNorm.slice(0, 2).some(assertsLinkIsThere)) {
+          this.logger.warn(
+            `FOLLOWUP_LINK_REANNOUNCE blocked on conv=${ctx.conv.id.slice(0, 8)} — follow-up #${ctx.followUpIndex ?? 1} re-anunță că linkul e în chat.`,
+          );
+          return {
+            sent: false,
+            messageType: 'duplicate_text',
+            status: 'FOLLOWUP_LINK_REANNOUNCE_BLOCKED',
+            instruction:
+              'STAI — i-ai spus DEJA că linkul de plată e în chat / că i l-ai retrimis, iar userul n-a scris nimic între timp. A doua oară aceeași informație nu-l ajută cu nimic, doar sună a bot care se repetă. Cardul de plată e vizibil în conversație — nu mai are nevoie de încă un anunț. Fă UNA din două: (a) UN nudge scurt care întreabă ceva NOU despre acțiunea LUI, fără să repeți unde e linkul („Ai reușit cu plata? 🙏") — dar numai dacă n-ai întrebat deja asta; (b) NU trimite nimic, termină turul. Tăcerea e corectă aici; dacă are o problemă reală cu plata, o să-ți scrie el.',
+          };
+        }
+      }
+
       // Treapta 0.52 — COADĂ DE POLITEȚE. BUG observat 2026-07-22 conv 0243873e: userul a
       // zis „Nu, mulțumesc" → Irina „Cu drag, o zi bună!" → userul „La fel!" → Irina
       // „Mulțumesc, la fel!". Ultimul mesaj e umplutură pură: conversația era deja închisă
@@ -5106,6 +5201,42 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           instruction:
             'STAI — i-ai spus deja userului să apese pe linkul de plată și pașii (generare 5-10 min, primește pe email + în chat). NU repeta același îndemn la plată reformulat, sună robotic. Linkul e deja în chat. Dacă userul a zis doar „mulțumesc/ok/bine", NU mai trimite nimic acum. Răspunde DOAR dacă are o întrebare NOUĂ sau o nelămurire concretă — și atunci la obiect, nu re-explica tot procesul de plată.',
         };
+      }
+
+      // Treapta 0.72 — „DA, SE POATE SCHIMBA" pe o melodie DEJA LIVRATĂ, fără să spui că
+      // se plătește. BUG observat 2026-08-11 conv 5b0c7341: clientul primise melodia și a
+      // întrebat „Se poate schimba versurile?"; Irina a răspuns „Da, se poate. Spune-mi te
+      // rog exact ce vrei schimbat la versuri și le ajustez pentru tine 🙏" — sună a
+      // serviciu inclus. Clientul a scris ce voia și a primit direct un link de plată de
+      // 14.99 lei, fără să fi fost prevenit. E cel mai ușor mod de a transforma un client
+      // mulțumit într-unul care se simte tras pe sfoară.
+      // Regula (ETAPA modificări): la PRIMUL „da" pe o cerere de modificare post-livrare,
+      // spui din aceeași frază cum stă cu banii — gratuit dacă e greșeala noastră, altfel
+      // 14.99 / 29.99 lei. Mesajul e blocat doar dacă NU pomenește nimic despre cost.
+      const acceptsModification =
+        /(da[,.]? se poate|se poate schimba|sigur|desigur|bine[iî]n[țt]eles|normal c[ăa])/i.test(normalized) &&
+        /(schimb|modific|ajust|corect|refac)/i.test(normalized) &&
+        /(vers|strof|refren|melodi|piesa|c[âa]ntec|nume|mesaj)/i.test(normalized);
+      const mentionsCost =
+        /(lei|ron|eur|€|gratuit|f[ăa]r[ăa] (niciun )?cost|cost|contra cost|14[.,]?99|29[.,]?99|din partea noastr|nu te cost)/i.test(
+          normalized,
+        );
+      if (acceptsModification && !mentionsCost) {
+        const delivered = await this.msg.count({
+          where: { conversationId: ctx.conv.id, messageType: 'song_preview' },
+        });
+        if (delivered > 0) {
+          this.logger.warn(
+            `MODIFICATION_PRICE_OMITTED blocked on conv=${ctx.conv.id.slice(0, 8)} — acceptă modificarea post-livrare fără să spună de cost.`,
+          );
+          return {
+            sent: false,
+            messageType: 'noop',
+            status: 'MODIFICATION_PRICE_OMITTED',
+            instruction:
+              'STAI — melodia e DEJA livrată, iar tu accepți o modificare fără să spui o vorbă despre bani. Omul înțelege că i-o ajustezi din amabilitate, îți scrie ce vrea schimbat, și apoi primește un link de plată din senin — se simte păcălit, chiar dacă prețul e mic. Rescrie mesajul: rămâi cald și spune „da", dar pune condițiile în ACEEAȘI frază, simplu și fără jargon: dacă greșeala e a noastră (am scris altceva decât a cerut) o refacem GRATUIT o dată; dacă e o schimbare nouă (alt nume, alte versuri, alt mesaj), refacerea costă 14.99 lei pentru o corectură mică sau 29.99 lei pentru una amplă, pentru că melodia se generează de la zero. Ex.: „Sigur că se poate 🙂 Dacă e ceva ce am greșit noi, o refac gratuit; dacă vrei o schimbare nouă, refacerea e 14.99 lei (corectură mică) sau 29.99 lei (mai amplă). Spune-mi ce ai vrea schimbat exact." ABIA după ce știi ce vrea și el a acceptat, apelezi request_modification.',
+          };
+        }
       }
 
       // Treapta 0.75 — reconfirmare recap înainte de finalize (semantic, NU lexical). BUG
@@ -7455,6 +7586,31 @@ ${transcript}`;
       };
     }
 
+    // GUARD anti-NO-OP pe nume: dacă numele „corectat" e IDENTIC cu cel din melodie și
+    // modificarea nu cere nimic altceva, refacerea nu schimbă absolut nimic — clientul
+    // rămâne cu aceeași problemă, dar gratuitul e ars (sau, mai rău, plătește degeaba).
+    // BUG observat 2026-08-11 conv e28efea6: clientul a scris „Nu mia scris cu Ghiță ci cu
+    // Ghita" (voia „Ghiță", cu ț — melodia zicea „Ghita"). Irina a citit direcția INVERS și
+    // a pornit refacerea gratuită cu newRecipientName="Ghita" = exact numele existent →
+    // piesă identică. Când clientul a insistat („Cu Ț nu cu T"), gratuitul era consumat și
+    // i s-au cerut 14.99 lei pentru corectura pe care o ceruse de la început.
+    // Cererile de ortografie („cu ă / fără ț / se scrie X nu Y") sunt exact clasa în care
+    // modelul confundă direcția, deci aici NU ghicim: cerem forma finală de la client.
+    const nameIsNoop =
+      !!newRecipientName &&
+      !!genRow.recipientName &&
+      normRecipientName(newRecipientName) === normRecipientName(genRow.recipientName);
+    if (nameIsNoop && !describesNonNameChange(changes)) {
+      this.logger.warn(
+        `MODIFICATION_NAME_UNCHANGED on conv=${ctx.conv.id.slice(0, 8)} — newRecipientName „${newRecipientName}" identic cu numele din melodie.`,
+      );
+      return {
+        status: 'MODIFICATION_NAME_UNCHANGED',
+        currentName: genRow.recipientName,
+        instruction: `STOP — nu am pornit nimic și nu am cerut niciun ban. Numele pe care l-ai trimis („${newRecipientName}") e EXACT cel care e deja în melodie, deci refacerea ar ieși identică și clientul ar rămâne cu aceeași nemulțumire. Aproape sigur ai inversat direcția corecturii: clientul îți spune ce e GREȘIT acum și cum ar trebui să fie — recitește-i mesajul cu atenție. Întreabă-l scurt și fără jargon care e forma FINALĂ, exact cum vrea să apară în cântec (ex. „Cum să scriu numele — «Ghita» sau «Ghiță»? Scrie-mi-l tu exact așa cum vrei să sune 🙏"), AȘTEAPTĂ răspunsul lui în mesajul următor, și abia apoi reapelează request_modification cu acea formă. ⛔ NU-i spune că ai pornit refacerea și ⛔ NU-i cere bani — nu s-a consumat nimic.`,
+      };
+    }
+
     // CAZ 1: refacere GRATUITĂ — doar greșeala noastră SAU gest de retenție.
     // O singură dată per melodie, indiferent de motiv (freeRemakeUsedAt).
     const wantsFree = args.isOurError || args.isRetentionOffer === true;
@@ -7469,11 +7625,21 @@ ${transcript}`;
     if (wantsFree && genRow.freeRemakeUsedAt) {
       const priorWasVague =
         !!state.lastFreeRemakeChanges && !describesConcreteChange(state.lastFreeRemakeChanges, null);
+      // A doua formă de gratuit ars degeaba: refacerea a plecat cu o SCRIERE a numelui pe
+      // care clientul o contestă acum — aceleași litere, alte diacritice („Ghita" vs
+      // „Ghiță"). Corectura lui ortografică n-a fost niciodată aplicată, deci reparația e
+      // tot din vina noastră. Conv e28efea6 (2026-08-11). Restrâns intenționat la ACELAȘI
+      // nume: un destinatar complet diferit e o cerere nouă, care se plătește.
+      const priorNameStillWrong =
+        !!state.lastFreeRemakeRecipientName &&
+        !!newRecipientName &&
+        normRecipientName(state.lastFreeRemakeRecipientName) !== normRecipientName(newRecipientName) &&
+        sameNameIgnoringDiacritics(state.lastFreeRemakeRecipientName, newRecipientName);
       const remakeWithin24h =
         Date.now() - new Date(genRow.freeRemakeUsedAt).getTime() < 24 * 60 * 60 * 1000;
       isRepairRemake =
         args.isOurError === true &&
-        priorWasVague &&
+        (priorWasVague || priorNameStillWrong) &&
         remakeWithin24h &&
         !state.freeRemakeRepairAt &&
         describesConcreteChange(changes, newRecipientName);
@@ -7531,6 +7697,7 @@ ${transcript}`;
         // Reține CE a aplicat refacerea gratuită — guard-ul din calea contra cost refuză
         // să încaseze pentru aceeași schimbare imediat după (CHANGE_ALREADY_APPLIED_BY_REMAKE).
         state.lastFreeRemakeChanges = changes;
+        state.lastFreeRemakeRecipientName = newRecipientName ?? genRow.recipientName ?? null;
         if (isRepairRemake) state.freeRemakeRepairAt = new Date().toISOString();
         state.updatedAt = new Date().toISOString();
         await this.conv
