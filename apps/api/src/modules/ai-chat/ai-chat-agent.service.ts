@@ -100,6 +100,25 @@ const MODIFICATION_PRICE_LARGE_CENTS = 2999;
 /** Destinatarii default ai alertelor urgente (override prin setting AI_ALERT_EMAILS). */
 const DEFAULT_ALERT_EMAILS = 'serban2702@gmail.com,alexandru.tihon70@gmail.com';
 
+/** Tool-urile prin care AI-ul poate ajunge cu ceva pe ecranul clientului. Dacă un tur nu
+ *  atinge NICIUNUL dintre ele, AI n-a încercat măcar să vorbească — safety net-ul reîncearcă
+ *  turul în loc să-i ceară clientului să reformuleze. (2026-08-12, audit conv fe06d874.) */
+const MESSAGE_ATTEMPT_TOOLS = new Set([
+  'send_message',
+  'quote_price_with_offer',
+  'issue_discount_offer',
+  'apply_user_code',
+  'play_sample',
+  'send_empathy',
+  'change_email_and_resend',
+  'escalate_to_human',
+  'generate_lyrics',
+  'wizard_finalize',
+  'resend_payment_link',
+  'request_modification',
+  'start_new_order',
+]);
+
 /** Voci active per gen — folosit la inferarea automată când userul spune doar M/F. */
 const VOICE_DEFAULTS = {
   M: 'male',    // voce bărbătească — default masculin
@@ -1125,9 +1144,19 @@ zero răspunsuri de la user între ele.`;
         // client pentru o pană de-a noastră, iar întrebarea rămâne fără răspuns. Reîncercăm O
         // dată, cu reasoning minimal (bugetul de tokeni consumat pe reasoning e cauza probabilă
         // a răspunsului gol) și cu instrucțiunea explicită de a răspunde prin send_message.
-        const turnWasMute = result.toolCalls.length === 0 && (!finalRaw || isJunkText(finalRaw));
+        //
+        // Același text neutru pleca și în cazul „a lucrat, dar a uitat să vorbească": AI apelează
+        // tool-uri de STARE (wizard_update / wizard_get_state / search_memory) și încheie turul
+        // fără să încerce NICIUN tool de mesaj. BUG observat 2026-08-12 conv fe06d874: la „Cu
+        // multe salutari dragi de la Mircea faur" a salvat corect `dedicatorName`, deci înțelesese
+        // perfect, dar clientul a primit „Spune-mi te rog încă o dată ce ai nevoie" — Irina pare
+        // că nu ascultă exact când tocmai a înțeles. Tratăm identic cu turul mut: reîncercăm.
+        // Dacă AI a ÎNCERCAT un tool de mesaj și gardurile l-au blocat, NU reîncercăm — blocarea
+        // e intenționată și retry-ul ar împinge înapoi exact textul refuzat.
+        const attemptedToSpeak = result.toolCalls.some((t) => MESSAGE_ATTEMPT_TOOLS.has(t.request.name));
+        const turnWasMute = !attemptedToSpeak && (!finalRaw || isJunkText(finalRaw));
         if (turnWasMute) {
-          this.logger.warn(`AI auto: tur MUT pe conv=${conv.id.slice(0, 8)} (0 tool calls, finalContent gol/junk) — reîncerc o dată cu reasoning minimal.`);
+          this.logger.warn(`AI auto: tur FĂRĂ MESAJ pe conv=${conv.id.slice(0, 8)} (${result.toolCalls.length} tool calls, niciun tool de mesaj, finalContent gol/junk) — reîncerc o dată cu reasoning minimal.`);
           try {
             const retry = await this.openai.chatWithTools({
               messages: [
@@ -3793,6 +3822,78 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     return false;
   }
 
+  /** Un mesaj care enumeră toate cele 3 pachete = pitch-ul de upsell (ETAPA 5.5). Orice
+   *  alegere de pachet a clientului vine DUPĂ el. */
+  private isPackagePitch(text: string): boolean {
+    const t = (text || '').toLowerCase();
+    return /standard/.test(t) && /\bplus\b/.test(t) && /premium/.test(t);
+  }
+
+  /** Alegerea de pachet exprimată de CLIENT după pitch — prin nume („vreau plus") sau prin
+   *  prețul pachetului („cea de 49,99", „49 .99", „29"). Returnează null dacă nu e un semnal
+   *  clar; guard-ul de la finalize nu trebuie să pornească pe presupuneri.
+   *
+   *  Raportăm DOAR upgrade-urile față de pachetul salvat (client care a cerut mai mult decât
+   *  are comanda). E direcția în care greșeala doare — client care primește link de 29.99
+   *  după ce a cerut Plus — și e singura în care un fals pozitiv nu poate face pagubă: pe
+   *  drumul invers, propoziții ca „Este link cu 29.99" (reclamație, nu alegere) sau „Standard
+   *  cat timp o sa aiba melodia" (întrebare) ar bloca finalize degeaba, cu clientul așteptând
+   *  un link care nu mai vine. (2026-08-12, audit conv fe06d874.) */
+  private async detectUserTierChoice(
+    conversationId: string,
+    site: Awaited<ReturnType<SitesService['findById']>>,
+    storedTier: PackageTier,
+  ): Promise<PackageTier | null> {
+    const rank: Record<PackageTier, number> = { basic: 0, plus: 1, premium: 2 };
+    const upgradeOnly = (t: PackageTier | null): PackageTier | null =>
+      t && rank[t] > rank[storedTier] ? t : null;
+    const overrides = site?.packagePricesCents ?? null;
+    const priceByTier: Array<[PackageTier, number]> = [
+      ['basic', packageTotalCents('basic', overrides)],
+      ['plus', packageTotalCents('plus', overrides)],
+      ['premium', packageTotalCents('premium', overrides)],
+    ];
+
+    const recent = await this.msg.find({
+      where: { conversationId },
+      order: { createdAt: 'DESC' },
+      take: 40,
+    });
+    const pitchIdx = recent.findIndex((m) => m.authorRole === 'admin' && this.isPackagePitch(m.body));
+    if (pitchIdx < 0) return null;
+
+    // recent e DESC → mesajele dinaintea pitch-ului în array sunt cele de DUPĂ el în timp,
+    // iar primul găsit e cel mai recent: alegerea care contează dacă s-a răzgândit.
+    const afterPitch = recent.slice(0, pitchIdx).filter((m) => m.authorRole === 'user' && m.messageType === 'text');
+    for (const m of afterPitch) {
+      const raw = (m.body || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      // „49 .99" / „49,99" → „49.99"; altfel prețul scris de om nu se potrivește cu al nostru.
+      const t = raw.replace(/(\d)\s*[.,]\s*(\d)/g, '$1.$2');
+
+      // 1) Preț cu zecimale = semnal tare, oricât de lung ar fi mesajul.
+      for (const [tier, cents] of priceByTier) {
+        const decimal = (cents / 100).toFixed(2);
+        if (t.includes(decimal)) return upgradeOnly(tier);
+      }
+      // 2) Preț rotund („29" pentru 29.99, „49" pentru 49.99) — doar în mesaje scurte, altfel
+      //    prinde vârste („împlinește 39 ani") și sume care n-au legătură cu pachetul. Cifra
+      //    nu are voie să fie parte dintr-un alt număr: „Plus 14.99" NU e Premium (99).
+      if (t.replace(/\s+/g, '').length <= 14) {
+        for (const [tier, cents] of priceByTier) {
+          if (new RegExp(`(^|[^\\d.,])${Math.floor(cents / 100)}(?![\\d.,])`).test(t)) return upgradeOnly(tier);
+        }
+      }
+      // 3) Numele pachetului, dar nu când clientul doar întreabă ce conține.
+      const asksAbout = /\?|^(ce|care|cat|cum)\b/.test(t.trim());
+      if (!asksAbout && !this.isPackagePitch(t)) {
+        if (/premium/.test(t)) return upgradeOnly('premium');
+        if (/\bplus\b/.test(t)) return upgradeOnly('plus');
+        if (/standard|basic/.test(t)) return upgradeOnly('basic');
+      }
+    }
+    return null;
+  }
+
   private detectConfirmedTierFromText(text: string): PackageTier | null {
     const t = (text || '').toLowerCase();
     // Trebuie să fie o frază de confirmare a alegerii userului, nu pitch-ul cu toate pachetele.
@@ -3981,6 +4082,18 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           break;
         }
       }
+      // Aceeași pagubă vine și pe drumul celălalt: pachetul îl alege CLIENTUL, iar Irina nu-l
+      // confirmă verbal deloc. BUG observat 2026-08-12 conv fe06d874: după pitch, clientul a
+      // scris „Cea de 49,99 dar vreau sa ascult intai" — Irina a intrat pe versuri/mostre și
+      // n-a apelat NICIODATĂ wizard_update({packageTier}); zece mesaje mai târziu, la un „Da",
+      // finalize a căzut pe default basic → link „pachet Standard 29.99" pentru un om care
+      // ceruse Plus. Clientul a trebuit să reclame de două ori („Vreau cea de 49.99", „Este
+      // link cu 29.99") ca să primească linkul corect. Deci citim și alegerea clientului, nu
+      // doar confirmarea noastră — dar numai dintre mesajele de DUPĂ prezentarea pachetelor,
+      // unde un preț sau un nume de pachet chiar înseamnă o alegere.
+      if (!confirmedTier) {
+        confirmedTier = await this.detectUserTierChoice(conv.id, site, storedTier);
+      }
       if (confirmedTier && confirmedTier !== storedTier) {
         this.logger.warn(
           `PACKAGE_MISMATCH on conv=${conv.id.slice(0, 8)} — confirmed=${confirmedTier} stored=${storedTier}. Blocking finalize.`,
@@ -3990,7 +4103,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           status: 'PACKAGE_NOT_SAVED',
           confirmedTier,
           storedTier,
-          instruction: `I-ai confirmat userului pachetul „${packageLabel(confirmedTier)}" dar în comandă e salvat „${packageLabel(storedTier)}". Apelează ÎNTÂI wizard_update({packageTier: '${confirmedTier}'}), apoi wizard_finalize din nou. Linkul de plată TREBUIE să fie pe EXACT pachetul confirmat userului.`,
+          instruction: `Pachetul din comandă („${packageLabel(storedTier)}") NU e cel stabilit cu clientul („${packageLabel(confirmedTier)}"). Apelează ÎNTÂI wizard_update({packageTier: '${confirmedTier}'}), apoi wizard_finalize din nou. Linkul de plată TREBUIE să fie pe EXACT pachetul cerut de client — dacă îi trimiți alt preț, îl pui pe el să te corecteze.`,
         };
       }
     } catch (e) {
@@ -6093,6 +6206,16 @@ ${transcript}`;
     | { ok: false; result: { sent: false; status: string; instruction: string } } {
     // Tool-urile speciale (quote/discount/sample/empathy) rămân la max 1 per turn —
     // doar send_message are voie la 2 (combinații naturale). Anti-mesaje contradictorii.
+    //
+    // EXCEPȚIE: mostra audio. Nu e un al doilea mesaj contradictoriu, ci fix lucrul pe care
+    // clientul tocmai l-a cerut — și vine natural după textul care i-l anunță. BUG observat
+    // 2026-08-12 conv fe06d874: la „Va rog" (după „îți trimit și o mostră audio"), Irina a
+    // trimis versurile, iar `play_sample` a fost respins cu ALREADY_SENT_ONE_MESSAGE_THIS_TURN
+    // → clientul a rămas fără mostră și a trebuit s-o ceară a doua oară. Permitem O mostră
+    // peste mesajul text al turului; a doua rămâne blocată.
+    if (toolName === 'play_sample' && !ctx.samplePlayedThisTurn && !ctx.suggestionMsgId && ctx.sentRealMessages <= 1) {
+      return { ok: true };
+    }
     if (ctx.sentRealMessages >= 1 || ctx.suggestionMsgId) {
       return {
         ok: false,
@@ -6662,6 +6785,7 @@ ${transcript}`;
       .execute();
     this.gateway.emitMessage({ message: saved, conversation: ctx.conv });
     ctx.sentRealMessages++;
+    ctx.samplePlayedThisTurn = true;
     return { sent: true, audioUrl: entry.audioUrl, status: 'SAMPLE_SENT' };
   }
 
@@ -7979,6 +8103,9 @@ interface AgentCtx {
    *  apelat generate_lyrics de 2x la rând cu revisionNotes ~identice → a ars draft 2
    *  și 3 instant și a lovit LYRICS_LIMIT prematur.) */
   lyricsSentThisTurn?: boolean;
+  /** A trimis deja o mostră audio în acest run? Mostra are voie să treacă peste limita de
+   *  1 mesaj/tur (clientul o cere explicit), dar una singură. (2026-08-12, conv fe06d874.) */
+  samplePlayedThisTurn?: boolean;
   /** A cotat prețul (quote_price_with_offer) în acest run? După quote, mesajul e
    *  „Maneaua costa X. Sunteti de acord?" și turul TREBUIE să se oprească — ETAPA 2
    *  cere confirmarea „da/ok" a userului ÎNAINTE de a cere email/detalii. Blochează
