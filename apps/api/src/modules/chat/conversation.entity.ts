@@ -319,4 +319,24 @@ export class Conversation {
    */
   @Column({ type: 'timestamptz', nullable: true })
   aiCapResetAt!: Date | null;
+
+  /**
+   * BUG observat 2026-08-13, conv 8e8ca9a2 (și 4914e856): la generare eșuată
+   * `notifyGenerationCompleted` comuta conversația pe `manual` ca să intervină un om,
+   * dar NU o mai repornea niciodată — nici după ce auto-retry-ul reușea și piesa era
+   * livrată. Clientul rămânea complet fără interlocutor (Irina oprită, admin uman
+   * care nu apuca să intre) — în conv 8e8ca9a2 a întrebat „Când este gata melodia"
+   * și nu i-a răspuns nimeni.
+   *
+   * Aceste două câmpuri marchează o pauză AI *automată* (pusă de sistem pe o eroare
+   * de generare), ca s-o putem distinge de `manual` pus deliberat de un om. La
+   * livrarea reușită a ACELEIAȘI generări, dacă între timp niciun admin uman n-a
+   * scris în conversație, AI-ul se repornește singur.
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  aiAutoPausedForGenerationId!: string | null;
+
+  /** Momentul pauzei automate de mai sus (referință pentru „a intervenit un om?"). */
+  @Column({ type: 'timestamptz', nullable: true })
+  aiAutoPausedAt!: Date | null;
 }

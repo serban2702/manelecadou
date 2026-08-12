@@ -1784,7 +1784,16 @@ export class ChatService implements OnModuleInit {
     const saved = await this.msg.save(msg);
     conv.unreadByUser += 1;
     // Setează aiMode înapoi la 'manual' dacă a fost generare nereușită — vrem ca admin uman să intervină
-    if (!isOk && conv.aiMode === 'auto') conv.aiMode = 'manual';
+    if (!isOk && conv.aiMode === 'auto') {
+      conv.aiMode = 'manual';
+      // Marcăm pauza ca AUTOMATĂ ca s-o putem ridica singuri când piesa iese bine
+      // (vezi maybeResumeAiAfterRecovery + comentariul din conversation.entity.ts).
+      conv.aiAutoPausedForGenerationId = generationId;
+      conv.aiAutoPausedAt = new Date();
+    }
+    // BUG observat 2026-08-13, conv 8e8ca9a2: auto-retry-ul reușea, piesa se livra,
+    // dar conversația rămânea mută pe vecie fiindcă nimeni nu repornea AI-ul.
+    if (isOk) await this.maybeResumeAiAfterRecovery(conv, generationId);
     await this.conv.save(conv);
     this.gateway.emitMessage({ message: saved, conversation: conv });
 
@@ -1807,6 +1816,50 @@ export class ChatService implements OnModuleInit {
       badge: '/icon-512.png',
       data: { conversationId: conv.id, generationId },
     }).catch(() => {});
+  }
+
+  /**
+   * Ridică pauza AI pusă AUTOMAT pe o eroare de generare, când aceeași generare
+   * iese până la urmă bine (auto-retry reușit / reluare manuală).
+   *
+   * Repornim DOAR dacă pauza a fost automată, e pentru exact această generare, și
+   * niciun admin uman n-a scris în conversație de atunci — dacă a preluat un om,
+   * `manual` e o decizie deliberată și rămâne așa.
+   *
+   * Mutează conv pe `auto` și resetează fereastra de cap exact ca la re-activarea
+   * din admin (setAiMode), ca Irina să nu pornească deja plafonată.
+   */
+  private async maybeResumeAiAfterRecovery(conv: Conversation, generationId: string): Promise<void> {
+    if (conv.aiAutoPausedForGenerationId !== generationId) return;
+    if (conv.aiMode !== 'manual') {
+      // Un om a mutat deja modul (suggest/auto) — nu ne băgăm, doar curățăm marcajul.
+      conv.aiAutoPausedForGenerationId = null;
+      conv.aiAutoPausedAt = null;
+      return;
+    }
+
+    const humanQb = this.msg
+      .createQueryBuilder('m')
+      .where('m."conversationId" = :cid', { cid: conv.id })
+      .andWhere(`m."authorRole" = 'admin'`)
+      .andWhere('m."aiGenerated" = false')
+      .andWhere('m."deletedAt" IS NULL');
+    if (conv.aiAutoPausedAt) {
+      humanQb.andWhere('m."createdAt" >= :since', { since: conv.aiAutoPausedAt });
+    }
+    const humanReply = await humanQb.getOne();
+    if (humanReply) {
+      // Operatorul a preluat conversația — `manual` rămâne, dar marcajul nu mai are rost.
+      conv.aiAutoPausedForGenerationId = null;
+      conv.aiAutoPausedAt = null;
+      return;
+    }
+
+    conv.aiMode = 'auto';
+    conv.aiAutoPausedForGenerationId = null;
+    conv.aiAutoPausedAt = null;
+    conv.aiCapResetAt = new Date();
+    conv.aiFollowupCount = 0;
   }
 
   private buildGenerationUrl(conv: { siteId: string | null }, generationId: string): string {
@@ -2275,6 +2328,10 @@ export class ChatService implements OnModuleInit {
     const c = await this.getConversation(conversationId);
     const reactivating = c.aiMode === 'manual' && mode !== 'manual';
     c.aiMode = mode;
+    // Decizie umană explicită → nu mai e o pauză „automată" pe care s-o ridice
+    // singur sistemul la livrarea piesei (vezi maybeResumeAiAfterRecovery).
+    c.aiAutoPausedForGenerationId = null;
+    c.aiAutoPausedAt = null;
     if (reactivating) {
       // Adminul re-pornește AI-ul → fereastra limitei de mesaje repornește de la 0
       // (altfel capul s-ar re-declanșa instant pe conversațiile lungi — bug istoric).
