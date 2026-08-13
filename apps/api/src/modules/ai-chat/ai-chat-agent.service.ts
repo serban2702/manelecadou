@@ -2664,7 +2664,7 @@ REGULI STRICTE:
           properties: {
             lead: {
               type: 'string',
-              description: 'O propoziție SCURTĂ (max ~20 cuvinte), caldă și în cuvintele tale, care arată că ai ascultat ce ți-a scris userul — ex. „Ce frumos 🥰 Am prins: e pentru Răzvan, din partea lui Flory." Se pune ÎNAINTE de preț, în ACELAȘI mesaj. NU pune sume/prețuri în ea (le adaugă tool-ul) și NU pune întrebări în ea (întrebarea e „Sunteti de acord?").',
+              description: 'O propoziție SCURTĂ (max ~20 cuvinte), caldă și în cuvintele TALE, care arată că ai ascultat ce ți-a scris userul — ex. „Ce frumos 🥰 Am prins: e pentru Răzvan, din partea lui Flory." Se pune ÎNAINTE de preț, în ACELAȘI mesaj. NU copia/repeta mesajul userului cuvânt cu cuvânt (un ecou ca „Buna ds" sună a robot — atunci mai bine omite lead-ul), NU pune sume/prețuri în ea (le adaugă tool-ul) și NU pune întrebări în ea (întrebarea e „Sunteti de acord?").',
             },
           },
         },
@@ -4666,12 +4666,20 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       };
     }
 
-    // Varianta CROSS-RUN a guard-ului de mai sus, pentru follow-up: dacă ULTIMUL mesaj din
-    // conversație e chiar cotarea de preț (userul nu a răspuns încă la „Sunteti de acord?"),
-    // follow-up-ul NU are voie să avanseze presupunând acordul — are voie doar să re-întrebe
-    // acordul. BUG observat 2026-07-08 conv ce0e8926: la 6 min după quote, follow-up-ul a
-    // trimis „Perfect. Pentru cine vrei maneaua?" deși clientul nu confirmase nimic.
-    if (ctx.followUp && !/\bde\s+acord\b/i.test(trimmed)) {
+    // Varianta CROSS-RUN a guard-ului de mai sus: dacă ULTIMUL mesaj din conversație e
+    // chiar cotarea de preț (userul nu a răspuns încă la „Sunteti de acord?"), nimeni NU
+    // are voie să avanseze presupunând acordul. Pe follow-up e permis DOAR un nudge care
+    // re-întreabă acordul. BUG observat 2026-07-08 conv ce0e8926: la 6 min după quote,
+    // follow-up-ul a trimis „Perfect. Pentru cine vrei maneaua?" deși clientul nu confirmase.
+    // FIX 2026-08-13 (audit conv ff38978a): garda era DOAR pe follow-up. Cursă pe run-uri
+    // normale: userul a scris „Da" (răspuns la salut) cât timp run-ul anterior încă livra
+    // quote-ul (humanDelay), deci quote-ul s-a persistat la 300ms DUPĂ „Da". Run-ul
+    // declanșat de „Da" nu avea priceQuotedThisTurn, iar PRICE_ALREADY_QUOTED l-a împins
+    // „Continuă tunelul" → „Super, atunci hai sa o facem" la 10s după „Sunteti de acord?",
+    // fără niciun răspuns al userului. Clientul n-a mai scris niciodată. Acoperă și quote-ul
+    // inline (send_message cu preț, care nu setează priceQuotedThisTurn) urmat de al 2-lea
+    // mesaj în același run.
+    if (!ctx.followUp || !/\bde\s+acord\b/i.test(trimmed)) {
       try {
         const lastMsg = await this.msg.findOne({
           where: { conversationId: ctx.conv.id },
@@ -4686,8 +4694,9 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
             sent: false,
             messageType: 'noop',
             status: 'AWAIT_PRICE_CONFIRMATION',
-            instruction:
-              'STAI — ultimul mesaj din conversație e cotarea prețului („Sunteti de acord?") și userul NU a răspuns încă. NU presupune acordul și NU avansa la nume/mesaj/email. Poți trimite DOAR un nudge scurt care re-întreabă acordul („Rămâne să-mi spui dacă ești de acord și pornim 🙂") — sau nu trimite nimic.',
+            instruction: ctx.followUp
+              ? 'STAI — ultimul mesaj din conversație e cotarea prețului („Sunteti de acord?") și userul NU a răspuns încă. NU presupune acordul și NU avansa la nume/mesaj/email. Poți trimite DOAR un nudge scurt care re-întreabă acordul („Rămâne să-mi spui dacă ești de acord și pornim 🙂") — sau nu trimite nimic.'
+              : 'STAI — ultimul mesaj din conversație e cotarea prețului („Sunteti de acord?") și userul NU a apucat să răspundă la ea (mesajul lui e de DINAINTE de quote). NU presupune acordul, NU avansa la nume/mesaj/email și NU mai trimite niciun mesaj. TERMINĂ TURUL și așteaptă răspunsul userului.',
           };
         }
       } catch {
@@ -6417,6 +6426,24 @@ ${transcript}`;
       const missingAfterQuote = freshConv
         ? this.missingWizardFields(this.getOrInitWizardState(freshConv).data)
         : [];
+      // FIX 2026-08-13 (audit conv ff38978a, cursă între run-uri): userul a scris „Da"
+      // (răspuns la salut) cât timp run-ul anterior încă livra quote-ul, deci quote-ul a
+      // rămas ULTIMUL mesaj din conversație. Run-ul declanșat de acel „Da" primea aici
+      // „Continuă tunelul" și trimitea „Super, atunci hai sa o facem" la 10s după
+      // „Sunteti de acord?" — fără ca userul să fi răspuns. Dacă quote-ul e ultimul
+      // mesaj, userul încă NU a răspuns la el: se așteaptă, nu se avansează.
+      const newestMsg = await this.msg.findOne({
+        where: { conversationId: ctx.conv.id },
+        order: { createdAt: 'DESC' },
+      });
+      if (newestMsg && newestMsg.authorRole === 'admin' && /sunte[țt]i de acord\s*\?/i.test(newestMsg.body ?? '')) {
+        return {
+          sent: false,
+          status: 'PRICE_ALREADY_QUOTED',
+          instruction:
+            'Prețul e deja cotat și „Sunteti de acord?" e ULTIMUL mesaj din conversație — mesajul userului e de DINAINTE de quote, deci încă NU a răspuns la el. NU-l recota, NU avansa tunelul, NU presupune acordul și NU mai trimite niciun mesaj. TERMINĂ TURUL și așteaptă răspunsul userului.',
+        };
+      }
       // BUG observat 2026-08-06 conv a7211164: Irina i-a oferit userului să-i arate
       // pachetele Plus/Premium, el a zis „Da", ea a apelat quote → guard-ul a trimis-o
       // imperativ la „întreabă primul câmp lipsă", deci a ignorat exact ce ceruse userul
@@ -6546,13 +6573,28 @@ ${transcript}`;
     //     halucina o sumă lângă cea reală (vezi regula anti-echivalare din ETAPA 2);
     // (b) fără întrebare proprie — singura întrebare a mesajului rămâne „Sunteti de acord?",
     //     altfel userul primește două întrebări deodată și răspunde la una singură;
-    // (c) tăiat la 200 caractere — un lead lung îneacă prețul.
+    // (c) tăiat la 200 caractere — un lead lung îneacă prețul;
+    // (d) fără ecou — BUG observat 2026-08-13 conv ff38978a: lead = copia mesajului
+    //     userului („Buna ds") → quote-ul a plecat ca „Buna ds Maneaua costa 29.99 lei".
+    //     Lead-ul e ancorarea Irinei, în cuvintele ei; un ecou e mai rău decât niciun lead.
     const leadClean = (lead ?? '').trim().replace(/\s+/g, ' ').slice(0, 200);
     const leadHasPrice = /\d{1,4}([.,]\d{1,2})?\s*(ron|lei|eur|euro|€)|\d\s*(ron|lei|eur|€)/i.test(leadClean);
-    if (leadClean && !leadHasPrice && !leadClean.includes('?')) {
-      msgText = `${leadClean} ${msgText}`;
+    let leadEchoesUser = false;
+    if (leadClean) {
+      const lastUserForLead = await this.msg.findOne({
+        where: { conversationId: ctx.conv.id, authorRole: 'user' },
+        order: { createdAt: 'DESC' },
+      });
+      const leadNorm = normLoose(leadClean);
+      leadEchoesUser = !!leadNorm && leadNorm === normLoose(lastUserForLead?.body ?? '');
+    }
+    if (leadClean && !leadHasPrice && !leadClean.includes('?') && !leadEchoesUser) {
+      // Punct terminal dacă lipsește — altfel leadul și prețul curg într-o singură frază
+      // („Buna Maneaua costa...").
+      const leadFinal = /[\p{L}\p{N}]$/u.test(leadClean) ? `${leadClean}.` : leadClean;
+      msgText = `${leadFinal} ${msgText}`;
     } else if (leadClean) {
-      this.logger.warn(`quote lead dropped on conv=${ctx.conv.id.slice(0, 8)} — ${leadHasPrice ? 'conținea o sumă' : 'conținea o întrebare'}.`);
+      this.logger.warn(`quote lead dropped on conv=${ctx.conv.id.slice(0, 8)} — ${leadHasPrice ? 'conținea o sumă' : leadEchoesUser ? 'era ecoul mesajului userului' : 'conținea o întrebare'}.`);
     }
 
     // Trimite mesajul direct (bypass send_message dedupe — e o acțiune distinctă)
