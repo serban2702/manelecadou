@@ -2507,10 +2507,14 @@ REGULI STRICTE:
     repetat de 2 ori că la comanda asta apare Raul Blaga — fără să caute plata reclamată și fără
     să anunțe echipa. Clientul a rămas convins că a plătit 69 lei degeaba.
 32. ⛔ POZE / IMAGINI / COLAJ VIDEO NU SUNT MODIFICARE DE MELODIE. Pozele de share și
-    colajul video sunt FEATURE-URI DE PACHET pe pagina melodiei (/m/...): imaginile de
-    social media se generează automat la pachetele Plus/Premium, iar colajul video cu pozele
-    clientului există DOAR la Premium — clientul își încarcă SINGUR pozele direct de pe
-    pagina piesei (butonul de colaj), GRATUIT, fără nicio regenerare. NU apela
+    colajul video sunt FEATURE-URI DE PACHET pe pagina melodiei (/m/...). Sunt DOUĂ
+    livrabile DIFERITE — nu le amesteca: (1) „poza de share" = imaginea STATICĂ afișată
+    când distribui linkul (Plus și Premium; se alege/încarcă din secțiunea „Poza ta de
+    share"); (2) „colajul video" = VIDEO cu pozele clientului și melodia pe fundal —
+    există DOAR la Premium. Când clientul cere „să pun o fotografie și pe fundal să fie
+    melodia" / „poza peste melodie" / „video cu pozele mele" → vrea COLAJUL VIDEO
+    (Premium), NU poza de share. Clientul își încarcă SINGUR pozele direct de pe
+    pagina piesei, GRATUIT, fără nicio regenerare. NU apela
     request_modification pentru poze/imagini/video — regenerarea reface DOAR audio+versuri
     și NU poate adăuga poze; ai încasa bani pentru ceva ce nu se livrează. Dacă userul vrea
     poze/colaj: explică-i unde le încarcă pe pagina melodiei; dacă pachetul lui nu include
@@ -2520,8 +2524,8 @@ REGULI STRICTE:
     NU include feature-ul de poze (Standard/basic — nu are încărcare de poze/colaj). NU o
     trata ca eroare de UI de îndrumat pas-cu-pas la nesfârșit și NU bucla cerând iar și iar
     email/link ca „să găsești comanda" doar ca s-o explici. Spune DIRECT și scurt: la pachetul
-    Standard nu e inclusă încărcarea de poze (de asta rămâne sigla); pentru poze îi trebuie
-    Plus (imagini social auto) sau Premium (colaj video cu pozele lui). Abia dacă insistă că a
+    Standard nu e inclusă încărcarea de poze (de asta rămâne sigla); pentru poza de share îi
+    trebuie Plus, iar pentru colajul video cu pozele lui — Premium. Abia dacă insistă că a
     plătit pachetul cu poze dar tot nu merge → inspect_customer_data + escalate_to_human.
     BUG observat 2026-07-08 conv 7d48c0fe: user a vrut „poze la varianta 3" (ca la varianta 1,
     unde și le pusese singur), AI a vândut o „modificare amplă" de 29.99 → s-a regenerat
@@ -2541,6 +2545,12 @@ REGULI STRICTE:
     care la Standard nu există; un coleg uman a trebuit să intre și s-o contrazică în fața
     clientului. Pe deasupra a cerut și emailul „ca să verifice", deși comanda era DEJA
     identificată. Acum pachetul vine în check_order_status → folosește-l.
+    BUG observat 2026-08-13 conv eb815130 (ACELAȘI client, de data asta pe PLUS): aceeași
+    cerere de colaj („o fotografie și pe fundal să fie melodia") → Irina a răspuns „la Plus
+    pozele merg din pagina piesei" (a confundat poza de share cu colajul video) și a ținut
+    clientul în troubleshooting („poză mai mică", „ce telefon", „Chrome sau Facebook?",
+    „aia e bara de Conținut privat") pe o funcție pe care Plus n-o are. Colajul video =
+    DOAR Premium. Dacă pachetul n-are colaj → spui direct, oferi upgrade, NU depanezi.
 33. RETRAGEREA UNEI MODIFICĂRI CERUTE (link de modificare NEPLĂTIT încă): schimbările se
     ACUMULEAZĂ pe linkul de plată existent la fiecare request_modification. Dacă userul
     RETRAGE sau schimbă ceva cerut anterior („nu mai schimba versurile", „las-o cum era cu
@@ -3317,14 +3327,27 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     } catch {
       /* fără prețuri e ok — regula rămâne validă */
     }
+    // BUG observat 2026-08-13 conv eb815130 (client pe PLUS): „vreau să pun o fotografie și
+    // pe fundal să fie melodia" = COLAJ VIDEO (doar Premium), dar instrucțiunea de aici zicea
+    // generic „INCLUDE poze → confirmă și îndrumă-l pe pagina piesei" pentru orice pachet cu
+    // socialImage. Irina a confirmat de 3× că „la Plus pozele merg din pagina piesei" și a
+    // ținut clientul în troubleshooting (poza mai mică, browser, telefon, „Conținut privat")
+    // pe o funcție pe care pachetul lui n-o are; un coleg uman a intrat cu „pentru poză
+    // trebuie maneaua premium". Distincția share vs colaj e acum explicită per pachet.
     instruction +=
       `\n\n📦 PACHETUL comenzii: ${packageInfo.label} (${tier}). ` +
-      (packageInfo.canUploadPhotos
-        ? `INCLUDE poze: ${def.socialImage ? 'imagini social-media auto' : ''}${def.socialImage && def.video ? ' + ' : ''}${def.video ? 'colaj video din pozele clientului (le încarcă singur de pe pagina piesei, gratuit)' : ''}. ` +
-          `Dacă întreabă de poze/colaj → confirmă și îndrumă-l pe pagina piesei${linkToSong ? ` (${linkToSong})` : ''}.`
-        : `⛔ NU include NICIO încărcare de poze / colaj video / imagini social — clientul NU are butonul de poze pe pagina piesei. ` +
-          `Dacă întreabă „pot pune o fotografie / poză de fundal / colaj?" → răspunde DIRECT și o SINGURĂ dată: la pachetul ${packageInfo.label} nu e inclusă partea de poze; pentru imagini social îi trebuie Plus, iar pentru colaj video cu pozele lui — Premium.${upgradePrices} ` +
-          `⛔ NU-i spune „da, se poate", NU-i promite ghidaj pas-cu-pas și NU inventa un „buton de colaj" — nu există la pachetul lui. Nu repeta explicația reformulat: spui o dată, clar, apoi întrebi dacă vrea upgrade.`) +
+      `⚠️ Sunt DOUĂ livrabile diferite cu poze — nu le amesteca: ` +
+      `(1) „poza de share" = imaginea statică afișată când distribui linkul melodiei (Plus și Premium; se alege/încarcă din secțiunea „📸 Poza ta de share" de pe pagina piesei); ` +
+      `(2) „colajul video" = video cu pozele clientului și melodia pe fundal (DOAR Premium). ` +
+      `Când clientul cere „să pun o fotografie și pe fundal să fie melodia" / „poza peste melodie" / „video cu pozele mele" → vrea COLAJUL VIDEO, nu poza de share. ` +
+      (def.video
+        ? `Pachetul lui include TOT (poza de share + colaj video): confirmă și îndrumă-l pe pagina piesei${linkToSong ? ` (${linkToSong})` : ''} — își încarcă singur pozele, gratuit, fără regenerare.`
+        : def.socialImage
+          ? `⛔ Pachetul lui ${packageInfo.label} NU include colajul video — are DOAR poza de share. Dacă cere poza cu melodia pe fundal / video cu poze: spune-i DIRECT și o SINGURĂ dată că la ${packageInfo.label} colajul video nu e inclus și că îi trebuie Premium, apoi întreabă-l dacă vrea upgrade.${upgradePrices} ` +
+            `⛔ NU-i spune generic „pozele merg la ${packageInfo.label}", NU-l trimite să „încarce poza" ca soluție la colaj și NU porni troubleshooting (poză mai mică / alt browser / ce telefon ai) pe o funcție pe care pachetul lui n-o are.`
+          : `⛔ NU include NICIO parte cu poze (nici poza de share, nici colaj video) — clientul NU are butonul de poze pe pagina piesei. ` +
+            `Dacă întreabă „pot pune o fotografie / poză de fundal / colaj?" → răspunde DIRECT și o SINGURĂ dată: la pachetul ${packageInfo.label} nu e inclusă partea de poze; pentru poza de share îi trebuie Plus, iar pentru colaj video cu pozele lui — Premium.${upgradePrices} ` +
+            `⛔ NU-i spune „da, se poate", NU-i promite ghidaj pas-cu-pas și NU inventa un „buton de colaj" — nu există la pachetul lui. Nu repeta explicația reformulat: spui o dată, clar, apoi întrebi dacă vrea upgrade.`) +
       (ctx.conv.email
         ? ` ⛔ Comanda e DEJA identificată — NU cere emailul „ca să verifici/cauți" (îl ai: ${ctx.conv.email}). Răspunde direct la ce a întrebat.`
         : ` ⛔ Comanda e DEJA identificată în conversație — NU cere emailul „ca să verifici". Răspunde direct la ce a întrebat.`);
@@ -4564,17 +4587,17 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       const mentionsPhotos = /\b(poz[aăe]|poze|pozele|fotografi|colaj|slideshow)\b/.test(t);
       // Afirmativ = spune că SE POATE / promite ghidaj, fără să nege disponibilitatea.
       const affirms = /\b(se poate|po[țt]i|pute[țt]i|putem|adaugi|adăugi|încarci|incarci|urci|butonul)\b/.test(t);
-      // „denies" e larg intenționat: orice mesaj care numește Plus/Premium ca soluție e deja
-      // un upsell corect (nu o promisiune falsă pe pachetul curent) → îl lăsăm să treacă.
-      const denies = /(nu (se poate|e inclus|este inclus|include|ai|are|exist)|nu e disponibil|nu face parte|premium|\bplus\b|upgrade)/.test(t);
-      if (mentionsPhotos && affirms && !denies) {
+      const explicitDenial = /(nu (se poate|e inclus|este inclus|include|ai|are|exist)|nu e disponibil|nu face parte)/.test(t);
+      const mentionsUpgrade = /(premium|upgrade)/.test(t);
+      if (mentionsPhotos && affirms && !explicitDenial) {
         try {
           const convFresh = await this.conv.findOne({ where: { id: ctx.conv.id } });
           const resolved = convFresh ? await this.resolveCustomerGeneration(convFresh) : null;
           if (resolved) {
             const gTier = normalizeTier((resolved.generation as { packageTier?: string | null }).packageTier);
             const gDef = packageDef(gTier);
-            if (!gDef.socialImage && !gDef.video) {
+            // Pe Basic, „îți trebuie Plus/Premium" e upsell legitim → trece. Restul se blochează.
+            if (!gDef.socialImage && !gDef.video && !mentionsUpgrade && !/\bplus\b/.test(t)) {
               this.logger.warn(`PHOTO_PROMISE blocked on conv=${ctx.conv.id.slice(0, 8)} — pachet ${gTier} fără poze.`);
               return {
                 sent: false,
@@ -4583,8 +4606,28 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
                 instruction:
                   `STAI — clientul are pachetul ${packageLabel(gTier)}, care NU include încărcarea de poze / colaj video / imagini social. ` +
                   `Mesajul tău îi promitea că „se poate" pune poza — pe pagina lui butonul ăla NU există, deci l-ai trimite după o funcție inexistentă și un coleg uman ar trebui să te contrazică în fața lui. ` +
-                  `Spune-i ADEVĂRUL, scurt și o SINGURĂ dată: la pachetul ${packageLabel(gTier)} nu e inclusă partea cu poze; pentru imagini social e nevoie de Plus, iar pentru colaj video cu pozele lui — Premium. ` +
+                  `Spune-i ADEVĂRUL, scurt și o SINGURĂ dată: la pachetul ${packageLabel(gTier)} nu e inclusă partea cu poze; pentru poza de share e nevoie de Plus, iar pentru colaj video cu pozele lui — Premium. ` +
                   `Apoi întreabă-l dacă vrea upgrade. ⛔ NU reformula aceeași confirmare greșită și NU inventa pași de urmat.`,
+              };
+            }
+            // BUG observat 2026-08-13 conv eb815130 (client pe PLUS): „la Plus pozele merg din
+            // pagina piesei" repetat de 3×, pe o cerere de COLAJ („o fotografie și pe fundal să
+            // fie melodia") — colajul video există DOAR la Premium. Vechiul „denies" lăsa orice
+            // mesaj care conținea „plus" să treacă, deci exact promisiunile greșite scăpau.
+            // Aici blocăm pe pachete FĂRĂ video promisiunile care vorbesc de colaj/fundal/video
+            // fără să numească Premium ca soluție.
+            const promisesCollage = /(colaj|slideshow|fundal|videoclip|\bvideo\b|peste melodie)/.test(t);
+            if (!gDef.video && gDef.socialImage && promisesCollage && !mentionsUpgrade) {
+              this.logger.warn(`COLLAGE_PROMISE blocked on conv=${ctx.conv.id.slice(0, 8)} — pachet ${gTier} fără colaj video.`);
+              return {
+                sent: false,
+                messageType: 'noop',
+                status: 'COLLAGE_PROMISE_ON_PLUS_BLOCKED',
+                instruction:
+                  `STAI — clientul are pachetul ${packageLabel(gTier)}, care NU include colajul video cu pozele lui (există DOAR la Premium). ` +
+                  `La ${packageLabel(gTier)} are doar „poza de share" — imaginea statică de la distribuirea linkului, NU un video cu poza și melodia pe fundal. ` +
+                  `Spune-i DIRECT și o SINGURĂ dată: pentru colajul video cu pozele lui îi trebuie Premium, apoi întreabă-l dacă vrea upgrade. ` +
+                  `⛔ NU-l trimite să „încarce poza" ca soluție și NU porni troubleshooting (poză mai mică / alt browser / ce telefon) pe o funcție pe care pachetul lui n-o are.`,
               };
             }
           }
