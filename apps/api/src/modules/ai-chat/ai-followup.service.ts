@@ -78,13 +78,16 @@ export class AiFollowupService {
            -- GUARD 3 (BUG 2026-06-20 conv 293ee6cc: „nu trebuie să-l țină de vorbă"):
            -- ultimul mesaj al userului e o închidere/confirmare scurtă („ok", „mersi",
            -- „da", „bine"...) → conversația s-a încheiat natural, nu re-angaja.
+           -- Extins 2026-08-13 (conv b4c72205): rămas-bun/refuz („la revedere", „nimic",
+           -- „nu vreau", „pa") — userul a plecat explicit; follow-up-ul de vânzare peste
+           -- rămas-bun e exact botul insistent pe care nu-l vrem.
            AND COALESCE((
              SELECT lower(btrim(um2.body)) FROM chat_messages um2
              WHERE um2."conversationId" = c.id
                AND um2."authorRole" = 'user'
                AND um2."deletedAt" IS NULL
              ORDER BY um2."createdAt" DESC LIMIT 1
-           ), 'x') !~ '^((ok|oki|okk|okay|bine|da|daa|gata|mersi|merci|multumesc|mulțumesc|multam|thanks|thx|ty|perfect|super|nu)[[:space:].,!]*)+[👍🙏❤️😊🎶]*$'
+           ), 'x') !~ '^((la[[:space:]]+revedere|noapte[[:space:]]+bun[aă]|o[[:space:]]+zi[[:space:]]+bun[aă]|nu[[:space:]]+mai[[:space:]]+vreau|nu[[:space:]]+vreau|m-am[[:space:]]+r[aă]zg[âa]ndit|renun[țt][[:alpha:]]*|ok|oki|okk|okay|bine|da|daa|gata|mersi|merci|multumesc|mulțumesc|multam|thanks|thx|ty|perfect|super|nu|pa+|adio|nimic|niciunul|niciuna|las[aă])[[:space:].,!]*)+[👍🙏❤️😊🎶]*$'
          ORDER BY c."lastMessageAt" ASC
          LIMIT 8`,
       );

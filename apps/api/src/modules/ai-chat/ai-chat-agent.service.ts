@@ -2137,7 +2137,15 @@ ETAPA 5.5 — UPSELL PACHET (OBLIGATORIU înainte de finalize — NU-l sări):
     • „premium" / „cea mai bună" / „completă" / „cu video" / „${premiumPrice}" → wizard_update({packageTier: 'premium'})
   → Dacă userul deja a cerut clar ceva (ex. „o vreau premium", „cea mai completă") poți
     seta direct tier-ul fără să mai întrebi.
-  → Dacă userul nu alege explicit / ignoră / spune „nu conteaza" → packageTier='basic'.
+  → Dacă userul nu alege explicit dar CONTINUĂ comanda („nu conteaza", „oricare", „tu
+    decizi", răspunde la altceva) → packageTier='basic'.
+  → ⛔ „nimic" / „niciunul" / „nu vreau" / „la revedere" / „pa" la prezentarea pachetelor
+    NU e o alegere de pachet — e REFUZ. NU seta packageTier, NU apela wizard_finalize, NU
+    trimite link de plată. Întreabă O DATĂ, scurt și calm, dacă mai dorește melodia (ex.
+    „Nicio problemă 🙂 Rămânem pe Standard la ${price}, sau ne oprim aici?"); dacă își ia
+    la revedere sau tace → cel mult UN mesaj cald de încheiere, FĂRĂ link și FĂRĂ vânzare.
+    BUG observat 2026-08-13 conv b4c72205: la „Nimic" + „La revedere" Irina a ales singură
+    Standard și a trimis linkul de plată la o secundă după rămas-bun — bot agresiv.
   → Pachetul ales determină prețul de pe linkul de plată — NU sări peste pasul ăsta.
   → ⚠️ NU redenumi și NU ascunde pachete. Sunt EXACT 3, cu numele lor reale: Standard, Plus,
     Premium — fiecare la prețul lui. NU prezenta doar 2 din 3 și NU numi Plus „premium"
@@ -3919,6 +3927,42 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     if (!ctx.conv.siteId) return { error: 'no siteId' };
     const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
     if (!conv) return { error: 'conversation gone' };
+    // GUARD REFUZ / RĂMAS-BUN (BUG observat 2026-08-13 conv b4c72205): la pasul de pachete
+    // userul a scris „Nimic" apoi „La revedere", iar Irina a interpretat refuzul ca „aleg
+    // Standard" și a trimis linkul de plată la o secundă după rămas-bun. Un link peste un
+    // refuz explicit nu recuperează vânzarea — o îngroapă. Refuz dur / rămas-bun → finalize
+    // blocat tot turul; „nimic"/„niciunul" scurt (poate fi și „nimic de adăugat") → blocat
+    // o dată, cu drept de reapelare dacă AI-ul e sigur din context că nu era refuz.
+    try {
+      const lastUser = await this.msg.findOne({
+        where: { conversationId: conv.id, authorRole: 'user' },
+        order: { createdAt: 'DESC' },
+      });
+      const lastRaw = (lastUser?.body ?? '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '');
+      const hardDecline =
+        /^\s*(la\s+revedere|pa+(\s+pa+)*|adio|renunt[a-z]*|m[- ]?am\s+razgandit|nu\s+(mai\s+)?vreau(\s+nimic)?|nu,?\s+(multumesc|mersi)|lasa|las[- ]?o|o\s+zi\s+buna|noapte\s+buna)\s*[.!,…\s]*$/i.test(
+          lastRaw,
+        );
+      const softDecline = !hardDecline && /^\s*(nimic|niciunul|niciuna)\s*[.!,…\s]*$/i.test(lastRaw);
+      if (hardDecline || (softDecline && !ctx.refusalGateFired)) {
+        ctx.refusalGateFired = true;
+        this.logger.warn(
+          `FINALIZE_ON_DECLINE blocked on conv=${conv.id.slice(0, 8)} — ultimul mesaj user („${lastRaw.slice(0, 30)}") e refuz/rămas-bun.`,
+        );
+        return {
+          status: 'USER_DECLINED_FINALIZE_BLOCKED',
+          instruction: hardDecline
+            ? 'STAI — ultimul mesaj al userului e un refuz sau un rămas-bun. NU trimite linkul de plată și NU alege tu pachetul în locul lui: un link peste „la revedere" arată a bot agresiv și pierde clientul definitiv. Trimite cel mult UN mesaj scurt și cald de încheiere, fără vânzare și fără link („Nicio problemă 🙂 Dacă te răzgândești, sunt aici."), apoi termină turul.'
+            : 'STAI — userul tocmai a răspuns „nimic"/„niciunul". La alegerea pachetelor asta NU înseamnă Standard — de regulă înseamnă că nu mai vrea deloc. NU finaliza acum: întreabă-l O DATĂ, scurt, dacă mai dorește melodia (ex. „Rămânem pe varianta Standard, sau ne oprim aici?") și așteaptă răspunsul. DOAR dacă din context e evident că „nimic" era răspuns la o altă întrebare de-a ta (ex. „mai adaugi ceva la mesaj?") — reapelează wizard_finalize și va trece.',
+        };
+      }
+    } catch (e) {
+      this.logger.warn(`decline guard failed: ${(e as Error).message}`);
+    }
     const state = this.getOrInitWizardState(conv);
     const missing = this.missingWizardFields(state.data);
     if (missing.length > 0) {
@@ -4936,6 +4980,40 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
             instruction:
               'STAI — i-ai spus DEJA că linkul de plată e în chat / că i l-ai retrimis, iar userul n-a scris nimic între timp. A doua oară aceeași informație nu-l ajută cu nimic, doar sună a bot care se repetă. Cardul de plată e vizibil în conversație — nu mai are nevoie de încă un anunț. Fă UNA din două: (a) UN nudge scurt care întreabă ceva NOU despre acțiunea LUI, fără să repeți unde e linkul („Ai reușit cu plata? 🙏") — dar numai dacă n-ai întrebat deja asta; (b) NU trimite nimic, termină turul. Tăcerea e corectă aici; dacă are o problemă reală cu plata, o să-ți scrie el.',
           };
+        }
+      }
+
+      // Treapta 0.518 — FOLLOW-UP CARE RECOLECTEAZĂ CÂMPURI DUPĂ LINKUL DE PLATĂ. BUG
+      // observat 2026-08-13 conv b4c72205: comanda era finalizată (link de plată trimis),
+      // userul își luase la revedere, iar follow-up #2 a trimis „Am notat tot, dar mai am
+      // nevoie de un singur lucru: de la cine e dedicația?" — „mai am nevoie" contrazice
+      // linkul deja emis și-l face pe client să creadă că nu poate plăti încă. După
+      // payment_sent, follow-up-ul legitim e cel despre plată; câmpurile opționale se
+      // discută doar dacă USERUL redeschide subiectul.
+      if (ctx.followUp) {
+        try {
+          const convFresh = await this.conv.findOne({ where: { id: ctx.conv.id } });
+          const step = convFresh ? this.getOrInitWizardState(convFresh).step : null;
+          if (step === 'payment_sent') {
+            const asksWizardData =
+              /(de la cine|pentru cine|cum ([îi]l|o) cheam|ce mesaj|adresa de email|pe ce email|ce pachet|mai am nevoie|[îi]mi mai trebuie|un singur lucru|mai lipse)/i.test(
+                trimmed,
+              );
+            if (asksWizardData) {
+              this.logger.warn(
+                `FOLLOWUP_WIZARD_RECOLLECT blocked on conv=${ctx.conv.id.slice(0, 8)} — follow-up #${ctx.followUpIndex ?? 1} cere date de comandă după payment_sent.`,
+              );
+              return {
+                sent: false,
+                messageType: 'duplicate_text',
+                status: 'FOLLOWUP_WIZARD_RECOLLECT_BLOCKED',
+                instruction:
+                  'STAI — linkul de plată e DEJA trimis, deci pentru client comanda e completă; un follow-up cu „mai am nevoie de ceva" o contrazice și-l derutează. NU cere câmpuri de comandă acum. Fă UNA din două: (a) dacă n-ai întrebat deja, UN nudge scurt despre plată („Ai reușit cu plata? 🙏"); (b) altfel NU trimite nimic — termină turul.',
+              };
+            }
+          }
+        } catch {
+          /* best-effort — dacă lookup-ul pică, mesajul trece prin restul gardurilor */
         }
       }
 
@@ -8138,6 +8216,11 @@ interface AgentCtx {
    *  trimit acum linkul") în acest run? Un singur blocaj per tur, ca modelul să nu rămână
    *  fără niciun mesaj dacă insistă cu aceeași formulare. (2026-08-08, audit conv 52c47f2f.) */
   linkPromiseGateFired?: boolean;
+  /** S-a declanșat deja garda de refuz pe wizard_finalize (USER_DECLINED) în acest run?
+   *  „nimic"/„niciunul" e uneori legitim („mai adaugi ceva?" → „nimic") — prima apelare
+   *  blochează cu cerere de judecată din context, a doua trece. Refuzul dur („la revedere",
+   *  „nu mai vreau") rămâne blocat tot turul. (2026-08-13, audit conv b4c72205.) */
+  refusalGateFired?: boolean;
   /** Rulare de tip follow-up (reminder spațiat după tăcerea userului) vs. run normal
    *  declanșat de un mesaj al userului. Unele guard-uri anti-repetiție se relaxează pe
    *  follow-up (un reminder spațiat e legitim, spre deosebire de 2 nudge-uri la rând). */
