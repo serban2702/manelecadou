@@ -2004,6 +2004,17 @@ ETAPA 2.5 — AUTO-EXTRACT din primul mesaj user (CRITIC pentru UX):
     versurile mele"), Irina a pus-o în \`message\`, writer-ul a scris ALTE versuri, iar clientul
     a reclamat de 15+ ori „nu apar versurile mele" → 2 modificări plătite degeaba + escaladare
     + un om a trebuit să refacă manual cu customLyrics setat corect. NU repeta.
+  → ✋ USERUL DOAR ANUNȚĂ CĂ VREA SĂ SCRIE EL — AȘTEAPTĂ-I TEXTUL, NU GENERA DRAFT. Când
+    userul spune „vreau să scriu eu un vers/versurile" sau „vreau să sune cam așa" FĂRĂ să
+    fi dat încă vreun text, NU apela \`generate_lyrics\` — n-ai nimic nou de la el, iar
+    drafturile sunt limitate (3 per conversație) și le arzi pe nimic. Invită-l scurt să
+    scrie textul chiar aici în chat („Sigur! Scrie-mi aici versul/textul tău și îl pun în
+    melodie 🙂") și TERMINĂ TURUL — textul lui vine în mesajul următor. Când sosește:
+    bloc de versuri finite → \`customLyrics\` (verbatim); frază/dedicație liberă → \`message\`.
+    BUG observat 2026-08-16 conv bc19e821: la „Vreau sa scriu eu un vers" Irina a generat
+    instant un draft întreg (cu un vers-placeholder inventat), la „Eu vreau sa sune cam asa"
+    (anunț fără text) a ars al 2-lea draft — textul real al clientului a venit abia după,
+    cu 2 din 3 drafturi irosite pe nimic.
 
   → 🌍 LIMBĂ DIFERITĂ DE A SITE-ULUI (ex. user cere „în ucraineană / rusă / germană"):
     ESTE posibil, dar DOAR pe calea versurilor. Pași OBLIGATORII, în ordine:
@@ -6092,14 +6103,14 @@ Pe baza conversației user-ului de mai jos și a datelor wizard deja colectate, 
 
 1. **style** — unul EXACT din: ${STYLES.join(', ')}
 2. **occasion** — una EXACT din: ${OCCASIONS.join(', ')}
-3. **voiceArtist** — EXACT una din: male (voce bărbătească) sau female (voce feminină). Alege după preferința explicită a userului ("voce de femeie" → female, "bărbătească" → male) sau, în lipsa ei, după sexul destinatarului.
+3. **voiceArtist** — EXACT una din: male (voce bărbătească) sau female (voce feminină). Prioritate: (a) preferința explicită a userului ("voce de femeie" → female, "bărbătească" → male); (b) altfel, sexul NARATORULUI — cine dedică melodia (dedicatorName / "din partea soțului...") — pentru că versurile se cântă la persoana I din partea lui: soț → soție = male, mamă → fiu = female; (c) doar dacă nu se știe cine dedică → sexul destinatarului.
 4. **enrichedMessage** — versiunea îmbogățită a mesajului inițial: include detalii autobiografice menționate de user (locuri unde s-au cunoscut, ani, momente importante, copii, profesie, etc.) ÎN MOD NATURAL, nu listate. Păstrează tonul mesajului original. Dacă userul a lipit versuri complete, NU le scurta — păstrează-le integral.
 
 REGULI:
 - Dacă userul a SPUS explicit ceva ("vreau ceva clasic", "voce de femeie") → folosește exact.
 - Dacă wizardData are deja câmp setat → respectă-l, nu schimba.
 - occasion: NU presupune un eveniment pe care userul nu l-a menționat. "Zi de naștere" SE alege DOAR dacă apar indicii clare (zi de naștere, "la mulți ani", împlinește ani). ATENȚIE la NEGAȚII: "nu e ziua lui", "nu-i pentru ziua lui", "șterge/scoate la mulți ani", "fără la mulți ani" înseamnă că ocazia NU e "Zi de naștere" — mențiunea într-o corectură/negare NU e indiciu pozitiv. Manea de dragoste / "te iubesc" fără eveniment → "Declarație". Răzbunare, ironie, "să sufere", "m-a înșelat" → "Roast prieten". Fără niciun indiciu de ocazie → "Altă ocazie". NICIODATĂ nu băga referințe la un eveniment (zi de naștere, nuntă, botez) pe care userul nu l-a cerut.
-- Pentru style/voice fără indicii clare → alege default-uri logice (voce match sex recipient).
+- Pentru style fără indicii clare → alege un default logic. Pentru voice fără preferință explicită → sexul dedicatorului/naratorului dacă se știe cine dedică (voce match dedicator), altfel sexul destinatarului. BUG observat 2026-08-16 conv bc19e821: dedicație de la soțul Costel pentru soția Natasa („îți cânt din inimă, soția mea") → inferat female după destinatar, dar naratorul e soțul → corect era male.
 
 Returnează STRICT JSON: {"style": "...", "occasion": "...", "voiceArtist": "...", "enrichedMessage": "..."}`;
 
@@ -7703,7 +7714,11 @@ ${transcript}`;
       .execute();
     ctx.conv = conv;
 
-    const intro = revisionNotes
+    // Intro după numărul draftului, NU după prezența revisionNotes. BUG observat
+    // 2026-08-16 conv bc19e821: primul draft a fost cerut cu revisionNotes („userul
+    // vrea să scrie el un vers") → mesajul a început cu „Le-am ajustat cum ai cerut"
+    // deși nu exista niciun draft anterior de ajustat.
+    const intro = state.lyricsDraftCount > 1 && revisionNotes
       ? `Le-am ajustat cum ai cerut 🎤 Uite varianta nouă:`
       : `Uite versurile pe care le-am scris pentru ${state.data.recipientName} 🎤`;
     const text = `${intro}\n\n${cleanLyrics}\n\nÎți plac? Pot schimba orice strofă — zi-mi ce ajustez. Dacă-ți plac, maneaua finală se cântă exact pe ele 🎶`;
