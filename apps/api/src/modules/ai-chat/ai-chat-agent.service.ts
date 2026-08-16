@@ -1579,6 +1579,13 @@ REGULI DE TON (CRITICE — fără astea suni ca un bot):
 4. Variere expresii: în loc de mereu „Super!" alternează cu „Bine!", „Ok!", „Hai!", „Înțeleg!".
    În loc de mereu „Perfect!", folosește „Bun!", „Excelent!", „Hai să facem!".
 5. ZERO 😊 reflexiv la sfârșit de mesaje refuzante — sună fals.
+6. NU deschide cu o confirmare când n-ai ce confirma. „Da, ai dreptate" / „Da, ai făcut bine" /
+   „Exact așa e" se folosesc DOAR când userul a AFIRMAT ceva și tu îi dai dreptate. Când
+   userul pune o ÎNTREBARE („cum fac să...", „ce se întâmplă dacă...", „unde găsesc..."),
+   începe direct cu RĂSPUNSUL, nu cu o validare goală. BUG observat 2026-08-16 conv 996d25fe:
+   la „Cum fac sa salveze melodia ca am ieșit din greseala" Irina a răspuns „Da, ai facut bine,
+   melodia e salvata aici" — omul nu spusese că a făcut ceva bine, ci se temea că a pierdut
+   melodia; validarea pe gol sună a bot care n-a citit întrebarea.
 
 Emoji moderat și CONTEXTUAL: 👋 (salut), 🎵 🎶 🎤 (muzică), 💳 (plată), ✨ (entuziasm),
 ❤️ 🙏 (empatie). NU pune emoji după mesaje negative ca să maschezi refuzul.
@@ -5493,6 +5500,43 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         }
       }
 
+      // Treapta 0.73 — PROMISIUNE DE MESAJ NEONORATĂ. BUG observat 2026-08-16 conv b147126a:
+      // clienta a zis „Nu am idee" la întrebarea ce să-i transmită melodia, Irina i-a oferit
+      // „te ajut eu cu un mesaj simplu si frumos pentru Marian", clienta a acceptat („Ok") —
+      // iar mesajul următor al Irinei a fost lista de pachete. Propunerea promisă nu a venit
+      // NICIODATĂ; clienta a rămas cu impresia că a fost dusă spre plată în loc să fie ajutată
+      // și a trebuit să scrie ea, singură, povestea. Când i-ai oferit omului că scrii TU
+      // mesajul și el a acceptat, următorul lucru pe care îl trimiți e propunerea, nu alt pas.
+      const offeredToWriteMessage = (t: string) =>
+        /(te ajut eu|scriu eu|[îi][țt]i scriu eu|compun eu|o fac eu|m[ăa] ocup eu)/i.test(t) &&
+        /(mesaj|text|dedica[țt]|ce s[ăa][-\s]?i (spun|zic|transmit))/i.test(t);
+      if (offeredToWriteMessage(lastAiNorm ?? '')) {
+        const lastUserRaw = await this.msg.findOne({
+          where: { conversationId: ctx.conv.id, authorRole: 'user' },
+          order: { createdAt: 'DESC' },
+        });
+        const accepted = isAffirmOnly(lastUserRaw?.body ?? '') && !/\bnu\b/i.test(normLoose(lastUserRaw?.body ?? ''));
+        const convNow = await this.conv.findOne({ where: { id: ctx.conv.id } });
+        const messageStillEmpty = !((convNow?.wizardState?.data?.message ?? '').trim());
+        // Mesajul curent „schimbă subiectul" dacă vinde pachete/preț sau cere alt câmp,
+        // în loc să conțină propunerea promisă.
+        const changesSubject =
+          /(pachet|standard|premium|\bplus\b|lei|ron|\d+[.,]\d{2})/i.test(normalized) ||
+          /(adresa de email|e-?mail|pe ce email)/i.test(normalized);
+        if (accepted && messageStillEmpty && changesSubject) {
+          this.logger.warn(
+            `MESSAGE_DRAFT_PROMISE_BROKEN blocked on conv=${ctx.conv.id.slice(0, 8)} — a acceptat „scriu eu mesajul", dar tu treci la alt pas.`,
+          );
+          return {
+            sent: false,
+            messageType: 'noop',
+            status: 'MESSAGE_DRAFT_PROMISE_BROKEN',
+            instruction:
+              'STAI — tocmai i-ai promis omului că scrii TU mesajul pentru el, iar el a spus „ok". Dacă acum îi servești pachetele / prețul / cererea de email, îl lași cu promisiunea în aer și pare că-l împingi la plată în loc să-l ajuți. Trimite ACUM propunerea concretă, în 2-4 rânduri, cu numele destinatarului și cu ce știi deja despre el (ocazie, relație, detalii date de client) — scrisă cald, la persoana clientului, nu ca versuri. Încheie cu o întrebare scurtă de validare („Sună bine așa sau schimbăm ceva?"). Salveaz-o cu wizard_update({message: "<propunerea>"}) în ACELAȘI tur. Pachetele/emailul vin DUPĂ ce el confirmă mesajul.',
+          };
+        }
+      }
+
       // Treapta 0.75 — reconfirmare recap înainte de finalize (semantic, NU lexical). BUG
       // observat 2026-07-04 conv e6aab1fa: după ce userul confirmase deja („Da"), Irina a
       // trimis de 3 ori la rând un recap care se încheie cu „E corect... îți trimit linkul de
@@ -7452,6 +7496,7 @@ ${transcript}`;
     // trimit o dată linkul" — clientul primește un teanc de carduri identice și se blochează
     // și mai tare. Dacă un card de plată e deja în chat de sub 5 minute, retrimiterea are voie
     // DOAR când userul chiar o cere (link/plată/„nu merge"/„trimite") și NU refuză ceva.
+    const externalChannelNote = await this.externalChannelNote(conv.id);
     try {
       const freshLink = await this.msg
         .createQueryBuilder('m')
@@ -7465,7 +7510,13 @@ ${transcript}`;
           where: { conversationId: conv.id, authorRole: 'user' },
           order: { createdAt: 'DESC' },
         });
-        const lastUserBody = (lastUser?.body ?? '').trim().toLowerCase();
+        // Normalizat FĂRĂ diacritice: regexurile de mai jos sunt scrise cu litere simple, iar
+        // pe textul brut o formă cu diacritice nu le prinde. BUG observat 2026-08-16 conv
+        // 828d2618: la „Poți să-mi trimiți pe watap" (cerere explicită de link), `trimiți` NU
+        // face match pe `trimit` (ț ≠ t) → guard-ul a decis „userul NU ți-a cerut linkul" și
+        // l-a blocat; Irina i-a răspuns absurd „Nu ți-l pot retrimite doar așa, că e sus în
+        // chat", iar clientul a trebuit să ceară a doua oară.
+        const lastUserBody = normLoose(lastUser?.body ?? '');
         // „nu merge / nu se deschide" NU intră aici (alea SUNT motive legitime de resend) —
         // doar refuzul explicit al userului față de ceva ce i-am propus.
         const userRefuses = /\bnu\s+(mai\s+)?(vreau|doresc|vream|as\s+vrea|a[șs]\s+vrea)\b|\bnu[-\s]?mi\s+trimit/i.test(lastUserBody);
@@ -7478,7 +7529,8 @@ ${transcript}`;
           return {
             status: 'PAYMENT_LINK_RESEND_BLOCKED',
             instruction:
-              'STAI — cardul de plată e DEJA în chat, trimis acum câteva minute, iar userul NU ți-a cerut să-l retrimiți. Încă un card identic nu-l ajută cu nimic și pare că nu-l asculți. Citește ultimul lui mesaj și răspunde la CE A SPUS EL: dacă se teme de ceva (că-i trimitem ceva acasă, că nu aude melodia înainte, că trebuie să dea adresa) → liniștește-l concret, la obiect; dacă a zis doar „ok/bine" → nu mai trimite nimic sau întreabă-l scurt dacă a reușit să deschidă linkul; dacă are o problemă REALĂ la plată (nu merge / nu se deschide / a expirat) → abia atunci retrimite. NU retrimite linkul ca reflex.',
+              'STAI — cardul de plată e DEJA în chat, trimis acum câteva minute, iar userul NU ți-a cerut să-l retrimiți. Încă un card identic nu-l ajută cu nimic și pare că nu-l asculți. Citește ultimul lui mesaj și răspunde la CE A SPUS EL: dacă se teme de ceva (că-i trimitem ceva acasă, că nu aude melodia înainte, că trebuie să dea adresa) → liniștește-l concret, la obiect; dacă a zis doar „ok/bine" → nu mai trimite nimic sau întreabă-l scurt dacă a reușit să deschidă linkul; dacă are o problemă REALĂ la plată (nu merge / nu se deschide / a expirat) → abia atunci retrimite. NU retrimite linkul ca reflex.' +
+              externalChannelNote,
           };
         }
       }
@@ -7583,8 +7635,32 @@ ${transcript}`;
       ok: true,
       status: mode === 'reused' ? 'PAYMENT_LINK_RESENT' : 'PAYMENT_LINK_REGENERATED',
       instruction:
-        'Cardul de plată a fost retrimis (mai jos în chat, cu buton). Spune-i userului scurt că i l-ai retrimis și că după plată melodia se generează în 5-10 minute. NU scrie URL-ul Stripe în text.',
+        'Cardul de plată a fost retrimis (mai jos în chat, cu buton). Spune-i userului scurt că i l-ai retrimis și că după plată melodia se generează în 5-10 minute. NU scrie URL-ul Stripe în text.' +
+        externalChannelNote,
     };
+  }
+
+  /** Notă atașată instrucțiunilor de plată când userul cere linkul pe un canal pe care NU-l
+   *  avem (WhatsApp, SMS, Messenger, Viber, Telegram). BUG observat 2026-08-16 conv 828d2618:
+   *  clientul a cerut de 2 ori „poți să-mi trimiți pe watap"; Irina n-a atins subiectul deloc
+   *  — o dată a ignorat cererea, o dată i-a răspuns pe lângă („nu ți-l pot retrimite, e sus în
+   *  chat"). Omul rămâne cu impresia că nu e ascultat și că linkul „nu vine". Nu avem WhatsApp,
+   *  deci răspunsul corect e să spui asta clar și să arăți alternativa reală (chat + email). */
+  private async externalChannelNote(convId: string): Promise<string> {
+    try {
+      const lastUser = await this.msg.findOne({
+        where: { conversationId: convId, authorRole: 'user' },
+        order: { createdAt: 'DESC' },
+      });
+      const t = normLoose(lastUser?.body ?? '');
+      const asksExternal =
+        /\b(w(h)?at+s?a?p+|was+ap|wsp|sms|messenger|mesenger|viber|telegram)\b/.test(t) ||
+        /\bpe\s+(telefon|numar|whatsapp)\b/.test(t);
+      if (!asksExternal) return '';
+      return ' ⚠️ ATENȚIE: userul a cerut linkul pe WhatsApp/SMS/altă aplicație. NU trece peste cererea asta ca și cum n-ar fi existat. Spune-i simplu și cald, în ACELAȘI mesaj, că nu putem trimite pe WhatsApp/SMS — noi lucrăm doar aici, în chat, și pe email (ex. „Pe WhatsApp nu pot, din păcate — dar linkul e chiar aici în chat, cu butonul de plată, și îți trimit melodia și pe email după"). NU inventa că i-l trimiți pe WhatsApp și NU-i cere numărul de telefon.';
+    } catch {
+      return '';
+    }
   }
 
   /** Generează versurile manelei în chat (gratuit) și le salvează ca customLyrics —
@@ -8058,6 +8134,57 @@ ${transcript}`;
         instruction:
           'STAI — refacerea gratuită de adineauri a aplicat DEJA (aproape) exact schimbarea cerută acum. NU trimite link de plată pentru ea. Verifică cu check_order_status că varianta refăcută e gata, apoi explică-i clientului că versiunea corectată e DEJA live pe pagina melodiei — să reîncarce pagina și să asculte ULTIMA versiune (cea mai nouă). Dacă și după reascultare susține că problema persistă în audio, e responsabilitatea noastră: alert_admins ca un coleg să verifice manual — NU încasa bani pentru o corectură deja promisă gratuit.',
       };
+    }
+
+    // GUARD „card de plată din senin": pe calea CONTRA COST, linkul nu are voie să plece în
+    // ACELAȘI tur în care clientul cere schimbarea, dacă nu i-am spus NICIODATĂ înainte că
+    // modificarea se plătește. BUG observat 2026-08-16 conv 996d25fe: la „Asi dori sa schimb
+    // melodia vreau ceva mai de jale" clientul a primit în 5 secunde un card de 29.99 RON,
+    // fără o vorbă despre cost → „Pai am făcut o data plata" (se simte taxat a doua oară) și
+    // comanda a rămas neplătită. E aceeași regulă ca Treapta 0.72 din send_message
+    // (MODIFICATION_PRICE_OMITTED), dar aplicată pe tool, unde AI-ul o ocolea sărind direct
+    // la link: prețul se anunță ÎNTÂI, clientul acceptă, ABIA APOI pleacă cardul.
+    try {
+      const hasModLinkAlready = await this.msg
+        .createQueryBuilder('m')
+        .where('m."conversationId" = :cid', { cid: conv.id })
+        .andWhere(`m."messageType" = 'payment_link'`)
+        .andWhere(`m.payload->>'modificationForGenerationId' IS NOT NULL`)
+        .getCount();
+      if (!hasModLinkAlready) {
+        const lastUserMsg = await this.msg.findOne({
+          where: { conversationId: conv.id, authorRole: 'user' },
+          order: { createdAt: 'DESC' },
+        });
+        const priorAdmin = await this.msg.find({
+          where: { conversationId: conv.id, authorRole: 'admin' },
+          order: { createdAt: 'DESC' },
+          take: 8,
+        });
+        // Doar mesajele de dinaintea ultimului mesaj al userului contează — altfel un mesaj
+        // cu prețul trimis în turul CURENT ar valida instant linkul, fără ca omul să fi apucat
+        // să spună „da".
+        const priceAnnounced = priorAdmin.some((m) => {
+          if (lastUserMsg && m.createdAt >= lastUserMsg.createdAt) return false;
+          const t = normLoose(m.body ?? '');
+          return (
+            /(14\s*[.,]?\s*99|29\s*[.,]?\s*99|contra cost|se plateste|costa|cost)/.test(t) &&
+            /(modific|refac|schimb|corect)/.test(t)
+          );
+        });
+        if (!priceAnnounced) {
+          this.logger.warn(
+            `MODIFICATION_PRICE_NOT_ANNOUNCED blocked on conv=${ctx.conv.id.slice(0, 8)} — link de modificare cerut fără ca prețul să fi fost spus înainte.`,
+          );
+          return {
+            status: 'MODIFICATION_PRICE_NOT_ANNOUNCED',
+            instruction:
+              'STOP — nu am trimis niciun link și nu s-a cerut niciun ban. Clientul tocmai a cerut o schimbare, iar tu ai sărit direct la cardul de plată: pentru el apare din senin, imediat după ce a plătit deja melodia, și reacția e „păi am plătit o dată". ÎNTÂI spune-i cald, într-un singur mesaj scurt, cum stă treaba: dacă e ceva ce am greșit noi o refacem gratuit; dacă e o schimbare nouă (alt vibe, alt mesaj, alte versuri), refacerea costă 14.99 lei pentru o corectură mică sau 29.99 lei pentru una amplă, pentru că melodia se generează de la zero — și întreabă-l dacă vrea să-i trimiți linkul. TERMINĂ TURUL și așteaptă răspunsul lui. Dacă spune „da / trimite" → abia atunci reapelezi request_modification cu aceleași changes. Dacă din ce a scris reiese că e greșeala NOASTRĂ (am livrat altceva decât a cerut) → request_modification cu isOurError=true, fără bani.',
+          };
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`modification price-announce guard failed: ${(e as Error).message}`);
     }
 
     const amount = args.scope === 'large' ? MODIFICATION_PRICE_LARGE_CENTS : MODIFICATION_PRICE_SMALL_CENTS;
