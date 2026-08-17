@@ -19,6 +19,7 @@ import { getSiteConfig, siteSupportEmail, siteUrl as siteUrlOf } from '@/lib/sit
 import { isIpWhitelisted } from '@/lib/site-shared';
 import { SiteProvider } from '@/lib/site-context';
 import { ExperienceProvider } from '@/lib/experience-context';
+import { ExperienceBoot } from '@/components/ExperienceBoot';
 import './globals.css';
 
 const cinzel = Cinzel({ subsets: ['latin'], weight: ['700', '900'], variable: '--font-cinzel', display: 'swap' });
@@ -194,6 +195,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 || 'classic'
               }>
               <Providers>
+                <ExperienceBoot />
                 {children}
                 <CursorHint />
                 <Analytics />

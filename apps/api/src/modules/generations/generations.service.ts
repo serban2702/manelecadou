@@ -1182,6 +1182,38 @@ export class GenerationsService {
     return this.repo.save(gen);
   }
 
+  async applyPaidUpgrade(
+    generationId: string,
+    targetTierRaw: string,
+    experienceSlug?: string | null,
+  ): Promise<Generation | null> {
+    const gen = await this.repo.findOne({ where: { id: generationId } });
+    if (!gen) return null;
+    const target = normalizeTier(targetTierRaw);
+    const slug = experienceSlug || gen.experienceSlug || DEFAULT_EXPERIENCE_SLUG;
+    const site = gen.siteId ? await this.sites.findById(gen.siteId) : null;
+    const adminPkg = site?.experienceConfig?.items?.[slug]?.packages?.[target] ?? null;
+    const resolved = resolvePackageDef(target, slug, adminPkg);
+    gen.packageTier = target;
+    gen.experienceSlug = slug;
+    gen.packageSnapshot = snapshotFromDef(resolved);
+    const needsExtras =
+      gen.type === 'full' &&
+      gen.status === 'succeeded' &&
+      ((resolved.socialImage && (gen.socialImages?.length ?? 0) === 0) ||
+        (resolved.video && !gen.videoUrl));
+    if (needsExtras) gen.deliverablesReady = false;
+    const saved = await this.repo.save(gen);
+    if (needsExtras) {
+      await this.queue.add(
+        'upgrade-deliverables',
+        { generationId: saved.id },
+        { removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
+      );
+    }
+    return saved;
+  }
+
   /**
    * Marchează o generation ca plătită. Apelat din webhook-ul Stripe după ce
    * un payment a fost confirmat. Idempotent:

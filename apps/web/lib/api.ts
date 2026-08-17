@@ -567,6 +567,15 @@ export const api = {
         body: JSON.stringify(input),
       },
     ),
+  createUpgradeCheckoutSession: (input: {
+    generationId: string;
+    targetTier: 'plus' | 'premium';
+    email?: string;
+  }) =>
+    request<{ url?: string; paymentId?: string; upgraded?: boolean }>(
+      '/payments/checkout-upgrade',
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
 
   /** Selectează una dintre variantele de poză de share (plus/premium). */
   selectSocialImage: (genId: string, url: string) =>

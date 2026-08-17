@@ -126,6 +126,18 @@ class DirectCheckoutDto {
   };
 }
 
+class UpgradeCheckoutDto {
+  @IsUUID()
+  generationId!: string;
+
+  @IsIn(['plus', 'premium'])
+  targetTier!: 'plus' | 'premium';
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+}
+
 @Controller('payments')
 export class PaymentsController {
   constructor(
@@ -227,6 +239,30 @@ export class PaymentsController {
       tipAmount: body.tipAmount ?? body.generation.tipAmount ?? 0,
       premium: body.premium ?? body.generation.premium ?? false,
       promoCode: body.promoCode,
+      email: body.email ?? (await this.resolveEmail(user, guestId)),
+      site,
+      experienceSlug: experienceSlugFromRequest(req),
+      ...extractMetaContext(req, ua, xff, ip),
+    });
+  }
+
+  @UseGuards(OptionalJwtAuthGuard)
+  @Post('checkout-upgrade')
+  async createUpgrade(
+    @Body() body: UpgradeCheckoutDto,
+    @CurrentUser() user: AuthedRequestUser | null,
+    @CurrentGuestId() guestId: string | null,
+    @CurrentSite() site: Site,
+    @Headers('user-agent') ua: string | undefined,
+    @Headers('x-forwarded-for') xff: string | undefined,
+    @Ip() ip: string,
+    @Req() req: Request,
+  ) {
+    return this.svc.createUpgradeCheckoutSession({
+      generationId: body.generationId,
+      targetTier: body.targetTier,
+      userId: user?.id ?? null,
+      guestId: user ? null : guestId,
       email: body.email ?? (await this.resolveEmail(user, guestId)),
       site,
       experienceSlug: experienceSlugFromRequest(req),

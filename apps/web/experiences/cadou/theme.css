@@ -76,6 +76,47 @@
 .cadou-pack.rec { border-color: var(--cadou-gold); box-shadow: 0 0 0 1px var(--cadou-gold); }
 .cadou-footer { border-top: 1px solid var(--cadou-line); padding: 28px 20px; text-align: center; color: var(--cadou-muted); font-size: 13px; }
 .cadou-footer a { color: var(--cadou-gold); }
+.cadou-form { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.cadou-label { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--cadou-gold); }
+.cadou-input, .cadou-area {
+  width: 100%; background: #100c0e; color: var(--cadou-ink);
+  border: 1px solid var(--cadou-line); border-radius: 12px; padding: 12px 14px;
+  font: inherit;
+}
+.cadou-area { min-height: 110px; resize: vertical; }
+.cadou-hint { font-size: 12px; color: var(--cadou-muted); }
+.cadou-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.cadou-chip {
+  background: transparent; color: var(--cadou-ink); border: 1px solid var(--cadou-line);
+  border-radius: 999px; padding: 8px 12px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.cadou-chip.on, .cadou-voice.on { border-color: var(--cadou-gold); color: var(--cadou-gold); }
+.cadou-voice {
+  flex: 1; background: var(--cadou-card); border: 1px solid var(--cadou-line);
+  border-radius: 14px; padding: 16px; color: inherit; cursor: pointer; font: inherit; font-weight: 800;
+}
+.cadou-check { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--cadou-muted); }
+.cadou-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: space-between; align-items: center; }
+.cadou-ghost {
+  background: transparent; color: var(--cadou-muted); border: 0; cursor: pointer; font: inherit;
+}
+.cadou-stepper { display: flex; justify-content: center; gap: 18px; margin: 8px 0 24px; }
+.cadou-stepper button {
+  background: transparent; border: 0; color: var(--cadou-muted); cursor: pointer; font: inherit;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.cadou-stepper .dot {
+  width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--cadou-line);
+  display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800;
+}
+.cadou-stepper .on .dot, .cadou-stepper .done .dot {
+  background: var(--cadou-gold); color: #2a1a04; border-color: var(--cadou-gold);
+}
+.cadou-err { color: #ff8a8a; font-size: 13px; }
+.cadou-recap { background: var(--cadou-card); border: 1px solid var(--cadou-line); border-radius: 16px; padding: 8px 16px; }
+.cadou-recap-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--cadou-line); font-size: 14px; }
+.cadou-recap-row:last-child { border-bottom: 0; }
+.cadou-lyrics { white-space: pre-wrap; background: #100c0e; border-radius: 12px; padding: 14px; font-size: 14px; line-height: 1.5; }
 @media (max-width: 720px) {
   .cadou-nav { display: none; }
   .cadou-stats { gap: 16px; }

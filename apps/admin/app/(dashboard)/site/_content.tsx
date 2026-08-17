@@ -50,6 +50,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { useSpaNavigate } from '@/lib/spa-router';
+import { ExperiencesTab } from './experiences-tab';
 import {
   SampleChooserDialog,
   type PendingChoice,
@@ -64,7 +65,7 @@ const LOCALES = ['ro', 'bg', 'sr', 'tr', 'el', 'hr', 'sl', 'bs', 'sq', 'mk', 'hu
 const CURRENCIES = ['RON', 'EUR', 'USD', 'BGN', 'RSD', 'TRY', 'HUF', 'GBP'];
 const I18N_FIELD_LOCALES = ['ro', 'bg', 'sr', 'tr', 'el', 'hr', 'sl', 'bs', 'sq', 'mk', 'hu', 'en'];
 
-type TabId = 'general' | 'brand' | 'categories' | 'top' | 'suno-stripe' | 'status';
+type TabId = 'general' | 'brand' | 'categories' | 'top' | 'suno-stripe' | 'status' | 'experiences';
 
 const TABS: Array<{ id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: 'general', label: 'General', icon: Globe },
@@ -73,6 +74,7 @@ const TABS: Array<{ id: TabId; label: string; icon: React.ComponentType<{ classN
   { id: 'top', label: 'Top săptămână', icon: Star },
   { id: 'suno-stripe', label: 'Suno & Stripe', icon: Wand2 },
   { id: 'status', label: 'Status & Whitelist', icon: AlertTriangle },
+  { id: 'experiences', label: 'Interfețe', icon: Sparkles },
 ];
 
 export default function SiteConfigPage() {
@@ -224,6 +226,7 @@ export default function SiteConfigPage() {
       {activeTab === 'brand' && <BrandSeoTab siteId={siteId} form={form} setForm={setForm} />}
       {activeTab === 'suno-stripe' && <SunoStripeTab form={form} setForm={setForm} />}
       {activeTab === 'status' && <StatusTab form={form} setForm={setForm} />}
+      {activeTab === 'experiences' && form && <ExperiencesTab form={form} setForm={setForm} />}
       {activeTab === 'top' && (
         <TopWeekTab form={form} setForm={setForm} samples={samples} demos={siteDemos} />
       )}

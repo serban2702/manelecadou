@@ -169,6 +169,22 @@ export interface SiteDto {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+  experienceConfig?: {
+    defaultSlug: string;
+    items: Record<string, {
+      enabled: boolean;
+      utmRules: Array<{ source?: string; campaign?: string; content?: string }>;
+      packages?: Partial<Record<'basic' | 'plus' | 'premium', {
+        video?: boolean;
+        socialImage?: boolean;
+        instrumental?: boolean;
+        premiumPage?: boolean;
+        durationSec?: number;
+        features?: string[];
+        upsell?: { title: string; body: string; targetTier: 'plus' | 'premium' } | null;
+      }>>;
+    }>;
+  } | null;
 }
 
 export interface SiteIconConfig {
@@ -303,6 +319,7 @@ export type GenerateSampleResponse =
   | { ok: true; reused: false; candidates: SampleCandidateDto[]; sunoTaskId: string };
 
 export const SitesApi = {
+  listExperiences: () => http.get<Array<{ slug: string; label: string }>>('/admin/experiences'),
   list: () => http.get<SiteDto[]>('/admin/sites'),
   get: (id: string) => http.get<SiteDto>(`/admin/sites/${id}`),
   create: (body: Partial<SiteDto>) => http.post<SiteDto>('/admin/sites', body),

@@ -14,7 +14,7 @@ import Stripe from 'stripe';
 
 import { Payment } from './payment.entity';
 import { PREMIUM_EXTRA_CENTS, packageTotalCents } from './pricing';
-import { normalizeTier, packageCompareAtCents, PackageTier } from './packages';
+import { normalizeTier, packageCompareAtCents, packagePriceCents, PackageTier } from './packages';
 import { PromoService } from '../promo/promo.service';
 import { GiftCodesService } from '../gift-codes/gift-codes.service';
 import { GiftTier, TIER_PRICES_RON } from '../gift-codes/gift-code.entity';
@@ -70,6 +70,8 @@ interface CheckoutInput {
    */
   unlockGenerationId?: string;
   experienceSlug?: string | null;
+  upgradeGenerationId?: string;
+  targetTier?: PackageTier;
 
   // ============== Meta Pixel attribution ==============
   // Capturate la creare-checkout din controller (cookies + headers).
@@ -456,7 +458,9 @@ export class PaymentsService {
     // datele restaurate ca să poată reîncerca plata.
     const isPayFirst = site.demoEnabled === false;
     const cancelPath =
-      isPayFirst && input.generationId
+      input.experienceSlug === 'cadou' && input.generationId
+        ? `/studio?paymentCanceled=1&genId=${input.generationId}`
+        : isPayFirst && input.generationId
         ? `/?paymentCanceled=1&genId=${input.generationId}#generator`
         : input.generationId
           ? `/m/${input.generationId}?paymentId=${payment.id}&cancel=1`
@@ -524,8 +528,11 @@ export class PaymentsService {
         paymentId: payment.id,
         generationId: input.generationId ?? '',
         unlockGenerationId: input.unlockGenerationId ?? '',
+        upgradeGenerationId: input.upgradeGenerationId ?? '',
+        targetTier: input.targetTier ?? '',
         promoCodeId: promoCodeId ?? '',
         appliedDiscountCents: String(appliedDiscountCents),
+        experienceSlug: input.experienceSlug ?? '',
         siteId: site.id,
         siteSlug: site.slug,
         siteDomain: site.domain,
@@ -617,6 +624,66 @@ export class PaymentsService {
     });
 
     return { ...checkout, generationId: gen.id };
+  }
+
+  async createUpgradeCheckoutSession(input: {
+    generationId: string;
+    targetTier: PackageTier;
+    userId: string | null;
+    guestId: string | null;
+    email?: string;
+    site: Site;
+    experienceSlug?: string | null;
+    fbp?: string | null;
+    fbc?: string | null;
+    userAgent?: string | null;
+    ipAddress?: string | null;
+    sessionKey?: string | null;
+    visitorId?: string | null;
+  }): Promise<{ url?: string; paymentId?: string; upgraded?: boolean }> {
+    const gen = await this.generations.findOne(input.generationId, {
+      userId: input.userId,
+      guestId: input.guestId,
+    });
+    const current = normalizeTier(gen.packageTier);
+    const target = normalizeTier(input.targetTier);
+    const rank = { basic: 0, plus: 1, premium: 2 };
+    if (rank[target] <= rank[current]) throw new BadRequestException('already_at_tier');
+    const alreadyPaid = await this.repo
+      .createQueryBuilder('p')
+      .select('COALESCE(SUM(p.amount),0)', 'sum')
+      .where('p.status = :st', { st: 'paid' })
+      .andWhere('(p.id = :pay OR p.id IN (SELECT g."paymentId" FROM generations g WHERE g.id = :gid))', {
+        pay: gen.paymentId,
+        gid: gen.id,
+      })
+      .getRawOne<{ sum: string }>()
+      .catch(() => ({ sum: '0' }));
+    const paidCents = Number(alreadyPaid?.sum ?? 0) || packagePriceCents(current, input.site.packagePricesCents);
+    const targetCents = packagePriceCents(target, input.site.packagePricesCents);
+    const diff = Math.max(0, targetCents - paidCents);
+    if (diff === 0) {
+      await this.generations.applyPaidUpgrade(gen.id, target, input.experienceSlug ?? gen.experienceSlug);
+      return { upgraded: true };
+    }
+    const checkout = await this.createCheckoutSession({
+      userId: input.userId,
+      guestId: input.guestId,
+      upgradeGenerationId: gen.id,
+      targetTier: target,
+      experienceSlug: input.experienceSlug ?? gen.experienceSlug,
+      overrideAmount: diff,
+      overrideProductName: `Upgrade ${target}`,
+      email: input.email,
+      site: input.site,
+      fbp: input.fbp,
+      fbc: input.fbc,
+      userAgent: input.userAgent,
+      ipAddress: input.ipAddress,
+      sessionKey: input.sessionKey,
+      visitorId: input.visitorId,
+    });
+    return checkout;
   }
 
   /** Construiește URL-ul de bază pentru success/cancel (folosit și de Stripe Checkout). */
@@ -949,6 +1016,18 @@ export class PaymentsService {
       // Flux demo + unlock (chat): generation există deja în starea demo,
       // plata deblochează versiunea full. Setăm paidUnlocked=true + trimitem
       // un mesaj nou cu linkul melodiei complete.
+      if (isPaid && session.metadata?.upgradeGenerationId && session.metadata?.targetTier) {
+        try {
+          await this.generations.applyPaidUpgrade(
+            session.metadata.upgradeGenerationId,
+            session.metadata.targetTier,
+            session.metadata.experienceSlug || paymentRow?.experienceSlug || null,
+          );
+        } catch (err) {
+          this.logger.error(`applyPaidUpgrade failed: ${(err as Error).message}`);
+        }
+      }
+
       if (isPaid && session.metadata?.unlockGenerationId) {
         try {
           const chatMod = await import('../chat/chat.service');

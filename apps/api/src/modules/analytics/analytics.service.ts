@@ -289,12 +289,15 @@ export class AnalyticsService {
     // Bot detection (multi-signal scoring)
     const bot = evaluateBot({ ua, userAgent: ctx.userAgent, geo, dto, req: ctx.req ?? null });
 
+    const expHeader = ctx.req?.headers?.['x-mc-experience'];
+    const experienceSlug = typeof expHeader === 'string' ? expHeader.trim().slice(0, 32) : null;
     session = this.sessions.create({
       sessionKey: dto.sessionKey,
       visitorId: dto.visitorId ?? null,
       userId: ctx.userId,
       guestId: ctx.guestId,
       siteId: ctx.siteId ?? null,
+      experienceSlug,
       source: dto.source ?? null,
       medium: dto.medium ?? null,
       campaign: dto.campaign ?? null,
