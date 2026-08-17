@@ -1,13 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, Optional, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { GuestSession } from './guest-session.entity';
+import { IdentityService } from '../identity/identity.service';
 
 @Injectable()
 export class GuestSessionsService {
   constructor(
     @InjectRepository(GuestSession)
     private readonly repo: Repository<GuestSession>,
+    @Optional() @Inject(forwardRef(() => IdentityService))
+    private readonly identity?: IdentityService,
   ) {}
 
   async create(siteId: string | null, meta?: Record<string, unknown>): Promise<GuestSession> {
@@ -55,6 +58,13 @@ export class GuestSessionsService {
     await this.repo.update({ id }, { email: normalized });
     const updated = await this.findById(id);
     if (!updated) throw new NotFoundException('Guest session not found');
+    if (this.identity && updated.siteId) {
+      try {
+        await this.identity.linkEmail(updated.siteId, id, normalized);
+      } catch {
+        /* merge e best-effort — email-ul pe guest rămâne salvat */
+      }
+    }
     return updated;
   }
 

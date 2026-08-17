@@ -33,6 +33,8 @@ import { MailModule } from './modules/mail/mail.module';
 import { KbModule } from './modules/kb/kb.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { SitesModule } from './modules/sites/sites.module';
+import { IdentityModule } from './modules/identity/identity.module';
+import { ExperiencesModule } from './modules/experiences/experiences.module';
 import { AiAssistantModule } from './modules/ai-assistant/ai-assistant.module';
 import { TiktokModule } from './modules/tiktok/tiktok.module';
 import { SeoPagesModule } from './modules/seo-pages/seo-pages.module';
@@ -69,6 +71,8 @@ import { FxModule } from './modules/fx/fx.module';
     }),
     DatabaseModule,
     SitesModule,
+    IdentityModule,
+    ExperiencesModule,
     OutboundEmailModule,
     MetaCapiModule,
     MailerModule,
