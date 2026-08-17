@@ -9,6 +9,7 @@ import { SiteSamplesService, SAMPLE_STYLES, SAMPLE_VOICES, SampleKind } from './
 import { SiteBrandUploadService, BrandAssetField } from './site-brand-upload.service';
 import { encryptSecret } from '../../common/crypto.util';
 import { PACKAGE_TIERS, packagePriceCents } from '../payments/packages';
+import { toPublicExperienceConfig } from '../experiences/public-config';
 
 /**
  * Placeholder folosit de admin UI pentru câmpurile criptate (apiKey, smtp.pass):
@@ -77,6 +78,7 @@ export class PublicSiteController {
       packagePrices: effectivePackagePrices(site.packagePricesCents),
       // Prețuri „tăiate" de afișare (marketing) — gol = fără reducere afișată.
       packageCompareAtCents: site.packageCompareAtCents ?? null,
+      experienceConfig: toPublicExperienceConfig(site.experienceConfig),
       brand: site.brand,
       seo: site.seo,
       analytics: site.analytics,
@@ -389,6 +391,7 @@ export class AdminSitesController {
       packagePricesCents: s.packagePricesCents ?? null,
       packagePrices: effectivePackagePrices(s.packagePricesCents),
       packageCompareAtCents: s.packageCompareAtCents ?? null,
+      experienceConfig: s.experienceConfig ?? null,
       brand: s.brand,
       seo: s.seo,
       analytics: s.analytics,

@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { experienceSlugFromRequest } from '../experiences/request-slug';
 
 /** Extrage o valoare de cookie din header brut. */
 function readCookieValue(cookieHeader: string | undefined, name: string): string | null {
@@ -228,6 +229,7 @@ export class PaymentsController {
       promoCode: body.promoCode,
       email: body.email ?? (await this.resolveEmail(user, guestId)),
       site,
+      experienceSlug: experienceSlugFromRequest(req),
       ...extractMetaContext(req, ua, xff, ip),
     });
   }

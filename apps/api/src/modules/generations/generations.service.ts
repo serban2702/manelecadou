@@ -24,6 +24,8 @@ import { paymentSuccessTemplate } from '../../mailer/templates/templates';
 import { brandingFromSite } from '../../mailer/branding';
 import { SitesService } from '../sites/sites.service';
 import { isPackageTier, normalizeTier, packageDef } from '../payments/packages';
+import { resolvePackageDef, snapshotFromDef } from '../experiences/package-resolve';
+import { DEFAULT_EXPERIENCE_SLUG } from '../experiences/catalog';
 import { hashUnlock, verifyUnlock } from '../../common/unlock';
 
 export { GENERATIONS_QUEUE } from './generations.constants';
@@ -88,7 +90,7 @@ export class GenerationsService {
 
   async create(
     dto: CreateGenerationDto,
-    ctx: { userId: string | null; guestId: string | null; siteId?: string | null },
+    ctx: { userId: string | null; guestId: string | null; siteId?: string | null; experienceSlug?: string | null },
   ): Promise<Generation> {
     if (!ctx.userId && !ctx.guestId) {
       throw new ForbiddenException('Missing guest session');
@@ -126,13 +128,24 @@ export class GenerationsService {
       }
 
       const tier = normalizeTier(dto.packageTier);
+      const site = ctx.siteId ? await this.sites.findById(ctx.siteId) : null;
+      const expSlug = ctx.experienceSlug || DEFAULT_EXPERIENCE_SLUG;
+      const adminPkg = site?.experienceConfig?.items?.[expSlug]?.packages?.[tier] ?? null;
+      const resolved = resolvePackageDef(tier, expSlug, adminPkg);
+      const snap = snapshotFromDef(resolved);
+      const guest = ctx.guestId
+        ? await mgr.getRepository(GuestSession).findOne({ where: { id: ctx.guestId } })
+        : null;
       const created = generationRepo.create({
         ownerUserId: ctx.userId,
         ownerGuestId: ctx.userId ? null : ctx.guestId,
         type: dto.type,
         status: 'queued',
         // Demo rămâne scurt; pentru full folosim durata pachetului (premium = 150s).
-        durationSec: dto.type === 'demo' ? 30 : packageDef(tier).durationSec,
+        durationSec: dto.type === 'demo' ? 30 : snap.durationSec,
+        experienceSlug: expSlug,
+        packageSnapshot: snap,
+        personId: guest?.personId ?? null,
         style: dto.style,
         occasion: dto.occasion,
         recipientName: dto.recipientName,
@@ -1123,25 +1136,34 @@ export class GenerationsService {
    */
   async createPendingForPayment(
     dto: Omit<CreateGenerationDto, 'type' | 'paymentId'>,
-    ctx: { userId: string | null; guestId: string | null; siteId?: string | null },
+    ctx: { userId: string | null; guestId: string | null; siteId?: string | null; experienceSlug?: string | null },
   ): Promise<Generation> {
     if (!ctx.userId && !ctx.guestId) {
       throw new ForbiddenException('Missing guest session');
     }
+    let personId: string | null = null;
     if (!ctx.userId && ctx.guestId) {
       const guest = await this.dataSource
         .getRepository(GuestSession)
         .findOne({ where: { id: ctx.guestId } });
       if (!guest) throw new NotFoundException('Guest session not found');
       if (!guest.email) throw new ForbiddenException('email_required');
+      personId = guest.personId ?? null;
     }
     const tier = normalizeTier(dto.packageTier);
+    const site = ctx.siteId ? await this.sites.findById(ctx.siteId) : null;
+    const expSlug = ctx.experienceSlug || DEFAULT_EXPERIENCE_SLUG;
+    const adminPkg = site?.experienceConfig?.items?.[expSlug]?.packages?.[tier] ?? null;
+    const snap = snapshotFromDef(resolvePackageDef(tier, expSlug, adminPkg));
     const gen = this.repo.create({
       ownerUserId: ctx.userId,
       ownerGuestId: ctx.userId ? null : ctx.guestId,
       type: 'full',
       status: 'pending',
-      durationSec: packageDef(tier).durationSec,
+      durationSec: snap.durationSec,
+      experienceSlug: expSlug,
+      packageSnapshot: snap,
+      personId,
       style: dto.style,
       occasion: dto.occasion,
       recipientName: dto.recipientName,

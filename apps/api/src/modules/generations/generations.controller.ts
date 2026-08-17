@@ -21,6 +21,7 @@ import { GenerationsService } from './generations.service';
 import { SiteDemosService } from '../site-demos/site-demos.service';
 import { SocialImageUploadService } from './social-image-upload.service';
 import { CreateGenerationDto } from './dto/create-generation.dto';
+import { experienceSlugFromRequest } from '../experiences/request-slug';
 import { GiftCodesService } from '../gift-codes/gift-codes.service';
 import {
   CurrentGuestId,
@@ -235,11 +236,13 @@ export class GenerationsController {
     @CurrentUser() user: AuthedRequestUser | null,
     @CurrentGuestId() guestId: string | null,
     @CurrentSiteId() siteId: string | null,
+    @Req() req: Request,
   ) {
     return this.svc.create(dto, {
       userId: user?.id ?? null,
       guestId: user ? null : guestId,
       siteId,
+      experienceSlug: experienceSlugFromRequest(req),
     });
   }
 

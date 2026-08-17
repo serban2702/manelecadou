@@ -325,13 +325,28 @@ export class ChatService implements OnModuleInit {
       return this.conv.save(created);
     }
     if (!ctx.guestId) throw new ForbiddenException('Need guest or user');
-    const existing = await this.conv.findOne({ where: scopedWhere({ guestId: ctx.guestId }) });
-    if (existing) return existing;
     const g = await this.guests.findOne({ where: { id: ctx.guestId } });
+    if (g?.personId) {
+      const allForPerson = await this.conv.find({
+        where: scopedWhere({ personId: g.personId }),
+        order: { lastMessageAt: 'DESC', createdAt: 'DESC' },
+      });
+      const open = allForPerson.find((c) => !c.mergedIntoConversationId);
+      if (open) return open;
+    }
+    const existing = await this.conv.findOne({ where: scopedWhere({ guestId: ctx.guestId }) });
+    if (existing) {
+      if (g?.personId && !existing.personId) {
+        existing.personId = g.personId;
+        await this.conv.save(existing);
+      }
+      return existing;
+    }
     const defaultMode = await this.getDefaultAiMode(ctx.siteId);
     const created = this.conv.create({
       guestId: ctx.guestId,
       siteId: ctx.siteId,
+      personId: g?.personId ?? null,
       email: g?.email ?? null,
       subject: 'Conversație guest',
       aiMode: defaultMode,

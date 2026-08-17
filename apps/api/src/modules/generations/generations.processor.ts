@@ -236,8 +236,9 @@ export class GenerationsProcessor extends WorkerHost {
       // durata existentă (scurtă). Defensiv: dacă gen.durationSec lipsește
       // (rânduri vechi), cădem pe durata pachetului.
       const tier = normalizeTier(gen.packageTier);
+      const snap = gen.packageSnapshot;
       const targetDuration =
-        gen.type === 'demo' ? gen.durationSec : gen.durationSec || packageDef(tier).durationSec;
+        gen.type === 'demo' ? gen.durationSec : gen.durationSec || snap?.durationSec || packageDef(tier).durationSec;
 
       const result = await this.suno.generate({
         type: gen.type,
@@ -295,7 +296,7 @@ export class GenerationsProcessor extends WorkerHost {
         }
       }
 
-      const def = packageDef(tier);
+      const def = snap ?? packageDef(tier);
       const hasExtras =
         gen.type === 'full' && (def.instrumental || def.socialImage || def.video);
 
@@ -587,7 +588,7 @@ export class GenerationsProcessor extends WorkerHost {
       this.logger.warn(`upgrade-deliverables: generation ${generationId} not found`);
       return;
     }
-    const def = packageDef(normalizeTier(gen.packageTier));
+    const def = gen.packageSnapshot ?? packageDef(normalizeTier(gen.packageTier));
     try {
       if (def.socialImage && (gen.socialImages?.length ?? 0) === 0) {
         try {

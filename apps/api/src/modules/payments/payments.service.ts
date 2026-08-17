@@ -69,6 +69,7 @@ interface CheckoutInput {
    * (type='demo'), iar webhook-ul va seta paidUnlocked=true.
    */
   unlockGenerationId?: string;
+  experienceSlug?: string | null;
 
   // ============== Meta Pixel attribution ==============
   // Capturate la creare-checkout din controller (cookies + headers).
@@ -429,6 +430,7 @@ export class PaymentsService {
         userId: input.userId,
         guestId: input.guestId,
         siteId: site.id,
+        experienceSlug: input.experienceSlug ?? null,
         // Emailul știut în momentul checkout-ului (cont / sesiune guest / owner-ul
         // generării). Fără el, o plată abandonată rămâne anonimă în admin.
         customerEmail: PaymentsService.customerEmailValue(resolvedEmail),
@@ -568,6 +570,7 @@ export class PaymentsService {
     ipAddress?: string | null;
     sessionKey?: string | null;
     visitorId?: string | null;
+    experienceSlug?: string | null;
   }): Promise<{ url: string; paymentId: string; generationId: string }> {
     const stripe = await this.getStripe();
     if (!stripe) throw new ServiceUnavailableException('Stripe not configured');
@@ -588,6 +591,7 @@ export class PaymentsService {
         userId: input.userId,
         guestId: input.guestId,
         siteId: site.id,
+        experienceSlug: input.experienceSlug ?? null,
       },
     );
 
@@ -595,6 +599,7 @@ export class PaymentsService {
       userId: input.userId,
       guestId: input.guestId,
       generationId: gen.id,
+      experienceSlug: input.experienceSlug ?? gen.experienceSlug,
       // Pachetul determină totalul; tip/premium rămân pentru audit/compat dar
       // sunt ignorate de calcul când packageTier e setat.
       packageTier: tier,

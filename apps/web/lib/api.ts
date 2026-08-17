@@ -129,6 +129,13 @@ async function request<T>(
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
   headers.set('X-Locale', getCurrentLocale());
+  if (typeof window !== 'undefined') {
+    const exp =
+      (window as unknown as { __MC_EXPERIENCE__?: string }).__MC_EXPERIENCE__ ||
+      readCookie('mc_ui') ||
+      safeLocalGet('mc_ui');
+    if (exp) headers.set('X-MC-Experience', exp);
+  }
 
   const guestId = getGuestId();
   if (guestId) headers.set('X-Guest-Id', guestId);
@@ -181,6 +188,18 @@ export class ApiError extends Error {
   constructor(public status: number, public body: unknown) {
     super(typeof body === 'string' ? body : (body as { message?: string })?.message ?? `HTTP ${status}`);
   }
+}
+
+export function identifyVisitor(input: {
+  visitorId: string;
+  deviceKey: string;
+  guestId?: string | null;
+  email?: string | null;
+  uiParam?: string | null;
+  cookieSlug?: string | null;
+  utm?: { source?: string | null; campaign?: string | null; content?: string | null } | null;
+}): Promise<{ personId: string; guestId: string | null; experienceSlug: string; adoptedGuest: boolean; reason: string }> {
+  return request('/identity/identify', { method: 'POST', body: JSON.stringify(input) });
 }
 
 export async function ensureGuestSession(): Promise<string> {

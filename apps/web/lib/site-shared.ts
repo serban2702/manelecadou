@@ -87,6 +87,23 @@ export interface SiteConfig {
    */
   styleSamples?: Record<string, SiteSampleEntry>;
   voiceSamples?: Record<string, SiteSampleEntry>;
+  /** Interfețe A/B (default + UTM + pachete rezolvate). Lipsește pe site-uri vechi. */
+  experienceConfig?: {
+    defaultSlug: string;
+    items: Record<string, {
+      enabled: boolean;
+      utmRules: Array<{ source?: string; campaign?: string; content?: string }>;
+      packages: Record<string, {
+        video: boolean;
+        socialImage: boolean;
+        instrumental: boolean;
+        premiumPage: boolean;
+        durationSec: number;
+        features: string[];
+        upsell: { title: string; body: string; targetTier: 'plus' | 'premium' } | null;
+      }>;
+    }>;
+  };
 }
 
 export interface SiteIconConfig {
