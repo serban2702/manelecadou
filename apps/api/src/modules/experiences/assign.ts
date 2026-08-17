@@ -15,7 +15,7 @@ export function isExperienceEnabled(slug: string, config?: SiteExperienceConfig 
   if (!isKnownExperienceSlug(slug)) return false;
   if (slug === DEFAULT_EXPERIENCE_SLUG) return true;
   const item = config?.items?.[slug];
-  if (!item) return false;
+  if (!item) return true;
   return item.enabled !== false;
 }
 

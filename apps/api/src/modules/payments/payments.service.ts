@@ -1021,7 +1021,7 @@ export class PaymentsService {
           await this.generations.applyPaidUpgrade(
             session.metadata.upgradeGenerationId,
             session.metadata.targetTier,
-            session.metadata.experienceSlug || paymentRow?.experienceSlug || null,
+            session.metadata.experienceSlug || null,
           );
         } catch (err) {
           this.logger.error(`applyPaidUpgrade failed: ${(err as Error).message}`);

@@ -31,6 +31,7 @@ describe('isExperienceEnabled', () => {
 
   it('cadou follows enabled flag', () => {
     assert.equal(isExperienceEnabled('cadou', cadouOn), true);
+    assert.equal(isExperienceEnabled('cadou', null), true);
     assert.equal(
       isExperienceEnabled('cadou', { defaultSlug: 'classic', items: { cadou: { enabled: false, utmRules: [] } } }),
       false,
@@ -106,6 +107,11 @@ describe('resolveExperienceSlug', () => {
       config: cadouOn,
     });
     assert.deepEqual(hit, { slug: 'cadou', reason: 'utm' });
+  });
+
+  it('cookie cadou sticks even without admin item', () => {
+    const r = resolveExperienceSlug({ cookieSlug: 'cadou' });
+    assert.deepEqual(r, { slug: 'cadou', reason: 'cookie' });
   });
 
   it('empty config falls back to classic', () => {
