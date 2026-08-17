@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
-import View from './view';
-import { SiteShell } from '@/components/SiteShell';
+import { ExperienceSongView } from '@/components/ExperiencePage';
 import { getSiteConfig, siteUrl } from '@/lib/site-config';
 
 // Fetch SSR (generateMetadata) → URL INTERN Docker. `NEXT_PUBLIC_API_URL` e gol
@@ -92,9 +91,5 @@ export async function generateMetadata({
 }
 
 export default async function ShareGenerationPage() {
-  return (
-    <SiteShell hideStickyCta>
-      <View />
-    </SiteShell>
-  );
+  return <ExperienceSongView />;
 }

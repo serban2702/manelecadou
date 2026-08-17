@@ -3,7 +3,7 @@ import { Suspense } from 'react';
 import { Cinzel, Manrope } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages, getTranslations } from 'next-intl/server';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { Providers } from '@/lib/providers';
 import { CursorHint } from '@/components/CursorHint';
 import { Analytics } from '@/components/Analytics';
@@ -18,6 +18,8 @@ import { LOCALE_META, isLocale } from '@/i18n/locales';
 import { getSiteConfig, siteSupportEmail, siteUrl as siteUrlOf } from '@/lib/site-config';
 import { isIpWhitelisted } from '@/lib/site-shared';
 import { SiteProvider } from '@/lib/site-context';
+import { ExperienceProvider } from '@/lib/experience-context';
+import { resolveExperienceSlug } from '@/experiences/assign';
 import './globals.css';
 
 const cinzel = Cinzel({ subsets: ['latin'], weight: ['700', '900'], variable: '--font-cinzel', display: 'swap' });
@@ -187,6 +189,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         ) : (
           <NextIntlClientProvider locale={effectiveLocale} messages={messages}>
             <SiteProvider value={site}>
+              <ExperienceProvider initialSlug={resolveExperienceSlug({
+                cookieSlug: (await cookies()).get('mc_ui')?.value ?? null,
+                config: site.experienceConfig ?? null,
+              }).slug}>
               <Providers>
                 {children}
                 <CursorHint />
@@ -200,6 +206,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <ClientErrorReporter />
                 <OpenReplay />
               </Providers>
+              </ExperienceProvider>
             </SiteProvider>
           </NextIntlClientProvider>
         )}

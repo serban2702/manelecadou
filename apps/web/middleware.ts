@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isIpWhitelisted } from '@/lib/site-shared';
 import { resolveCanonicalPath } from '@/lib/page-slugs';
+import { resolveExperienceSlug } from '@/experiences/assign';
+import type { SiteExperienceConfigLite } from '@/experiences/types';
 
 const API_INTERNAL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://api:3000';
 
 // Cache simplu in-memory pentru a evita un round-trip API la fiecare request.
 // TTL 15s e suficient — admin update propagă <30s. Cheia include hidden +
 // whitelist ca să nu cache-uim greșit cross-IP.
-type CacheEntry = { hidden: boolean; ipWhitelist: string[]; locale: string; expiresAt: number };
+type CacheEntry = {
+  hidden: boolean;
+  ipWhitelist: string[];
+  locale: string;
+  experienceConfig: SiteExperienceConfigLite | null;
+  expiresAt: number;
+};
 const cache = new Map<string, CacheEntry>();
 const TTL_MS = 15_000;
 
@@ -35,7 +43,7 @@ async function fetchSiteFlags(host: string, clientIp: string | null): Promise<Ca
       cache: 'no-store',
     });
     if (!res.ok) {
-      const entry = { hidden: false, ipWhitelist: [], locale: 'ro', expiresAt: Date.now() + TTL_MS };
+      const entry = { hidden: false, ipWhitelist: [], locale: 'ro', experienceConfig: null, expiresAt: Date.now() + TTL_MS };
       cache.set(host, entry);
       return entry;
     }
@@ -44,12 +52,13 @@ async function fetchSiteFlags(host: string, clientIp: string | null): Promise<Ca
       hidden: Boolean(site?.hiddenMode),
       ipWhitelist: Array.isArray(site?.ipWhitelist) ? site.ipWhitelist : [],
       locale: typeof site?.locale === 'string' && site.locale ? site.locale : 'ro',
+      experienceConfig: site?.experienceConfig ?? null,
       expiresAt: Date.now() + TTL_MS,
     };
     cache.set(host, entry);
     return entry;
   } catch {
-    return { hidden: false, ipWhitelist: [], locale: 'ro', expiresAt: Date.now() + TTL_MS };
+    return { hidden: false, ipWhitelist: [], locale: 'ro', experienceConfig: null, expiresAt: Date.now() + TTL_MS };
   }
 }
 
@@ -71,10 +80,36 @@ export async function middleware(req: NextRequest) {
   if (canonical && canonical !== req.nextUrl.pathname) {
     const url = req.nextUrl.clone();
     url.pathname = canonical;
-    return NextResponse.rewrite(url);
+    const rewritten = NextResponse.rewrite(url);
+    attachExperienceCookie(rewritten, req, flags.experienceConfig);
+    return rewritten;
   }
 
-  return NextResponse.next();
+  const res = NextResponse.next();
+  attachExperienceCookie(res, req, flags.experienceConfig);
+  return res;
+}
+
+function attachExperienceCookie(
+  res: NextResponse,
+  req: NextRequest,
+  config: SiteExperienceConfigLite | null,
+) {
+  const assigned = resolveExperienceSlug({
+    uiParam: req.nextUrl.searchParams.get('ui'),
+    cookieSlug: req.cookies.get('mc_ui')?.value ?? null,
+    utm: {
+      source: req.nextUrl.searchParams.get('utm_source'),
+      campaign: req.nextUrl.searchParams.get('utm_campaign'),
+      content: req.nextUrl.searchParams.get('utm_content'),
+    },
+    config,
+  });
+  res.cookies.set('mc_ui', assigned.slug, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
 }
 
 export const config = {
