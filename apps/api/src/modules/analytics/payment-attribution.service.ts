@@ -57,16 +57,19 @@ export class PaymentAttributionService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    try {
-      const r = await this.backfill({ onlyMissing: true });
-      if (r.updated > 0) {
-        this.logger.log(
-          `Backfill atribuire: ${r.updated} plăți (${r.withCampaign} cu campanie, ${r.withSource} cu sursă)`,
-        );
-      }
-    } catch (err) {
-      this.logger.warn(`Backfill atribuire sărit: ${(err as Error).message}`);
-    }
+    // Nu blocăm listen() — primul backfill (sute de plăți) a ținut API-ul 502
+    // peste health-ul din deploy.sh. Pe boot-urile următoare e no-op (attributedAt set).
+    setTimeout(() => {
+      this.backfill({ onlyMissing: true })
+        .then((r) => {
+          if (r.updated > 0) {
+            this.logger.log(
+              `Backfill atribuire: ${r.updated} plăți (${r.withCampaign} cu campanie, ${r.withSource} cu sursă)`,
+            );
+          }
+        })
+        .catch((err) => this.logger.warn(`Backfill atribuire sărit: ${(err as Error).message}`));
+    }, 0);
   }
 
   applySnapshot(target: Payment, snap: AttributionSnapshot): Payment {
