@@ -35,6 +35,14 @@ export class AnalyticsSession {
   @Column({ type: 'uuid', nullable: true })
   guestId!: string | null;
 
+  @Index()
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  experienceSlug!: string | null;
+
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  personId!: string | null;
+
   @Column({ type: 'integer', default: 0 })
   pageViews!: number;
 

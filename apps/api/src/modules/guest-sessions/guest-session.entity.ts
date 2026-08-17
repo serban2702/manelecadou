@@ -33,6 +33,10 @@ export class GuestSession {
   @Column({ type: 'varchar', length: 320, nullable: true })
   email!: string | null;
 
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  personId!: string | null;
+
   @Column({ type: 'jsonb', nullable: true })
   meta!: Record<string, unknown> | null;
 

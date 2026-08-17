@@ -176,6 +176,15 @@ export class Conversation {
   @Column({ type: 'uuid', nullable: true })
   guestId!: string | null;
 
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  personId!: string | null;
+
+  /** Conversația în care a fost unificată aceasta (email/device merge). */
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  mergedIntoConversationId!: string | null;
+
   @Column({ type: 'varchar', length: 320, nullable: true })
   email!: string | null;
 

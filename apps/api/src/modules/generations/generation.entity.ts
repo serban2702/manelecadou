@@ -5,6 +5,7 @@ import {
   Index,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+import type { PackageSnapshot } from '../experiences/types';
 
 export type GenerationType = 'demo' | 'full';
 
@@ -101,6 +102,17 @@ export class Generation {
    *  Default 'basic' pentru rândurile vechi (synchronize-safe). */
   @Column({ type: 'varchar', length: 16, default: 'basic' })
   packageTier!: string;
+
+  @Index()
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  experienceSlug!: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  packageSnapshot!: PackageSnapshot | null;
+
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  personId!: string | null;
 
   /** URL-urile celor 4 variante de imagine social-share generate (plus/premium). */
   @Column({ type: 'jsonb', default: () => `'[]'::jsonb` })

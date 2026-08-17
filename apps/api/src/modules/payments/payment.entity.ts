@@ -40,6 +40,14 @@ export class Payment {
   @Column({ type: 'uuid', nullable: true })
   guestId!: string | null;
 
+  @Index()
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  experienceSlug!: string | null;
+
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  personId!: string | null;
+
   /** Cursul Stripe în RON la momentul plății (pentru rapoarte cross-currency).
    *  Setat din balance_transaction.exchange_rate la webhook (1.0 când valuta e deja RON). */
   @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true })

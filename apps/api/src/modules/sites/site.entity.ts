@@ -6,6 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import type { SiteExperienceConfig } from '../experiences/types';
 
 export interface SiteBrand {
   primaryColor?: string;
@@ -460,6 +461,13 @@ export class Site {
    */
   @Column({ type: 'jsonb', nullable: true })
   packageCompareAtCents!: Partial<Record<'basic' | 'plus' | 'premium', number>> | null;
+
+  /**
+   * Interfețe A/B per site: default, UTM rules, package overrides.
+   * Null = comportament classic (azi). Synchronize-safe.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  experienceConfig!: SiteExperienceConfig | null;
 
   @Column({ type: 'jsonb', default: () => `'{}'::jsonb` })
   brand!: SiteBrand;
