@@ -59,12 +59,12 @@ describe('resolveExperienceSlug', () => {
     assert.deepEqual(r, { slug: 'classic', reason: 'cookie' });
   });
 
-  it('disabled ?ui= is ignored', () => {
+  it('?ui= still forces a known slug even if admin disabled it', () => {
     const r = resolveExperienceSlug({
       uiParam: 'cadou',
       config: { defaultSlug: 'classic', items: { cadou: { enabled: false, utmRules: [] } } },
     });
-    assert.deepEqual(r, { slug: 'classic', reason: 'default' });
+    assert.deepEqual(r, { slug: 'cadou', reason: 'url' });
   });
 
   it('cookie wins over person and utm', () => {

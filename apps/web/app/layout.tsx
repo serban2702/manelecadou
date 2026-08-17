@@ -19,7 +19,6 @@ import { getSiteConfig, siteSupportEmail, siteUrl as siteUrlOf } from '@/lib/sit
 import { isIpWhitelisted } from '@/lib/site-shared';
 import { SiteProvider } from '@/lib/site-context';
 import { ExperienceProvider } from '@/lib/experience-context';
-import { resolveExperienceSlug } from '@/experiences/assign';
 import './globals.css';
 
 const cinzel = Cinzel({ subsets: ['latin'], weight: ['700', '900'], variable: '--font-cinzel', display: 'swap' });
@@ -189,10 +188,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         ) : (
           <NextIntlClientProvider locale={effectiveLocale} messages={messages}>
             <SiteProvider value={site}>
-              <ExperienceProvider initialSlug={resolveExperienceSlug({
-                cookieSlug: (await cookies()).get('mc_ui')?.value ?? null,
-                config: site.experienceConfig ?? null,
-              }).slug}>
+              <ExperienceProvider initialSlug={
+                (await headers()).get('x-mc-experience')
+                || (await cookies()).get('mc_ui')?.value
+                || 'classic'
+              }>
               <Providers>
                 {children}
                 <CursorHint />

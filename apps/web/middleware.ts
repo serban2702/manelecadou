@@ -76,25 +76,6 @@ export async function middleware(req: NextRequest) {
   // Rewrite slug localizat (ex. /slushai pe site BG) → ruta canonică Next (/asculta).
   // Acoperă toate paginile principale + paginile legale. Acceptăm și slug-ul
   // canonic RO pe orice site (link-uri vechi nu se sparg).
-  const canonical = resolveCanonicalPath(req.nextUrl.pathname, flags.locale);
-  if (canonical && canonical !== req.nextUrl.pathname) {
-    const url = req.nextUrl.clone();
-    url.pathname = canonical;
-    const rewritten = NextResponse.rewrite(url);
-    attachExperienceCookie(rewritten, req, flags.experienceConfig);
-    return rewritten;
-  }
-
-  const res = NextResponse.next();
-  attachExperienceCookie(res, req, flags.experienceConfig);
-  return res;
-}
-
-function attachExperienceCookie(
-  res: NextResponse,
-  req: NextRequest,
-  config: SiteExperienceConfigLite | null,
-) {
   const assigned = resolveExperienceSlug({
     uiParam: req.nextUrl.searchParams.get('ui'),
     cookieSlug: req.cookies.get('mc_ui')?.value ?? null,
@@ -103,13 +84,27 @@ function attachExperienceCookie(
       campaign: req.nextUrl.searchParams.get('utm_campaign'),
       content: req.nextUrl.searchParams.get('utm_content'),
     },
-    config,
+    config: flags.experienceConfig,
   });
+
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-mc-experience', assigned.slug);
+
+  const canonical = resolveCanonicalPath(req.nextUrl.pathname, flags.locale);
+  let res: NextResponse;
+  if (canonical && canonical !== req.nextUrl.pathname) {
+    const url = req.nextUrl.clone();
+    url.pathname = canonical;
+    res = NextResponse.rewrite(url, { request: { headers: requestHeaders } });
+  } else {
+    res = NextResponse.next({ request: { headers: requestHeaders } });
+  }
   res.cookies.set('mc_ui', assigned.slug, {
     path: '/',
     sameSite: 'lax',
     maxAge: 60 * 60 * 24 * 365,
   });
+  return res;
 }
 
 export const config = {

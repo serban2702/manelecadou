@@ -71,8 +71,9 @@ function defaultSlug(config?: SiteExperienceConfig | null): string {
 export function resolveExperienceSlug(input: ResolveExperienceInput): ResolveExperienceResult {
   const cfg = input.config ?? null;
 
-  const fromUrl = pickIfUsable(input.uiParam, cfg);
-  if (fromUrl) return { slug: fromUrl, reason: 'url' };
+  // ?ui= forces any known slug (owner testing). enabled=false only blocks UTM/default.
+  const ui = input.uiParam?.trim() ?? '';
+  if (isKnownExperienceSlug(ui)) return { slug: ui, reason: 'url' };
 
   const fromCookie = pickIfUsable(input.cookieSlug, cfg);
   if (fromCookie) return { slug: fromCookie, reason: 'cookie' };

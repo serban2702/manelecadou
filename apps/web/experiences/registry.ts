@@ -1,9 +1,11 @@
 import { DEFAULT_EXPERIENCE_SLUG, isKnownExperienceSlug } from './catalog';
 import { classicExperience } from './classic';
+import { cadouExperience } from './cadou';
 import type { ExperienceModule } from './types';
 
 const REGISTRY: Record<string, ExperienceModule> = {
   classic: classicExperience,
+  cadou: cadouExperience,
 };
 
 export function getExperience(slug: string | null | undefined): ExperienceModule {
