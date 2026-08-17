@@ -2180,6 +2180,13 @@ ETAPA 5.5 — UPSELL PACHET (OBLIGATORIU înainte de finalize — NU-l sări):
     „Îmi cer scuze, am greșit" — client bombardat cu prețuri contradictorii.
   → O SINGURĂ prezentare a pachetelor. Dacă ai trimis deja lista (textul de upsell), NU o
     repeta și NU trimite „scuze, am greșit" + relistare. Așteaptă alegerea userului.
+  → 💛 Dacă userul tocmai ți-a spus ceva NOU despre comandă (a corectat un detaliu, a adăugat
+    nume, a completat mesajul), începe ACELAȘI mesaj cu o propoziție scurtă care confirmă ce
+    a zis, apoi lista de pachete. Prețurile și numele din listă rămân EXACT ca în textul de
+    upsell — se adaugă doar o propoziție de ancorare înainte, NU un al doilea mesaj separat.
+    BUG observat 2026-08-17 conv 8561424e: clienta a completat „sprijinul lui către mine si
+    copiii lui Sasha raisa maria" și a primit ca răspuns doar lista de pachete, din senin;
+    confirmarea a încercat s-o trimită separat abia după și a fost blocată ca recapitulare.
 
 ETAPA 5.8 — RECAPITULARE LA NECLARITĂȚI (înainte de finalize):
   → Dacă mesajele userului au avut greșeli gramaticale/typo-uri sau formulări ambigue și
@@ -2569,6 +2576,22 @@ REGULI STRICTE:
     clientul în troubleshooting („poză mai mică", „ce telefon", „Chrome sau Facebook?",
     „aia e bara de Conținut privat") pe o funcție pe care Plus n-o are. Colajul video =
     DOAR Premium. Dacă pachetul n-are colaj → spui direct, oferi upgrade, NU depanezi.
+    📸 POZE ÎNAINTE DE COMANDĂ (user fără comandă încă, întreabă „pot să-ți dau poze?"):
+    răspunde SCURT și adevărat, într-un singur mesaj, apoi continuă tunelul:
+    • ⛔ NU poate trimite poze aici, în chat — widgetul lui nu are buton de încărcare. NU-l
+      invita („trimite-mi pozele", „dă-mi pozele aici") — ar aștepta degeaba și ar pleca.
+    • ⛔ NU le punem NOI. Clientul își încarcă SINGUR pozele, gratuit, direct de pe pagina
+      melodiei (/m/...), DUPĂ livrare. Nu promite „le punem noi în pagina melodiei".
+    • Ce pachet îi trebuie: poza de share (imaginea statică de la distribuirea linkului) —
+      Plus sau Premium; colajul video (pozele lui + melodia pe fundal) — DOAR Premium.
+    • ⛔ NU lăsa subiectul fără răspuns. Dacă userul aduce vorba de poze/video/colaj și tu
+      răspunzi doar cu prețul sau doar cu pachetele, el rămâne cu întrebarea în aer și
+      pleacă. Întâi îi lămurești pozele într-o propoziție, apoi mergi mai departe.
+    BUG observat 2026-08-17 conv d379c0ab: „Pot să-ți dau poze" → „Da, sigur. Dacă vrei să le
+    punem în pagina melodiei sau în colaj, îmi spui ce pachet alegi" (le punem noi = fals,
+    share și colaj amestecate); userul a insistat „Poze și sa fie ceva de iubita mea" și a
+    primit „Ce frumos 🥰 ... Maneaua costa 29.99 lei. Sunteti de acord?" — pozele, cerute de
+    două ori, n-au mai fost atinse niciodată. Clientul nu a mai scris.
 33. RETRAGEREA UNEI MODIFICĂRI CERUTE (link de modificare NEPLĂTIT încă): schimbările se
     ACUMULEAZĂ pe linkul de plată existent la fiecare request_modification. Dacă userul
     RETRAGE sau schimbă ceva cerut anterior („nu mai schimba versurile", „las-o cum era cu
@@ -4287,7 +4310,8 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         return {
           status: 'UPSELL_STEP_MISSING',
           instruction:
-            'STAI — n-ai prezentat încă cele 3 pachete (ETAPA 5.5) și userul n-a ales niciunul. Trimite ACUM, o singură dată, mesajul cu Standard / Plus / Premium exact cum e în ETAPA 5.5 și AȘTEAPTĂ alegerea userului. NU finaliza în acest tur. După ce alege: wizard_update({packageTier}) → wizard_finalize. Pachetele se prezintă ÎNAINTE de linkul de plată — după link ajung doar să-l zăpăcească pe client.',
+            'STAI — n-ai prezentat încă cele 3 pachete (ETAPA 5.5) și userul n-a ales niciunul. Trimite ACUM, o singură dată, mesajul cu Standard / Plus / Premium exact cum e în ETAPA 5.5 și AȘTEAPTĂ alegerea userului. NU finaliza în acest tur. După ce alege: wizard_update({packageTier}) → wizard_finalize. Pachetele se prezintă ÎNAINTE de linkul de plată — după link ajung doar să-l zăpăcească pe client. ' +
+            '⚠️ Dacă userul tocmai ți-a spus ceva nou despre comandă (a corectat un detaliu, a adăugat nume), pune o propoziție SCURTĂ de confirmare la ÎNCEPUTUL ACELUIAȘI mesaj, înainte de listă („Am notat, sprijinul lui pentru tine și copii 💛") — lista de prețuri picată din senin peste ce tocmai ți-a scris îl face să se simtă neascultat. NU trimite confirmarea ca al 2-lea mesaj separat (garda de recapitulare o va bloca) și NU schimba prețurile sau numele pachetelor din text.',
         };
       }
     }
@@ -4700,6 +4724,39 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           }
         } catch {
           /* fail-open — dacă nu putem determina pachetul, lăsăm mesajul să treacă */
+        }
+      }
+    }
+
+    // GUARD anti-„ÎȚI PUNEM NOI POZELE" / „trimite-mi pozele aici". Gărzile de mai sus se
+    // sprijină pe pachetul unei comenzi EXISTENTE, deci la pre-vânzare (fără comandă) sunt
+    // fail-open — exact acolo unde întrebarea despre poze vine cel mai des. Două afirmații
+    // sunt însă false indiferent de pachet: (1) chatul NU are încărcare de fișiere de partea
+    // clientului (widgetul doar AFIȘEAZĂ atașamente trimise de noi), deci nu-l invita să-ți
+    // dea pozele aici; (2) pozele nu le punem NOI — clientul și le încarcă singur pe pagina
+    // melodiei, după livrare. BUG observat 2026-08-17 conv d379c0ab: „Pot să-ți dau poze" →
+    // „Da, sigur. Dacă vrei să le punem în pagina melodiei sau în colaj, îmi spui ce pachet
+    // alegi" — promisiune că le punem noi + share și colaj amestecate; clientul a repetat
+    // „Poze și sa fie ceva de iubita mea", a primit prețul sec și nu a mai scris niciodată.
+    {
+      const t = normLoose(trimmed);
+      const mentionsPhotos = /\b(poza|poze|pozele|pozi|fotografi\w*|imagini|colaj\w*|slideshow)\b/.test(t);
+      if (mentionsPhotos) {
+        // Corect = clientul le încarcă SINGUR (atunci mesajul poate vorbi liniștit de poze).
+        const saysUserUploads = /\b(le\s+)?(incarci|incarca|pui tu|le pui|singur|singura|din contul tau|de pe pagina|din pagina)\b/.test(t);
+        const offersToDoItForUser = /\b(punem|pun|adaugam|adaug|urcam|urc|montam|montez|inseram)\b/.test(t) && !saysUserUploads;
+        const invitesUploadInChat =
+          /\b(trimite|trimiteti|da mi|dami|imi dai|ataseaza|atasezi|incarci aici|pune aici)\b/.test(t) &&
+          /\b(aici|in chat|pe chat|mie)\b/.test(t);
+        if (offersToDoItForUser || invitesUploadInChat) {
+          this.logger.warn(`PHOTO_HANDLING_MISPROMISE blocked on conv=${ctx.conv.id.slice(0, 8)} — ${invitesUploadInChat ? 'invitație upload în chat' : '„le punem noi"'}.`);
+          return {
+            sent: false,
+            messageType: 'noop',
+            status: 'PHOTO_HANDLING_MISPROMISE_BLOCKED',
+            instruction:
+              'STAI — mesajul tău spune ceva neadevărat despre poze. ADEVĂRUL: clientul NU poate trimite poze aici în chat (widgetul lui nu are buton de încărcare) și NU le punem NOI — el și le încarcă SINGUR, gratuit, direct pe pagina melodiei, după livrare. Reformulează scurt și corect, fără să amesteci cele două livrabile: „poza de share" = imaginea statică de la distribuirea linkului (Plus și Premium), „colajul video" = video cu pozele lui și melodia pe fundal (DOAR Premium). Dacă încă nu are comandă, spune-i ce pachet îi trebuie pentru ce vrea și continuă comanda.',
+          };
         }
       }
     }
@@ -6619,6 +6676,45 @@ ${transcript}`;
       }
     }
 
+    // GUARD anti-„ÎNTREBARE DESPRE POZE ÎNGROPATĂ SUB PREȚ": userul ridică subiectul
+    // pozelor/colajului, iar răspunsul pe care-l primește e cotarea prețului — subiectul lui
+    // rămâne nerezolvat și conversația moare. BUG observat 2026-08-17 conv d379c0ab: „Pot
+    // să-ți dau poze" → răspuns vag; apoi „Poze și sa fie ceva de iubita mea" → „Ce frumos 🥰
+    // Am prins: e pentru iubita ta. Maneaua costa 29.99 lei. Sunteti de acord?" — pozele,
+    // cerute de DOUĂ ori, n-au mai fost atinse niciodată; clientul n-a mai scris. Pozele sunt
+    // un subiect cu reguli proprii (regula 32): nu se trimit în chat, se încarcă singur pe
+    // pagina melodiei, share = Plus/Premium, colaj video = DOAR Premium. Blocăm o singură
+    // dată per run: quote-ul pleacă oricum dacă modelul reapelează.
+    if (!ctx.photoQuestionNudged) {
+      const lastUserMsg = await this.msg.findOne({
+        where: { conversationId: ctx.conv.id, authorRole: 'user' },
+        order: { createdAt: 'DESC' },
+      });
+      const mentionsPhotos = (t: string) =>
+        /\b(poz[aăe]|poze|pozele|pozi|fotografi\w*|imagin\w*|colaj\w*|videoclip\w*|video)\b/i.test(t);
+      if (lastUserMsg && mentionsPhotos(lastUserMsg.body ?? '')) {
+        // Subiectul e „atins" doar dacă a fost atins DUPĂ ultimul mesaj al userului (adică în
+        // turul curent) sau chiar în `lead`-ul acestui quote — nu de un răspuns vechi.
+        const repliesSinceUser = await this.msg.find({
+          where: { conversationId: ctx.conv.id, authorRole: 'admin', createdAt: MoreThan(lastUserMsg.createdAt) },
+          order: { createdAt: 'ASC' },
+          take: 5,
+        });
+        const addressed =
+          mentionsPhotos(lead ?? '') || repliesSinceUser.some((m) => mentionsPhotos(m.body ?? ''));
+        if (!addressed) {
+          ctx.photoQuestionNudged = true;
+          this.logger.warn(`PHOTO_QUESTION_UNANSWERED on conv=${ctx.conv.id.slice(0, 8)} — quote peste o cerere de poze.`);
+          return {
+            sent: false,
+            status: 'PHOTO_QUESTION_UNANSWERED',
+            instruction:
+              'STAI — userul tocmai a adus vorba de POZE / imagini / colaj video, iar tu erai gata să-i răspunzi cu prețul, fără să atingi subiectul. Ignorat, subiectul îl face să plece. Răspunde-i ÎNTÂI, scurt și concret (un singur `send_message`, max 2 propoziții), cu adevărul din regula 32: pozele NU se trimit aici în chat (chatul nu are încărcare de fișiere de partea ta); clientul își încarcă SINGUR pozele, gratuit, direct pe pagina melodiei, după livrare — poza de share vine la Plus și Premium, iar colajul video (poze + melodia pe fundal) DOAR la Premium. NU promite că „poți să-i pui pozele" și NU-l invita să ți le trimită. ABIA DUPĂ acest răspuns continuă tunelul (preț / pachete).',
+          };
+        }
+      }
+    }
+
     // Prețul de intrare anunțat = pachetul basic (29.99). Irina face upsell-ul de
     // pachet (standard vs premium) abia în ultimul pas, înainte de link (ETAPA 5.5).
     const basePrice = packageTotalCents('basic', site.packagePricesCents ?? null);
@@ -8508,6 +8604,11 @@ interface AgentCtx {
    *  `lead`, prețul pleacă oricum — mai bine un quote sec decât un tur fără niciun mesaj.
    *  (2026-08-07, audit conv 915fba4d / 1a8e89ac / 2d501628.) */
   quoteContextNudged?: boolean;
+  /** S-a cerut deja, în acest run, ca întrebarea userului despre POZE / colaj video să
+   *  primească răspuns înainte de cotarea prețului (garda PHOTO_QUESTION_UNANSWERED)?
+   *  Un singur nudge per tur — dacă modelul insistă, prețul pleacă oricum.
+   *  (2026-08-17, audit conv d379c0ab.) */
+  photoQuestionNudged?: boolean;
   /** Oferta proprie („pot să-ți arăt pachetele?") la care userul a răspuns „da" în mesajul
    *  curent și care NU a fost încă onorată. Gardurile care redirecționează AI-ul spre pasul
    *  de tunel trebuie să NU o suprascrie — altfel userul e ignorat imediat după ce a acceptat.
