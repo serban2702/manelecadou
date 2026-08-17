@@ -2804,7 +2804,7 @@ REGULI STRICTE:
           type: 'object',
           properties: {
             changes: { type: 'string', description: 'Ce trebuie schimbat, concret și complet (max 1000 caractere). Pentru refacere gratuită: TOATE detaliile, confirmate de client (recapitulate înainte).' },
-            newRecipientName: { type: 'string', description: 'OBLIGATORIU dacă modificarea schimbă numele/destinatarul melodiei (ex. „Cor" era greșit, trebuie „Corina"). Pune AICI numele CORECT complet, exact cum trebuie să apară în versuri. Fără el, versurile se regenerează cu numele VECHI (greșit) — refacerea numelui NU se aplică. Lasă gol doar dacă modificarea NU atinge numele.' },
+            newRecipientName: { type: 'string', description: 'OBLIGATORIU dacă modificarea schimbă numele/destinatarul melodiei (ex. „Cor" era greșit, trebuie „Corina"). Pune AICI numele CORECT complet, exact cum trebuie să apară în versuri. Fără el, versurile se regenerează cu numele VECHI (greșit) — refacerea numelui NU se aplică. Lasă gol doar dacă modificarea NU atinge numele. ⛔ ATENȚIE: doar pentru ÎNLOCUIREA destinatarului. Dacă userul cere un nume ÎN PLUS („să apară și Corina", „adaugă-l și pe fratele meu"), lasă câmpul GOL și scrie adăugarea în `changes` — altfel destinatarul melodiei e înlocuit și persoana pentru care era piesa dispare din versuri.' },
             scope: { type: 'string', enum: ['small', 'large'], description: 'Amploarea modificării (small=14.99, large=29.99). Obligatoriu pentru modificările plătite.' },
             isOurError: { type: 'boolean', description: 'true DOAR dacă e clar greșeala noastră (am livrat altceva decât a cerut clientul).' },
             isRetentionOffer: { type: 'boolean', description: 'true DOAR ca gest comercial unic pentru a salva un client nemulțumit/pe punctul să plece. Nu se oferă proactiv ca opțiune standard.' },
@@ -3073,6 +3073,13 @@ REGULI STRICTE:
       // „n-am găsit nicio comandă aici […] o luăm de la capăt" — deși wizard-ul avea
       // recipientName + message + versurile lui custom. Vânzare pierdută pe un mesaj
       // fals. Aici îi spunem explicit ce are salvat și îi interzicem formularea.
+      // BUG observat 2026-08-16 conv 0f347375: formularea „comanda lui e ÎN LUCRU chiar aici"
+      // de mai jos era instrucțiune INTERNĂ („ai datele salvate"), dar Irina a preluat-o
+      // literal și i-a spus clientului „E în lucru aici, doar că nu e încă finalizată" — la o
+      // comandă NEPLĂTITĂ, cu wizard-ul încă în colectare. Clientul (care întrebase de 3 ori
+      // „vreau să ascult dacă ați făcut-o") a rămas convins că melodia lui se produce undeva.
+      // Nimic nu se generează înainte de plată, deci scoatem formularea din instrucțiune și
+      // interzicem explicit tot registrul „e în lucru / se lucrează / e aproape gata".
       const wizard = this.getOrInitWizardState(conv);
       const collected = Object.entries(wizard.data ?? {})
         .filter(([, v]) => typeof v === 'string' && v.trim())
@@ -3086,8 +3093,10 @@ REGULI STRICTE:
           collectedFields: collected,
           missingFields: missing,
           instruction:
-            'ATENȚIE — NU-i spune userului că „nu ai găsit nicio comandă" și NU o lua de la capăt: ' +
-            `comanda lui e ÎN LUCRU chiar aici, cu datele deja salvate (${collected.join(', ') || 'în curs'}). ` +
+            'ATENȚIE — ce urmează e stare INTERNĂ, nu text de repetat clientului. ' +
+            `Datele lui sunt salvate aici (${collected.join(', ') || 'în curs'}), dar comanda NU e plătită și NICIO melodie nu se produce încă. ` +
+            '⛔ NU-i spune că melodia „e în lucru" / „se lucrează la ea" / „se generează" / „e aproape gata" / „nu e încă finalizată" — ar fi o minciună: producția pornește DOAR după plată, iar omul rămâne să aștepte un fișier care nu vine niciodată. Dacă te întreabă dacă e gata sau vrea s-o asculte, spune-i adevărul simplu și cald: melodia se face după ce comanda e plasată, iar voi sunteți la un pas de asta. ' +
+            '⛔ NU-i spune nici că „nu ai găsit nicio comandă" și NU o lua de la capăt — datele lui sunt salvate. ' +
             (missing.length
               ? `Continuă tunelul normal: mai lipsește ${missing.join(', ')} — cere doar ce lipsește, într-un singur mesaj.`
               : 'Datele sunt complete — mergi mai departe cu emailul (dacă lipsește) și wizard_finalize pentru linkul de plată.'),
@@ -4588,6 +4597,46 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           };
         }
       }
+
+      // GUARD pitch de pachete REPETAT înainte de link (BUG observat 2026-08-16 conv 0ae70ab1):
+      // Irina a cerut pachetul („Acum alegem pachetul: Standard 29.99, Plus 49.99 sau Premium
+      // 99.99 — ce alegi?"), clienta a tăcut, iar cele două follow-up-uri automate au turnat
+      // peste ea încă un mesaj și apoi pitch-ul COMPLET al celor 3 pachete — trei mesaje la rând
+      // fără niciun cuvânt de la ea, ultimul repetând exact cererea ignorată. Treapta 0.62
+      // (SAME_QUESTION) nu-l prinde: nucleul interogativ al pitch-ului e „Ce alegi?", sub pragul
+      // de 12 caractere al `lastQuestionOf`, deci iese null și garda nici nu se evaluează.
+      // Promptul zice deja „prezintă O SINGURĂ DATĂ cele 3 pachete" — o mutăm în cod: dacă
+      // userul n-a scris NIMIC de la ultimul pitch încoace, al doilea pitch e pur spam.
+      if (listsAllPackages && ctx.conv.wizardState?.step !== 'payment_sent') {
+        try {
+          const lastUser = await this.msg.findOne({
+            where: { conversationId: ctx.conv.id, authorRole: 'user' },
+            order: { createdAt: 'DESC' },
+          });
+          const pitchQb = this.msg
+            .createQueryBuilder('m')
+            .where('m."conversationId" = :cid', { cid: ctx.conv.id })
+            .andWhere(`m."authorRole" = 'admin'`)
+            .andWhere(`m."messageType" = 'text'`)
+            .andWhere('m."deletedAt" IS NULL');
+          if (lastUser) pitchQb.andWhere('m."createdAt" > :since', { since: lastUser.createdAt });
+          const priorPitch = await pitchQb.orderBy('m."createdAt"', 'DESC').take(4).getMany();
+          if (priorPitch.some((m) => this.isPackagePitch(m.body ?? ''))) {
+            this.logger.warn(
+              `PACKAGE_PITCH_REPEATED blocked on conv=${ctx.conv.id.slice(0, 8)} — al 2-lea pitch de pachete fără niciun răspuns al userului între timp.`,
+            );
+            return {
+              sent: false,
+              messageType: 'duplicate_text',
+              status: 'PACKAGE_PITCH_REPEATED',
+              instruction:
+                'STAI — i-ai prezentat DEJA cele 3 pachete și de atunci userul n-a mai scris nimic. Nu i le lista a doua oară: e exact aceeași cerere pe care a ignorat-o, iar un al doilea perete de text îl împinge definitiv afară. Dacă chiar ai ceva de spus acum, spune-l SCURT și altfel decât prima dată: fie îi iei tu decizia din brațe („Îți las Standardul la 29.99, e cel mai luat — zi-mi doar «ok» și pornim"), fie îl întrebi simplu dacă a rămas blocat la ceva. Dacă n-ai nimic genuin nou → NU trimite nimic, termină turul; tăcerea e mai bună decât repetarea ofertei.',
+            };
+          }
+        } catch (e) {
+          this.logger.warn(`package pitch repeat guard failed: ${(e as Error).message}`);
+        }
+      }
     }
 
     // GUARD anti-PROMISIUNE DE POZE pe un pachet care NU le include. Încărcarea de poze /
@@ -5390,9 +5439,20 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       //   • comandă completă → condiționalul e o amânare inutilă: finalize în ACELAȘI tur;
       //   • comandă incompletă → promisiunea e falsă („Ok"-ul userului nu aduce niciun link):
       //     cere direct câmpul care lipsește, fără să anunți linkul.
+      // BUG observat 2026-08-16 conv 0ae70ab1: garda cerea OBLIGATORIU „acum"/„imediat", așa că
+      // modelul a scăpat de ea scoțând pur și simplu adverbul. Prima formă — „Daca e ok, iti
+      // trimit acum linkul de plata pentru pachetul Standard" — a fost blocată corect (lipsea
+      // pachetul); patru minute mai târziu, follow-up-ul a trimis „Dacă e ok, îți trimit linkul
+      // de plată." și a trecut. Clienta alesese deja să răspundă… la nimic: pachetul tot nu era
+      // ales, linkul n-a plecat niciodată, iar conversația s-a stins cu ea așteptând. Într-un
+      // CONDIȚIONAL, adverbul nu schimbă nimic — promisiunea e la fel de fermă fără el, deci nu
+      // îl mai cerem. Pe forma necondiționată păstrăm cerința („după ce alegi pachetul îți
+      // trimit linkul" e informativ, nu o promisiune de tur).
+      const mentionsSendingLink = /\b(î|i)[țt]i trimit\b[^.!?]{0,30}\blink/i.test(normalized);
+      const isConditionalPromise = /\bdac[aă]\b/i.test(normalized);
       const promisesLinkPhrase =
-        /\b(î|i)[țt]i trimit\b[^.!?]{0,30}\blink/i.test(normalized) && /\b(acum|imediat)\b/i.test(normalized);
-      const promisesLinkNow = promisesLinkPhrase && !/\bdac[aă]\b/i.test(normalized);
+        mentionsSendingLink && (/\b(acum|imediat)\b/i.test(normalized) || isConditionalPromise);
+      const promisesLinkNow = promisesLinkPhrase && !isConditionalPromise;
       if (promisesLinkPhrase && !promisesLinkNow && !ctx.paymentLinkSent && !ctx.linkPromiseGateFired) {
         const freshLink = await this.conv.findOne({ where: { id: ctx.conv.id } });
         const stLink = freshLink ? this.getOrInitWizardState(freshLink) : null;
@@ -7895,13 +7955,39 @@ ${transcript}`;
     const check = await this.assertNotManual(ctx);
     if (check.aborted) return { aborted: true, status: 'ABORTED_MANUAL_MODE' };
     if (!ctx.conv.siteId) return { error: 'no_site' };
-    const changes = args.changes.trim().slice(0, 1000);
+    let changes = args.changes.trim().slice(0, 1000);
     if (!changes) return { error: 'changes_required', instruction: 'Întreabă userul CE anume vrea schimbat, concret.' };
     // Numele corectat, dacă modificarea schimbă destinatarul. Îl aplicăm pe câmpul
     // structurat recipientName la regenerare — altfel writer-ul păstrează numele VECHI
     // (BUG confirmat 2026-07-06 conv 4581c882: „Cor"→„Corina" cerut de 4× nu s-a aplicat
     // pe 3 regenerări fiindcă recipientName rămânea „...Cor" iar corectura era doar în message).
-    const newRecipientName = (args.newRecipientName ?? '').trim().slice(0, 120) || null;
+    let newRecipientName = (args.newRecipientName ?? '').trim().slice(0, 120) || null;
+    // GARDĂ „adaugă un nume" ≠ „schimbă destinatarul". BUG observat 2026-08-16 conv 996d25fe:
+    // clientul avea o manea pentru „Tata Teodor" și a cerut „aș dori să fie scrisă și Corina",
+    // adică un nume ÎN PLUS în versuri. Irina a pus `newRecipientName: "Corina"`, ceea ce
+    // rescrie câmpul structurat `recipientName` al generării — după plată ar fi primit o manea
+    // pentru Corina, cu tatăl lui scos complet din piesă. Când formularea descrie o ADĂUGARE
+    // (și nu o corectură de nume greșit), numele nou nu are voie să înlocuiască destinatarul:
+    // îl mutăm în instrucțiunea de modificare, cu numele existent păstrat explicit.
+    if (newRecipientName) {
+      const c = changes.toLowerCase();
+      const looksLikeAddition =
+        /(adaug\w*|men[țt]ion\w*|s[ăa]\s+apar[ăa]|s[ăa]\s+fie\s+(scris|trecut|pus|amintit)\w*|(î|i)mpreun[ăa]\s+cu|pe\s+l[âa]ng[ăa]|(î|i)nc[ăa]\s+un\s+nume|[șs]i\s+numele)/.test(c);
+      const looksLikeCorrection =
+        /(gre[șs]it|corect\w*|(î|i)n\s+loc\s+de|nu\s+(e|este|se\s+cheam)|schimb\w*\s+numele|se\s+scrie|scris\s+gre[șs]it)/.test(c);
+      if (looksLikeAddition && !looksLikeCorrection) {
+        this.logger.warn(
+          `MODIFICATION_NAME_ADDITION on conv=${ctx.conv.id.slice(0, 8)} — „${newRecipientName}" cerut ca ADĂUGARE, nu ca redenumire: nu suprascriu destinatarul.`,
+        );
+        const added = newRecipientName;
+        newRecipientName = null;
+        changes =
+          `${changes}\n(IMPORTANT: numele „${added}" se ADAUGĂ în versuri, pe lângă destinatarul actual — destinatarul melodiei NU se schimbă.)`.slice(
+            0,
+            2000,
+          );
+      }
+    }
     const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
     if (!conv) return { error: 'conversation gone' };
     const state = this.getOrInitWizardState(conv);
