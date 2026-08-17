@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 
 export type AssignReason = 'url' | 'cookie' | 'fingerprint' | 'device' | 'utm' | 'default';
 
@@ -37,4 +37,6 @@ export interface ExperienceModule {
   HomePage: ComponentType;
   StudioPage: ComponentType;
   SongView: ComponentType;
+  /** Chrome for shared pages (top, istoric, manelele-mele, legal…). */
+  Shell?: ComponentType<{ children: ReactNode }>;
 }

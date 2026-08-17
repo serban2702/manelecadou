@@ -16,11 +16,13 @@ import { useSite } from '@/lib/site-context';
 import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
 import { openDemosModal, useWizardReachedPackage } from '@/lib/wizard';
+import { useExperience } from '@/lib/experience-context';
 
 // `hideStickyCta` rămâne în signature pentru retrocompatibilitate cu paginile
 // care îl pasează (legal, login, cont etc.), dar nu mai are efect — sticky
 // CTA-ul a fost eliminat complet la cererea userului.
 export function SiteShell({ children, hideStickyCta: _ignored }: { children: ReactNode; hideStickyCta?: boolean }) {
+  const exp = useExperience();
   const pathname = usePathname();
   const session = useSession();
   const tNav = useTranslations('nav');
@@ -76,6 +78,11 @@ export function SiteShell({ children, hideStickyCta: _ignored }: { children: Rea
       window.localStorage.setItem('mc_cookie_consent', mode);
     }
   };
+
+  if (exp.Shell) {
+    const Shell = exp.Shell;
+    return <Shell>{children}</Shell>;
+  }
 
   return (
     <div className="app site-shell">
