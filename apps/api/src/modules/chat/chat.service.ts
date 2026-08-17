@@ -24,6 +24,7 @@ import { WebPushService } from '../web-push/web-push.service';
 import { ChatAttachmentsService } from './chat-attachments.service';
 import { ChatBlacklistService } from './chat-blacklist.service';
 import { PaymentsService } from '../payments/payments.service';
+import { PaymentAttributionService } from '../analytics/payment-attribution.service';
 import { normalizeTier, packageLabel, type PackageTier } from '../payments/packages';
 import { packageTotalCents } from '../payments/pricing';
 import { SitesService } from '../sites/sites.service';
@@ -66,6 +67,7 @@ export class ChatService implements OnModuleInit {
     private readonly attachments: ChatAttachmentsService,
     private readonly blacklist: ChatBlacklistService,
     private readonly payments: PaymentsService,
+    private readonly attribution: PaymentAttributionService,
     private readonly sites: SitesService,
     private readonly chatSettings: SettingsService,
     private readonly lyrics: LyricsService,
@@ -462,7 +464,18 @@ export class ChatService implements OnModuleInit {
    * trimitem push adminilor — e momentul cel mai fierbinte din funnel (clientul
    * e chiar acum pe pagina Stripe). Best-effort: nu aruncă niciodată spre client.
    */
-  async markPaymentLinkClicked(ctx: OwnerCtx, messageId: string): Promise<{ ok: true }> {
+  async markPaymentLinkClicked(
+    ctx: OwnerCtx,
+    messageId: string,
+    browser?: {
+      fbp?: string | null;
+      fbc?: string | null;
+      sessionKey?: string | null;
+      visitorId?: string | null;
+      ipAddress?: string | null;
+      userAgent?: string | null;
+    },
+  ): Promise<{ ok: true }> {
     try {
       const conversation = await this.getOrCreateMine(ctx);
       const m = await this.msg.findOne({
@@ -481,6 +494,11 @@ export class ChatService implements OnModuleInit {
       };
       await this.msg.save(m);
       this.gateway.emitMessage({ message: m, conversation });
+
+      const payId = typeof p.paymentId === 'string' ? p.paymentId : null;
+      if (payId && browser) {
+        void this.payments.attachBrowserContext(payId, browser).catch(() => {});
+      }
 
       if (clickCount === 1) {
         const who =
@@ -1590,6 +1608,7 @@ export class ChatService implements OnModuleInit {
     // Creează Stripe Checkout cu metadata unlockGenerationId — webhook va dezolba.
     const description = dto.productName?.trim() || `Manea personalizată pentru ${dto.recipientName}`;
     const tier = normalizeTier(dto.packageTier);
+    const tracking = await this.trackingFromConversation(conv);
     const checkout = await this.payments.createCheckoutSession({
       userId: conv.userId,
       guestId: conv.guestId,
@@ -1600,7 +1619,7 @@ export class ChatService implements OnModuleInit {
       overrideCurrency: dto.currency?.toUpperCase(),
       overrideProductName: description,
       unlockGenerationId: generation.id,
-      ipAddress: conv.lastIp ?? undefined,
+      ...tracking,
     });
 
     const currency = (dto.currency ?? site.currency).toUpperCase();
@@ -1634,6 +1653,21 @@ export class ChatService implements OnModuleInit {
     this.gateway.emitMessage({ message: persisted, conversation: conv });
 
     return { generationId: generation.id, paymentMessageId: persisted.id };
+  }
+
+  /** sessionKey/visitorId de pe ultima sesiune a clientului — checkout-ul din chat n-are browser. */
+  private async trackingFromConversation(conv: Conversation) {
+    const hint = await this.attribution.findIdentityHint({
+      siteId: conv.siteId,
+      userId: conv.userId,
+      guestId: conv.guestId,
+      ip: conv.lastIp,
+    });
+    return {
+      sessionKey: hint?.sessionKey ?? null,
+      visitorId: hint?.visitorId ?? null,
+      ipAddress: conv.lastIp ?? undefined,
+    };
   }
 
   /**
@@ -2269,6 +2303,7 @@ export class ChatService implements OnModuleInit {
 
     // Creează Checkout Session prin PaymentsService — propagă override-urile din
     // modal (admin poate alege liber suma/valuta/descrierea, NU se folosește site pricing).
+    const tracking = await this.trackingFromConversation(conv);
     const checkout = await this.payments.createCheckoutSession({
       userId: conv.userId,
       guestId: conv.guestId,
@@ -2278,10 +2313,9 @@ export class ChatService implements OnModuleInit {
       overrideAmount: customAmount,
       overrideCurrency: customCurrency,
       overrideProductName: description,
-      // IP-ul real al cumpărătorului (persistat la WS connect) — permite atribuirea
-      // pe sursă a plăților din chat, care altfel n-au cum să fie legate de o
-      // sesiune analytics (link generat server-side, fără request browser).
-      ipAddress: conv.lastIp ?? undefined,
+      // sessionKey/visitorId din ultima sesiune analytics + IP de la WS —
+      // checkout-ul e creat server-side, fără cookies de browser.
+      ...tracking,
     });
 
     // Computăm amount/currency efective pentru payload-ul mesajului (ce vede userul în card)

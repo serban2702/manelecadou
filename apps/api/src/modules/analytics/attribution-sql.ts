@@ -82,3 +82,82 @@ export function attributionOrderBySql(
            (CASE WHEN ${isDirectSourceSql(sourceCol)} THEN 1 ELSE 0 END) ASC,
            ${startedAtCol} DESC`;
 }
+
+/** Decodare utm_campaign / utm_content (C3+%E2%80%94+OCAZII → „C3 — OCAZII"). */
+export function decodeUtmParam(v: string | null | undefined): string | null {
+  if (!v) return null;
+  try {
+    const d = decodeURIComponent(String(v).replace(/\+/g, ' ')).trim();
+    return d || null;
+  } catch {
+    const d = String(v).replace(/\+/g, ' ').trim();
+    return d || null;
+  }
+}
+
+/** Template Ads Manager netradus — nu e o campanie reală. */
+export function isPlaceholderCampaign(v: string | null | undefined): boolean {
+  if (!v) return true;
+  const s = v.trim();
+  if (!s) return true;
+  if (/^__CAMPAIGN_(NAME|ID)__$/i.test(s)) return true;
+  if (/^\{\{[^}]+\}\}$/.test(s)) return true;
+  if (/^__AD_(NAME|ID)__$/i.test(s)) return true;
+  return false;
+}
+
+/**
+ * Aceeași mapare ca `normalizeSourceSql`, în JS — pentru snapshot-ul persistat
+ * pe plată (valorile din DB sunt canonic: facebook / email / direct / …).
+ */
+export function normalizeSource(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const s = raw.toLowerCase().trim();
+  if (!s || s === 'direct' || s === '(direct)') return 'direct';
+  if (
+    s === 'com.google.android.gm' ||
+    s.startsWith('mail.') ||
+    s.includes('.mail.') ||
+    s.includes('webmail') ||
+    s.includes('mail.google') ||
+    s.includes('mail.yahoo') ||
+    s.includes('outlook') ||
+    s === 'com.microsoft.office.outlook' ||
+    s.startsWith('com.yahoo.mobile') ||
+    s.startsWith('com.google.android.gm') ||
+    s === 'email' ||
+    s === 'newsletter' ||
+    s === 'e-mail'
+  ) {
+    return 'email';
+  }
+  if (s.includes('facebook') || s === 'fb' || s === 'meta' || s === 'an') return 'facebook';
+  if (s.includes('instagram') || s === 'ig') return 'instagram';
+  if (s.includes('tiktok')) return 'tiktok';
+  if (s.includes('google')) return 'google';
+  if (s.includes('youtube') || s === 'yt') return 'youtube';
+  if (s.includes('whatsapp') || s === 'wa') return 'whatsapp';
+  if (s.includes('telegram')) return 'telegram';
+  return s;
+}
+
+export function utmFromUrl(url: string | null | undefined): {
+  source: string | null;
+  medium: string | null;
+  campaign: string | null;
+  content: string | null;
+} {
+  const empty = { source: null, medium: null, campaign: null, content: null };
+  if (!url) return empty;
+  try {
+    const u = new URL(url);
+    return {
+      source: decodeUtmParam(u.searchParams.get('utm_source')),
+      medium: decodeUtmParam(u.searchParams.get('utm_medium')),
+      campaign: decodeUtmParam(u.searchParams.get('utm_campaign')),
+      content: decodeUtmParam(u.searchParams.get('utm_content')),
+    };
+  } catch {
+    return empty;
+  }
+}

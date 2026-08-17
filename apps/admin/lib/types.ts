@@ -281,6 +281,8 @@ export interface AdminPayment {
     creative: string | null;
     referrer: string | null;
     landingPath: string | null;
+    /** Cum s-a legat plata de sesiune (snapshot). */
+    match?: string | null;
   } | null;
   /** Generarea legată (când `generations.paymentId == payment.id`). */
   generation?: {

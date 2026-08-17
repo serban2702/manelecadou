@@ -14,6 +14,7 @@ import { AnalyticsService } from './analytics.service';
 import { AdSpendService } from './ad-spend.service';
 import { AdPaymentService } from './ad-payment.service';
 import { ProfitabilityService } from './profitability.service';
+import { PaymentAttributionService } from './payment-attribution.service';
 import { AnalyticsAdminController, AnalyticsPublicController } from './analytics.controller';
 import { AnalyticsForwarders } from './forwarders';
 import { GeoIpService } from './geoip.service';
@@ -30,8 +31,17 @@ import { FxModule } from '../fx/fx.module';
     SitesModule,
     FxModule,
   ],
-  providers: [AnalyticsService, AdSpendService, AdPaymentService, ProfitabilityService, AnalyticsForwarders, AdminGuard, GeoIpService],
+  providers: [
+    AnalyticsService,
+    AdSpendService,
+    AdPaymentService,
+    ProfitabilityService,
+    PaymentAttributionService,
+    AnalyticsForwarders,
+    AdminGuard,
+    GeoIpService,
+  ],
   controllers: [AnalyticsPublicController, AnalyticsAdminController],
-  exports: [AnalyticsService],
+  exports: [AnalyticsService, PaymentAttributionService],
 })
 export class AnalyticsModule {}

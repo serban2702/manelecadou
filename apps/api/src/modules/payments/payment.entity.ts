@@ -110,6 +110,45 @@ export class Payment {
   @Column({ type: 'varchar', length: 64, nullable: true })
   visitorId!: string | null;
 
+  // ============== Snapshot atribuire trafic (înghețat la checkout / backfill) ==============
+  // Calculat o dată din analytics_sessions + ad_spend, apoi NU se mai recalculează
+  // la fiecare refresh din admin. Fără snapshot, o revenire pe email/direct muta
+  // plata de pe campania Meta pe care a venit. Vezi PaymentAttributionService.
+
+  /** Canal canonic: facebook | instagram | google | email | direct | … */
+  @Index()
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  attributionSource!: string | null;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  attributionMedium!: string | null;
+
+  /** utm_campaign brut (decodat; ID Meta numeric sau nume). */
+  @Column({ type: 'varchar', length: 256, nullable: true })
+  attributionCampaign!: string | null;
+
+  /** Nume campanie rezolvat via ad_spend. Null = am știut canalul, nu și reclama. */
+  @Column({ type: 'varchar', length: 256, nullable: true })
+  attributionCampaignName!: string | null;
+
+  /** Creativ/ad (utm_content → ad_spend.adName). */
+  @Column({ type: 'varchar', length: 256, nullable: true })
+  attributionCreative!: string | null;
+
+  @Column({ type: 'varchar', length: 256, nullable: true })
+  attributionReferrer!: string | null;
+
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  attributionLandingPath!: string | null;
+
+  /** Cum am legat plata de sesiune: session_key | visitor | user | guest | ip | event_url | none. */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  attributionMatch!: string | null;
+
+  /** Setat când snapshot-ul e scris. Null = încă nerezolvat (plăți pre-deploy). */
+  @Column({ type: 'timestamptz', nullable: true })
+  attributedAt!: Date | null;
+
   // ============== Date cumpărător (din Stripe customer_details, la webhook) ==============
 
   /** Numele complet al cumpărătorului (Stripe customer_details.name). Sursă pentru `buyerGender`. */

@@ -562,47 +562,52 @@ export class AdminController {
       if (!isNaN(d.getTime())) qb.andWhere('p."createdAt" <= :to', { to: d.toISOString() });
     }
 
-    // Filtru pe sursă: cea mai recentă sesiune a userului/guest-ului înainte
-    // de plată trebuie să match-uiască. Folosim EXISTS cu LATERAL similar ca
-    // pentru attribution map de mai jos. `source=none` = plăți fără attribution.
+    // Filtru pe snapshot-ul înghețat (p.attributionSource). Plățile încă
+    // nerezolvate cad pe sesiunea live — doar până rulează backfill-ul.
     if (source && source !== 'all') {
       if (source === 'none') {
         qb.andWhere(
-          `NOT EXISTS (
-            SELECT 1 FROM analytics_sessions s
-            WHERE (
-              (s."userId" IS NOT NULL AND s."userId" = p."userId")
-              OR (s."guestId" IS NOT NULL AND s."guestId" = p."guestId")
-              OR (p."ipAddress" IS NOT NULL AND s.ip IS NOT NULL AND s.ip = p."ipAddress")
-            )
-              AND s."startedAt" <= p."createdAt"
-              AND s.source IS NOT NULL
-              AND s.source NOT ILIKE 'stripe%'
-              AND s.source NOT ILIKE 'checkout.stripe%'
+          `(
+            (p."attributedAt" IS NOT NULL AND p."attributionSource" IS NULL)
+            OR (p."attributedAt" IS NULL AND NOT EXISTS (
+              SELECT 1 FROM analytics_sessions s
+              WHERE (
+                (s."userId" IS NOT NULL AND s."userId" = p."userId")
+                OR (s."guestId" IS NOT NULL AND s."guestId" = p."guestId")
+                OR (p."ipAddress" IS NOT NULL AND s.ip IS NOT NULL AND s.ip = p."ipAddress")
+              )
+                AND s."startedAt" <= p."createdAt"
+                AND s.source IS NOT NULL
+                AND s.source NOT ILIKE 'stripe%'
+                AND s.source NOT ILIKE 'checkout.stripe%'
+            ))
           )`,
         );
       } else {
-        // Pattern match pe substring ca să acoperim atât 'facebook' cât și
-        // 'm.facebook.com'. Cazurile speciale: 'meta' include 'fb' și 'facebook',
-        // 'instagram' include 'ig'.
         const patterns: string[] = [`%${source}%`];
         if (source === 'facebook' || source === 'meta') patterns.push('fb', 'fb%');
         if (source === 'instagram') patterns.push('ig');
         if (source === 'whatsapp') patterns.push('wa');
         qb.andWhere(
-          `EXISTS (
-            SELECT 1 FROM analytics_sessions s
-            WHERE (
-              (s."userId" IS NOT NULL AND s."userId" = p."userId")
-              OR (s."guestId" IS NOT NULL AND s."guestId" = p."guestId")
-              OR (p."ipAddress" IS NOT NULL AND s.ip IS NOT NULL AND s.ip = p."ipAddress")
-            )
-              AND s."startedAt" <= p."createdAt"
-              AND s.source IS NOT NULL
-              AND s.source NOT ILIKE 'stripe%'
-              AND (${patterns.map((_, i) => `LOWER(s.source) LIKE :sp${i}`).join(' OR ')})
+          `(
+            (p."attributedAt" IS NOT NULL AND p."attributionSource" = :srcCanon)
+            OR (p."attributedAt" IS NULL AND EXISTS (
+              SELECT 1 FROM analytics_sessions s
+              WHERE (
+                (s."userId" IS NOT NULL AND s."userId" = p."userId")
+                OR (s."guestId" IS NOT NULL AND s."guestId" = p."guestId")
+                OR (p."ipAddress" IS NOT NULL AND s.ip IS NOT NULL AND s.ip = p."ipAddress")
+              )
+                AND s."startedAt" <= p."createdAt"
+                AND s.source IS NOT NULL
+                AND s.source NOT ILIKE 'stripe%'
+                AND (${patterns.map((_, i) => `LOWER(s.source) LIKE :sp${i}`).join(' OR ')})
+            ))
           )`,
-          patterns.reduce((acc, val, i) => ({ ...acc, [`sp${i}`]: val.toLowerCase() }), {}),
+          {
+            srcCanon: source.toLowerCase(),
+            ...patterns.reduce((acc, val, i) => ({ ...acc, [`sp${i}`]: val.toLowerCase() }), {}),
+          },
         );
       }
     }
@@ -683,7 +688,8 @@ export class AdminController {
         return v.replace(/\+/g, ' ').trim() || null;
       }
     };
-    if (paymentIdList.length > 0) {
+    const liveIds = payments.filter((p) => !p.attributedAt).map((p) => p.id);
+    if (liveIds.length > 0) {
       // Legăm plata de sesiuni prin userId / guestId / ipAddress. `guestId` pe
       // analytics_sessions e aproape mereu null (tracker anonim), deci IP-ul e
       // puntea reală pentru vizitatorii neînregistrați. Preferăm „last non-direct
@@ -755,7 +761,7 @@ export class AdminController {
         ) s ON true
         WHERE p.id = ANY($1::uuid[])
         `,
-        [paymentIdList],
+        [liveIds],
       );
       for (const r of rows) {
         if (r.source) {
@@ -787,7 +793,18 @@ export class AdminController {
 
     const items = payments.map((p) => {
       const g = genByPaymentId.get(p.id) ?? null;
-      const attr = attrByPaymentId.get(p.id) ?? null;
+      const attr = p.attributedAt
+        ? {
+            source: p.attributionSource,
+            medium: p.attributionMedium,
+            campaign: p.attributionCampaign,
+            campaignName: p.attributionCampaignName,
+            creative: p.attributionCreative,
+            referrer: p.attributionReferrer,
+            landingPath: p.attributionLandingPath,
+            match: p.attributionMatch,
+          }
+        : attrByPaymentId.get(p.id) ?? null;
       return {
         ...p,
         email: clientEmail(

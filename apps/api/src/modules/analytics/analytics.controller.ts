@@ -21,6 +21,7 @@ import { AnalyticsService } from './analytics.service';
 import { AdSpendService } from './ad-spend.service';
 import { AdPaymentService } from './ad-payment.service';
 import { ProfitabilityService } from './profitability.service';
+import { PaymentAttributionService } from './payment-attribution.service';
 import type { ProfitConfigData } from './profit-config.entity';
 import { SitesService } from '../sites/sites.service';
 import { TrackBatchDto, TrackEventDto, AdPaymentCreateDto, AdPaymentUpdateDto } from './dto';
@@ -131,8 +132,16 @@ export class AnalyticsAdminController {
     private readonly adSpend: AdSpendService,
     private readonly adPayments: AdPaymentService,
     private readonly profitability: ProfitabilityService,
+    private readonly attribution: PaymentAttributionService,
     private readonly sites: SitesService,
   ) {}
+
+  /** Rescrie snapshot-ul de atribuire pe plățile fără `attributedAt`. `force=1` reface tot. */
+  @Post('attribution/backfill')
+  @HttpCode(200)
+  attributionBackfill(@Query('force') force?: string) {
+    return this.attribution.backfill({ force: force === '1' || force === 'true' });
+  }
 
   // ============== PROFITABILITATE (business-wide: venituri − cheltuieli) ==============
 

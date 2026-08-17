@@ -25,6 +25,7 @@ import { GenerationsService } from '../generations/generations.service';
 import { CreateGenerationDto } from '../generations/dto/create-generation.dto';
 import { TiktokEventsService } from '../tiktok/tiktok-events.service';
 import { AnalyticsService } from '../analytics/analytics.service';
+import { PaymentAttributionService } from '../analytics/payment-attribution.service';
 import { inferBuyerGender } from '../analytics/gender-infer';
 import { MetaCapiService } from '../meta-capi/meta-capi.service';
 import { FxRateService } from '../fx/fx-rate.service';
@@ -106,10 +107,62 @@ export class PaymentsService {
     private readonly generations: GenerationsService,
     private readonly tiktok: TiktokEventsService,
     private readonly analytics: AnalyticsService,
+    private readonly attribution: PaymentAttributionService,
     private readonly moduleRef: ModuleRef,
     private readonly metaCapi: MetaCapiService,
     private readonly fx: FxRateService,
   ) {}
+
+  /** Snapshot de atribuire + câmpurile de pe Payment, gata de `repo.create`. */
+  private async attributionFields(input: {
+    siteId: string | null;
+    createdAt?: Date;
+    userId?: string | null;
+    guestId?: string | null;
+    ipAddress?: string | null;
+    sessionKey?: string | null;
+    visitorId?: string | null;
+  }) {
+    return this.attribution.resolve({
+      siteId: input.siteId,
+      createdAt: input.createdAt ?? new Date(),
+      userId: input.userId ?? null,
+      guestId: input.guestId ?? null,
+      ipAddress: input.ipAddress ?? null,
+      sessionKey: input.sessionKey ?? null,
+      visitorId: input.visitorId ?? null,
+    });
+  }
+
+  /**
+   * Când userul apasă „Plătește" pe un link din chat, request-ul e din browser —
+   * avem cookies _fbp/_fbc + sessionKey. Le scriem pe plata deja creată server-side
+   * (încă pending) și re-snapshot-uim campania. Nu atingem plățile deja paid.
+   */
+  async attachBrowserContext(
+    paymentId: string,
+    ctx: {
+      fbp?: string | null;
+      fbc?: string | null;
+      sessionKey?: string | null;
+      visitorId?: string | null;
+      ipAddress?: string | null;
+      userAgent?: string | null;
+    },
+  ): Promise<void> {
+    if (!paymentId) return;
+    const p = await this.repo.findOne({ where: { id: paymentId } });
+    if (!p || p.status === 'paid' || p.status === 'refunded') return;
+    if (ctx.fbp && !p.fbp) p.fbp = ctx.fbp;
+    if (ctx.fbc && !p.fbc) p.fbc = ctx.fbc;
+    if (ctx.sessionKey && !p.sessionKey) p.sessionKey = ctx.sessionKey;
+    if (ctx.visitorId && !p.visitorId) p.visitorId = ctx.visitorId;
+    if (ctx.ipAddress && !p.ipAddress) p.ipAddress = ctx.ipAddress;
+    if (ctx.userAgent && !p.userAgent) p.userAgent = ctx.userAgent;
+    const snap = await this.attribution.resolve(p);
+    this.attribution.applySnapshot(p, snap);
+    await this.repo.save(p);
+  }
 
   /** Returnează instanța Stripe, re-instanțiată dacă cheia s-a schimbat în admin. */
   private async getStripe(): Promise<Stripe | null> {
@@ -225,6 +278,14 @@ export class PaymentsService {
   }): Promise<{ url: string; paymentId: string }> {
     const { input, baseTotal, promoCodeId, promoCode, site } = args;
 
+    const attr = await this.attributionFields({
+      siteId: site.id,
+      userId: input.userId,
+      guestId: input.guestId,
+      ipAddress: input.ipAddress,
+      sessionKey: input.sessionKey,
+      visitorId: input.visitorId,
+    });
     const payment = await this.repo.save(
       this.repo.create({
         provider: 'free',
@@ -236,6 +297,13 @@ export class PaymentsService {
         guestId: input.guestId,
         siteId: site.id,
         customerEmail: PaymentsService.customerEmailValue(input.email),
+        fbp: input.fbp ?? null,
+        fbc: input.fbc ?? null,
+        userAgent: input.userAgent ?? null,
+        ipAddress: input.ipAddress ?? null,
+        sessionKey: input.sessionKey ?? null,
+        visitorId: input.visitorId ?? null,
+        ...attr,
       }),
     );
 
@@ -344,6 +412,14 @@ export class PaymentsService {
     appliedDiscountCents = Math.min(appliedDiscountCents, Math.max(0, baseTotal - 50));
     const total = Math.max(50, baseTotal - appliedDiscountCents);
 
+    const attr = await this.attributionFields({
+      siteId: site.id,
+      userId: input.userId,
+      guestId: input.guestId,
+      ipAddress: input.ipAddress,
+      sessionKey: input.sessionKey,
+      visitorId: input.visitorId,
+    });
     const payment = await this.repo.save(
       this.repo.create({
         provider: 'stripe',
@@ -364,6 +440,7 @@ export class PaymentsService {
         ipAddress: input.ipAddress ?? null,
         sessionKey: input.sessionKey ?? null,
         visitorId: input.visitorId ?? null,
+        ...attr,
       }),
     );
 
@@ -580,6 +657,14 @@ export class PaymentsService {
     const site = input.site;
     const total = this.tierPriceForSite(site, input.tier);
 
+    const attr = await this.attributionFields({
+      siteId: site.id,
+      userId: input.userId,
+      guestId: input.guestId,
+      ipAddress: input.ipAddress,
+      sessionKey: input.sessionKey,
+      visitorId: input.visitorId,
+    });
     const payment = await this.repo.save(
       this.repo.create({
         provider: 'stripe',
@@ -598,6 +683,7 @@ export class PaymentsService {
         ipAddress: input.ipAddress ?? null,
         sessionKey: input.sessionKey ?? null,
         visitorId: input.visitorId ?? null,
+        ...attr,
       }),
     );
 
@@ -732,6 +818,17 @@ export class PaymentsService {
       if (metaSiteId) update.siteId = metaSiteId;
 
       await this.repo.update({ id: paymentId }, update);
+
+      // Plăți create înainte de snapshot (sau chat fără sesiune la create):
+      // rezolvăm o dată, la paid. Nu rescriem un snapshot deja înghețat.
+      if (isPaid) {
+        try {
+          const row = await this.repo.findOne({ where: { id: paymentId } });
+          if (row && !row.attributedAt) await this.attribution.snapshotPayment(row);
+        } catch (err) {
+          this.logger.warn(`attribution snapshot failed: ${(err as Error).message}`);
+        }
+      }
 
       // ============== Meta CAPI — Purchase server-side ==============
       // Cel mai important eveniment. Trimitem server-side ca să bypass-ăm iOS ATT

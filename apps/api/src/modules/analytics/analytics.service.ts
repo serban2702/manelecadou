@@ -598,22 +598,23 @@ export class AnalyticsService {
           SELECT
             p.id,
             (${AnalyticsService.AMOUNT_RON}) AS amount,
-            -- Un singur touch responsabil: Meta câștigă dacă a apărut în ultimele
-            -- 7 zile înainte de plată (attributionOrderBy), altfel ultima sursă
-            -- non-direct, altfel cea mai recentă. Normalizat la canal canonic
-            -- (Gmail app → email, nu google). Fallback 'direct' dacă nicio sesiune.
-            COALESCE(
-              (SELECT ${normalizeSourceSql('s.source')} FROM analytics_sessions s
-                WHERE ${matches}
-                  AND s."siteId" = p."siteId"
-                  AND s."startedAt" <= p."createdAt"
-                  AND s."startedAt" >= p."createdAt" - INTERVAL '60 days'
-                  AND s.source IS NOT NULL
-                  AND s.source NOT ILIKE 'stripe%' AND s.source NOT ILIKE 'checkout.stripe%'
-                ORDER BY ${attributionOrderBySql('s.source', 's."startedAt"', 'p."createdAt"')}
-                LIMIT 1),
-              'direct'
-            ) AS src
+            -- Snapshot înghețat pe plată (backfill / checkout). Fallback live
+            -- doar pentru rândurile încă nerezolvate.
+            CASE
+              WHEN p."attributedAt" IS NOT NULL THEN COALESCE(p."attributionSource", 'direct')
+              ELSE COALESCE(
+                (SELECT ${normalizeSourceSql('s.source')} FROM analytics_sessions s
+                  WHERE ${matches}
+                    AND s."siteId" = p."siteId"
+                    AND s."startedAt" <= p."createdAt"
+                    AND s."startedAt" >= p."createdAt" - INTERVAL '60 days'
+                    AND s.source IS NOT NULL
+                    AND s.source NOT ILIKE 'stripe%' AND s.source NOT ILIKE 'checkout.stripe%'
+                  ORDER BY ${attributionOrderBySql('s.source', 's."startedAt"', 'p."createdAt"')}
+                  LIMIT 1),
+                'direct'
+              )
+            END AS src
           FROM payments p
           WHERE p.status = 'paid'
             AND p."createdAt" BETWEEN $1 AND $2
@@ -653,14 +654,20 @@ export class AnalyticsService {
     const rows: Array<{ source: string | null; campaign: string | null; paid_count: string; revenue_cents: string }> =
       await this.payments.query(
         `
-        SELECT a.norm_source AS source, a.campaign AS campaign,
+        SELECT
+          CASE
+            WHEN p."attributedAt" IS NOT NULL THEN COALESCE(p."attributionSource", 'direct')
+            ELSE COALESCE(a.norm_source, 'direct')
+          END AS source,
+          CASE
+            WHEN p."attributedAt" IS NOT NULL THEN COALESCE(p."attributionCampaignName", p."attributionCampaign")
+            ELSE a.campaign
+          END AS campaign,
           COUNT(*)::int AS paid_count, COALESCE(SUM(${AnalyticsService.AMOUNT_RON}), 0)::bigint AS revenue_cents
         FROM payments p
         LEFT JOIN LATERAL (
           SELECT
             ${normalizeSourceSql('s.source')} AS norm_source,
-            -- Când utm_campaign e un ID Meta numeric, îl traducem în numele real
-            -- din ad_spend (tras din Marketing API). Altfel păstrăm numele brut.
             COALESCE(
               (SELECT sp."campaignName" FROM ad_spend sp
                  WHERE sp."campaignId" = s.campaign AND sp."campaignName" IS NOT NULL
@@ -668,7 +675,8 @@ export class AnalyticsService {
               s.campaign
             ) AS campaign
           FROM analytics_sessions s
-          WHERE ${matches}
+          WHERE p."attributedAt" IS NULL
+            AND ${matches}
             AND s."siteId" = p."siteId"
             AND s."startedAt" <= p."createdAt"
             AND s."startedAt" >= p."createdAt" - INTERVAL '60 days'
@@ -680,7 +688,7 @@ export class AnalyticsService {
         WHERE p.status = 'paid'
           AND p."createdAt" BETWEEN $1 AND $2
           ${siteFilter}
-        GROUP BY a.norm_source, a.campaign
+        GROUP BY 1, 2
         ORDER BY revenue_cents DESC
         `,
         params,
@@ -1044,9 +1052,18 @@ export class AnalyticsService {
     const excludeBots = opts.excludeBots !== false;
     const excludeTests = opts.excludeTests !== false;
     const TRAFFIC: Record<string, { sess: string; att: string }> = {
-      source: { sess: normalizeSourceSql('s.source'), att: normalizeSourceSql('att.source') },
-      medium: { sess: `COALESCE(NULLIF(s.medium,''),'(none)')`, att: `COALESCE(NULLIF(att.medium,''),'(none)')` },
-      campaign: { sess: `COALESCE(NULLIF(s.campaign,''),'(none)')`, att: `COALESCE(NULLIF(att.campaign,''),'(none)')` },
+      source: {
+        sess: normalizeSourceSql('s.source'),
+        att: `COALESCE(NULLIF(att.attr_source,''), ${normalizeSourceSql('att.source')}, '(none)')`,
+      },
+      medium: {
+        sess: `COALESCE(NULLIF(s.medium,''),'(none)')`,
+        att: `COALESCE(NULLIF(att.attr_medium,''), NULLIF(att.medium,''), '(none)')`,
+      },
+      campaign: {
+        sess: `COALESCE(NULLIF(s.campaign,''),'(none)')`,
+        att: `COALESCE(NULLIF(att.attr_campaign,''), NULLIF(att.campaign,''), '(none)')`,
+      },
       device: { sess: `COALESCE(NULLIF(s.device,''),'unknown')`, att: `COALESCE(NULLIF(att.device,''),'unknown')` },
       os: { sess: `COALESCE(NULLIF(s."osName",''),'unknown')`, att: `COALESCE(NULLIF(att.os,''),'unknown')` },
       browser: { sess: `COALESCE(NULLIF(s."browserName",''),'unknown')`, att: `COALESCE(NULLIF(att.browser,''),'unknown')` },
@@ -1109,6 +1126,9 @@ export class AnalyticsService {
       `WITH paid AS (
          SELECT p.id, p.status, p."createdAt", p."userId", p."guestId", p."ipAddress",
                 p."sessionKey" AS p_skey, p."visitorId" AS p_vid,
+                p."attributionSource" AS attr_source,
+                p."attributionMedium" AS attr_medium,
+                COALESCE(p."attributionCampaignName", p."attributionCampaign") AS attr_campaign,
                 (${AnalyticsService.AMOUNT_RON}) AS amount_ron
          FROM payments p
          LEFT JOIN guest_sessions gst ON gst.id = p."guestId"

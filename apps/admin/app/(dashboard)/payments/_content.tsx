@@ -49,6 +49,7 @@ const SOURCE_OPTIONS = [
   { value: 'youtube', label: '📺 YouTube' },
   { value: 'whatsapp', label: '💬 WhatsApp' },
   { value: 'direct', label: '🔗 Direct' },
+  { value: 'email', label: '✉️ Email' },
   { value: 'none', label: '— Fără sursă' },
 ];
 
@@ -121,6 +122,7 @@ function SourceBadge({
     attribution.campaign ? `Campaign: ${attribution.campaign}` : null,
     attribution.referrer ? `Referrer: ${attribution.referrer}` : null,
     attribution.landingPath ? `Landing: ${attribution.landingPath}` : null,
+    attribution.match ? `Match: ${attribution.match}` : null,
   ].filter(Boolean) as string[];
   return (
     <Badge variant="muted" title={tooltipParts.join('\n')} className="whitespace-nowrap">

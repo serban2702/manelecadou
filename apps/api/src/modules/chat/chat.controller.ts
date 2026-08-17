@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   Sse,
   UploadedFile,
   UseGuards,
@@ -16,6 +17,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import { Request } from 'express';
 import { Observable, interval } from 'rxjs';
 import { switchMap, distinctUntilChanged } from 'rxjs/operators';
 import { ChatService } from './chat.service';
@@ -185,13 +187,33 @@ export class ChatController {
   @Post('me/payment-link-click')
   async paymentLinkClick(
     @Body() body: PaymentLinkClickDto,
+    @Req() req: Request,
     @CurrentUser() user: AuthedRequestUser | null,
     @CurrentGuestId() guestId: string | null,
     @CurrentSiteId() siteId: string | null,
   ) {
+    const cookie = req.headers.cookie ?? '';
+    const readCookie = (name: string) => {
+      const m = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+      return m ? decodeURIComponent(m[1]) : null;
+    };
+    const hdr = (name: string) => {
+      const v = req.headers[name];
+      const s = Array.isArray(v) ? v[0] : v;
+      return typeof s === 'string' && s.trim() ? s.trim().slice(0, 64) : null;
+    };
+    const xff = typeof req.headers['x-forwarded-for'] === 'string' ? req.headers['x-forwarded-for'] : '';
     return this.svc.markPaymentLinkClicked(
       { userId: user?.id ?? null, guestId: user ? null : guestId, siteId },
       body.messageId,
+      {
+        fbp: readCookie('_fbp'),
+        fbc: readCookie('_fbc'),
+        sessionKey: hdr('x-mc-session-key'),
+        visitorId: hdr('x-mc-visitor-id'),
+        ipAddress: (xff.split(',')[0].trim() || req.ip || null) as string | null,
+        userAgent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null,
+      },
     );
   }
 }

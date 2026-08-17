@@ -18,6 +18,7 @@ import { OpenAiModule } from '../../openai/openai.module';
 import { KbModule } from '../kb/kb.module';
 import { WebPushModule } from '../web-push/web-push.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { AnalyticsModule } from '../analytics/analytics.module';
 import { SitesModule } from '../sites/sites.module';
 import { SettingsModule } from '../settings/settings.module';
 import { LyricsModule } from '../lyrics/lyrics.module';
@@ -31,6 +32,7 @@ import { MetaCapiModule } from '../meta-capi/meta-capi.module';
     KbModule,
     WebPushModule,
     PaymentsModule,
+    AnalyticsModule,
     SitesModule,
     SettingsModule,
     LyricsModule,
