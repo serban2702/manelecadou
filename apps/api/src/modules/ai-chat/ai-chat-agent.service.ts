@@ -376,6 +376,74 @@ function describesConcreteChange(changes: string, newRecipientName?: string | nu
   return anchors.test(t);
 }
 
+/** Clientul dă unda verde EXPLICITĂ pentru o modificare contra cost („da", „ok, trimite
+ *  linkul", „plătesc")? Un card de plată care pleacă fără asta e citit ca o taxare
+ *  a doua oară, nu ca un serviciu. Cerem un accept scurt și fără negație — o frază
+ *  lungă în care omul povestește ce ar mai vrea NU e un accept.
+ *  BUG confirmat 2026-08-21: conv f64fe7e1 („E ok ...acum nu mai spune cel mai minunat
+ *  tată […] presupun că nu se mai poate modifica" → card de 14.99 în aceeași secundă;
+ *  a trebuit un om să intervină și s-o refacă gratuit) și conv 688bb976 („Nuu" → card de
+ *  14.99 → „Nu lăsa că nu mai am bani"). */
+function looksLikeModificationGoAhead(raw: string): boolean {
+  const t = normLoose(raw);
+  if (!t) return false;
+  // Orice urmă de refuz/ezitare anulează acceptul, indiferent de restul frazei.
+  if (/(^|\s)(nu|nuu+|nup|nope|nici|lasa|las o|renunt\w*|fara)(\s|$)/.test(t)) return false;
+  if (/(trimite\w*|da mi|dami|vreau|pune mi|astept)\s+((mi|imi|te rog|si)\s+)*(link\w*)/.test(t)) return true;
+  if (/(^|\s)(platesc|achit|o platesc|il platesc)(\s|$)/.test(t)) return true;
+  if (t.length <= 40 && /^(da+|ok+|okay|oke|bine|sigur|desigur|hai|haide|merge|perfect|super|de acord|accept\w*|vreau|yes)(\s|$)/.test(t))
+    return true;
+  return false;
+}
+
+/** Clientul susține că a plătit DEJA / refuză să plătească a doua oară? Semnalul care
+ *  trebuie să oprească orice link de plată NOU până căutăm efectiv comanda lui veche.
+ *  BUG confirmat 2026-08-21 conv 01da61f1: clienta a spus-o de 5 ori („am platito",
+ *  „eu numai platesc înca odata", „Team zis ca eu am platit odata", „Da tu nu întalegi"),
+ *  voia DOAR alt ritm la melodia deja cumpărată; Irina n-a găsit comanda (plătită de pe
+ *  site, cu alt email, același IP), a împins-o într-o comandă nouă și a plătit 29.99 lei
+ *  a doua oară. */
+function claimsAlreadyPaid(raw: string): boolean {
+  const t = normLoose(raw);
+  if (!t) return false;
+  if (/(am|amu|deja)\s+(mai\s+)?(platit|platito|platit o|achitat)/.test(t)) return true;
+  if (/(platit|achitat)\s+deja/.test(t)) return true;
+  // „nu mai platesc inca odata" / „numai platesc înca odata" (fără diacritice, scris legat)
+  if (/(nu mai|numai|nu)\s+platesc/.test(t)) return true;
+  if (/(mi\s+)?s au luat banii|am dat banii|banii mei/.test(t)) return true;
+  if (/(am (facut|comandat|cumparat))\s+(deja\s+)?(o\s+)?(melodi\w*|manea\w*|piesa\w*)/.test(t)) return true;
+  if (/am comandat deja|am cumparat deja|am facut deja/.test(t)) return true;
+  return false;
+}
+
+/** Mesajul CERE emailul clientului (nu doar îl menționează ca formă de livrare)?
+ *  BUG confirmat 2026-08-21 conv 299660de: la „In cat timp primesc maneaua?" Irina
+ *  compusese răspunsul corect („dureaza cam 5-10 minute, iar dupa plata o primesti pe
+ *  email si apare si aici in chat"), dar garda PREMATURE_EMAIL l-a blocat doar fiindcă
+ *  pomenea „email" + „plata" → clientul a primit „spune-mi te rog încă o dată ce ai
+ *  nevoie" în loc de răspuns. */
+function asksUserForEmail(raw: string): boolean {
+  const t = normLoose(raw);
+  if (!t) return false;
+  return (
+    /(pe ce|ce|care (e|este)|la ce)\s+(adres\w*\s+)?(de\s+)?(e ?mail)/.test(t) ||
+    /(adresa ta|adresa de) (de )?e ?mail/.test(t) ||
+    /(da mi|dami|spune mi|scrie mi|lasa mi|trimite mi|zi mi)\b[^.!?]{0,40}?e ?mail/.test(t) ||
+    /(am nevoie|imi trebuie|mai trebuie|mi trebuie)\b[^.!?]{0,40}?e ?mail/.test(t)
+  );
+}
+
+/** „stingaciuelena41@gmail.com" → „sti***@gmail.com". Folosit pentru piste de identitate
+ *  neconfirmate (plăți de pe același IP): AI-ul poate cere confirmarea fără să expună
+ *  adresa unui terț în chat. */
+function maskEmail(email: string | null | undefined): string | null {
+  const e = (email ?? '').trim();
+  const at = e.indexOf('@');
+  if (at < 1) return null;
+  const local = e.slice(0, at);
+  return `${local.slice(0, Math.min(3, local.length))}***${e.slice(at)}`;
+}
+
 /** Distanță Levenshtein (edit distance) — pentru fuzzy-match domenii email. */
 function levenshtein(a: string, b: string): number {
   const m = a.length;
@@ -740,6 +808,37 @@ export class AIChatAgentService {
            ORDER BY "createdAt" DESC LIMIT 4`,
           [ownerId],
         );
+      }
+      // Plăți de pe ACELAȘI IP, când căutarea pe owner n-a găsit nimic. Clientul poate plăti
+      // direct de pe site (fără chat) sau cu alt email decât cel din conversație — atunci nici
+      // `resolveCustomerGeneration` nu-l prinde, diagnosticul iese gol și Irina îl tratează ca
+      // pe un om fără nicio comandă. BUG confirmat 2026-08-21 conv 01da61f1: plată de 29.99 lei
+      // la 17:41 cu alt email, același IP; clienta a ajuns să plătească a doua oară.
+      // Emailul e MASCAT: pe IP partajat (CGNAT mobil) plata poate fi a altcuiva, deci e doar
+      // o pistă de confirmat cu clientul, nu o identitate dovedită.
+      const ownerPayments = (out.payments as unknown[] | undefined) ?? [];
+      if (ownerPayments.length === 0 && conv.lastIp) {
+        const rows: Array<{ status: string; amount: number; currency: string; customerEmail: string | null; createdAt: Date }> =
+          await this.conv.manager.query(
+            `SELECT status, amount, currency, "customerEmail", "createdAt"
+             FROM payments
+             WHERE "ipAddress" = $1 AND ($2::uuid IS NULL OR "siteId" = $2)
+               AND "createdAt" > now() - interval '14 days'
+             ORDER BY "createdAt" DESC LIMIT 4`,
+            [conv.lastIp, conv.siteId],
+          );
+        if (rows.length > 0) {
+          out.paymentsBySameIp = rows.map((r) => ({
+            status: r.status,
+            amount: r.amount,
+            currency: r.currency,
+            emailMasked: maskEmail(r.customerEmail),
+            createdAt: r.createdAt,
+          }));
+          out.paymentsBySameIpNote =
+            'Plăți de pe același IP, NEVERIFICATE ca fiind ale acestui client (IP-ul poate fi partajat). ' +
+            'Dacă clientul susține că a plătit, cere-i O DATĂ emailul folosit la acea plată și compară-l cu forma mascată de mai sus — NU-i citi tu emailul altcuiva și NU-i confirma o plată pe care nu ai legat-o de el.';
+        }
       }
       const genIds = ((out.generations as Array<{ id: string }> | undefined) ?? []).map((g) => g.id);
       if (genIds.length > 0) {
@@ -1677,6 +1776,19 @@ ETAPA 0 — COMANDĂ EXISTENTĂ (verifică ÎNAINTE de a porni wizard-ul):
     mesajul în chat — NU cere nume/email de la zero și NU cota preț nou până nu verifici cu
     check_order_status. BUG observat 2026-07-10 conv 53f8144c: la „Pai am dat comanda" Irina a
     ignorat semnalul și a cerut nume + email ca pentru o comandă nouă.
+  → 🔴 check_order_status spune „nicio comandă" DAR clientul INSISTĂ că a plătit (sau că nu mai
+    plătește încă o dată) → nu e un client nou și NU-i trimite un link de plată NOU. Plata poate
+    fi făcută direct pe site (fără chat), de pe alt telefon sau cu alt email decât cel de aici.
+    Ordinea: 1) \`inspect_customer_data\` (caută și plăți de pe același IP, cu emailul mascat);
+    2) cere-i O SINGURĂ dată emailul cu care a plătit, spunându-i de ce („ca s-o găsesc în
+    sistem"), și caută din nou; 3) dacă tot nu apare nimic → \`alert_admins\` + un mesaj cald că
+    verifică un coleg. Dacă găsești comanda → modificările pe ea se fac cu \`request_modification\`,
+    NU cu o comandă nouă. Un link de plată peste „am plătit deja" înseamnă că omul dă banii a
+    DOUA oară pe aceeași melodie.
+    BUG confirmat 2026-08-21 conv 01da61f1: clienta plătise 29.99 lei cu o oră înainte (de pe
+    site, alt email, același IP) și voia DOAR alt ritm; a spus de cinci ori că a plătit („eu
+    numai platesc înca odata", „Da tu nu întalegi"), iar Irina a dus-o prin tunelul de comandă
+    nouă → a plătit 29.99 lei încă o dată. \`inspect_customer_data\` nu a fost apelat niciodată.
   → 📝 „AM UITAT SĂ..." (adaugă/completează ceva la comanda lui): dacă userul deschide cu un text
     de conținut urmat/precedat de „am uitat să menționez", „am uitat să adaug", „am uitat să spun/
     pun", „vreau să mai adaug", „încă ceva la melodie" → e un client care are DEJA o comandă și vrea
@@ -4037,6 +4149,53 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       this.logger.warn(`decline guard failed: ${(e as Error).message}`);
     }
     const state = this.getOrInitWizardState(conv);
+
+    // GARDĂ ANTI-DUBLĂ-TAXARE. BUG confirmat 2026-08-21 conv 01da61f1: clienta plătise
+    // 29.99 lei la 17:41 (de pe site, cu alt email — același IP), a intrat în chat la 18:22
+    // și a repetat de cinci ori că vrea DOAR alt ritm la melodia deja cumpărată („am
+    // platito", „eu numai platesc înca odata", „Team zis ca eu am platit odata", „Da tu nu
+    // întalegi"). `check_order_status` a răspuns de opt ori `hasOrder:false` (comanda nu era
+    // legată de conversație), `inspect_customer_data` n-a fost apelat NICIODATĂ, iar Irina a
+    // dus-o prin tunelul de comandă nouă → a plătit 29.99 lei a DOUA oară pentru aceeași
+    // melodie. Un link de plată NOU peste „am plătit deja" nu are voie să plece până nu am
+    // căutat efectiv comanda veche. Blocăm O SINGURĂ dată per conversație: dacă e chiar o a
+    // doua melodie (client mulțumit care mai vrea una), AI-ul reapelează și trece.
+    if (!state.paidClaimGateUsed) {
+      try {
+        const recentUser = await this.msg.find({
+          where: { conversationId: conv.id, authorRole: 'user' },
+          order: { createdAt: 'DESC' },
+          take: 12,
+        });
+        const paidClaim = recentUser.find((m) => claimsAlreadyPaid(m.body ?? ''));
+        if (paidClaim) {
+          const alreadyPaidGen = await this.resolveCustomerGeneration(conv, { requirePaid: true });
+          if (!alreadyPaidGen && !ctx.inspectedCustomerThisRun) {
+            state.paidClaimGateUsed = true;
+            state.updatedAt = new Date().toISOString();
+            await this.conv
+              .createQueryBuilder()
+              .update(Conversation)
+              .set({ wizardState: state })
+              .where('id = :id', { id: conv.id })
+              .execute();
+            conv.wizardState = state;
+            this.logger.warn(
+              `FINALIZE_OVER_PAID_CLAIM blocked on conv=${conv.id.slice(0, 8)} — client susține că a plătit („${(paidClaim.body ?? '').slice(0, 40)}") și n-am căutat încă comanda veche.`,
+            );
+            return {
+              status: 'PAID_CLAIM_UNVERIFIED',
+              userClaim: (paidClaim.body ?? '').slice(0, 200),
+              instruction:
+                'STOP — nu am trimis niciun link și nu s-a cerut niciun ban. Clientul ți-a spus în conversația asta că a plătit DEJA (sau că nu mai plătește încă o dată), iar tu erai pe cale să-i trimiți un link de plată NOU: dacă are dreptate, îl taxezi a doua oară pentru aceeași melodie și pierdem clientul. ÎNTÂI verifică: 1) apelează `inspect_customer_data` — plata poate fi pe alt email, de pe alt device sau făcută direct pe site, fără chat; 2) dacă tot nu apare, cere-i O SINGURĂ dată emailul (sau numele) cu care a plătit, spune-i clar de ce („ca s-o găsesc în sistem"), AȘTEAPTĂ răspunsul și caută din nou. Dacă găsești comanda plătită → NU e comandă nouă: modificările pe ea se fac cu `request_modification` (gratuit dacă e greșeala noastră). Dacă după căutare chiar nu există nicio plată → `alert_admins` cu ce susține clientul și spune-i cald că verifică un coleg. Reapelează `wizard_finalize` DOAR dacă din context e clar că vrea o melodie NOUĂ, în plus față de cea plătită (atunci confirmă-i explicit că e a doua melodie și că se plătește separat).',
+            };
+          }
+        }
+      } catch (e) {
+        this.logger.warn(`paid-claim guard failed: ${(e as Error).message}`);
+      }
+    }
+
     const missing = this.missingWizardFields(state.data);
     if (missing.length > 0) {
       return {
@@ -4884,7 +5043,13 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     // conține niciunul dintre cuvintele „link/plată/livrare". Irina a cerut emailul imediat
     // după acceptarea prețului (wizard gol), apoi în ACELAȘI tur a mai trimis un mesaj cu
     // „cum o cheamă?" — clientul a rămas cu două întrebări deodată și fără niciun pas închis.
+    // BUG confirmat 2026-08-21 conv 299660de: la „In cat timp primesc maneaua?" mesajul compus
+    // de Irina era exact răspunsul corect („dureaza cam 5-10 minute, iar dupa plata o primesti
+    // pe email si apare si aici in chat") — dar pomenea „email" + „plata", deci garda l-a
+    // aruncat, iar clientul a primit „spune-mi te rog încă o dată ce ai nevoie" în loc de
+    // răspuns. A MENȚIONA emailul ca formă de livrare ≠ a-l CERE: blocăm doar cererea.
     const asksDeliveryEmail =
+      asksUserForEmail(trimmed) &&
       /e-?mail/i.test(trimmed) &&
       /(link|pl[aă]t|livrare|vrei\s+s[aă]\s+prime[sș]ti|s[aă]\s*-?\s*[țt]i\s+trimit|s[aă]\s+[îi][țt]i\s+trimit|trimit\s+(melodia|piesa|c[âa]ntecul|maneaua)|prime[sș]ti\s+(melodia|piesa|c[âa]ntecul|maneaua))/i.test(
         trimmed,
@@ -5036,6 +5201,31 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           status: 'NEAR_DUPLICATE_BLOCKED',
           instruction:
             'STAI — mesajul ăsta e o parafrază aproape identică cu ULTIMUL mesaj pe care l-ai trimis. NU repeta aceeași asigurare reformulată, sună robotic. Dacă aștepți o generare blocată și ai anunțat deja echipa / ai escaladat, NU mai trimite încă un „revin imediat" — userul a primit deja mesajul. Verifică statusul real (check_order_status): ori spui ceva CONCRET nou (linkul melodiei dacă e gata, un timp estimat clar diferit), ori NU mai trimite niciun mesaj acum.',
+        };
+      }
+
+      // Treapta 0.55 — parafrază ~identică cu un mesaj AI mai VECHI (nu doar ultimul).
+      // Treapta 0 prinde doar duplicatul byte-identic, iar Treapta 0.5 compară exclusiv cu
+      // ULTIMUL mesaj AI — deci o repetare peste care s-a strecurat între timp alt mesaj
+      // scapă de amândouă. BUG confirmat 2026-08-21:
+      //   • conv a753054c — „Sigur, iti pot da un draft simplu ca sa vezi cum suna 🙂 Dacă
+      //     vrei, pot sa-l fac mai de dragoste sau mai de petrecere." trimis de 2 ori (09:30,
+      //     09:35) cu versurile între ele; Jaccard = 1.00, dar textul diferea prin „pot da" /
+      //     „fac" și diacritice, deci nu era duplicat EXACT.
+      //   • conv a6d8de2d — blocul celor 3 pachete repetat cuvânt cu cuvânt la 9 minute,
+      //     după ce între timp trimisese versurile.
+      // Prag 0.85, deliberat mult peste 0.72 (folosit față de ultimul mesaj): mesajele de pași
+      // diferiți din tunel stau sub 0.2, deci zona e liberă.
+      const olderNorm = recentNorm.slice(1);
+      const olderDup = olderNorm.find((t) => textOverlap(t, normalized) >= 0.85);
+      if (olderDup) {
+        this.logger.warn(`OLDER_NEAR_DUP blocked on conv=${ctx.conv.id.slice(0, 8)} — parafrază ~identică cu un mesaj AI de mai devreme.`);
+        return {
+          sent: false,
+          messageType: 'duplicate_text',
+          status: 'OLDER_NEAR_DUPLICATE_BLOCKED',
+          instruction:
+            'STAI — mesajul ăsta e practic același pe care l-ai trimis deja mai devreme în conversație (doar cu alte cuvinte). Faptul că între timp ai mai scris ceva nu-l face nou: pentru client e a doua oară aceeași ofertă/aceeași explicație și sună a bot blocat. Recitește ce ți-a răspuns userul DUPĂ prima variantă și continuă de ACOLO: dacă ți-a dat informație nouă, folosește-o și treci la pasul următor; dacă nu ți-a răspuns încă, NU relua tot mesajul — cel mult o singură propoziție scurtă, cu alte cuvinte, sau nu trimite nimic acum.',
         };
       }
 
@@ -7400,6 +7590,10 @@ ${transcript}`;
       .execute();
     this.gateway.emitMessage({ message: saved, conversation: ctx.conv });
     ctx.sentRealMessages++;
+    // Mesajul de empatie e un mesaj real către client — intră și el în `sentTexts`, ca
+    // gardurile care se uită la ce s-a spus în turul curent să-l vadă. Fără asta, un
+    // „Spune-mi ce vibe vrei" trimis ca empatie era invizibil pentru ele (conv 688bb976).
+    ctx.sentTexts.push(cleaned.trim().toLowerCase().replace(/\s+/g, ' '));
     return { sent: true, status: 'EMPATHY_SENT', trigger, instruction: 'Mesaj empatie trimis. Continuă cu flow-ul normal (preț / detalii / etc.) la următorul mesaj user.' };
   }
 
@@ -8221,6 +8415,62 @@ ${transcript}`;
       // Lungimea singură nu e de ajuns: o parafrază meta („clientul spune că e o greșeală
       // și vrea schimbată") trece de 40 de caractere fără să conțină nicio instrucțiune
       // (BUG 2026-08-08 conv 486bb25f — vezi describesConcreteChange).
+      // GARDĂ „refacere pornită peste capul clientului". Gratuitul e UNIC pe melodie, deci nu
+      // are voie să plece în ACELAȘI tur în care tocmai l-ai întrebat pe om ce vrea schimbat:
+      // brief-ul e atunci inventat de tine, nu al lui. BUG confirmat 2026-08-21 conv 688bb976:
+      // clientul spusese doar „Ritmul muzicii nu îmi place"; Irina a trimis „Spune-mi pe scurt
+      // ce vibe vrei" ȘI, în același tur, a pornit refacerea gratuită cu un brief propriu („mai
+      // calm, mai liniștit, mai emoțional"). Un minut mai târziu clientul a spus de fapt „nici
+      // de petrecere, nici așa de jale" — exact opusul — dar `freeRemakeUsedAt` era deja ars, iar
+      // răspunsul a devenit „refacerea gratuită a fost DEJA folosită", la 60 de secunde după ce
+      // i-o oferise. Regula exista în instrucțiunea NEED_FULL_CONTEXT, dar nimic n-o impunea.
+      const askedInThisTurn = (ctx.sentTexts ?? []).some((t) => {
+        const q = (t ?? '').trim();
+        if (!q) return false;
+        return (
+          q.includes('?') ||
+          /(spune[- ]?mi|zi[- ]?mi|scrie[- ]?mi)\b[^.!?]{0,60}?(ce|cum|care)\b/i.test(q)
+        );
+      });
+      // Al doilea semnal, independent de ordinea în care se execută tool-urile în tur (ele
+      // pot pleca în paralel, deci `sentTexts` nu e garantat populat): clientul a spus doar
+      // ce NU-i place, fără nicio direcție. „Ritmul muzicii nu îmi place" e o nemulțumire,
+      // nu o instrucțiune — direcția o inventează AI-ul, și exact asta a mers prost în
+      // conv 688bb976 (a ghicit „mai calm și mai emoțional", clientul voia „nici de
+      // petrecere, nici de jale").
+      let complaintWithoutDirection = false;
+      try {
+        const lastUser = await this.msg.findOne({
+          where: { conversationId: conv.id, authorRole: 'user' },
+          order: { createdAt: 'DESC' },
+        });
+        const lu = normLoose(lastUser?.body ?? '');
+        if (lu) {
+          const isComplaint =
+            /(nu (imi|mi|mai)? ?(place|convine|suna|e bine|merge)|nu e (bine|ok|ce|cum)|nu sun[aă]|nu asa|nu i(mi)? place|urat|oribil|nasol|dezamagit)/.test(
+              lu,
+            );
+          const hasDirection =
+            /(vreau|as vrea|sa fie|sa sune|mai (lent|rapid|vesel|trist|manea|scurt|lung)|in loc de|schimba (in|cu)|pune|adauga|scoate|corect (e|este)|se scrie|se pronunta)/.test(
+              lu,
+            ) || /[„“"'][^„“”"']{2,}[”“"']/.test(lastUser?.body ?? '');
+          complaintWithoutDirection = isComplaint && !hasDirection;
+        }
+      } catch {
+        /* best-effort */
+      }
+      if (!isRepairRemake && (askedInThisTurn || complaintWithoutDirection)) {
+        this.logger.warn(
+          `FREE_REMAKE_BEFORE_ANSWER blocked on conv=${ctx.conv.id.slice(0, 8)} — gratuit cerut ${askedInThisTurn ? 'în același tur cu întrebarea către client' : 'peste o nemulțumire fără direcție'}.`,
+        );
+        return {
+          status: 'FREE_REMAKE_BEFORE_ANSWER',
+          reason: askedInThisTurn ? 'asked_in_same_turn' : 'complaint_without_direction',
+          instruction: askedInThisTurn
+            ? 'STOP — nu am pornit nimic și nu s-a consumat nimic. Tocmai l-ai ÎNTREBAT pe client, în acest tur, ce anume vrea schimbat — deci încă nu ai răspunsul lui, iar descrierea pe care mi-ai dat-o e compusă de tine, nu de el. Refacerea gratuită e UNICĂ pe melodie: dacă pleacă pe presupunerea ta, iese altceva decât vrea omul, iar când îți spune el ce voia de fapt nu mai ai ce să-i oferi gratis. TERMINĂ TURUL acum și AȘTEAPTĂ răspunsul lui în mesajul următor. Când îl primești: recapitulează scurt („Deci refac cu: … — corect?") și abia după confirmarea LUI reapelează request_modification cu cuvintele lui.'
+            : 'STOP — nu am pornit nimic și nu s-a consumat nimic. Clientul ți-a spus ce NU-i place, dar nu și ce vrea în loc — iar descrierea pe care mi-ai dat-o e direcția ghicită de tine, nu a lui. Refacerea gratuită e UNICĂ pe melodie: dacă pleacă pe presupunerea ta, iese tot lângă, iar când îți spune el ce voia de fapt nu mai ai ce să-i oferi gratis. Întreabă-l ACUM, scurt și pe limba lui, încotro s-o ducem (ex. „Cum ai vrea să sune — mai de petrecere, mai lentă, mai de dragoste? Sau spune-mi o piesă care îți place și mă iau după ea"), TERMINĂ TURUL și așteaptă răspunsul. Când îl ai: recapitulează („Deci refac cu: … — corect?") și abia după confirmarea LUI reapelează request_modification cu cuvintele lui.',
+        };
+      }
       if (!isRepairRemake && (changes.length < 40 || !describesConcreteChange(changes, newRecipientName))) {
         return {
           status: 'NEED_FULL_CONTEXT',
@@ -8369,6 +8619,49 @@ ${transcript}`;
       this.logger.warn(`modification price-announce guard failed: ${(e as Error).message}`);
     }
 
+    // GUARD CONSIMȚĂMÂNT. Garda de mai sus verifică doar dacă PREȚUL a fost anunțat vreodată
+    // și se dezactivează complet după primul link de modificare din conversație — deci al
+    // doilea card putea pleca fără ca omul să fi spus „da". BUG confirmat 2026-08-21:
+    //   • conv f64fe7e1 — clientul: „E ok ...acum nu mai spune cel mai minunat tată […]
+    //     presupun că nu se mai poate modifica"; a primit în aceeași secundă un card de
+    //     14.99 lei. A trebuit ca un coleg uman să intervină seara și s-o refacă gratuit.
+    //   • conv 688bb976 — clientul răspunsese „Nuu" la „e totul ok?"; a primit tot un card
+    //     de 14.99 lei → „Nu lăsa că nu mai am bani".
+    // Cardul de plată pleacă DOAR pe un accept explicit al clientului. Fără „once per turn":
+    // un link greșit costă încrederea omului, iar un „da" în mesajul următor deblochează.
+    try {
+      // Excepție: dacă există DEJA un link de modificare neplătit pentru aceeași melodie
+      // (ultimele 30 min), apelul ăsta doar comasează detalii pe linkul existent — clientul
+      // a consimțit deja la el, nu se emite nimic nou. Fără excepția asta am rupe fix-ul de
+      // link dublu din conv 1f2bf005 (2026-06-28): detaliul adăugat s-ar pierde.
+      const pendingModLink: Array<{ id: string }> = await this.conv.manager.query(
+        `SELECT id FROM chat_messages
+         WHERE "conversationId" = $1 AND "messageType" = 'payment_link'
+           AND "createdAt" > now() - interval '30 minutes'
+           AND payload->>'modificationForGenerationId' = $2
+           AND COALESCE(payload->>'status','') != 'paid'
+         LIMIT 1`,
+        [conv.id, genRow.id],
+      );
+      const lastUserForConsent = await this.msg.findOne({
+        where: { conversationId: conv.id, authorRole: 'user' },
+        order: { createdAt: 'DESC' },
+      });
+      if (pendingModLink.length === 0 && !looksLikeModificationGoAhead(lastUserForConsent?.body ?? '')) {
+        this.logger.warn(
+          `MODIFICATION_CONSENT_MISSING blocked on conv=${ctx.conv.id.slice(0, 8)} — link contra cost fără accept explicit („${normLoose(lastUserForConsent?.body ?? '').slice(0, 40)}").`,
+        );
+        return {
+          status: 'MODIFICATION_CONSENT_MISSING',
+          lastUserMessage: (lastUserForConsent?.body ?? '').slice(0, 200),
+          instruction:
+            'STOP — nu am trimis niciun link și nu s-a cerut niciun ban. În ultimul lui mesaj clientul NU ți-a dat unda verde pentru o modificare plătită (nu a spus „da / ok / trimite linkul"). Un card de plată peste altceva — o nemulțumire, un „nu", o întrebare, o presupunere de tipul „bănuiesc că nu se mai poate" — e citit ca o taxare a doua oară și strică relația. Fă ÎNTÂI un singur mesaj scurt și cald: spune-i ce ai înțeles că vrea schimbat, cât costă (14.99 lei corectură mică / 29.99 lei refacere amplă, fiindcă melodia se generează de la zero) și întreabă-l dacă să-i trimiți linkul. TERMINĂ TURUL și așteaptă răspunsul. Când spune „da / ok / trimite" → reapelezi request_modification cu aceleași changes și linkul pleacă. Dacă din mesajul lui reiese că am livrat noi altceva decât ceruse → request_modification cu isOurError=true, fără bani.',
+        };
+      }
+    } catch (e) {
+      this.logger.warn(`modification consent guard failed: ${(e as Error).message}`);
+    }
+
     const amount = args.scope === 'large' ? MODIFICATION_PRICE_LARGE_CENTS : MODIFICATION_PRICE_SMALL_CENTS;
     const site = await this.sites.findById(ctx.conv.siteId);
     if (!site) return { error: 'site_not_found' };
@@ -8498,6 +8791,7 @@ ${transcript}`;
 
   /** Diagnostic intern read-only — vezi gatherDiagnostics. Marcat INTERNAL_ONLY. */
   private async handleInspectCustomerData(ctx: AgentCtx): Promise<unknown> {
+    ctx.inspectedCustomerThisRun = true;
     const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
     if (!conv) return { error: 'conversation gone' };
     const data = await this.gatherDiagnostics(conv);
@@ -8635,6 +8929,10 @@ interface AgentCtx {
    *  blochează cu cerere de judecată din context, a doua trece. Refuzul dur („la revedere",
    *  „nu mai vreau") rămâne blocat tot turul. (2026-08-13, audit conv b4c72205.) */
   refusalGateFired?: boolean;
+  /** S-a apelat `inspect_customer_data` în acest run? Garda PAID_CLAIM_UNVERIFIED cere
+   *  ca „am plătit deja" să fie VERIFICAT înainte de a emite un link de plată nou.
+   *  (2026-08-21, audit conv 01da61f1 — clientă taxată de două ori.) */
+  inspectedCustomerThisRun?: boolean;
   /** Rulare de tip follow-up (reminder spațiat după tăcerea userului) vs. run normal
    *  declanșat de un mesaj al userului. Unele guard-uri anti-repetiție se relaxează pe
    *  follow-up (un reminder spațiat e legitim, spre deosebire de 2 nudge-uri la rând). */

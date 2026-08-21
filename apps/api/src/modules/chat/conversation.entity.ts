@@ -150,6 +150,12 @@ export interface WizardState {
    *  Blocăm O SINGURĂ dată — dacă userul chiar nu vrea să dea detalii, comanda trece.
    *  Vezi guard-ul THIN_BRIEF_MISSING_DETAILS. */
   thinBriefGateUsed?: boolean;
+  /** Finalize a fost blocat o dată pentru că userul susținea în chat că a plătit DEJA,
+   *  fără ca AI-ul să-i fi căutat comanda veche (inspect_customer_data / resolve pe
+   *  email+IP). Blocăm O SINGURĂ dată — dacă e chiar o a doua melodie, comanda trece.
+   *  Vezi guard-ul PAID_CLAIM_UNVERIFIED (conv 01da61f1, 2026-08-21: clientă taxată de
+   *  două ori pentru aceeași melodie). */
+  paidClaimGateUsed?: boolean;
   updatedAt: string; // ISO
 }
 
