@@ -269,7 +269,16 @@ export class GenerationsController {
       delete sanitized.unlockPasswordHash;
       const ownerPaid = g.type === 'full' || g.paidUnlocked === true;
       const variants = await this.svc.listPlayableVariants(g, ownerPaid);
-      return { ...sanitized, isOwner: true, hasUnlockPassword, unlocked: true, variants };
+      const workingVariants = await this.svc.listWorkingVariants(g);
+      return {
+        ...sanitized,
+        isOwner: true,
+        hasUnlockPassword,
+        unlocked: true,
+        variants,
+        workingVariants,
+        freeRemakeUsedAt: g.freeRemakeUsedAt,
+      };
     } catch {
       // Fallback: orice generation succeeded e accesibil public cu URL-ul direct.
       // Pentru demo neplătit → expunem demoAudioUrl. Pentru paidUnlocked sau type='full'
@@ -386,6 +395,22 @@ export class GenerationsController {
   @Get('count/total')
   async countTotal(@CurrentSiteId() siteId: string | null) {
     return { count: await this.svc.countAll(siteId) };
+  }
+
+  @Throttle({ short: { limit: 1, ttl: 30_000 }, medium: { limit: 3, ttl: 3_600_000 } })
+  @UseGuards(OptionalJwtAuthGuard)
+  @Post(':id/remake')
+  @HttpCode(200)
+  async remake(
+    @Param('id') id: string,
+    @Body() body: { notes?: string },
+    @CurrentUser() user: AuthedRequestUser | null,
+    @CurrentGuestId() guestId: string | null,
+  ) {
+    return this.svc.requestFreeRemake(id, body?.notes ?? '', {
+      userId: user?.id ?? null,
+      guestId: user ? null : guestId,
+    });
   }
 
   @Throttle({ short: { limit: 1, ttl: 10_000 }, medium: { limit: 5, ttl: 3_600_000 } })

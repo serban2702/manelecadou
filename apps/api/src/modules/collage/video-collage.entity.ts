@@ -6,7 +6,8 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
-export type CollageTrack = 'main' | 'bonus';
+/** 'main' / 'bonus' pe piesa părinte, sau UUID-ul unei variații-copil. */
+export type CollageTrack = 'main' | 'bonus' | string;
 export type CollageStatus = 'pending' | 'processing' | 'succeeded' | 'failed';
 /** 'collage' = slideshow din imagini uploadate; 'image_video' = o singură
  *  imagine (poza de share aleasă) statică pe toată durata melodiei. */
@@ -30,8 +31,8 @@ export class VideoCollage {
   @Column({ type: 'uuid' })
   generationId!: string;
 
-  /** Care din cele 2 melodii e folosită ('main' = full.mp3, 'bonus' = bonus.mp3). */
-  @Column({ type: 'varchar', length: 8, default: 'main' })
+  /** Melodia folosită: 'main' / 'bonus' pe părinte, sau UUID-ul unei variații. */
+  @Column({ type: 'varchar', length: 64, default: 'main' })
   track!: CollageTrack;
 
   /** Tipul randării: slideshow (collage) sau o singură imagine statică (image_video). */

@@ -65,6 +65,7 @@ export class SettingsService {
         value = row.encrypted ? decryptSecret(row.value) : row.value;
       } catch (e) {
         this.logger.warn(`decrypt failed for key=${key}: ${(e as Error).message}`);
+        value = (this.env.get<string>(key) ?? '').toString();
       }
     } else {
       value = (this.env.get<string>(key) ?? '').toString();
@@ -91,7 +92,7 @@ export class SettingsService {
         try {
           value = row.encrypted ? decryptSecret(row.value) : row.value;
         } catch {
-          value = '';
+          value = (this.env.get<string>(key) ?? '').toString();
         }
       } else {
         value = (this.env.get<string>(key) ?? '').toString();

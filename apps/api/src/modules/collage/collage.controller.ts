@@ -62,6 +62,35 @@ export class CollageController {
   }
 
   /**
+   * Un upload → câte un colaj pe fiecare variantă de melodie (main, bonus,
+   * variații adăugate ulterior din admin). Multipart: `images` + `aspect`.
+   */
+  @Throttle({ short: { limit: 1, ttl: 30_000 }, medium: { limit: 8, ttl: 3_600_000 } })
+  @UseGuards(OptionalJwtAuthGuard)
+  @Post(':id/collage/batch')
+  @HttpCode(200)
+  @UseInterceptors(
+    FilesInterceptor('images', MAX_IMAGES, { limits: { fileSize: MAX_IMAGE_BYTES } }),
+  )
+  async createBatch(
+    @Param('id') id: string,
+    @UploadedFiles() files: UploadedImage[] | undefined,
+    @Body('aspect') aspect: string | undefined,
+    @CurrentUser() user: AuthedRequestUser | null,
+    @CurrentGuestId() guestId: string | null,
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('Lipsesc imaginile (field name: images)');
+    }
+    return this.svc.createBatch({
+      generationId: id,
+      aspect,
+      files,
+      ctx: { userId: user?.id ?? null, guestId: user ? null : guestId },
+    });
+  }
+
+  /**
    * Creează un image-video: o singură poză de share (aleasă) statică pe toată
    * melodia. Body: { track, aspect, imageUrl }.
    */

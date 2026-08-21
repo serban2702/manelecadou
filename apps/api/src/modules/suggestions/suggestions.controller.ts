@@ -5,6 +5,7 @@ import { SuggestMessageDto } from './dto/suggest-message.dto';
 import { GenerateLyricsDto } from './dto/generate-lyrics.dto';
 import { ValidateLyricsDto } from './dto/validate-lyrics.dto';
 import { SuggestionsService } from './suggestions.service';
+import { experienceSlugFromRequest } from '../experiences/request-slug';
 
 @Controller('suggestions')
 export class SuggestionsController {
@@ -25,7 +26,7 @@ export class SuggestionsController {
   @Throttle({ medium: { limit: 15, ttl: 300_000 } })
   @Post('lyrics')
   generateLyrics(@Body() dto: GenerateLyricsDto, @Req() req: Request) {
-    return this.svc.generateLyrics(dto, req.site ?? null);
+    return this.svc.generateLyrics(dto, req.site ?? null, experienceSlugFromRequest(req));
   }
 
   /**

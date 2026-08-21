@@ -211,6 +211,7 @@ export class PaymentsController {
       promoCode: body.promoCode,
       email: body.email ?? (await this.resolveEmail(user, guestId)),
       site,
+      experienceSlug: experienceSlugFromRequest(req),
       ...extractMetaContext(req, ua, xff, ip),
     });
   }

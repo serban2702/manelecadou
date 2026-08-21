@@ -10,6 +10,7 @@ import {
   type LyricsModerationResult,
 } from '../lyrics/lyrics.module';
 import type { Site } from '../sites/site.entity';
+import { resolveExperienceWriterPrompt } from '../experiences/catalog-resolve';
 
 const LOCALE_NAME: Record<string, string> = {
   ro: 'Romanian',
@@ -37,7 +38,8 @@ export class SuggestionsService {
    * logate în lyrics_logs), cu prompturile/locale per-site. La regenerare,
    * `feedback` + `previousLyrics` din DTO sunt incorporate de writer.
    */
-  async generateLyrics(dto: GenerateLyricsDto, site: Site | null): Promise<{ lyrics: string }> {
+  async generateLyrics(dto: GenerateLyricsDto, site: Site | null, experienceSlug?: string | null): Promise<{ lyrics: string }> {
+    const styleEntry = site?.styles?.find((s) => s.id === dto.style);
     const input: LyricsInput = {
       style: dto.style,
       occasion: dto.occasion,
@@ -48,8 +50,9 @@ export class SuggestionsService {
       locale: this.lyricsLocale(site, dto.locale),
       feedback: dto.feedback,
       previousDraft: dto.previousLyrics,
-      // Override-uri per-site (vocabular nativ chalga/turbofolk/arabesk etc.).
-      writerSystemPrompt: site?.suno?.writerSystemPrompt,
+      styleHint: styleEntry?.lyricsHint,
+      // Override-uri per-site / per-interfață (vocabular nativ chalga/turbofolk/arabesk etc.).
+      writerSystemPrompt: resolveExperienceWriterPrompt(site, experienceSlug) ?? site?.suno?.writerSystemPrompt,
       writerUserTemplate: site?.suno?.writerUserTemplate,
       criticSystemPrompt: site?.suno?.criticSystemPrompt,
       criticUserTemplate: site?.suno?.criticUserTemplate,

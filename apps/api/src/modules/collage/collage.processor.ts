@@ -161,8 +161,10 @@ export class CollageProcessor extends WorkerHost {
   // ============== Helpers ==============
 
   private audioPathFor(gen: Generation, track: CollageTrack): string {
-    const name = track === 'bonus' ? 'bonus.mp3' : 'full.mp3';
-    return join(this.uploadsDir, 'audio', gen.id, name);
+    if (track === 'bonus') return join(this.uploadsDir, 'audio', gen.id, 'bonus.mp3');
+    if (track === 'main') return join(this.uploadsDir, 'audio', gen.id, 'full.mp3');
+    // Variație-copil: audio-ul stă în folderul propriu.
+    return join(this.uploadsDir, 'audio', track, 'full.mp3');
   }
 
   /**

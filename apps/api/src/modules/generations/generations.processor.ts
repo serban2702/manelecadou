@@ -23,6 +23,12 @@ import { AudioProcessorService } from './audio-processor.service';
 import { GenerationMediaService } from '../media/generation-media.service';
 import { normalizeTier, packageDef } from '../payments/packages';
 import { hashUnlock, generateSharePin } from '../../common/unlock';
+import {
+  resolveExperienceStyleEntry,
+  resolveExperienceStylePrompt,
+  resolveExperienceWriterPrompt,
+  resolveStylePersonaId,
+} from '../experiences/catalog-resolve';
 
 // concurrency: 3 — mai multe comenzi avansează în paralel (timpul e dominat de
 // așteptarea pe Suno, I/O-bound), ca a 2-a/3-a comandă să nu aștepte în coadă
@@ -172,25 +178,23 @@ export class GenerationsProcessor extends WorkerHost {
     const lyricsLocale = site?.suno?.lyricsLocale ?? site?.locale ?? gen.locale ?? 'ro';
 
     try {
-      // Step 1: write lyrics (or use custom)
-      gen.status = 'writing_lyrics';
-      await this.repo.save(gen);
+      const voiceEntry = site?.voices?.find((v) => v.id === gen.voiceArtist);
+      const styleEntry = resolveExperienceStyleEntry(site, gen.experienceSlug, gen.style)
+        ?? site?.styles?.find((s) => s.id === gen.style);
+      const senderName = gen.dedicatorName?.trim() || gen.dedication?.trim() || undefined;
 
       const lyricsBase = {
         style: gen.style,
         occasion: gen.occasion,
         recipientName: gen.recipientName,
         message: gen.message,
-        dedication: gen.dedication ?? undefined,
+        dedication: senderName,
         tipAmount: gen.tipAmount,
         voiceArtist: gen.voiceArtist,
         customLyrics: gen.customLyrics ?? undefined,
         locale: lyricsLocale,
-        // Override-uri per site pentru OpenAI writer + critic. Când site-ul are
-        // limbă proprie (BG/RS/TR/etc.) și are setate aceste prompts în admin,
-        // OpenAI primește vocabular nativ (chalga, turbofolk, arabesk) în loc
-        // de cel manelist românesc.
-        writerSystemPrompt: site?.suno?.writerSystemPrompt,
+        styleHint: styleEntry?.lyricsHint,
+        writerSystemPrompt: resolveExperienceWriterPrompt(site, gen.experienceSlug) ?? site?.suno?.writerSystemPrompt,
         writerUserTemplate: site?.suno?.writerUserTemplate,
         criticSystemPrompt: site?.suno?.criticSystemPrompt,
         criticUserTemplate: site?.suno?.criticUserTemplate,
@@ -199,14 +203,25 @@ export class GenerationsProcessor extends WorkerHost {
         generationId: gen.id,
       };
 
-      const draft = await this.lyricsSvc.writeDraft(lyricsBase);
-      gen.lyricsDraft = draft;
-      gen.status = 'checking_lyrics';
-      await this.repo.save(gen);
-
-      // Step 2: critic refines
-      const refined = await this.lyricsSvc.refineDraft(lyricsBase, draft);
-      gen.lyrics = refined;
+      // Writer + critic o singură dată. La auto-retry Suno NU rescriem versurile.
+      let refined = (gen.customLyrics?.trim() || gen.lyrics?.trim() || '');
+      if (refined && !gen.customLyrics?.trim()) {
+        this.logger.log(`generation ${gen.id} reuses existing lyrics (${refined.length} chars)`);
+      } else if (gen.customLyrics?.trim()) {
+        gen.lyricsDraft = gen.lyricsDraft || refined;
+        gen.lyrics = refined;
+        await this.repo.save(gen);
+      } else {
+        gen.status = 'writing_lyrics';
+        await this.repo.save(gen);
+        const draft = await this.lyricsSvc.writeDraft(lyricsBase);
+        gen.lyricsDraft = draft;
+        gen.status = 'checking_lyrics';
+        await this.repo.save(gen);
+        refined = await this.lyricsSvc.refineDraft(lyricsBase, draft);
+        gen.lyrics = refined;
+        await this.repo.save(gen);
+      }
       gen.status = 'generating_audio';
       await this.repo.save(gen);
 
@@ -224,10 +239,7 @@ export class GenerationsProcessor extends WorkerHost {
         : refined;
 
       // Step 3: audio
-      // Citim configurațiile per-voce și per-stil din site (gender, persona,
-      // styleWeight, weirdnessConstraint, negativeTags) și le pasăm la Suno.
-      const voiceEntry = site?.voices?.find((v) => v.id === gen.voiceArtist);
-      const styleEntry = site?.styles?.find((s) => s.id === gen.style);
+      const expStylePrompt = resolveExperienceStylePrompt(site, gen.experienceSlug, gen.style);
       // Genul vocal e derivat PRIORITAR din voiceArtist canonic (male/female) +
       // fallback legacy; cade pe voiceEntry?.gender doar dacă helper-ul nu știe.
       const vocalGender = voiceArtistToGender(gen.voiceArtist) ?? voiceEntry?.gender;
@@ -239,6 +251,19 @@ export class GenerationsProcessor extends WorkerHost {
       const snap = gen.packageSnapshot;
       const targetDuration =
         gen.type === 'demo' ? gen.durationSec : gen.durationSec || snap?.durationSec || packageDef(tier).durationSec;
+
+      const sunoSite = site
+        ? {
+            ...site,
+            suno: {
+              ...site.suno,
+              stylePromptMap: {
+                ...(site.suno?.stylePromptMap ?? {}),
+                ...(expStylePrompt && gen.style ? { [gen.style]: expStylePrompt } : {}),
+              },
+            },
+          }
+        : undefined;
 
       const result = await this.suno.generate({
         type: gen.type,
@@ -254,9 +279,9 @@ export class GenerationsProcessor extends WorkerHost {
         // lăsăm provider-ul să mai adauge dedicația în deschidere.
         lyricsAreCustom: !!gen.customLyrics?.trim(),
         generationId: gen.id,
-        site: site ?? undefined,
+        site: sunoSite,
         vocalGender,
-        personaId: voiceEntry?.sunoPersonaId,
+        personaId: resolveStylePersonaId(styleEntry, vocalGender) || voiceEntry?.sunoPersonaId,
         styleWeight: styleEntry?.styleWeight,
         weirdnessConstraint: styleEntry?.weirdnessConstraint,
         negativeTags: styleEntry?.negativeTags,
@@ -327,9 +352,9 @@ export class GenerationsProcessor extends WorkerHost {
               lyrics: sunoLyrics,
               lyricsAreCustom: !!gen.customLyrics?.trim(),
               generationId: gen.id,
-              site: site ?? undefined,
+              site: sunoSite,
               vocalGender,
-              personaId: voiceEntry?.sunoPersonaId,
+              personaId: resolveStylePersonaId(styleEntry, vocalGender) || voiceEntry?.sunoPersonaId,
               styleWeight: styleEntry?.styleWeight,
               weirdnessConstraint: styleEntry?.weirdnessConstraint,
               negativeTags: styleEntry?.negativeTags,

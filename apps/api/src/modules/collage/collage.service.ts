@@ -88,17 +88,40 @@ export class CollageService {
     return null;
   }
 
-  /** Verifică tier premium + că melodia aleasă există pe disc. */
-  private assertTrackAvailable(gen: Generation, track: CollageTrack): void {
-    if (gen.packageTier !== 'premium') {
-      throw new ForbiddenException('Disponibil doar pentru pachetul Premium');
+  /**
+   * Track-urile pe care putem monta un clip: piesa principală, bonusul (dacă
+   * există) și orice variație-copil succeeded. Ordinea e cea de pe pagina
+   * publică. Adminul poate adăuga variații ulterior — apar automat aici.
+   */
+  async listAvailableTracks(
+    gen: Generation,
+  ): Promise<Array<{ track: CollageTrack; label: string }>> {
+    const out: Array<{ track: CollageTrack; label: string }> = [];
+    if (gen.audioUrl) {
+      out.push({ track: 'main', label: gen.variationLabel ?? 'Varianta 1' });
     }
-    const hasTrack = track === 'bonus' ? !!gen.bonusAudioUrl : !!gen.audioUrl;
-    if (!hasTrack) {
-      throw new NotFoundException(
-        track === 'bonus' ? 'A doua melodie nu este disponibilă' : 'Melodia nu este disponibilă',
-      );
+    if (gen.bonusAudioUrl) {
+      out.push({ track: 'bonus', label: 'Varianta 2' });
     }
+    const variations = await this.generations.find({
+      where: { parentGenerationId: gen.id, status: 'succeeded' },
+      order: { sortOrder: 'ASC', createdAt: 'ASC' },
+      take: 50,
+    });
+    for (const v of variations) {
+      if (!v.audioUrl) continue;
+      out.push({ track: v.id, label: v.variationLabel ?? 'Variație' });
+    }
+    return out;
+  }
+
+  /** Melodia aleasă există (main / bonus / variație-copil). */
+  private async assertTrackAvailable(gen: Generation, track: CollageTrack): Promise<void> {
+    const tracks = await this.listAvailableTracks(gen);
+    if (tracks.some((t) => t.track === track)) return;
+    throw new NotFoundException(
+      track === 'bonus' ? 'A doua melodie nu este disponibilă' : 'Melodia nu este disponibilă',
+    );
   }
 
   /** Set-ul de imagini permise ca sursă pentru image_video (anti-abuz path). */
@@ -124,7 +147,7 @@ export class CollageService {
     ctx: OwnerCtx;
   }): Promise<{ collageId: string; status: string }> {
     const gen = await this.assertOwnedGeneration(args.generationId, args.ctx);
-    this.assertTrackAvailable(gen, args.track);
+    await this.assertTrackAvailable(gen, args.track);
 
     const aspect: CollageAspect = normalizeAspect(args.aspect);
     const email = await this.ownerEmail(gen);
@@ -168,7 +191,7 @@ export class CollageService {
     ctx: OwnerCtx;
   }): Promise<{ collageId: string; status: string }> {
     const gen = await this.assertOwnedGeneration(args.generationId, args.ctx);
-    this.assertTrackAvailable(gen, args.track);
+    await this.assertTrackAvailable(gen, args.track);
 
     // Securitate: imaginea sursă trebuie să fie una dintre imaginile manelei.
     const url = (args.imageUrl ?? '').trim();
@@ -197,6 +220,68 @@ export class CollageService {
       `image_video ${collage.id.slice(0, 8)} queued gen=${gen.id.slice(0, 8)} track=${args.track} aspect=${aspect}`,
     );
     return { collageId: collage.id, status: collage.status };
+  }
+
+  /**
+   * Un singur upload de poze → câte un colaj pe FIECARE variantă de melodie
+   * (main + bonus + variații-copil). Imaginile se salvează o dată și se copiază.
+   */
+  async createBatch(args: {
+    generationId: string;
+    aspect?: string;
+    files: UploadedImage[];
+    ctx: OwnerCtx;
+  }): Promise<{ collages: Array<{ collageId: string; status: string; track: string }> }> {
+    const gen = await this.assertOwnedGeneration(args.generationId, args.ctx);
+    const tracks = await this.listAvailableTracks(gen);
+    if (tracks.length === 0) {
+      throw new BadRequestException('Nu există nicio variantă de melodie pe care să montăm clipul');
+    }
+    if (!args.files?.length) {
+      throw new BadRequestException('Lipsesc imaginile (field name: images)');
+    }
+
+    const aspect: CollageAspect = normalizeAspect(args.aspect);
+    const email = await this.ownerEmail(gen);
+    const created: VideoCollage[] = [];
+    let srcId: string | null = null;
+
+    try {
+      for (const t of tracks) {
+        const collage = await this.repo.save(
+          this.repo.create({
+            generationId: gen.id,
+            track: t.track,
+            kind: 'collage',
+            aspect,
+            status: 'pending',
+            imageCount: args.files.length,
+            email,
+          }),
+        );
+        created.push(collage);
+        if (!srcId) {
+          await this.upload.save(collage.id, args.files);
+          srcId = collage.id;
+        } else {
+          const n = await this.upload.copyImages(srcId, collage.id);
+          if (n === 0) throw new Error('copy images failed');
+        }
+      }
+    } catch (err) {
+      for (const c of created) {
+        await this.repo.delete({ id: c.id }).catch(() => {});
+      }
+      throw err;
+    }
+
+    for (const c of created) await this.enqueue(c.id);
+    this.logger.log(
+      `collage-batch gen=${gen.id.slice(0, 8)} queued ${created.length} clips aspect=${aspect} imgs=${args.files.length}`,
+    );
+    return {
+      collages: created.map((c) => ({ collageId: c.id, status: c.status, track: c.track })),
+    };
   }
 
   private async enqueue(collageId: string): Promise<void> {

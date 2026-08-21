@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -7,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ModuleRef } from '@nestjs/core';
@@ -250,9 +251,83 @@ export class GenerationsService {
       take: 50,
     });
     for (const v of variations) {
-      push(v.id, 'variation', v.variationLabel ?? 'Variație', isPaid ? v.audioUrl : v.demoAudioUrl);
+      const label = v.variationLabel ?? 'Variație';
+      push(v.id, 'variation', label, isPaid ? v.audioUrl : v.demoAudioUrl);
+      push(`${v.id}:bonus`, 'variation', `${label} · 2`, isPaid ? v.bonusAudioUrl : v.demoBonusAudioUrl);
     }
     return out;
+  }
+
+  private static readonly WORKING_STATUSES = [
+    'pending',
+    'queued',
+    'writing_lyrics',
+    'checking_lyrics',
+    'generating_audio',
+    'running',
+  ] as const;
+
+  /** Variații-copil încă în lucru (owner — ca să arătăm loader pe pagină). */
+  async listWorkingVariants(
+    gen: Generation,
+  ): Promise<Array<{ id: string; label: string; status: string; createdAt: Date }>> {
+    const rows = await this.repo.find({
+      where: {
+        parentGenerationId: gen.id,
+        status: In([...GenerationsService.WORKING_STATUSES]),
+      },
+      order: { createdAt: 'ASC' },
+      take: 20,
+    });
+    return rows.map((v) => ({
+      id: v.id,
+      label: v.variationLabel ?? 'Refacere',
+      status: v.status,
+      createdAt: v.createdAt,
+    }));
+  }
+
+  /**
+   * Refacere GRATUITĂ unică, cerută de owner de pe pagina manelei.
+   * Adaugă o variație-copil (nu înlocuiește piesele existente).
+   */
+  async requestFreeRemake(
+    generationId: string,
+    notes: string,
+    ctx: { userId: string | null; guestId: string | null },
+  ): Promise<{ ok: true; variationId: string; status: string }> {
+    const src = await this.findOne(generationId, ctx);
+    if (!(src.type === 'full' || src.paidUnlocked)) {
+      throw new ForbiddenException('Plătește comanda înainte de a reface.');
+    }
+    if (src.status !== 'succeeded') {
+      throw new ConflictException('Maneaua încă nu e gata.');
+    }
+    if (src.freeRemakeUsedAt) {
+      throw new ConflictException('Refacerea gratuită a fost deja folosită.');
+    }
+    const text = (notes ?? '').trim();
+    if (text.length < 8) {
+      throw new BadRequestException('Spune-ne mai concret ce vrei schimbat (minim 8 caractere).');
+    }
+    if (text.length > 1000) {
+      throw new BadRequestException('Maxim 1000 de caractere.');
+    }
+
+    const base = (src.message ?? '').trim();
+    const message = [base, base ? '' : null, '[CERERE REFACERE — clientul vrea schimbat]', text]
+      .filter((s): s is string => s != null)
+      .join('\n');
+
+    const child = await this.adminRegenerate(src.id, {
+      target: 'new_track',
+      lyricsMode: 'rewrite',
+      label: 'Refacere',
+      edits: { message },
+    });
+    await this.repo.update({ id: src.id }, { freeRemakeUsedAt: new Date() });
+    this.logger.warn(`[free-remake] gen=${src.id.slice(0, 8)} → ${child.id.slice(0, 8)}`);
+    return { ok: true, variationId: child.id, status: child.status };
   }
 
   /**
@@ -1169,6 +1244,7 @@ export class GenerationsService {
       recipientName: dto.recipientName,
       message: dto.message,
       dedication: dto.dedication ?? null,
+      dedicatorName: dto.dedication ?? null,
       voiceArtist: dto.voiceArtist,
       customLyrics: dto.customLyrics ?? null,
       tipAmount: dto.tipAmount ?? 0,

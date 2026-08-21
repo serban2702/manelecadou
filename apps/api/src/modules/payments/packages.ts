@@ -49,8 +49,13 @@ export const PACKAGES: Record<PackageTier, PackageDef> = {
     socialImage: false,
     video: false,
     premiumPage: false,
-    deliveryLabel: '15-60 min',
-    featuresRo: ['Manea personalizată', 'Versuri personalizate', 'Livrare pe email'],
+    deliveryLabel: '5–10 min',
+    featuresRo: [
+      'Manea personalizată',
+      'Versuri pe gustul tău',
+      'Livrare în 5–10 minute',
+      'O refacere GRATUITĂ',
+    ],
   },
   plus: {
     tier: 'plus',
@@ -61,30 +66,37 @@ export const PACKAGES: Record<PackageTier, PackageDef> = {
     socialImage: true,
     video: false,
     premiumPage: false,
-    deliveryLabel: '10-15 min',
+    deliveryLabel: 'Livrare prioritară',
     featuresRo: [
-      'Tot ce e în Standard',
-      'Manea mai calitativă, cu instrumental mai bun și puțin mai lungă',
-      '4 imagini social-media (TikTok/Instagram/Facebook)',
-      'Livrare mai rapidă',
+      'Tot din Standard',
+      'Colaj cu maxim 4 poze — doar refrenul',
+      'Manea mai calitativă',
+      '4 imagini pentru social media',
+      'Livrare prioritară',
+      '2 refaceri GRATUITE',
+      '25% discount la a doua manea',
     ],
   },
   premium: {
     tier: 'premium',
     label: 'Premium',
-    priceCents: 9999,
+    priceCents: 6999,
     durationSec: 150,
     instrumental: false,
     socialImage: true,
     video: true,
     premiumPage: true,
-    deliveryLabel: '3-5 min',
+    deliveryLabel: 'Livrare prioritară',
     featuresRo: [
-      'Tot ce e în Plus',
-      'Videoclip personalizat',
-      'Pagină premium de ascultare',
-      'Melodie mai lungă',
-      'Colaj video din pozele tale',
+      'Tot din Plus',
+      'Colaj cu 15 poze și toată melodia',
+      'Felicitare personalizată',
+      'Manea mai lungă',
+      'Support prioritar',
+      'Livrare prioritară',
+      '3 refaceri GRATUITE',
+      '40% discount la următoarea manea',
+      'Postare pe Facebook și TikTok, cu dedicație',
     ],
   },
 };
@@ -183,10 +195,10 @@ export function chatPackageUpsellRo(
   const plusCompare = packageCompareAtCents('plus', opts?.compareAt, overrides);
   const plusLine = plusCompare
     ? `Plus ${plus} ${cur} (redus de la ${fmt(plusCompare)} ${cur} — oferta valabila inca 3 zile) — mai lunga si mai calitativa, cu imagini pentru social media (TikTok/Instagram); `
-    : `Plus ${plus} ${cur} — mai lunga si mai calitativa, cu imagini pentru social media (TikTok/Instagram); `;
+    : `Plus ${plus} ${cur} — colaj 4 poze (refren), manea mai calitativa, 4 imagini social, 2 refaceri si 25% la a doua manea; `;
   return (
-    `Avem 3 pachete: Standard ${standard} ${cur} — maneaua ta personalizata; ` +
+    `Avem 3 pachete: Standard ${standard} ${cur} — maneaua ta in 5-10 minute, cu o refacere gratuita; ` +
     plusLine +
-    `Premium ${premium} ${cur} — tot ce e in Plus plus videoclip si pagina premium de ascultare. Ce alegi?`
+    `Premium ${premium} ${cur} — colaj cu 15 poze, felicitare, 3 refaceri gratuite si postare pe Facebook/TikTok. Ce alegi?`
   );
 }

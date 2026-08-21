@@ -345,8 +345,6 @@ export class PaymentsService {
   }
 
   async createCheckoutSession(input: CheckoutInput): Promise<{ url: string; paymentId: string }> {
-    const stripe = await this.getStripe();
-    if (!stripe) throw new ServiceUnavailableException('Stripe not configured');
     const site = input.site;
 
     // ============== Guard anti dublă-plată (prevenție) ==============
@@ -410,6 +408,9 @@ export class PaymentsService {
         site,
       });
     }
+
+    const stripe = await this.getStripe();
+    if (!stripe) throw new ServiceUnavailableException('Stripe not configured');
 
     // Cap discount-ul la baseTotal - 50 ca să rămână peste minimul Stripe (50 cents).
     appliedDiscountCents = Math.min(appliedDiscountCents, Math.max(0, baseTotal - 50));
@@ -579,8 +580,6 @@ export class PaymentsService {
     visitorId?: string | null;
     experienceSlug?: string | null;
   }): Promise<{ url: string; paymentId: string; generationId: string }> {
-    const stripe = await this.getStripe();
-    if (!stripe) throw new ServiceUnavailableException('Stripe not configured');
     const site = input.site;
 
     // Model PACHETE: tier-ul vine din obiectul generation (web wizard).
@@ -688,7 +687,10 @@ export class PaymentsService {
 
   /** Construiește URL-ul de bază pentru success/cancel (folosit și de Stripe Checkout). */
   private siteAppUrl(site: Site): string {
-    // În dev (localhost domain), respectă APP_URL din env. Altfel, https://<domain>.
+    // În dev, site.domain e adesea manelecadou.ro din DB — nu trimite userul pe producție.
+    if (this.config.get<string>('NODE_ENV') !== 'production') {
+      return this.config.get<string>('APP_URL') ?? 'http://localhost:1500';
+    }
     if (site.domain.startsWith('localhost') || site.domain.startsWith('127.')) {
       return this.config.get<string>('APP_URL') ?? `http://${site.domain}`;
     }
