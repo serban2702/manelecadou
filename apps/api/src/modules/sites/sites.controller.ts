@@ -7,6 +7,7 @@ import { SitesService } from './sites.service';
 import { Site } from './site.entity';
 import { SiteSamplesService, SAMPLE_STYLES, SAMPLE_VOICES, SampleKind } from './site-samples.service';
 import { SiteBrandUploadService, BrandAssetField } from './site-brand-upload.service';
+import { ExperienceAssetUploadService } from './experience-asset-upload.service';
 import { encryptSecret } from '../../common/crypto.util';
 import { PACKAGE_TIERS, packagePriceCents } from '../payments/packages';
 import { toPublicExperienceConfig } from '../experiences/public-config';
@@ -167,6 +168,7 @@ export class AdminSitesController {
   constructor(
     private readonly sites: SitesService,
     private readonly brandUpload: SiteBrandUploadService,
+    private readonly experienceUpload: ExperienceAssetUploadService,
   ) {}
 
   /** Upload pentru asset-urile vizuale de brand (logo, OG image, favicon,
@@ -186,6 +188,23 @@ export class AdminSitesController {
       throw new BadRequestException(`Câmp invalid: ${body.field}`);
     }
     const result = await this.brandUpload.uploadAsset(id, body.field, file.buffer, file.originalname);
+    return { ok: true, ...result };
+  }
+
+  /** Poză de card sau mostră audio pentru un stil din catalogul unei interfețe. */
+  @Post(':id/experiences/:slug/upload')
+  @HttpCode(200)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 40 * 1024 * 1024 } }))
+  async uploadExperienceAsset(
+    @Param('id') id: string,
+    @Param('slug') slug: string,
+    @UploadedFile() file: { buffer: Buffer; originalname: string } | undefined,
+    @Body() body: { kind?: 'art' | 'sample' | 'reaction'; styleId?: string },
+  ) {
+    if (!file) throw new BadRequestException('Lipsește fișierul (field name: file)');
+    const kind = body?.kind === 'sample' ? 'sample' : body?.kind === 'reaction' ? 'reaction' : 'art';
+    if (!body?.styleId) throw new BadRequestException('styleId este obligatoriu');
+    const result = await this.experienceUpload.upload(id, slug, kind, body.styleId, file.buffer, file.originalname);
     return { ok: true, ...result };
   }
 

@@ -171,20 +171,82 @@ export interface SiteDto {
   updatedAt: string;
   experienceConfig?: {
     defaultSlug: string;
-    items: Record<string, {
-      enabled: boolean;
-      utmRules: Array<{ source?: string; campaign?: string; content?: string }>;
-      packages?: Partial<Record<'basic' | 'plus' | 'premium', {
-        video?: boolean;
-        socialImage?: boolean;
-        instrumental?: boolean;
-        premiumPage?: boolean;
-        durationSec?: number;
-        features?: string[];
-        upsell?: { title: string; body: string; targetTier: 'plus' | 'premium' } | null;
-      }>>;
-    }>;
+    items: Record<string, ExperienceItemConfig>;
   } | null;
+}
+
+export interface ExperienceStyleOverride {
+  id: string;
+  em?: string;
+  nm: string;
+  ds?: string;
+  heat?: string;
+  artUrl?: string;
+  sampleUrl?: string;
+  sampleStartSec?: number;
+  sunoPrompt?: string;
+  lyricsHint?: string;
+  styleWeight?: number;
+  weirdnessConstraint?: number;
+  negativeTags?: string;
+  sunoPersonaIdMale?: string;
+  sunoPersonaNameMale?: string;
+  sunoPersonaIdFemale?: string;
+  sunoPersonaNameFemale?: string;
+}
+
+export interface ExperienceOccasionOverride {
+  id: string;
+  em?: string;
+  nm: string;
+}
+
+export interface ExperienceVoiceOverride {
+  id: string;
+  nm: string;
+  tg?: string;
+  av?: string;
+}
+
+export interface ExperienceCatalogConfig {
+  styles?: ExperienceStyleOverride[];
+  occasions?: ExperienceOccasionOverride[];
+  voices?: ExperienceVoiceOverride[];
+  writerSystemPrompt?: string;
+  demoIds?: string[] | null;
+  reactionClips?: ExperienceReactionClip[];
+}
+
+export interface ExperienceReactionClip {
+  id: string;
+  platform: 'tiktok' | 'instagram';
+  videoUrl: string;
+  posterUrl?: string;
+  audioUrl?: string;
+  demoId?: string | null;
+  username: string;
+  caption: string;
+  song: string;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  avatarUrl?: string;
+  previewStartSec?: number;
+}
+
+export interface ExperienceItemConfig {
+  enabled: boolean;
+  utmRules: Array<{ source?: string; campaign?: string; content?: string }>;
+  packages?: Partial<Record<'basic' | 'plus' | 'premium', {
+    video?: boolean;
+    socialImage?: boolean;
+    instrumental?: boolean;
+    premiumPage?: boolean;
+    durationSec?: number;
+    features?: string[];
+    upsell?: { title: string; body: string; targetTier: 'plus' | 'premium' } | null;
+  }>>;
+  catalog?: ExperienceCatalogConfig;
 }
 
 export interface SiteIconConfig {
@@ -210,6 +272,10 @@ export interface SiteStyleEntry {
   weirdnessConstraint?: number;
   /** Tag-uri de exclus (CSV). */
   negativeTags?: string;
+  sunoPersonaIdMale?: string;
+  sunoPersonaNameMale?: string;
+  sunoPersonaIdFemale?: string;
+  sunoPersonaNameFemale?: string;
   /** Default-uri persistate pentru „Personalizează mostra" din admin. */
   sampleDefaults?: SiteSampleDefaults;
 }
@@ -337,6 +403,23 @@ export const SitesApi = {
     fd.append('field', field);
     return http.post<{ ok: true; url: string; brand: SiteDto['brand'] }>(
       `/admin/sites/${id}/brand/upload`,
+      fd,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60_000 },
+    );
+  },
+  uploadExperienceAsset: (
+    id: string,
+    slug: string,
+    kind: 'art' | 'sample' | 'reaction',
+    styleId: string,
+    file: File,
+  ) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('kind', kind);
+    fd.append('styleId', styleId);
+    return http.post<{ ok: true; url: string }>(
+      `/admin/sites/${id}/experiences/${encodeURIComponent(slug)}/upload`,
       fd,
       { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60_000 },
     );

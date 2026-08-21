@@ -8,6 +8,7 @@ import { AdminSitesController, AdminSiteSamplesController, CaddyAskController, P
 import { SiteContextMiddleware } from './site-context.middleware';
 import { SiteSamplesService } from './site-samples.service';
 import { SiteBrandUploadService } from './site-brand-upload.service';
+import { ExperienceAssetUploadService } from './experience-asset-upload.service';
 import { SunoModule } from '../suno/suno.module';
 import { LyricsModule } from '../lyrics/lyrics.module';
 // SettingsModule e @Global() — SettingsService e injectabil în SiteSamplesService
@@ -30,7 +31,7 @@ import { LyricsModule } from '../lyrics/lyrics.module';
       }),
     }),
   ],
-  providers: [SitesService, SiteSamplesService, SiteBrandUploadService],
+  providers: [SitesService, SiteSamplesService, SiteBrandUploadService, ExperienceAssetUploadService],
   controllers: [PublicSiteController, AdminSitesController, AdminSiteSamplesController, CaddyAskController],
   exports: [SitesService, TypeOrmModule],
 })

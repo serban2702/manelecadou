@@ -2362,6 +2362,40 @@ function CategoryRow({
                       />
                     </Field>
                   </div>
+                  <Field
+                    label="Persona masculin"
+                    description="personaId Suno folosit când clientul alege voce bărbătească. Gol = fără persona pe stil (cade pe voce, dacă are)."
+                  >
+                    <Input
+                      value={(entry as SiteStyleEntry).sunoPersonaIdMale ?? ''}
+                      onChange={(e) => onChange({ sunoPersonaIdMale: e.target.value.trim() || undefined })}
+                      placeholder="personaId masculin"
+                    />
+                  </Field>
+                  <Field label="Nume persona masculin">
+                    <Input
+                      value={(entry as SiteStyleEntry).sunoPersonaNameMale ?? ''}
+                      onChange={(e) => onChange({ sunoPersonaNameMale: e.target.value || undefined })}
+                      placeholder="ex. Clasică bărbat"
+                    />
+                  </Field>
+                  <Field
+                    label="Persona feminin"
+                    description="personaId Suno folosit când clientul alege voce feminină. Gol = fără persona pe stil."
+                  >
+                    <Input
+                      value={(entry as SiteStyleEntry).sunoPersonaIdFemale ?? ''}
+                      onChange={(e) => onChange({ sunoPersonaIdFemale: e.target.value.trim() || undefined })}
+                      placeholder="personaId feminin"
+                    />
+                  </Field>
+                  <Field label="Nume persona feminin">
+                    <Input
+                      value={(entry as SiteStyleEntry).sunoPersonaNameFemale ?? ''}
+                      onChange={(e) => onChange({ sunoPersonaNameFemale: e.target.value || undefined })}
+                      placeholder="ex. Clasică femeie"
+                    />
+                  </Field>
                 </>
               )}
             </div>

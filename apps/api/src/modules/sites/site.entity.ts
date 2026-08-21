@@ -333,6 +333,16 @@ export interface SiteStyleEntry {
   /** Tag-uri / genuri de exclus, CSV. Ex: "pop, EDM, trap-rap, rap". Mai eficient
    *  decât a scrie „NOT pop" în prompt-ul pozitiv. */
   negativeTags?: string;
+  /** Persona Suno pentru voce masculină. Gol = fără persona (sau fallback voce). */
+  sunoPersonaIdMale?: string;
+  sunoPersonaNameMale?: string;
+  /** Persona Suno pentru voce feminină. Gol = fără persona (sau fallback voce). */
+  sunoPersonaIdFemale?: string;
+  sunoPersonaNameFemale?: string;
+  /** @deprecated folosit doar ca fallback dacă male/female lipsesc. */
+  sunoPersonaId?: string;
+  /** @deprecated */
+  sunoPersonaName?: string;
   /** Default-uri persistate pentru formularul „Personalizează mostra" din admin. */
   sampleDefaults?: SiteSampleDefaults;
 }
@@ -463,7 +473,7 @@ export class Site {
   packageCompareAtCents!: Partial<Record<'basic' | 'plus' | 'premium', number>> | null;
 
   /**
-   * Interfețe A/B per site: default, UTM rules, package overrides.
+   * Interfețe A/B per site: default, UTM, pachete, catalog (stiluri/ocazii/prompturi/demo).
    * Null = comportament classic (azi). Synchronize-safe.
    */
   @Column({ type: 'jsonb', nullable: true })

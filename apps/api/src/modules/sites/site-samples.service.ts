@@ -9,6 +9,7 @@ import { SettingsService } from '../settings/settings.service';
 import { SitesService } from './sites.service';
 import { Site, SiteSampleEntry, SiteSuno, SiteVoiceEntry } from './site.entity';
 import { voiceArtistToGender } from '../../common/voice';
+import { resolveStylePersonaId } from '../experiences/catalog-resolve';
 
 export interface SampleOverrides {
   /** Override pentru voice (default = pentru style: 'male'; pentru voice: key-ul însuși) */
@@ -362,6 +363,7 @@ export class SiteSamplesService {
     const effectiveStyle = kind === 'style'
       ? key
       : (overrides?.style?.trim() || fallbackStyle);
+    const styleCfg = site.styles?.find((s) => s.id === effectiveStyle);
     // Sex vocal — override per-mostră > config voce persistată > undefined.
     // Override-ul e necesar fiindcă schimbările din editor pe gender nu se
     // auto-salvează — userul ar putea seta „Femeie" în UI dar baza de date încă
@@ -389,6 +391,7 @@ export class SiteSamplesService {
       lyrics,
       site: effectiveSite,
       requestType: 'sample',
+      personaId: resolveStylePersonaId(styleCfg, vocalGender) || voiceCfg?.sunoPersonaId,
     };
     return base;
   }
