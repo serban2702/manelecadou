@@ -4803,6 +4803,33 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
             .andWhere(`m."messageType" = 'text'`)
             .andWhere('m."deletedAt" IS NULL');
           if (lastUser) pitchQb.andWhere('m."createdAt" > :since', { since: lastUser.createdAt });
+          // GARDĂ „nu vinde peste o cerere de ajutor". BUG confirmat 2026-08-21 conv 208b5e22:
+          // clienta, care tocmai spusese că nu știe ce să scrie, a cerut „Dacă poți să o faci și
+          // mai bine, accept propuneri" — adică voia ca Irina să-i scrie ea un mesaj mai frumos.
+          // Răspunsul a fost lista celor 3 pachete, din senin. Reacția: „Nu..nu îmi plac postări
+          // de genul, las-o la standard" — un upsell care a produs exact opusul, pentru că a venit
+          // în locul ajutorului cerut. Cât timp mesajul melodiei nu e încă stabilit, o cerere de
+          // conținut se onorează întâi; pachetele vin la ETAPA 5.5, după ce textul e agreat.
+          if (lastUser && !ctx.conv.wizardState?.data?.message) {
+            const lu = normLoose(lastUser.body ?? '');
+            const wantsContentHelp =
+              /(accept propuneri|ce (propui|zici|sugerezi|imi recomanzi)|propune tu|scrie tu|fa tu|f[ao] cum (crezi|stii)|cum crezi tu|surprinde ma|las in seama ta|ajuta ma cu (textul|mesajul|versurile)|nu stiu ce sa (scriu|zic|spun))/.test(lu) ||
+              /(fa|faci|faceti|sa fie|sa iasa)[a-z ]{0,12}(mai )?(bine|frumoas|frumos|dragut|emotionant|special)/.test(lu);
+            const commercialCue =
+              /(cat costa|pret|preturi|pachet|pachete|oferta|oferte|premium|plus|standard|video|videoclip|poze|imagini|mai lunga|calitate|diferenta|upgrade)/.test(lu);
+            if (wantsContentHelp && !commercialCue) {
+              this.logger.warn(
+                `PACKAGE_PITCH_OVER_CONTENT_REQUEST blocked on conv=${ctx.conv.id.slice(0, 8)} — pachete oferite peste o cerere de ajutor la text.`,
+              );
+              return {
+                sent: false,
+                messageType: 'noop',
+                status: 'PACKAGE_PITCH_OVER_CONTENT_REQUEST',
+                instruction:
+                  'STAI — nu am trimis mesajul. Clientul nu te-a întrebat de pachete: ți-a cerut AJUTOR la ce scrie în melodie („fă-o tu mai frumoasă / accept propuneri"). Dacă îi răspunzi cu lista de prețuri, pentru el sună a vânzare peste rugămintea lui și se închide (exact asta s-a întâmplat: a tăiat scurt cu „las-o la standard"). ONOREAZĂ ÎNTÂI cererea: propune-i TU, într-un mesaj scurt și cald, ce i-ar transmite melodia (2-3 idei concrete pe cazul lui — ocazia, relația, ce simte) și întreabă-l dacă îi place așa. Pachetele i le prezinți DUPĂ ce textul e agreat, la pasul de upsell — nu acum.',
+              };
+            }
+          }
           const priorPitch = await pitchQb.orderBy('m."createdAt"', 'DESC').take(4).getMany();
           if (priorPitch.some((m) => this.isPackagePitch(m.body ?? ''))) {
             this.logger.warn(
@@ -4818,6 +4845,65 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           }
         } catch (e) {
           this.logger.warn(`package pitch repeat guard failed: ${(e as Error).message}`);
+        }
+      }
+    }
+
+    // GUARD „numele pe care omul ți l-a spus deja". BUG confirmat 2026-08-21 conv 208b5e22:
+    // clientul a deschis cu „…dedicație pt Manuela la împlinirea celor 30 de ani", iar Irina a
+    // răspuns chiar ea „E pentru Manuela, la 30 de ani" — dar n-a salvat nimic cu wizard_update
+    // în turul de quote, așa că `wizard_get_state` a rămas gol și în următoarele două ture i-a
+    // cerut numele de la zero („am nevoie doar de numele complet al fetiței", apoi „Cum o cheamă
+    // exact pe fetita?"). Pentru client sunt trei mesaje irosite pe o informație dată din prima —
+    // exact senzația de „nu mă ascultă". Dacă numele e deja în mesajele LUI, nu se mai cere.
+    if (!ctx.conv.wizardState?.data?.recipientName) {
+      const asksForName =
+        /cum (o |il |îl |ii |îi )?cheam[ăa]/i.test(trimmed) ||
+        /ce nume s[ăa] (pun|scriu|folosesc|trec)/i.test(trimmed) ||
+        /numele (complet|exact) (al|a|pentru)/i.test(trimmed) ||
+        /(am nevoie|îmi trebuie|imi trebuie|spune[- ]?mi|zi[- ]?mi|scrie[- ]?mi)[^.?!]{0,45}numele/i.test(trimmed) ||
+        /pentru cine (e|este|o (faci|facem|fac))/i.test(trimmed);
+      if (asksForName) {
+        try {
+          const userMsgs = await this.msg.find({
+            where: { conversationId: ctx.conv.id, authorRole: 'user' },
+            order: { createdAt: 'ASC' },
+            take: 12,
+          });
+          const STOP =
+            /^(manele|manea|standard|plus|premium|cadou|craciun|crăciun|anul|ziua|pastele|paste|revelion|doamne|dumnezeu|romania|luni|marti|miercuri|joi|vineri|sambata|duminica|ianuarie|februarie|martie|aprilie|mai|iunie|iulie|august|septembrie|octombrie|noiembrie|decembrie)$/i;
+          let known: string | null = null;
+          for (const m of userMsgs) {
+            const body = m.body ?? '';
+            const re = /(?:pentru|pt\.?|lui|pe|numele)\s+([A-ZȘȚĂÎÂ][a-zșțăîâ]{2,15})/g;
+            let hit: RegExpExecArray | null;
+            while ((hit = re.exec(body))) {
+              const cand = hit[1];
+              if (STOP.test(cand)) continue;
+              if (this.isRelationOnlyName(cand)) continue;
+              known = cand;
+              break;
+            }
+            if (known) break;
+          }
+          if (known) {
+            this.logger.warn(
+              `NAME_ALREADY_GIVEN blocked on conv=${ctx.conv.id.slice(0, 8)} — cerea din nou numele deși clientul spusese „${known}".`,
+            );
+            return {
+              sent: false,
+              messageType: 'noop',
+              status: 'NAME_ALREADY_GIVEN',
+              instruction:
+                `STAI — nu am trimis mesajul. Clientul ți-a spus deja numele în mesajele lui: „${known}". Dacă i-l ceri încă o dată, ` +
+                `pentru el înseamnă că n-ai citit ce a scris. Apelează ACUM \`wizard_update\` cu recipientName=„${known}", ` +
+                `iar în mesaj doar confirmă-l scurt, într-o propoziție, și treci la ce lipsește cu adevărat ` +
+                `(ex. „Am notat, pentru ${known} ❤️ Ce vrei să-i transmită melodia, pe scurt?"). ` +
+                `Dacă chiar ai un dubiu real asupra formei numelui, întreabă-l ca pe o confirmare („Îl scriu «${known}», da?"), NU ca pe o întrebare nouă.`,
+            };
+          }
+        } catch (e) {
+          this.logger.warn(`name-already-given guard failed: ${(e as Error).message}`);
         }
       }
     }
@@ -5100,6 +5186,30 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         status: 'DUPLICATE_TEXT_BLOCKED',
         instruction: 'You already sent this exact text. STOP — do not repeat.',
       };
+    }
+
+    // GUARD „consolare spusă de două ori în același tur". BUG confirmat 2026-08-21 conv
+    // 208b5e22: la „Sincer nu știu... ce vreau", Irina a trimis întâi `send_empathy` („Înțeleg
+    // că e greu să știi exact ce să scrii ❤️ Hai că te ajut eu"), iar imediat, în același tur,
+    // un al doilea mesaj care începea la fel („Nicio problemă ❤️ Îți scriu eu o variantă
+    // drăguță…"). Clientul primește aceeași încurajare de două ori la 7 secunde distanță și
+    // niciun pas înainte — sună a robot care se aude pe sine. Empatia se spune O DATĂ.
+    {
+      const REASSURE =
+        /(nicio problem|nici o problem|inteleg (ca|cat|ce)|te ajut eu|iti scriu eu|scriu eu o|nu trebuie sa (iasa|fie) perfect|nu ti face griji|lasa pe mine|ma ocup eu|te ajut cu drag)/;
+      const cur = normLoose(trimmed);
+      if (REASSURE.test(cur) && ctx.sentTexts.some((t) => REASSURE.test(normLoose(t)))) {
+        this.logger.warn(
+          `REASSURANCE_REPEATED blocked on conv=${ctx.conv.id.slice(0, 8)} — a doua consolare în același tur.`,
+        );
+        return {
+          sent: false,
+          messageType: 'duplicate_text',
+          status: 'REASSURANCE_REPEATED',
+          instruction:
+            'STAI — l-ai liniștit DEJA în acest tur („te ajut eu / nicio problemă"). Repetat imediat, mesajul nu mai înseamnă nimic și clientul rămâne tot fără pasul următor. Rescrie-l FĂRĂ niciun preambul de consolare: doar lucrul concret care urmează — ori propunerea ta de mesaj pentru melodie, ori SINGURA informație care îți lipsește. ⛔ Și nu-l întreba ceva ce ți-a spus deja în mesajele lui (pentru cine e, ce ocazie, numele) — recitește-le înainte.',
+        };
+      }
     }
 
     // GUARD două întrebări în același tur (BUG observat 2026-08-08 conv 29ffdaf9): Irina a
@@ -7039,7 +7149,8 @@ ${transcript}`;
       sent: true,
       status: 'PRICE_QUOTED',
       appliedCode: appliedCode?.code ?? null,
-      instruction: 'Quote trimis. Așteaptă confirmarea userului. TERMINĂ TURUL.',
+      instruction:
+        'Quote trimis. ÎNAINTE de a termina turul: dacă în mesajele clientului apar DEJA numele destinatarului, ocazia sau ce vrea să-i transmită, salvează-le ACUM cu `wizard_update` — altfel la turul următor pornești de la zero și îi ceri lucruri pe care ți le-a spus din prima (conv 208b5e22: numele era în primul lui mesaj și i-a fost cerut de încă două ori). Apoi așteaptă confirmarea prețului. TERMINĂ TURUL.',
     };
   }
 
@@ -8367,7 +8478,43 @@ ${transcript}`;
 
     // CAZ 1: refacere GRATUITĂ — doar greșeala noastră SAU gest de retenție.
     // O singură dată per melodie, indiferent de motiv (freeRemakeUsedAt).
-    const wantsFree = args.isOurError || args.isRetentionOffer === true;
+    let wantsFree = args.isOurError || args.isRetentionOffer === true;
+
+    // GARDĂ „retenție inventată". `isRetentionOffer` e definit ca gest UNIC pentru un client
+    // pe punctul să renunțe / care cere banii înapoi — nu ca politică de „prima modificare e
+    // din partea casei". BUG confirmat 2026-08-21 conv 208b5e22: clientul, mulțumit și abia
+    // plătit, a întrebat politicos „nu aș vrea să pară manea, ceva gen muzică ușoară... se
+    // poate?" — o schimbare de STIL, adică o modificare `large` de 29.99 lei. Irina a pus
+    // isRetentionOffer=true, codul n-a verificat nimic, iar refacerea a plecat gratis ȘI a ars
+    // singurul gratuit al melodiei. Nu era nicio retenție de făcut: omul nu amenința cu nimic.
+    // De aici încolo retenția cere semnale REALE de plecare în cuvintele clientului.
+    if (!args.isOurError && args.isRetentionOffer === true) {
+      let churnSignal = false;
+      try {
+        const recentUser = await this.msg.find({
+          where: { conversationId: conv.id, authorRole: 'user' },
+          order: { createdAt: 'DESC' },
+          take: 8,
+        });
+        const blob = normLoose(recentUser.map((m) => m.body ?? '').join(' \n '));
+        churnSignal =
+          /(refund|banii inapoi|bani inapoi|returnati|restitui|imi dati banii|vreau banii)/.test(blob) ||
+          /(anulez|anulati|renunt|ma las|nu mai vreau|nu mai doresc|nu mai comand|nu mai lucrez)/.test(blob) ||
+          /(reclamatie|anpc|protectia consumatorului|avocat|instanta|dau in judecata)/.test(blob) ||
+          /(escroc|teapa|inselat|inselatorie|frauda|hoti)/.test(blob) ||
+          /(oribil|groaznic|jalnic|dezamagit|dezamagita|foarte nemultumit|sunt suparat|sunt suparata|rusine)/.test(blob) ||
+          /(am platit degeaba|bani aruncati|nu e deloc ce am cerut|nu are nicio legatura)/.test(blob);
+      } catch (e) {
+        // fail-closed: dacă nu putem verifica, nu dăm gratuit din reflex.
+        this.logger.warn(`retention churn lookup failed: ${(e as Error).message}`);
+      }
+      if (!churnSignal) {
+        wantsFree = false;
+        this.logger.warn(
+          `RETENTION_NOT_JUSTIFIED on conv=${ctx.conv.id.slice(0, 8)} — isRetentionOffer fără semnal de plecare; modificarea merge pe calea contra cost.`,
+        );
+      }
+    }
     // Refacere de REPARAȚIE: gratuitul a fost consumat de AI pe o descriere VAGĂ (fără
     // cererea concretă a clientului), deci corectura cerută n-a fost niciodată aplicată.
     // Nu e o a doua favoare comercială — e repararea unei erori de-a noastră, deci NU
@@ -8662,7 +8809,16 @@ ${transcript}`;
       this.logger.warn(`modification consent guard failed: ${(e as Error).message}`);
     }
 
-    const amount = args.scope === 'large' ? MODIFICATION_PRICE_LARGE_CENTS : MODIFICATION_PRICE_SMALL_CENTS;
+    // Schimbarea de GEN/STIL nu e o corectură mică: melodia se generează integral de la zero
+    // cu alt prompt de stil, exact definiția lui `large` din descrierea tool-ului. Observat
+    // 2026-08-21 conv 208b5e22: „să nu pară manea, ceva gen muzică ușoară" trimis ca
+    // scope=small — ar fi cotat 14.99 în loc de 29.99 pentru cea mai amplă refacere posibilă.
+    const looksLikeStyleChange =
+      /(alt (stil|gen|ritm)|alta melodie|schimb[aă] (stilul|genul|ritmul)|sa nu (mai )?(par|fie|sune)[a-zăâîșț ]{0,12}manea|nu (vreau|as vrea)[a-zăâîșț ]{0,15}manea|muzic[aă] u[sș]oar|alt gen muzical|de la zero|refacere complet|refa complet)/i.test(
+        changes,
+      );
+    const effectiveScope: 'small' | 'large' = args.scope === 'large' || looksLikeStyleChange ? 'large' : 'small';
+    const amount = effectiveScope === 'large' ? MODIFICATION_PRICE_LARGE_CENTS : MODIFICATION_PRICE_SMALL_CENTS;
     const site = await this.sites.findById(ctx.conv.siteId);
     if (!site) return { error: 'site_not_found' };
 
@@ -8737,8 +8893,8 @@ ${transcript}`;
         ipAddress: conv.lastIp ?? undefined,
       });
       const currency = site.currency.toUpperCase();
-      const description = `Modificare manea pentru ${genRow.recipientName} (${args.scope === 'large' ? 'amplă' : 'mică'})`;
-      state.modification = { generationId: genRow.id, changes, scope: args.scope, paymentId: checkout.paymentId, newRecipientName };
+      const description = `Modificare manea pentru ${genRow.recipientName} (${effectiveScope === 'large' ? 'amplă' : 'mică'})`;
+      state.modification = { generationId: genRow.id, changes, scope: effectiveScope, paymentId: checkout.paymentId, newRecipientName };
       state.updatedAt = new Date().toISOString();
       await this.conv
         .createQueryBuilder()

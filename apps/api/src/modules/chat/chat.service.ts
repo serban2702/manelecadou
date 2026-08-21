@@ -1787,6 +1787,21 @@ export class ChatService implements OnModuleInit {
     // de 2-4 ori la rând. Dacă în ultimele 3 minute a fost deja livrat un song_preview
     // pentru ACEST generationId pe această conversație, NU mai trimitem încă unul.
     // Fereastra de 3 min lasă o regenerare reală (5-10 min) să anunțe varianta nouă.
+    // Pista audio livrată ACUM. E semnalul care distinge un anunț dublu (același fișier)
+    // de o VARIANTĂ NOUĂ apărută după o refacere pe același generationId.
+    let currentAudioUrl: string | null = null;
+    if (isOk) {
+      try {
+        const row = (await this.conv.manager.query(
+          `SELECT "audioUrl" FROM generations WHERE id = $1`,
+          [generationId],
+        )) as Array<{ audioUrl: string | null }>;
+        currentAudioUrl = row?.[0]?.audioUrl ?? null;
+      } catch {
+        /* best-effort — fără el ne comportăm ca înainte */
+      }
+    }
+    let isRemakeDelivery = false;
     if (isOk) {
       const alreadyDelivered = await this.msg
         .createQueryBuilder('m')
@@ -1796,12 +1811,24 @@ export class ChatService implements OnModuleInit {
         .andWhere('m."createdAt" > :since', { since: new Date(Date.now() - 3 * 60 * 1000) })
         .getOne();
       if (alreadyDelivered) {
-        return;
+        // BUG confirmat 2026-08-21 conv 208b5e22: clientul a cerut, la 2 minute după plată, ca
+        // piesa să nu sune a manea; refacerea a pornit, dar jobul VECHI a terminat imediat după
+        // și i-a trimis „🎵 Melodia ta e gata!" — adică exact varianta pe care tocmai o refuzase.
+        // Când refacerea a terminat 2 minute mai târziu, garda de mai jos (fereastra de 3 min)
+        // i-a înghițit anunțul, așa că despre varianta bună clientul n-a mai aflat niciodată din
+        // chat. Un fișier audio DIFERIT de cel deja anunțat nu e un duplicat, e livrarea nouă.
+        const prevAudio =
+          ((alreadyDelivered.payload as { audioTrackUrl?: string | null } | null)?.audioTrackUrl) ?? null;
+        const isNewVersion = !!currentAudioUrl && !!prevAudio && currentAudioUrl !== prevAudio;
+        if (!isNewVersion) return;
+        isRemakeDelivery = true;
       }
     }
 
     const body = isOk
-      ? `🎵 Melodia ta e gata! O poți asculta și descărca aici: ${this.buildGenerationUrl(conv, generationId)}`
+      ? isRemakeDelivery
+        ? `🎵 Varianta refăcută e gata! O poți asculta și descărca aici: ${this.buildGenerationUrl(conv, generationId)}`
+        : `🎵 Melodia ta e gata! O poți asculta și descărca aici: ${this.buildGenerationUrl(conv, generationId)}`
       : `⚠️ A apărut o eroare la generarea melodiei. Operatorul nostru se ocupă imediat — te ținem la curent.`;
 
     const msg = this.msg.create({
@@ -1811,7 +1838,9 @@ export class ChatService implements OnModuleInit {
       authorId: null,
       body,
       messageType: isOk ? 'song_preview' : 'text',
-      payload: isOk ? { generationId, audioUrl: this.buildGenerationUrl(conv, generationId) } : null,
+      payload: isOk
+        ? { generationId, audioUrl: this.buildGenerationUrl(conv, generationId), audioTrackUrl: currentAudioUrl }
+        : null,
       aiGenerated: true,
       detectedLang: 'ro',
     });
