@@ -15,9 +15,10 @@ import { useSite } from '@/lib/site-context';
 import { RotatingStatus } from './RotatingStatus';
 import { track } from '@/lib/tracking';
 import { formatPrice } from '@/lib/site-shared';
-import { claimPlayback, releasePlayback } from '@/lib/audio-registry';
 import { PACKAGES, DEFAULT_PACKAGE_TIER, type PackageTier } from '@/lib/packages';
 import { saveWizard, readWizard, clearWizard } from '@/lib/wizard';
+import { useExperienceCatalog } from '@/experiences/use-experience-catalog';
+import { useSamplePreview } from '@/lib/use-sample-preview';
 import OfferCountdown from './OfferCountdown';
 
 type Data = {
@@ -60,143 +61,6 @@ const STEP_NAMES_FALLBACK = ['Stil', 'Ocazie', 'Detalii', 'Versuri', 'Pachet', '
 const STEP_NAMES_PAYFIRST_FALLBACK = ['Stil', 'Ocazie', 'Detalii', 'Pachet', 'Plată'];
 
 type StepKey = 'style' | 'occ' | 'details' | 'lyrics' | 'package' | 'pay';
-
-// Cache global pentru mostrele audio (voice/style) — evită refetch-urile.
-// `null` înseamnă "am cerut, nu există mostră publică pentru această voce/stil".
-const SAMPLE_CACHE = new Map<string, string | null>();
-
-/**
- * Player partajat pentru mostrele de voce/stil din carduri.
- * Când `playing` are forma `voice-XYZ` sau `style-XYZ`, fetchează cea mai recentă
- * piesă publică ce folosește acea voce / acel stil și o redă (max 30s preview).
- * La schimbarea selecției sau la unmount, audio-ul curent e oprit.
- */
-function useSamplePreview(
-  playing: string | null,
-  onAutoStop: (id: string) => void,
-) {
-  const site = useSite();
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const activeKeyRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    // Oprește orice mostră anterioară de fiecare dată când `playing` se schimbă.
-    if (audioRef.current) {
-      try {
-        audioRef.current.pause();
-      } catch {}
-      audioRef.current = null;
-    }
-    activeKeyRef.current = null;
-
-    if (!playing) return;
-    const isVoice = playing.startsWith('voice-');
-    const isStyle = playing.startsWith('style-');
-    if (!isVoice && !isStyle) return; // nu e treaba noastră (ex: demouri din QuickListen)
-
-    const id = playing.slice(isVoice ? 'voice-'.length : 'style-'.length);
-    const key = playing;
-    activeKeyRef.current = key;
-    let cancelled = false;
-
-    // Sursa preferată: mostrele pre-generate per site (admin → /sites/:id/samples).
-    // Fallback: cea mai recentă piesă publică care folosește acel stil/voce.
-    const presetEntry = isStyle ? site.styleSamples?.[id] : site.voiceSamples?.[id];
-    const presetUrl = presetEntry?.audioUrl;
-    // startSec setat din admin → skip intro la playback. Doar pentru presets;
-    // fallback-ul publicGenerations (piese ale altor useri) începe mereu de la 0.
-    const presetStartSec = presetEntry?.startSec ?? 0;
-
-    async function startPlayback(url: string, startSec = 0) {
-      if (cancelled || activeKeyRef.current !== key) return;
-      const a = new Audio(url);
-      a.preload = 'auto';
-      audioRef.current = a;
-      const stopAt = startSec + 30;
-      const stopFn = () => {
-        try {
-          a.pause();
-        } catch {
-          /* noop */
-        }
-      };
-      a.addEventListener('play', () => claimPlayback(stopFn));
-      a.addEventListener('pause', () => releasePlayback(stopFn));
-      a.addEventListener('timeupdate', () => {
-        if (a.currentTime >= stopAt) {
-          a.pause();
-          a.currentTime = 0;
-          if (activeKeyRef.current === key) onAutoStop(key);
-        }
-      });
-      a.addEventListener('ended', () => {
-        releasePlayback(stopFn);
-        if (activeKeyRef.current === key) onAutoStop(key);
-      });
-      // Sări la startSec înainte de play (când e setat). Trebuie să așteptăm
-      // metadata ca să putem face seek; `loadedmetadata` se firește o singură dată.
-      if (startSec > 0) {
-        const seek = () => {
-          try {
-            a.currentTime = startSec;
-          } catch {
-            /* noop */
-          }
-        };
-        if (a.readyState >= 1) seek();
-        else a.addEventListener('loadedmetadata', seek, { once: true });
-      }
-      try {
-        await a.play();
-      } catch {
-        // browser a blocat (rare după click) — oprim starea vizuală
-        if (activeKeyRef.current === key) onAutoStop(key);
-      }
-    }
-
-    (async () => {
-      // 1. Mostrele admin (preset per site) au prioritate — sună exact pe limba/genul site-ului.
-      if (presetUrl) {
-        await startPlayback(presetUrl, presetStartSec);
-        return;
-      }
-      const cached = SAMPLE_CACHE.get(key);
-      if (cached === null) {
-        // știm deja că nu există mostră
-        if (activeKeyRef.current === key) onAutoStop(key);
-        return;
-      }
-      if (cached) {
-        await startPlayback(cached);
-        return;
-      }
-      try {
-        const params = isVoice ? { voice: id, limit: 1 } : { style: id, limit: 1 };
-        const res = await api.publicGenerations({ ...params, sort: 'recent' });
-        const url = res.items.find((it) => !!it.audioUrl)?.audioUrl ?? null;
-        SAMPLE_CACHE.set(key, url);
-        if (cancelled || activeKeyRef.current !== key) return;
-        if (!url) {
-          onAutoStop(key);
-          return;
-        }
-        await startPlayback(url);
-      } catch {
-        SAMPLE_CACHE.set(key, null);
-        if (activeKeyRef.current === key) onAutoStop(key);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (audioRef.current) {
-        try {
-          audioRef.current.pause();
-        } catch {}
-      }
-    };
-  }, [playing, onAutoStop, site.styleSamples, site.voiceSamples]);
-}
 
 export function Generator(props: { playing: string | null; onPlay: (id: string) => void }) {
   return (
@@ -241,6 +105,7 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   useSamplePreview(playing, handleSampleAutoStop);
 
   const site = useSite();
+  const catalog = useExperienceCatalog();
   // Pasul de review al versurilor (înainte de plată) e per-site, default ON.
   // Fără el: flux pay-first direct (Stil → Ocazie → Detalii → Pachet → Plată).
   const lyricsReviewEnabled = site.lyricsReviewEnabled !== false;
@@ -249,16 +114,16 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     : ['style', 'occ', 'details', 'package', 'pay'];
   const totalSteps = STEP_KEYS.length;
   const effectiveStyles = useMemo<StyleOption[]>(
-    () => (site.styles?.length ? siteStylesToOptions(site.styles, site.locale) : STYLES),
-    [site.styles, site.locale],
+    () => (catalog.styles.length ? siteStylesToOptions(catalog.styles, site.locale) : STYLES),
+    [catalog.styles, site.locale],
   );
   const effectiveOccasions = useMemo(
-    () => (site.occasions?.length ? siteOccasionsToOptions(site.occasions, site.locale) : OCC),
-    [site.occasions, site.locale],
+    () => (catalog.occasions.length ? siteOccasionsToOptions(catalog.occasions, site.locale) : OCC),
+    [catalog.occasions, site.locale],
   );
   const effectiveVoices = useMemo(
-    () => (site.voices?.length ? siteVoicesToOptions(site.voices, site.locale) : VOICES),
-    [site.voices, site.locale],
+    () => (catalog.voices.length ? siteVoicesToOptions(catalog.voices, site.locale) : VOICES),
+    [catalog.voices, site.locale],
   );
   // Opțiunile valide per-site pentru selecții — trimise spre admin (presence:form_state)
   // ca să poată schimba stil/ocazie/voce din chat cu ID-uri corecte pentru acest site.

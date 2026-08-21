@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { SiteShell } from '@/components/SiteShell';
 import { api } from '@/lib/api';
 import { OCC, STYLES, VOICES } from '@/lib/seed-data';
+import { useExperienceCatalog } from '@/experiences/use-experience-catalog';
 import { ManeaPlayer } from '@/components/ManeaPlayer';
 import { useSite } from '@/lib/site-context';
 import { getPagePath } from '@/lib/page-slugs';
@@ -19,6 +20,7 @@ export default function IstoricPage() {
   const tStyles = useTranslations('styles');
   const tOcc = useTranslations('occasions');
   const site = useSite();
+  const catalog = useExperienceCatalog();
   const studio = getPagePath(site.locale, 'studio');
   const [styleId, setStyleId] = useState('');
   const [occasion, setOccasion] = useState('');
@@ -57,11 +59,11 @@ export default function IstoricPage() {
   // sărim peste i18n și folosim direct valoarea / seed-data.
   const styleLabel = (id: string) => {
     if ((tStyles as any).has?.(`${id}.nm`)) return tStyles(`${id}.nm` as any);
-    return STYLES.find((s) => s.id === id)?.nm ?? id;
+    return catalog.styles.find((s) => s.id === id)?.nm ?? STYLES.find((s) => s.id === id)?.nm ?? id;
   };
   const occLabel = (id: string) => {
     if ((tOcc as any).has?.(id)) return tOcc(id as any);
-    return OCC.find((o) => o.id === id)?.nm ?? id;
+    return catalog.occasions.find((o) => o.id === id)?.nm ?? OCC.find((o) => o.id === id)?.nm ?? id;
   };
 
   return (
@@ -87,7 +89,7 @@ export default function IstoricPage() {
           >
             <FilterRow label={t('filterStyle')}>
               <Chip active={!styleId} onClick={() => { setStyleId(''); setPage(0); }}>{t('all')}</Chip>
-              {STYLES.map((s) => (
+              {catalog.styles.map((s) => (
                 <Chip key={s.id} active={styleId === s.id} onClick={() => { setStyleId(s.id); setPage(0); }}>
                   {s.em} {styleLabel(s.id)}
                 </Chip>
@@ -95,7 +97,7 @@ export default function IstoricPage() {
             </FilterRow>
             <FilterRow label={t('filterOccasion')}>
               <Chip active={!occasion} onClick={() => { setOccasion(''); setPage(0); }}>{t('all')}</Chip>
-              {OCC.map((o) => (
+              {catalog.occasions.map((o) => (
                 <Chip key={o.id} active={occasion === o.id} onClick={() => { setOccasion(o.id); setPage(0); }}>
                   {o.em} {occLabel(o.id)}
                 </Chip>
@@ -239,6 +241,7 @@ function FilterRow({ label, children }: { label: string; children: React.ReactNo
   return (
     <div>
       <div
+        className="filter-lab"
         style={{
           fontSize: 11,
           color: 'rgba(255,245,220,0.5)',
@@ -267,12 +270,13 @@ function Chip({
   return (
     <button
       onClick={onClick}
+      className={active ? 'filter-chip is-on' : 'filter-chip'}
       style={{
         padding: '6px 12px',
         fontSize: 12,
         fontWeight: 600,
-        background: active ? 'var(--gold)' : 'rgba(241,200,77,0.06)',
-        color: active ? '#2a1a04' : 'var(--cream)',
+        background: active ? 'var(--gold)' : 'var(--chip-bg, rgba(241,200,77,0.06))',
+        color: active ? '#2a1a04' : 'var(--chip-fg, var(--cream))',
         border: `1px solid ${active ? 'var(--gold)' : 'var(--line)'}`,
         borderRadius: 999,
         cursor: 'pointer',

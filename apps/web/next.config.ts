@@ -14,6 +14,10 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_DEFAULT_LOCALE: process.env.NEXT_PUBLIC_DEFAULT_LOCALE ?? 'ro',
     NEXT_PUBLIC_SHOW_LANG_SWITCHER: process.env.NEXT_PUBLIC_SHOW_LANG_SWITCHER ?? 'true',
   },
+  async rewrites() {
+    const api = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:1501';
+    return [{ source: '/uploads/:path*', destination: `${api}/uploads/:path*` }];
+  },
 };
 
 export default withNextIntl(nextConfig);

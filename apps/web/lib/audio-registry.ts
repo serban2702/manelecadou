@@ -1,31 +1,58 @@
 /**
- * Registru global pentru playerele audio din site. Garantează că o singură
- * piesă cântă la un moment dat:
- *   - ManeaPlayer (wavesurfer / native audio)
- *   - useSamplePreview din Generator (mostre voce/stil)
- *   - playerele inline de pe pagini publice
- *
- * Fiecare player apelează `claimPlayback(stop)` când începe să cânte. Registrul
- * cheamă funcția `stop` a player-ului activ anterior și-l înlocuiește. Când
- * player-ul curent se oprește (pause / finish / unmount), apelează `release(stop)`
- * ca să cureţe registrul dacă încă e activ.
+ * Un singur player activ pe tot site-ul.
+ * claimPlayback(stop) oprește TOȚI ceilalți (telefoane, mostre, demo, ManeaPlayer)
+ * plus orice <audio>/<video> din DOM, în afară de elementele păstrate.
  */
 
 type Stopper = () => void;
 
-let active: Stopper | null = null;
+const players = new Set<Stopper>();
+const background = new Set<Stopper>();
 
-export function claimPlayback(stop: Stopper): void {
-  if (active && active !== stop) {
+function pauseForeignMedia(keep?: HTMLMediaElement | HTMLMediaElement[] | null): void {
+  if (typeof document === 'undefined') return;
+  const keepSet = new Set(Array.isArray(keep) ? keep : keep ? [keep] : []);
+  document.querySelectorAll('audio, video').forEach((node) => {
+    const el = node as HTMLMediaElement;
+    if (keepSet.has(el)) return;
     try {
-      active();
+      if (!el.paused) el.pause();
+    } catch {
+      /* noop */
+    }
+  });
+}
+
+export function claimPlayback(
+  stop: Stopper,
+  keep?: HTMLMediaElement | HTMLMediaElement[] | null,
+): void {
+  if (keep) pauseForeignMedia(keep);
+
+  const others = [...players].filter((p) => p !== stop);
+  const bg = [...background].filter((p) => p !== stop);
+  players.clear();
+  background.clear();
+  players.add(stop);
+
+  for (const other of [...others, ...bg]) {
+    try {
+      other();
     } catch {
       /* noop */
     }
   }
-  active = stop;
+}
+
+/** Autoplay mute (hero) — se oprește când cineva dă play, dar nu evince alte playere. */
+export function registerBackgroundPlayback(stop: Stopper): () => void {
+  background.add(stop);
+  return () => {
+    background.delete(stop);
+  };
 }
 
 export function releasePlayback(stop: Stopper): void {
-  if (active === stop) active = null;
+  players.delete(stop);
+  background.delete(stop);
 }

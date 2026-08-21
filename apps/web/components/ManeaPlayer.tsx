@@ -110,7 +110,8 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
           }
         };
         ws.on('play', () => {
-          claimPlayback(stopFn);
+          const media = typeof ws.getMediaElement === 'function' ? ws.getMediaElement() : null;
+          claimPlayback(stopFn, media ?? undefined);
           setIsPlaying(true);
           const ctx = trackCtxRef.current;
           if (ctx && !playTrackedRef.current) {
@@ -180,7 +181,7 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
           controls
           src={audioUrl}
           style={{ width: '100%', height: compact ? 32 : 40 }}
-          onPlay={(e) => claimPlayback(getNativeStop(e.currentTarget))}
+          onPlay={(e) => claimPlayback(getNativeStop(e.currentTarget), e.currentTarget)}
           onPause={(e) => releasePlayback(getNativeStop(e.currentTarget))}
           onEnded={(e) => releasePlayback(getNativeStop(e.currentTarget))}
           onTimeUpdate={(e) => {

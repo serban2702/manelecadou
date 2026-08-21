@@ -2,8 +2,8 @@ export type CadouWizardData = {
   style: string;
   occ: string;
   name: string;
+  fromName: string;
   noDedic: boolean;
-  about: string;
   msg: string;
   voice: 'male' | 'female' | '';
   packageTier: 'basic' | 'plus' | 'premium';
@@ -24,10 +24,10 @@ export const EMPTY_CADOU: CadouWizardData = {
   style: '',
   occ: '',
   name: '',
+  fromName: '',
   noDedic: false,
-  about: '',
   msg: '',
-  voice: '',
+  voice: 'male',
   packageTier: 'basic',
   customLyrics: '',
   useCustomLyrics: false,

@@ -77,6 +77,21 @@ export function setGuestId(id: string) {
   }
 }
 
+export function clearGuestId() {
+  if (typeof window === 'undefined') return;
+  memoryGuestId = null;
+  try {
+    window.localStorage.removeItem(GUEST_KEY);
+  } catch {
+    /* ignore */
+  }
+  try {
+    document.cookie = `${GUEST_KEY}=; path=/; SameSite=Lax; max-age=0`;
+  } catch {
+    /* ignore */
+  }
+}
+
 export function getAccessToken(): string | null {
   if (typeof window === 'undefined') return null;
   if (memoryToken) return memoryToken;
@@ -204,7 +219,15 @@ export function identifyVisitor(input: {
 
 export async function ensureGuestSession(): Promise<string> {
   const existing = getGuestId();
-  if (existing) return existing;
+  if (existing) {
+    try {
+      const me = await request<MeGuest>('/guest-sessions/me');
+      if (me.id) return existing;
+    } catch {
+      /* sesiune moartă (DB reset / alt mediu) — recreăm */
+    }
+    clearGuestId();
+  }
   const created = await request<{ id: string }>('/guest-sessions', {
     method: 'POST',
     body: JSON.stringify({
@@ -254,6 +277,7 @@ export interface GenerationDto {
   recipientName: string;
   message: string;
   dedication: string | null;
+  dedicatorName?: string | null;
   voiceArtist: string;
   customLyrics: string | null;
   lyricsDraft: string | null;
@@ -293,6 +317,17 @@ export interface GenerationDto {
   unlocked?: boolean;
   /** Parola/PIN în clar — prezent DOAR în payload-ul owner-ului (ca s-o partajeze). */
   unlockPin?: string | null;
+  /** Variante redabile (main + bonus + variații-copil). */
+  variants?: Array<{
+    id: string;
+    kind: 'main' | 'bonus' | 'variation';
+    label: string;
+    audioUrl: string;
+  }>;
+  /** Variații-copil încă în lucru (doar owner). */
+  workingVariants?: Array<{ id: string; label: string; status: string; createdAt: string }>;
+  /** ISO — setat după refacerea gratuită unică. */
+  freeRemakeUsedAt?: string | null;
 }
 
 /** Colaj video sau image→video atașat unei generări. */
@@ -504,6 +539,11 @@ export const api = {
     }>(`/public/top?period=${period}&limit=${limit}`),
   retryGeneration: (id: string) =>
     request<GenerationDto>(`/generations/${id}/retry`, { method: 'POST' }),
+  requestRemake: (id: string, notes: string) =>
+    request<{ ok: boolean; variationId: string; status: string }>(`/generations/${id}/remake`, {
+      method: 'POST',
+      body: JSON.stringify({ notes }),
+    }),
   unlockGeneration: (id: string, paymentId: string) =>
     request<GenerationDto>(`/generations/${id}/unlock`, {
       method: 'POST',
@@ -655,6 +695,47 @@ export const api = {
       throw new ApiError(res.status, body);
     }
     return (await res.json()) as { collageId: string; status: string };
+  },
+
+  /**
+   * Un upload de poze → câte un colaj pe fiecare variantă de melodie.
+   * Multipart `images` + `aspect` (default 9x16).
+   */
+  createCollageBatch: async (
+    generationId: string,
+    files: File[],
+    aspect: CollageAspect = '9x16',
+  ): Promise<{ collages: Array<{ collageId: string; status: string; track: string }> }> => {
+    const headers = new Headers();
+    headers.set('X-Locale', getCurrentLocale());
+    const guestId = getGuestId();
+    if (guestId) headers.set('X-Guest-Id', guestId);
+    const token = getAccessToken();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    if (typeof window !== 'undefined') {
+      const orSid = window.__OR_SESSION_ID__;
+      if (orSid) headers.set('X-OpenReplay-SessionID', orSid);
+    }
+    const form = new FormData();
+    form.append('aspect', aspect);
+    for (const f of files) form.append('images', f);
+    const res = await fetch(`${API_URL}/api/generations/${generationId}/collage/batch`, {
+      method: 'POST',
+      headers,
+      body: form,
+    });
+    if (!res.ok) {
+      let body: unknown;
+      try {
+        body = await res.json();
+      } catch {
+        body = await res.text();
+      }
+      throw new ApiError(res.status, body);
+    }
+    return (await res.json()) as {
+      collages: Array<{ collageId: string; status: string; track: string }>;
+    };
   },
 
   /** Întoarce ultimul colaj video pentru o generare (sau `null` dacă nu există). */

@@ -8,6 +8,8 @@ import { api, type GenerationDto } from '@/lib/api';
 import { STYLES, VOICES, OCC } from '@/lib/seed-data';
 import { useSite } from '@/lib/site-context';
 import { getPagePath } from '@/lib/page-slugs';
+import { useExperience } from '@/lib/experience-context';
+import CadouMinePage from '@/experiences/cadou/MinePage';
 
 const STATUS_COLOR: Record<string, { color: string; bg: string }> = {
   queued:           { color: '#ffd680', bg: 'rgba(241,200,77,0.12)' },
@@ -29,6 +31,12 @@ function fmtDate(iso: string, locale: string): string {
 }
 
 export default function ManeleleMelePage() {
+  const exp = useExperience();
+  if (exp.slug === 'cadou') return <CadouMinePage />;
+  return <ManeleleMeleClassic />;
+}
+
+function ManeleleMeleClassic() {
   const t = useTranslations('myGens');
   const site = useSite();
   const studio = getPagePath(site.locale, 'studio');

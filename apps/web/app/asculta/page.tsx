@@ -9,6 +9,9 @@ import { api, type SiteDemoDto } from '@/lib/api';
 import { useSite } from '@/lib/site-context';
 import { getPagePath } from '@/lib/page-slugs';
 import { ManeaPlayer } from '@/components/ManeaPlayer';
+import { useExperienceCatalog } from '@/experiences/use-experience-catalog';
+import { useExperience } from '@/lib/experience-context';
+import CadouListenPage from '@/experiences/cadou/ListenPage';
 
 const CATEGORY_KEYS = [
   'aniversare',
@@ -24,9 +27,15 @@ const CATEGORY_KEYS = [
 export default function AsculaPage() {
   return (
     <Suspense fallback={null}>
-      <AsculaPageInner />
+      <AsculaPageGate />
     </Suspense>
   );
+}
+
+function AsculaPageGate() {
+  const exp = useExperience();
+  if (exp.slug === 'cadou') return <CadouListenPage />;
+  return <AsculaPageInner />;
 }
 
 function AsculaPageInner() {
@@ -42,7 +51,12 @@ function AsculaPageInner() {
     staleTime: 60_000,
   });
 
-  const items = data?.items ?? [];
+  const { demoIds } = useExperienceCatalog();
+  const items = useMemo(() => {
+    const all = data?.items ?? [];
+    if (!demoIds?.length) return all;
+    return all.filter((d) => demoIds.includes(d.id));
+  }, [data?.items, demoIds]);
   const filtered = useMemo(
     () => (category ? items.filter((d) => d.category === category) : items),
     [items, category],

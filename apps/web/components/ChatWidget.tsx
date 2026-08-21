@@ -469,6 +469,7 @@ export function ChatWidget() {
           onClick={() => setOpen(true)}
           aria-label={t('openAria')}
           className={[
+            'chat-launcher',
             pulsing ? 'chat-btn-burst' : '',
             unread > 0 && !pulsing ? 'chat-btn-unread' : '',
           ].filter(Boolean).join(' ')}
@@ -502,6 +503,7 @@ export function ChatWidget() {
 
       {open && (
         <div
+          className="chat-panel"
           style={{
             position: 'fixed',
             right: 18,

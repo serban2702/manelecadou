@@ -6,7 +6,9 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { ChatWidget } from '@/components/ChatWidget';
 import { DemosPopup } from '@/components/DemosPopup';
 import { useSite } from '@/lib/site-context';
+import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
+import { useCadouFromPrice } from './from-price';
 import { openDemosModal, useWizardReachedPackage } from '@/lib/wizard';
 import './theme.css';
 
@@ -22,6 +24,7 @@ export function CadouShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [demosOpen, setDemosOpen] = useState(false);
   const reachedPackage = useWizardReachedPackage();
+  const fromPrice = useCadouFromPrice();
 
   useEffect(() => {
     const onOpen = () => setDemosOpen(true);
@@ -40,23 +43,30 @@ export function CadouShell({ children }: { children: ReactNode }) {
   ];
   const items = [...ticker, ...ticker];
 
-  const nav = [
+  const nav: Array<{
+    href: string;
+    label: string;
+    match: (p: string) => boolean;
+    cta?: boolean;
+    listen?: boolean;
+  }> = [
     { href: '/', label: 'ACASĂ', match: (p: string) => p === '/' },
-    { href: studio, label: 'FĂ O MANEA', match: (p: string) => p.startsWith('/studio') },
+    { href: studio, label: 'FĂ O MANEA', match: (p: string) => p.startsWith('/studio'), cta: true },
     { href: asculta, label: 'ASCULTĂ', match: (p: string) => p.startsWith('/asculta'), listen: true },
-    { href: top, label: 'TOP', match: (p: string) => p.startsWith('/top') },
+    { href: top, label: 'TOPUL MANELIȘTILOR', match: (p: string) => p.startsWith('/top') },
     { href: istoric, label: 'ISTORIC', match: (p: string) => p.startsWith('/istoric') },
     { href: mine, label: 'MANELELE MELE', match: (p: string) => p.startsWith('/manelele-mele') },
   ];
 
   const renderLink = (n: (typeof nav)[number]) => {
     const active = n.match(pathname);
+    const cls = [active ? 'is-active' : '', n.cta ? 'cadou-nav-cta' : ''].filter(Boolean).join(' ') || undefined;
     if (n.listen && reachedPackage) {
       return (
         <a
           key={n.href}
           href={n.href}
-          className={active ? 'is-active' : undefined}
+          className={cls}
           onClick={(e) => {
             e.preventDefault();
             openDemosModal();
@@ -68,11 +78,14 @@ export function CadouShell({ children }: { children: ReactNode }) {
       );
     }
     return (
-      <Link key={n.href} href={n.href} className={active ? 'is-active' : undefined}>
+      <Link key={n.href} href={n.href} className={cls}>
         {n.label}
       </Link>
     );
   };
+  const onStudio = pathname.startsWith(studio);
+  const onSong = pathname.startsWith('/m/');
+  const onMine = pathname.startsWith(mine);
 
   return (
     <div className="cadou-root">
@@ -101,7 +114,7 @@ export function CadouShell({ children }: { children: ReactNode }) {
         </button>
       </header>
       {menuOpen && <nav className="cadou-nav-mobile">{nav.map(renderLink)}</nav>}
-      {children}
+      <div className="cadou-main">{children}</div>
       <footer className="cadou-footer">
         <div>{site.name} · plăți prin Stripe</div>
         <div style={{ marginTop: 8 }}>
@@ -116,6 +129,12 @@ export function CadouShell({ children }: { children: ReactNode }) {
           <Link href={getPagePath(site.locale, 'faq')}>FAQ</Link>
         </div>
       </footer>
+      {!onStudio && !onSong && !onMine && (
+        <Link href={studio} className="cadou-sticky">
+          <strong>Fă o manea</strong>
+          <span>{formatPrice(site, fromPrice)} · 1+1</span>
+        </Link>
+      )}
       <ChatWidget />
       <DemosPopup open={demosOpen} onClose={() => setDemosOpen(false)} />
     </div>

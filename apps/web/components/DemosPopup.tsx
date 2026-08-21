@@ -8,6 +8,7 @@ import { api, type SiteDemoDto } from '@/lib/api';
 import { useSite } from '@/lib/site-context';
 import { getPagePath } from '@/lib/page-slugs';
 import { useWizardReachedPackage } from '@/lib/wizard';
+import { useExperienceCatalog } from '@/experiences/use-experience-catalog';
 import { ManeaPlayer } from './ManeaPlayer';
 
 /**
@@ -46,7 +47,12 @@ export function DemosPopup({ open, onClose }: { open: boolean; onClose: () => vo
     staleTime: 60_000,
   });
 
-  const items = data?.items ?? [];
+  const { demoIds } = useExperienceCatalog();
+  const items = useMemo(() => {
+    const all = data?.items ?? [];
+    if (!demoIds?.length) return all;
+    return all.filter((d) => demoIds.includes(d.id));
+  }, [data?.items, demoIds]);
 
   if (!open) return null;
 

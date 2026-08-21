@@ -102,6 +102,28 @@ export interface SiteConfig {
         features: string[];
         upsell: { title: string; body: string; targetTier: 'plus' | 'premium' } | null;
       }>;
+      catalog?: {
+        styles?: Array<SiteStyleEntry & { artUrl?: string; sampleUrl?: string; sampleStartSec?: number }>;
+        occasions?: SiteOccasionEntry[];
+        voices?: SiteVoiceEntry[];
+        demoIds?: string[] | null;
+        reactionClips?: Array<{
+          id: string;
+          platform: 'tiktok' | 'instagram';
+          videoUrl: string;
+          posterUrl?: string;
+          audioUrl?: string;
+          demoId?: string | null;
+          username: string;
+          caption: string;
+          song: string;
+          likes?: number;
+          comments?: number;
+          shares?: number;
+          avatarUrl?: string;
+          previewStartSec?: number;
+        }>;
+      };
     }>;
   };
 }
@@ -122,6 +144,9 @@ export interface SiteStyleEntry {
   ic?: SiteIconConfig;
   i18n?: Record<string, { nm?: string; ds?: string; heat?: string }>;
   sunoPrompt?: string;
+  artUrl?: string;
+  sampleUrl?: string;
+  sampleStartSec?: number;
 }
 
 export interface SiteVoiceEntry {
