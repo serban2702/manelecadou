@@ -2,22 +2,69 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { join } from 'path';
+import { existsSync } from 'fs';
 import { AppModule } from './app.module';
 import { SitesService } from './modules/sites/sites.service';
+import { StorageService } from './storage/storage.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
 
-  // API-ul stă în spatele Caddy → respectă X-Forwarded-For ca `req.ip` să fie
-  // IP-ul real al vizitatorului. Fără asta, ThrottlerGuard pune toți utilizatorii
-  // în același bucket (IP-ul containerului Caddy din rețeaua Docker) → 429-uri
-  // generalizate. `1` = 1 hop de proxy (Caddy), suficient pentru setup-ul curent.
-  app.set('trust proxy', 1);
+  // API-ul stă în spatele unui reverse proxy → respectă X-Forwarded-For ca
+  // `req.ip` să fie IP-ul real al vizitatorului. Fără asta, ThrottlerGuard pune
+  // toți utilizatorii în același bucket (IP-ul containerului de proxy din
+  // rețeaua Docker) → 429-uri generalizate. Și IP-ul din OpenReplay/analytics
+  // devine al proxy-ului (CLAUDE.md §15.7 pct. 12bis).
+  //
+  // Numărul de hop-uri diferă în funcție de stack:
+  //   1 = Caddy direct (stack-ul vechi de pe Ionos)
+  //   2 = Nginx Proxy Manager → router intern (stack-ul nou)
+  const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? '1');
+  app.set('trust proxy', Number.isFinite(trustProxyHops) && trustProxyHops > 0 ? trustProxyHops : 1);
 
-  // Servește mostrele audio (și orice alt asset uploadat) sub /uploads/.
-  // Pe API URL-ul absolut → ex. https://api.manelecadou.ro/uploads/site-samples/<slug>/style-modern.mp3
-  const uploadsDir = process.env.UPLOADS_DIR ?? join(process.cwd(), 'uploads');
+  // /uploads/* — disc local, sau redirect/stream din Cloudflare R2.
+  const storage = app.get(StorageService);
+  const uploadsDir = storage.localRoot;
+  app.use('/uploads', async (req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    const rel = decodeURIComponent(String(req.path ?? '').replace(/^\/+/, ''));
+    if (!rel || rel.includes('..')) return next();
+    if (!storage.usesR2) return next();
+
+    // Discul local câștigă când fișierul e acolo: `express.static` știe
+    // Range/ETag (seek în <audio>, iOS Safari), iar în timpul migrării e plasa
+    // de siguranță pentru orice n-a apucat încă să ajungă în bucket.
+    if (existsSync(storage.localAbs(rel))) return next();
+
+    const target = storage.publicUrl(rel);
+    if (target.startsWith('http')) {
+      // Cache scurt pe redirect: dacă un fișier ajunge în bucket mai târziu,
+      // nu vrem ca browserele să fi memorat un 404 o zi întreagă.
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+      return res.redirect(302, target);
+    }
+
+    // Fără domeniu public pe bucket: proxy prin API, cu suport de Range ca
+    // seek-ul din player să funcționeze.
+    const obj = await storage.getObjectStream(rel, req.headers.range);
+    if (!obj) return res.status(404).end();
+    res.setHeader('Content-Type', obj.mime);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    if (obj.contentLength != null) res.setHeader('Content-Length', String(obj.contentLength));
+    if (obj.contentRange) {
+      res.setHeader('Content-Range', obj.contentRange);
+      res.status(206);
+    }
+    if (req.method === 'HEAD') return res.end();
+    obj.stream.pipe(res);
+    return;
+  });
   app.useStaticAssets(uploadsDir, {
     prefix: '/uploads/',
     setHeaders: (res) => {

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+import { StorageService } from '../../storage/storage.service';
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
@@ -28,7 +29,10 @@ export interface SavedSocialImage {
 export class SocialImageUploadService {
   private readonly logger = new Logger('SocialImageUpload');
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly storage: StorageService,
+  ) {}
 
   async save(args: {
     generationId: string;
@@ -50,13 +54,14 @@ export class SocialImageUploadService {
     }
     const ext = EXT_BY_MIME[mime] ?? 'png';
 
-    const uploadsDir = this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
+    const uploadsDir = this.storage.localRoot;
     const dir = join(uploadsDir, 'social', args.generationId);
     await fs.mkdir(dir, { recursive: true });
 
     const filename = `upload-${Date.now()}-${randomUUID().slice(0, 8)}.${ext}`;
     const filePath = join(dir, filename);
     await fs.writeFile(filePath, args.fileBuffer);
+    await this.storage.syncFile(filePath, mime);
 
     const apiUrl = (this.config.get<string>('API_URL') ?? 'http://localhost:1501').replace(/\/+$/, '');
     const url = `${apiUrl}/uploads/social/${args.generationId}/${filename}`;

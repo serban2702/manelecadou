@@ -4,6 +4,7 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { SitesService } from './sites.service';
 import { SiteBrand } from './site.entity';
+import { StorageService } from '../../storage/storage.service';
 
 export type BrandAssetField = 'logoUrl' | 'ogImageUrl' | 'faviconUrl' | 'emailBannerUrl';
 
@@ -39,6 +40,7 @@ export class SiteBrandUploadService {
   constructor(
     private readonly sites: SitesService,
     private readonly config: ConfigService,
+    private readonly storage: StorageService,
   ) {}
 
   static isAllowedField(field: string): field is BrandAssetField {
@@ -71,17 +73,20 @@ export class SiteBrandUploadService {
       );
     }
 
-    const uploadsDir = this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
+    const uploadsDir = this.storage.localRoot;
+    const relDir = `site-brand/${site.slug}`;
     const dir = join(uploadsDir, 'site-brand', site.slug);
     await fs.mkdir(dir, { recursive: true });
 
     // Curăță fișiere vechi cu același field dar altă extensie (logoUrl.png → logoUrl.svg).
+    // `storage.list` reunește discul și R2, `storage.delete` șterge din ambele —
+    // altfel varianta veche rămânea în bucket și continua să fie servită.
     try {
-      const existing = await fs.readdir(dir);
+      const existing = await this.storage.list(relDir);
       await Promise.all(
         existing
-          .filter((f) => f.startsWith(`${field}.`))
-          .map((f) => fs.unlink(join(dir, f)).catch(() => undefined)),
+          .filter((key) => key.slice(relDir.length + 1).startsWith(`${field}.`))
+          .map((key) => this.storage.delete(key)),
       );
     } catch {
       // dir might be empty / not exist — ignored
@@ -90,6 +95,7 @@ export class SiteBrandUploadService {
     const fileName = `${field}.${ext}`;
     const filePath = join(dir, fileName);
     await fs.writeFile(filePath, fileBuffer);
+    await this.storage.syncFile(filePath);
 
     const apiUrl = (this.config.get<string>('API_URL') ?? 'http://localhost:1501').replace(/\/+$/, '');
     const v = Date.now();

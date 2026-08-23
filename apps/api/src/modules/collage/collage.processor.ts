@@ -24,6 +24,7 @@ import { User } from '../users/user.entity';
 import { SitesService } from '../sites/sites.service';
 import { RemoteMediaClient } from '../media/remote-media.client';
 import { MailerService } from '../../mailer/mailer.module';
+import { StorageService } from '../../storage/storage.service';
 import { renderBrandedEmail } from '../../mailer/templates/templates';
 import { brandingFromSite } from '../../mailer/branding';
 
@@ -46,7 +47,6 @@ function letterbox(w: number, h: number): string {
 @Processor(COLLAGE_QUEUE, { concurrency: 1 })
 export class CollageProcessor extends WorkerHost {
   private readonly logger = new Logger('CollageProcessor');
-  private readonly uploadsDir: string;
 
   constructor(
     @InjectRepository(VideoCollage) private readonly repo: Repository<VideoCollage>,
@@ -58,10 +58,9 @@ export class CollageProcessor extends WorkerHost {
     private readonly remote: RemoteMediaClient,
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
+    private readonly storage: StorageService,
   ) {
     super();
-    this.uploadsDir =
-      this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
   }
 
   async process(job: Job<{ collageId: string }>): Promise<void> {
@@ -82,11 +81,14 @@ export class CollageProcessor extends WorkerHost {
       const gen = await this.generations.findOne({ where: { id: collage.generationId } });
       if (!gen) throw new Error('generation not found');
 
-      const audioPath = this.audioPathFor(gen, collage.track);
-      const audioExists = await this.fileExists(audioPath);
-      if (!audioExists) throw new Error(`audio file missing: ${audioPath}`);
+      const audioRel = this.audioRelFor(gen, collage.track);
+      const audioExists = await this.storage.exists(audioRel);
+      if (!audioExists) throw new Error(`audio file missing: ${this.storage.localAbs(audioRel)}`);
+      // ffmpeg/ffprobe citesc doar de pe disc → aducem fișierul local dacă e în R2.
+      const audioPath = await this.localFileFor(audioRel);
 
       const dir = this.upload.dirFor(collageId);
+      await fs.mkdir(dir, { recursive: true });
       const aspect = normalizeAspect(collage.aspect);
       const { w, h } = ASPECT_DIMS[aspect];
 
@@ -100,13 +102,12 @@ export class CollageProcessor extends WorkerHost {
       // ── image_video: o SINGURĂ imagine statică (poza de share aleasă) pe toată
       //    durata melodiei, letterbox. Randare locală (cost mic). ───────────────
       if (collage.kind === 'image_video') {
-        await fs.mkdir(dir, { recursive: true });
-        const imgPath = await this.resolveSourceImage(collage, dir);
+        const imgPath = await this.resolveSourceImage(collage);
         if (!imgPath) throw new Error('source image missing for image_video');
         await this.renderStaticImage(imgPath, audioPath, audioDuration, outPath, w, h);
       } else {
         // ── collage: slideshow din imaginile uploadate ──────────────────────────
-        const images = await this.listImages(dir);
+        const images = await this.ensureLocalImages(collageId);
         if (images.length === 0) throw new Error('no images on disk');
 
         // Ordinea: pasul 1 = toate în ordine; pașii următori = shuffle nou de
@@ -132,6 +133,7 @@ export class CollageProcessor extends WorkerHost {
         }
       }
 
+      await this.storage.syncFile(outPath, 'video/mp4');
       const videoUrl = `/uploads/collage/${collageId}/collage.mp4`;
       await this.repo.update(
         { id: collageId },
@@ -160,11 +162,12 @@ export class CollageProcessor extends WorkerHost {
 
   // ============== Helpers ==============
 
-  private audioPathFor(gen: Generation, track: CollageTrack): string {
-    if (track === 'bonus') return join(this.uploadsDir, 'audio', gen.id, 'bonus.mp3');
-    if (track === 'main') return join(this.uploadsDir, 'audio', gen.id, 'full.mp3');
+  /** Cheia de storage a melodiei (`audio/<id>/full.mp3`), nu path-ul pe disc. */
+  private audioRelFor(gen: Generation, track: CollageTrack): string {
+    if (track === 'bonus') return `audio/${gen.id}/bonus.mp3`;
+    if (track === 'main') return `audio/${gen.id}/full.mp3`;
     // Variație-copil: audio-ul stă în folderul propriu.
-    return join(this.uploadsDir, 'audio', track, 'full.mp3');
+    return `audio/${track}/full.mp3`;
   }
 
   /**
@@ -188,6 +191,7 @@ export class CollageProcessor extends WorkerHost {
         aspect,
       });
       await fs.writeFile(outPath, buffer);
+      await this.storage.syncFile(outPath, 'video/mp4');
       this.logger.log(`collage ${collageId.slice(0, 8)} rendered remote (Hetzner)`);
       return true;
     } catch (err) {
@@ -198,43 +202,52 @@ export class CollageProcessor extends WorkerHost {
     }
   }
 
-  private async fileExists(path: string): Promise<boolean> {
+  /**
+   * Path absolut pentru ffmpeg: dacă fișierul e deja pe disc îl returnăm direct
+   * (fără să-l citim), altfel `ensureLocal` îl descarcă din R2 în cache-ul local.
+   */
+  private async localFileFor(rel: string): Promise<string> {
+    const abs = this.storage.localAbs(rel);
     try {
-      await fs.access(path);
-      return true;
+      await fs.access(abs);
+      return abs;
     } catch {
-      return false;
+      return this.storage.ensureLocal(rel);
     }
   }
 
-  /** Listează img_*.* din directorul colajului, sortat (ordinea de upload). */
-  private async listImages(dir: string): Promise<string[]> {
-    const entries = await fs.readdir(dir);
-    return entries
-      .filter((f) => /^img_\d+\.(png|jpe?g|webp|gif)$/i.test(f))
-      .sort()
-      .map((f) => join(dir, f));
+  /**
+   * Imaginile colajului (img_*), aduse pe disc în ordinea de upload. Sursa listei
+   * e storage-ul (disc + R2), iar fiecare fișier e descărcat local pentru că și
+   * ffmpeg, și microserviciul de randare citesc doar path-uri de pe disc.
+   */
+  private async ensureLocalImages(collageId: string): Promise<string[]> {
+    const keys = await this.upload.listImageKeys(collageId);
+    const paths: string[] = [];
+    for (const key of keys) {
+      paths.push(await this.localFileFor(key));
+    }
+    return paths;
   }
 
   /**
-   * Pentru kind='image_video': rezolvă imaginea sursă (poza de share aleasă) de
-   * pe disc. `sourceImageUrl` e un URL `/uploads/...`; îl mapăm la path local.
-   * Fallback: dacă a fost copiată în dir-ul colajului ca img_001, o folosim.
+   * Pentru kind='image_video': rezolvă imaginea sursă (poza de share aleasă).
+   * `sourceImageUrl` e un URL `/uploads/...`; îl mapăm la o cheie de storage și o
+   * aducem pe disc. Fallback: dacă a fost copiată în dir-ul colajului ca img_001.
    */
-  private async resolveSourceImage(collage: VideoCollage, dir: string): Promise<string | null> {
-    const url = collage.sourceImageUrl ?? '';
-    const fromUrl = this.localPathFromUrl(url);
-    if (fromUrl && (await this.fileExists(fromUrl))) return fromUrl;
+  private async resolveSourceImage(collage: VideoCollage): Promise<string | null> {
+    const rel = this.relFromUrl(collage.sourceImageUrl ?? '');
+    if (rel && (await this.storage.exists(rel))) return this.localFileFor(rel);
     // Fallback: prima imagine copiată în dir-ul colajului.
-    const imgs = await this.listImages(dir).catch(() => [] as string[]);
+    const imgs = await this.ensureLocalImages(collage.id).catch(() => [] as string[]);
     return imgs[0] ?? null;
   }
 
-  /** URL `/uploads/...` (sau `/app/uploads/...`) → path absolut sub uploadsDir. */
-  private localPathFromUrl(url: string): string | null {
+  /** URL `/uploads/...` (sau `/app/uploads/...`) → cheie de storage, relativă. */
+  private relFromUrl(url: string): string | null {
     if (!url) return null;
-    if (url.startsWith('/uploads/')) return join(this.uploadsDir, url.slice('/uploads/'.length));
-    if (url.startsWith('/app/uploads/')) return join(this.uploadsDir, url.slice('/app/uploads/'.length));
+    if (url.startsWith('/uploads/')) return url.slice('/uploads/'.length);
+    if (url.startsWith('/app/uploads/')) return url.slice('/app/uploads/'.length);
     return null;
   }
 

@@ -10,6 +10,7 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
+import { StorageService } from '../../storage/storage.service';
 import {
   SITE_DEMO_CATEGORIES,
   SiteDemo,
@@ -60,9 +61,9 @@ export class SiteDemosService {
     @InjectRepository(SiteDemo)
     private readonly repo: Repository<SiteDemo>,
     private readonly config: ConfigService,
+    private readonly storage: StorageService,
   ) {
-    this.uploadsDir =
-      this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
+    this.uploadsDir = this.storage.localRoot;
   }
 
   // ---- Listing -----------------------------------------------------------
@@ -223,8 +224,18 @@ export class SiteDemosService {
   async remove(id: string): Promise<void> {
     const demo = await this.getOne(id);
     await this.repo.delete({ id });
-    // Best-effort cleanup pe disk — dacă eșuează, log + continuă (nu mai e
-    // referință în DB, fișierele rămân orfan dar nu deranjează).
+    // Best-effort cleanup — dacă eșuează, log + continuă (nu mai e referință în
+    // DB, fișierele rămân orfan dar nu deranjează). Întâi obiectele din storage
+    // (disc + R2, listate din ambele), apoi directorul local rămas gol.
+    const relDir = `demos/${demo.id}`;
+    try {
+      const keys = await this.storage.list(relDir);
+      await Promise.all(keys.map((k) => this.storage.delete(k)));
+    } catch (err) {
+      this.logger.warn(
+        `cleanup demos storage failed id=${demo.id.slice(0, 8)}: ${(err as Error)?.message}`,
+      );
+    }
     const dir = join(this.uploadsDir, 'demos', demo.id);
     await fs.rm(dir, { recursive: true, force: true }).catch((err) => {
       this.logger.warn(
@@ -254,7 +265,9 @@ export class SiteDemosService {
     const dir = join(this.uploadsDir, 'demos', demoId);
     await fs.mkdir(dir, { recursive: true });
     const filename = `full.${ext}`;
-    await fs.writeFile(join(dir, filename), buffer);
+    const dest = join(dir, filename);
+    await fs.writeFile(dest, buffer);
+    await this.storage.syncFile(dest);
     return `/uploads/demos/${demoId}/${filename}`;
   }
 
@@ -276,7 +289,9 @@ export class SiteDemosService {
     const dir = join(this.uploadsDir, 'demos', demoId);
     await fs.mkdir(dir, { recursive: true });
     const filename = `cover.${ext}`;
-    await fs.writeFile(join(dir, filename), buffer);
+    const dest = join(dir, filename);
+    await fs.writeFile(dest, buffer);
+    await this.storage.syncFile(dest);
     return `/uploads/demos/${demoId}/${filename}`;
   }
 }

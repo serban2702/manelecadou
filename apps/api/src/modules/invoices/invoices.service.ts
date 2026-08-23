@@ -18,6 +18,7 @@ import { BillingCustomer } from '../billing-customers/billing-customer.entity';
 import { Site, SiteSmartbill } from '../sites/site.entity';
 import { SitesService } from '../sites/sites.service';
 import { PaymentsService } from '../payments/payments.service';
+import { StorageService } from '../../storage/storage.service';
 import { decryptSecret } from '../../common/crypto.util';
 import { normalizeCounty, resolveLocalityForSmartbill } from '../../common/ro-locality.util';
 import {
@@ -105,6 +106,7 @@ export class InvoicesService {
     private readonly smartbill: SmartbillClient,
     private readonly paymentsSvc: PaymentsService,
     private readonly config: ConfigService,
+    private readonly storage: StorageService,
   ) {}
 
   /** Mapează codul de țară ISO (ex. „RO") la denumirea cerută de SmartBill. */
@@ -138,7 +140,7 @@ export class InvoicesService {
   }
 
   private uploadsDir(): string {
-    return this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
+    return this.storage.localRoot;
   }
 
   private todayIso(): string {
@@ -531,7 +533,9 @@ export class InvoicesService {
           const dir = join(this.uploadsDir(), 'invoices');
           await fs.mkdir(dir, { recursive: true });
           const rel = join('invoices', `${inv.id}.pdf`);
-          await fs.writeFile(join(this.uploadsDir(), rel), pdf);
+          const pdfPath = join(this.uploadsDir(), rel);
+          await fs.writeFile(pdfPath, pdf);
+          await this.storage.syncFile(pdfPath, 'application/pdf');
           inv.pdfPath = rel;
           inv = await this.invoices.save(inv);
         } catch (pdfErr) {
@@ -684,11 +688,13 @@ export class InvoicesService {
     const inv = await this.invoices.findOne({ where: { id: invoiceId } });
     if (!inv) throw new NotFoundException('Factura nu există');
     if (!inv.pdfPath) throw new NotFoundException('PDF indisponibil pentru această factură');
-    const abs = join(this.uploadsDir(), inv.pdfPath);
+    // Pe R2 fișierul poate lipsi de pe disc (container nou / volum efemer) —
+    // `ensureLocal` îl descarcă din bucket înainte de streaming.
+    let abs: string;
     try {
-      await fs.access(abs);
+      abs = await this.storage.ensureLocal(inv.pdfPath);
     } catch {
-      throw new NotFoundException('Fișierul PDF nu mai există pe disc');
+      throw new NotFoundException('Fișierul PDF nu mai există');
     }
     const name = inv.series && inv.number ? `Factura-${inv.series}-${inv.number}.pdf` : `factura-${inv.id}.pdf`;
     return { path: abs, filename: name };
@@ -705,7 +711,9 @@ export class InvoicesService {
     if (!inv) throw new NotFoundException('Factura nu există');
     if (inv.pdfPath) {
       try {
-        await fs.unlink(join(this.uploadsDir(), inv.pdfPath));
+        // `storage.delete` scoate PDF-ul din ambele locuri (disc + R2), altfel
+        // rămâneau obiecte fiscale orfane în bucket.
+        await this.storage.delete(inv.pdfPath);
       } catch (err) {
         // PDF lipsă sau deja șters — nu blocăm ștergerea rândului.
         this.logger.warn(`PDF ${inv.pdfPath} nu a putut fi șters: ${(err as Error).message}`);

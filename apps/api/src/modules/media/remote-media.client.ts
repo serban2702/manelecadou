@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
+import { StorageService } from '../../storage/storage.service';
 
 /** O imagine socială întoarsă de microserviciu (PNG decodat din base64). */
 export interface RemoteSocialImage {
@@ -34,7 +35,10 @@ export class RemoteMediaClient {
   /** Timeout video (ffmpeg pe segment poate dura). */
   private static readonly VIDEO_TIMEOUT_MS = 10 * 60_000;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly storage: StorageService,
+  ) {
     this.baseUrl = (this.config.get<string>('MEDIA_SERVICE_URL') ?? '').trim().replace(/\/+$/, '');
     this.token = (this.config.get<string>('MEDIA_SERVICE_TOKEN') ?? '').trim();
   }
@@ -156,12 +160,26 @@ export class RemoteMediaClient {
     return buf;
   }
 
-  /** Citește un fișier de pe disc și îl atașează ca Blob în FormData. */
+  /** Citește un fișier (de pe disc sau din R2) și îl atașează ca Blob în FormData. */
   private async appendFile(form: FormData, field: string, path: string): Promise<void> {
-    const data = await readFile(path);
+    const data = await this.readSource(path);
     // Buffer → Uint8Array pentru Blob (tipuri DOM cer BlobPart).
     const blob = new Blob([new Uint8Array(data)]);
     form.append(field, blob, basename(path));
+  }
+
+  /** Conținutul unui fișier sursă: întâi de pe disc, apoi din storage (R2) dacă
+   *  nu mai e local. Dacă nu există nicăieri, aruncă eroarea originală de disc. */
+  private async readSource(path: string): Promise<Buffer> {
+    try {
+      return await readFile(path);
+    } catch (err) {
+      try {
+        return await this.storage.readBuffer(path);
+      } catch {
+        throw err;
+      }
+    }
   }
 
   private async fetchWithTimeout(

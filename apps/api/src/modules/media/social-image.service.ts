@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { StorageService } from '../../storage/storage.service';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -70,8 +71,9 @@ export class SocialImageService {
   constructor(
     private readonly config: ConfigService,
     private readonly remote: RemoteMediaClient,
+    private readonly storage: StorageService,
   ) {
-    this.uploadsDir = this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
+    this.uploadsDir = this.storage.localRoot;
   }
 
   /**
@@ -117,6 +119,7 @@ export class SocialImageService {
       const idx = i + 1;
       const filePath = join(dir, `v${idx}.png`);
       await writeFile(filePath, images[i].buffer);
+      await this.storage.syncFile(filePath, 'image/png');
       urls.push(`/uploads/social/${gen.id}/v${idx}.png`);
     }
     this.logger.log(`social images remote (gen ${gen.id}): ${urls.length} variante`);
@@ -161,6 +164,7 @@ export class SocialImageService {
         const png = resvg.render().asPng();
         const filePath = join(dir, `v${idx}.png`);
         await writeFile(filePath, png);
+        await this.storage.syncFile(filePath, 'image/png');
         urls.push(`/uploads/social/${gen.id}/v${idx}.png`);
       } catch (err) {
         this.logger.warn(`variantă socială v${idx} eșuată (gen ${gen.id}): ${(err as Error).message}`);

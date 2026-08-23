@@ -16,6 +16,7 @@ import { COLLAGE_QUEUE, normalizeAspect, type CollageAspect } from './collage.co
 import { Generation } from '../generations/generation.entity';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { User } from '../users/user.entity';
+import { PACKAGE_FEATURES, normalizeTier } from '../payments/packages';
 import { verifyUnlock } from '../../common/unlock';
 
 export interface OwnerCtx {
@@ -23,6 +24,13 @@ export interface OwnerCtx {
   guestId: string | null;
   /** Parola de deblocare (pentru vizitatori non-owner cu link+parolă). */
   password?: string | null;
+}
+
+/** Ce colaj a fost VÂNDUT pe o comandă (colaj da/nu, câte poze, refren sau tot track-ul). */
+export interface CollageEntitlement {
+  collage: boolean;
+  photoLimit: number;
+  fullTrack: boolean;
 }
 
 @Injectable()
@@ -115,6 +123,47 @@ export class CollageService {
     return out;
   }
 
+  /**
+   * Ce colaj i s-a vândut clientului: citim din `packageSnapshot` (înghețat la
+   * crearea comenzii, deci reflectă oferta de ATUNCI), cu fallback pe featurile
+   * pachetului curent — comenzile vechi n-au snapshot.
+   */
+  private collageEntitlement(gen: Generation): CollageEntitlement {
+    const feat = PACKAGE_FEATURES[normalizeTier(gen.packageTier)];
+    const snap = gen.packageSnapshot ?? null;
+    const collage = typeof snap?.collage === 'boolean' ? snap.collage : feat.collage;
+    const photoLimit =
+      typeof snap?.collagePhotoLimit === 'number' ? snap.collagePhotoLimit : feat.collagePhotoLimit;
+    const fullTrack =
+      typeof snap?.collageFullTrack === 'boolean' ? snap.collageFullTrack : feat.collageFullTrack;
+    return { collage, photoLimit, fullTrack };
+  }
+
+  /**
+   * Poarta pachetului pentru clipurile create de CLIENT: colajul e inclus doar
+   * în Plus și Premium, iar numărul de poze e plafonat de pachet (Plus 4 /
+   * Premium 15). Operațiile de admin NU trec pe aici — adminul poate oricând.
+   */
+  private assertCollageAllowed(gen: Generation, photoCount: number): CollageEntitlement {
+    const ent = this.collageEntitlement(gen);
+    if (!ent.collage) {
+      throw new ForbiddenException(
+        'Colajul video e disponibil doar pentru pachetele Plus și Premium',
+      );
+    }
+    const limit = Math.max(0, ent.photoLimit);
+    if (limit > 0 && photoCount > limit) {
+      throw new BadRequestException(
+        `Pachetul tău permite maxim ${limit} ${limit === 1 ? 'poză' : 'poze'} în colaj`,
+      );
+    }
+    // NOTĂ: `fullTrack=false` (Plus = doar refrenul) nu e încă respectat de
+    // renderer — `CollageProcessor` montează mereu pe toată melodia. Clientul
+    // primește mai mult decât i s-a vândut, nu mai puțin; limitarea la refren
+    // cere o coloană nouă pe `video_collages` + suport în processor.
+    return ent;
+  }
+
   /** Melodia aleasă există (main / bonus / variație-copil). */
   private async assertTrackAvailable(gen: Generation, track: CollageTrack): Promise<void> {
     const tracks = await this.listAvailableTracks(gen);
@@ -136,7 +185,7 @@ export class CollageService {
   }
 
   /**
-   * Creează un colaj (slideshow): verifică ownership + premium, salvează
+   * Creează un colaj (slideshow): verifică ownership + pachetul, salvează
    * imaginile, persistă rândul (pending) și pune job pe coada `collage`.
    */
   async create(args: {
@@ -147,6 +196,7 @@ export class CollageService {
     ctx: OwnerCtx;
   }): Promise<{ collageId: string; status: string }> {
     const gen = await this.assertOwnedGeneration(args.generationId, args.ctx);
+    this.assertCollageAllowed(gen, args.files?.length ?? 0);
     await this.assertTrackAvailable(gen, args.track);
 
     const aspect: CollageAspect = normalizeAspect(args.aspect);
@@ -191,6 +241,8 @@ export class CollageService {
     ctx: OwnerCtx;
   }): Promise<{ collageId: string; status: string }> {
     const gen = await this.assertOwnedGeneration(args.generationId, args.ctx);
+    // Aceeași poartă ca la colaj — e tot un clip video pe piesă, doar cu o poză.
+    this.assertCollageAllowed(gen, 1);
     await this.assertTrackAvailable(gen, args.track);
 
     // Securitate: imaginea sursă trebuie să fie una dintre imaginile manelei.
@@ -233,12 +285,13 @@ export class CollageService {
     ctx: OwnerCtx;
   }): Promise<{ collages: Array<{ collageId: string; status: string; track: string }> }> {
     const gen = await this.assertOwnedGeneration(args.generationId, args.ctx);
+    if (!args.files?.length) {
+      throw new BadRequestException('Lipsesc imaginile (field name: images)');
+    }
+    this.assertCollageAllowed(gen, args.files.length);
     const tracks = await this.listAvailableTracks(gen);
     if (tracks.length === 0) {
       throw new BadRequestException('Nu există nicio variantă de melodie pe care să montăm clipul');
-    }
-    if (!args.files?.length) {
-      throw new BadRequestException('Lipsesc imaginile (field name: images)');
     }
 
     const aspect: CollageAspect = normalizeAspect(args.aspect);

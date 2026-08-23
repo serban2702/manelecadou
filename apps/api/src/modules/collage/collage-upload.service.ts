@@ -1,9 +1,13 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { StorageService } from '../../storage/storage.service';
 import { promises as fs } from 'fs';
-import { join } from 'path';
+import { basename, join } from 'path';
 
 import { MAX_IMAGES, MAX_IMAGE_BYTES } from './collage.constants';
+
+/** Numele fișierelor sursă ale unui colaj (ordinea de upload e dată de index). */
+const IMG_NAME_RE = /^img_\d+\.(png|jpe?g|webp|gif)$/i;
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
@@ -36,14 +40,31 @@ export class CollageUploadService {
   private readonly logger = new Logger('CollageUpload');
   private readonly uploadsDir: string;
 
-  constructor(private readonly config: ConfigService) {
-    this.uploadsDir =
-      this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
+  constructor(
+    private readonly config: ConfigService,
+    private readonly storage: StorageService,
+  ) {
+    this.uploadsDir = this.storage.localRoot;
   }
 
   /** Directorul pe disc al unui colaj (folosit și de processor). */
   dirFor(collageId: string): string {
     return join(this.uploadsDir, 'collage', collageId);
+  }
+
+  /** Prefixul de storage al unui colaj (`collage/<id>`), fără slash final. */
+  keyFor(collageId: string): string {
+    return `collage/${collageId}`;
+  }
+
+  /**
+   * Cheile de storage ale imaginilor sursă (`collage/<id>/img_NNN.ext`), sortate
+   * în ordinea de upload. Reunește discul local și R2 — pe un container nou
+   * fișierele există doar în bucket.
+   */
+  async listImageKeys(collageId: string): Promise<string[]> {
+    const keys = await this.storage.list(this.keyFor(collageId));
+    return keys.filter((k) => IMG_NAME_RE.test(basename(k))).sort();
   }
 
   async save(collageId: string, files: UploadedImage[]): Promise<SavedCollageImages> {
@@ -78,6 +99,7 @@ export class CollageUploadService {
       const name = `img_${String(i + 1).padStart(3, '0')}.${ext}`;
       const filePath = join(dir, name);
       await fs.writeFile(filePath, files[i].buffer);
+      await this.storage.syncFile(filePath);
       paths.push(filePath);
     }
 
@@ -86,42 +108,27 @@ export class CollageUploadService {
   }
 
   /**
-   * Listează imaginile sursă (`img_*`) ale unui colaj de pe disc, ca URL-uri
-   * publice `/uploads/collage/<id>/img_NNN.ext`, în ordinea de upload. Folosit de
-   * admin ca să vadă exact ce poze a încărcat clientul. Gol dacă dir lipsește.
+   * Listează imaginile sursă (`img_*`) ale unui colaj, ca URL-uri publice
+   * `/uploads/collage/<id>/img_NNN.ext`, în ordinea de upload. Folosit de admin
+   * ca să vadă exact ce poze a încărcat clientul. Gol dacă nu există niciuna.
    */
   async listImageUrls(collageId: string): Promise<string[]> {
-    const dir = this.dirFor(collageId);
-    let names: string[];
-    try {
-      names = await fs.readdir(dir);
-    } catch {
-      return [];
-    }
-    return names
-      .filter((n) => /^img_\d+\.(png|jpe?g|webp|gif)$/i.test(n))
-      .sort()
-      .map((n) => `/uploads/collage/${collageId}/${n}`);
+    const keys = await this.listImageKeys(collageId).catch(() => [] as string[]);
+    return keys.map((k) => this.storage.publicPath(k));
   }
 
   /**
    * Copiază imaginile `img_*` dintr-un colaj sursă în directorul altui colaj —
    * pentru „regenerează cu aceleași poze, altă variantă". Întoarce câte a copiat.
+   * Citirea trece prin storage (R2 fallback), scrierea ajunge și local, și în
+   * bucket — altfel copia ar exista doar pe containerul curent.
    */
   async copyImages(srcCollageId: string, destCollageId: string): Promise<number> {
-    const srcDir = this.dirFor(srcCollageId);
-    const destDir = this.dirFor(destCollageId);
-    let names: string[];
-    try {
-      names = await fs.readdir(srcDir);
-    } catch {
-      return 0;
-    }
-    const imgs = names.filter((n) => /^img_\d+\.(png|jpe?g|webp|gif)$/i.test(n)).sort();
+    const imgs = await this.listImageKeys(srcCollageId).catch(() => [] as string[]);
     if (imgs.length === 0) return 0;
-    await fs.mkdir(destDir, { recursive: true });
-    for (const n of imgs) {
-      await fs.copyFile(join(srcDir, n), join(destDir, n));
+    for (const key of imgs) {
+      const buf = await this.storage.readBuffer(key);
+      await this.storage.saveBuffer(`${this.keyFor(destCollageId)}/${basename(key)}`, buf);
     }
     this.logger.log(
       `collage ${destCollageId.slice(0, 8)} copied ${imgs.length} images from ${srcCollageId.slice(0, 8)}`,

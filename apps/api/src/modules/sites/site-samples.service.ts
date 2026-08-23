@@ -10,6 +10,7 @@ import { SitesService } from './sites.service';
 import { Site, SiteSampleEntry, SiteSuno, SiteVoiceEntry } from './site.entity';
 import { voiceArtistToGender } from '../../common/voice';
 import { resolveStylePersonaId } from '../experiences/catalog-resolve';
+import { StorageService } from '../../storage/storage.service';
 
 export interface SampleOverrides {
   /** Override pentru voice (default = pentru style: 'male'; pentru voice: key-ul însuși) */
@@ -86,6 +87,7 @@ export class SiteSamplesService {
     private readonly config: ConfigService,
     private readonly lyrics: LyricsService,
     private readonly settings: SettingsService,
+    private readonly storage: StorageService,
   ) {}
 
   private flightKey({ siteId, kind, key }: InFlightKey): string {
@@ -429,12 +431,14 @@ export class SiteSamplesService {
       throw new BadRequestException('Fișier prea mare (max 25 MB)');
     }
 
-    const uploadsDir = this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
-    const dir = join(uploadsDir, 'site-samples', site.slug);
+    const dir = join(this.storage.localRoot, 'site-samples', site.slug);
     await fs.mkdir(dir, { recursive: true });
     const fileName = `${kind}-${key}.${ext}`;
     const filePath = join(dir, fileName);
     await fs.writeFile(filePath, fileBuffer);
+    // Urcă și pe R2 (no-op pe driver disk). Extensia e deja validată mai sus
+    // (mp3/wav/m4a/ogg), deci `syncFile` ghicește corect content-type-ul.
+    await this.storage.syncFile(filePath);
 
     const apiUrl = this.config.get<string>('API_URL') ?? 'http://localhost:1501';
     const v = Date.now();
@@ -533,8 +537,7 @@ export class SiteSamplesService {
     key: string,
     sourceUrl: string,
   ): Promise<string> {
-    const uploadsDir = this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
-    const dir = join(uploadsDir, 'site-samples', site.slug);
+    const dir = join(this.storage.localRoot, 'site-samples', site.slug);
     await fs.mkdir(dir, { recursive: true });
     const fileName = `${kind}-${key}.mp3`;
     const filePath = join(dir, fileName);
@@ -545,6 +548,9 @@ export class SiteSamplesService {
     }
     const buf = Buffer.from(await res.arrayBuffer());
     await fs.writeFile(filePath, buf);
+    // Urcă și pe R2 (no-op pe driver disk) — altfel mostra există doar pe discul
+    // containerului și dispare la redeploy.
+    await this.storage.syncFile(filePath, 'audio/mpeg');
 
     // URL public servit prin static middleware (vezi main.ts).
     const apiUrl = this.config.get<string>('API_URL') ?? 'http://localhost:1501';
@@ -573,28 +579,27 @@ export class SiteSamplesService {
 
   /**
    * Șterge toate mostrele audio ale site-ului: fișierele MP3 din uploads/site-samples/<slug>/
-   * și intrările styleSamples / voiceSamples din suno config.
+   * (local + R2) și intrările styleSamples / voiceSamples din suno config.
    */
   async clearAllSamples(siteId: string): Promise<{ deleted: number }> {
     const site = await this.sites.findById(siteId);
     if (!site) throw new NotFoundException('Site negăsit');
 
-    const uploadsDir = this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
-    const dir = join(uploadsDir, 'site-samples', site.slug);
-
     let deleted = 0;
     try {
-      const files = await fs.readdir(dir);
+      // `list` reunește discul local și R2 — mostrele pot exista doar în bucket
+      // (containerul e efemer), iar `delete` le scoate din ambele locuri.
+      const keys = await this.storage.list(`site-samples/${site.slug}`);
       await Promise.all(
-        files
-          .filter((f) => /\.(mp3|wav|m4a|ogg)$/i.test(f))
-          .map(async (f) => {
-            await fs.unlink(join(dir, f));
+        keys
+          .filter((k) => /\.(mp3|wav|m4a|ogg)$/i.test(k))
+          .map(async (k) => {
+            await this.storage.delete(k);
             deleted++;
           }),
       );
     } catch {
-      // directorul poate să nu existe — ignorăm ENOENT
+      // directorul/prefixul poate să nu existe — ignorăm
     }
 
     const suno = { ...(site.suno ?? {}) };

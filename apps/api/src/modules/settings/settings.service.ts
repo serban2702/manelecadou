@@ -13,10 +13,15 @@ export interface SettingView {
   description?: string;
   kind: SettingDef['kind'];
   options?: string[];
+  optionLabels?: Record<string, string>;
   encrypted: boolean;
   hotReload: boolean;
   requiresRestart: boolean;
   placeholder?: string;
+  group?: string;
+  helpWhat?: string;
+  helpWhere?: string;
+  helpUrl?: string;
   /** Valoare curentă: pentru `secret` returnăm doar `••••` dacă există. */
   value: string;
   /** Sursă: 'db' = override custom, 'env' = vine din .env, 'unset' = nesetat. */
@@ -31,6 +36,9 @@ export interface SettingCategoryView {
   settings: SettingView[];
 }
 
+/** Notificat după fiecare `update()`, cu cheile efectiv scrise/șterse. */
+export type SettingsChangeListener = (keys: string[]) => void;
+
 @Injectable()
 export class SettingsService {
   private readonly logger = new Logger('SettingsService');
@@ -38,6 +46,9 @@ export class SettingsService {
   /** Cache simplu: cheie → { value, expiresAt }. */
   private cache = new Map<string, { value: string; expiresAt: number }>();
   private readonly TTL_MS = 30_000;
+
+  /** Abonați la salvările din admin (ex. StorageService reface clientul R2). */
+  private readonly listeners = new Set<SettingsChangeListener>();
 
   constructor(
     @InjectRepository(AppSetting) private readonly repo: Repository<AppSetting>,
@@ -47,6 +58,29 @@ export class SettingsService {
   /** Invalidează cache-ul (după un PATCH). */
   invalidate(): void {
     this.cache.clear();
+  }
+
+  /**
+   * Abonare la salvările din admin, pentru setările care trebuie reaplicate la
+   * cald (nu doar la restart). Întoarce funcția de dezabonare.
+   */
+  onChange(listener: SettingsChangeListener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  /** Best-effort: un abonat care crapă nu are voie să rupă PATCH-ul de settings. */
+  private emitChange(keys: string[]): void {
+    if (keys.length === 0) return;
+    for (const listener of this.listeners) {
+      try {
+        listener(keys);
+      } catch (e) {
+        this.logger.warn(`settings listener failed: ${(e as Error).message}`);
+      }
+    }
   }
 
   /**
@@ -131,10 +165,15 @@ export class SettingsService {
           description: def.description,
           kind: def.kind,
           options: def.options,
+          optionLabels: def.optionLabels,
           encrypted: !!def.encrypted,
           hotReload: !!def.hotReload,
           requiresRestart: !!def.requiresRestart,
           placeholder: def.placeholder,
+          group: def.group,
+          helpWhat: def.helpWhat,
+          helpWhere: def.helpWhere,
+          helpUrl: def.helpUrl,
           value: isSecret ? (plain ? maskSecret(plain) : '') : plain,
           source: hasDbValue ? 'db' : envVal ? 'env' : 'unset',
           hasDbValue,
@@ -146,6 +185,8 @@ export class SettingsService {
 
   /** Actualizează un set de setări. Pentru secrete, dacă valoarea e goală, NU se modifică. */
   async update(updates: Array<{ key: string; value: string; clear?: boolean }>): Promise<void> {
+    // Doar cheile chiar aplicate — nu cele ignorate (necunoscute / secret gol).
+    const changed: string[] = [];
     for (const u of updates) {
       const def = findDef(u.key);
       if (!def) continue; // ignore unknown keys
@@ -153,6 +194,7 @@ export class SettingsService {
 
       if (u.clear) {
         await this.repo.delete({ key: u.key });
+        changed.push(u.key);
         continue;
       }
 
@@ -168,7 +210,9 @@ export class SettingsService {
       } else {
         await this.repo.save(this.repo.create({ key: u.key, value: valueToStore, encrypted: !!def.encrypted }));
       }
+      changed.push(u.key);
     }
     this.invalidate();
+    this.emitChange(changed);
   }
 }

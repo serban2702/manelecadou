@@ -85,13 +85,18 @@ export class InvoicesController {
     return this.svc.markManualBulk(body.paymentIds ?? []);
   }
 
-  /** Descarcă PDF-ul facturii. */
+  /** Descarcă PDF-ul facturii. `getPdfFile` garantează fișierul pe disc (îl
+   *  aduce din R2 dacă e nevoie), deci aici doar îl streamăm. */
   @Get(':id/pdf')
   async pdf(@Param('id') id: string, @Res() res: Response) {
     const { path, filename } = await this.svc.getPdfFile(id);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    createReadStream(path).pipe(res);
+    const stream = createReadStream(path);
+    // Header-ele sunt deja trimise — la eroare de citire închidem conexiunea,
+    // ca să nu rămână un stream neprins (crash pe unhandled 'error').
+    stream.on('error', () => res.destroy());
+    stream.pipe(res);
   }
 
   /** Șterge mai multe facturi deodată (doar din aplicație, fără storno). */

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+import { StorageService } from '../../storage/storage.service';
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_MIME = new Set([
@@ -32,7 +33,10 @@ export interface SavedAttachment {
 export class ChatAttachmentsService {
   private readonly logger = new Logger('ChatAttachments');
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly storage: StorageService,
+  ) {}
 
   async save(args: {
     conversationId: string;
@@ -54,13 +58,14 @@ export class ChatAttachmentsService {
     }
     const ext = EXT_BY_MIME[mime] ?? args.originalName.split('.').pop()?.toLowerCase() ?? 'bin';
 
-    const uploadsDir = this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
+    const uploadsDir = this.storage.localRoot;
     const dir = join(uploadsDir, 'chat', args.conversationId);
     await fs.mkdir(dir, { recursive: true });
 
     const filename = `${Date.now()}-${randomUUID().slice(0, 8)}.${ext}`;
     const filePath = join(dir, filename);
     await fs.writeFile(filePath, args.fileBuffer);
+    await this.storage.syncFile(filePath, mime);
 
     const apiUrl = (this.config.get<string>('API_URL') ?? 'http://localhost:1501').replace(/\/+$/, '');
     const url = `${apiUrl}/uploads/chat/${args.conversationId}/${filename}`;

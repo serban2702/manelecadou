@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { StorageService } from '../../storage/storage.service';
 import { spawn } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
@@ -23,8 +24,11 @@ export class AudioProcessorService {
   private readonly logger = new Logger('AudioProcessor');
   private readonly uploadsDir: string;
 
-  constructor(private readonly config: ConfigService) {
-    this.uploadsDir = this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
+  constructor(
+    private readonly config: ConfigService,
+    private readonly storage: StorageService,
+  ) {
+    this.uploadsDir = this.storage.localRoot;
   }
 
   /**
@@ -52,6 +56,8 @@ export class AudioProcessorService {
       await unlink(demoPath).catch(() => {});
       throw err;
     }
+    await this.storage.syncFile(fullPath, 'audio/mpeg');
+    await this.storage.syncFile(demoPath, 'audio/mpeg');
 
     return {
       fullUrl: `/uploads/audio/${generationId}/${fullName}`,
@@ -85,6 +91,8 @@ export class AudioProcessorService {
       await unlink(demoPath).catch(() => {});
       throw err;
     }
+    await this.storage.syncFile(fullPath, 'audio/mpeg');
+    await this.storage.syncFile(demoPath, 'audio/mpeg');
 
     return {
       fullUrl: `/uploads/audio/${generationId}/${fullName}`,

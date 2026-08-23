@@ -4,6 +4,7 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { isKnownExperienceSlug } from '../experiences/catalog';
 import { SitesService } from './sites.service';
+import { StorageService } from '../../storage/storage.service';
 
 const ART_EXT = ['png', 'jpg', 'jpeg', 'webp'];
 const SAMPLE_EXT = ['mp3', 'wav', 'm4a', 'ogg'];
@@ -19,6 +20,7 @@ export class ExperienceAssetUploadService {
   constructor(
     private readonly sites: SitesService,
     private readonly config: ConfigService,
+    private readonly storage: StorageService,
   ) {}
 
   async upload(
@@ -47,24 +49,29 @@ export class ExperienceAssetUploadService {
     const site = await this.sites.findById(siteId);
     if (!site) throw new NotFoundException('Site negăsit');
 
-    const uploadsDir = this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
+    const uploadsDir = this.storage.localRoot;
+    const relDir = `experience-art/${site.slug}/${slug}`;
     const dir = join(uploadsDir, 'experience-art', site.slug, slug);
     await fs.mkdir(dir, { recursive: true });
 
+    // Variantele vechi (altă extensie) se șterg din ambele locuri — `storage.list`
+    // vede și obiectele care există doar în R2, `storage.delete` le curăță pe amândouă.
     const prefix = `${kind}-${key}.`;
     try {
-      const existing = await fs.readdir(dir);
+      const existing = await this.storage.list(relDir);
       await Promise.all(
         existing
-          .filter((f) => f.startsWith(prefix))
-          .map((f) => fs.unlink(join(dir, f)).catch(() => undefined)),
+          .filter((k) => k.slice(relDir.length + 1).startsWith(prefix))
+          .map((k) => this.storage.delete(k)),
       );
     } catch {
       /* empty */
     }
 
     const fileName = `${kind}-${key}.${ext}`;
-    await fs.writeFile(join(dir, fileName), fileBuffer);
+    const dest = join(dir, fileName);
+    await fs.writeFile(dest, fileBuffer);
+    await this.storage.syncFile(dest);
 
     const apiUrl = (this.config.get<string>('API_URL') ?? 'http://localhost:1501').replace(/\/+$/, '');
     const url = `${apiUrl}/uploads/experience-art/${site.slug}/${slug}/${fileName}?v=${Date.now()}`;

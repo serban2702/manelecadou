@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { StorageService } from '../../storage/storage.service';
 import { spawn } from 'node:child_process';
 import { access, mkdir, writeFile, rm } from 'node:fs/promises';
 import { constants as FS } from 'node:fs';
@@ -89,8 +90,9 @@ export class VideoService {
   constructor(
     private readonly config: ConfigService,
     private readonly remote: RemoteMediaClient,
+    private readonly storage: StorageService,
   ) {
-    this.uploadsDir = this.config.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
+    this.uploadsDir = this.storage.localRoot;
   }
 
   /**
@@ -125,6 +127,7 @@ export class VideoService {
       await mkdir(dir, { recursive: true });
       const outPath = join(dir, outName);
       await writeFile(outPath, buffer);
+      await this.storage.syncFile(outPath, 'video/mp4');
 
       this.logger.log(`generateVideo remote (gen ${gen.id}, ${outName})`);
       return `/uploads/video/${gen.id}/${outName}`;
@@ -223,6 +226,7 @@ export class VideoService {
             }`,
           );
           await this.runFfmpeg(args);
+          await this.storage.syncFile(outPath, 'video/mp4');
           return `/uploads/video/${gen.id}/${outName}`;
         } catch (err) {
           this.logger.warn(
@@ -245,6 +249,7 @@ export class VideoService {
         );
         this.logger.log(`generateVideo simplu (gen ${gen.id}, ${outName})`);
         await this.runFfmpeg(args);
+        await this.storage.syncFile(outPath, 'video/mp4');
         return `/uploads/video/${gen.id}/${outName}`;
       } catch (err) {
         this.logger.error(
@@ -640,13 +645,30 @@ export class VideoService {
     for (const c of candidates) {
       const p = this.localPathFromUrl(c);
       if (!p || seen.has(p)) continue;
-      if (await this.exists(p)) {
+      // Pe R2 fișierul poate lipsi de pe disc (alt container / volum efemer) —
+      // `ensureLocal` îl descarcă; `null` = chiar nu există nicăieri.
+      const abs = await this.ensureLocalFile(p);
+      if (abs) {
         seen.add(p);
-        resolved.push(p);
+        resolved.push(abs);
         if (resolved.length >= MAX_SLIDES) break;
       }
     }
     return resolved;
+  }
+
+  /**
+   * Path local garantat pentru un fișier din `uploads/`: dacă nu e pe disc, îl
+   * aducem din R2 (`storage.ensureLocal`). `null` dacă nu există nicăieri —
+   * ffmpeg are nevoie de fișiere reale pe disc, nu de URL-uri.
+   */
+  private async ensureLocalFile(p: string): Promise<string | null> {
+    if (await this.exists(p)) return p;
+    try {
+      return await this.storage.ensureLocal(p);
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -671,7 +693,8 @@ export class VideoService {
     candidates.push(join(this.uploadsDir, 'audio', gen.id, 'full.mp3'));
 
     for (const p of candidates) {
-      if (await this.exists(p)) return p;
+      const abs = await this.ensureLocalFile(p);
+      if (abs) return abs;
     }
     return null;
   }
