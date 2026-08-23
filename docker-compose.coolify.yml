@@ -1,24 +1,27 @@
-# Stack-ul nou: fără Caddy, în spatele unui reverse proxy extern
-# (Nginx Proxy Manager sau Traefik-ul Coolify) și cu fișierele pe Cloudflare R2.
+# Stack-ul pentru COOLIFY. Fără Caddy: TLS-ul și domeniile le ține Traefik-ul
+# Coolify. Fișierele merg pe Cloudflare R2.
 #
-# Traficul intră astfel:
+#   internet → Traefik (Coolify, TLS) → router:80 → api / web / admin
 #
-#   internet → NPM (TLS, Let's Encrypt) → router:80 → api / web / admin
+# `router` (nginx, config în deploy/router/nginx.conf) face split-ul pe path și
+# pe host, exact ca vechiul Caddyfile.
 #
-# `router` (nginx, config în deploy/router/nginx.conf) face split-ul pe path
-# și pe host, exact ca vechiul Caddyfile. În NPM ai nevoie de DOAR două
-# Proxy Host-uri:
+# ÎN COOLIFY: domeniile se pun pe UN SINGUR serviciu — `router`. Toate
+# domeniile publice + `admin.<domeniu>`, în câmpul „Domains" al serviciului.
+# Celelalte servicii (api, web, admin, postgres, redis) rămân FĂRĂ domeniu.
 #
-#   1. toate domeniile publice (comma-separated) → router : 80
-#   2. admin.<domeniu>                           → router : 80
+# De ce nu domenii per serviciu: ruta publică e împărțită pe path
+# (`/api`, `/socket.io`, `/health`, `/uploads` → api; restul → web), deci
+# varianta nativă ar cere 4 intrări de path pe serviciul `api` pentru FIECARE
+# domeniu de tenant, plus grija la stripPrefix. Cu `router`, un domeniu nou =
+# o intrare într-un singur câmp. Vezi docs/COOLIFY_R2.md §2.
 #
-# Domeniu nou = îl adaugi în lista primului Proxy Host și ceri certificat.
-# `apps/api/scripts/sync-npm-proxy-hosts.mjs` face asta automat din DB.
+# `apps/api/scripts/coolify-domains.mjs` generează lista de domenii din DB,
+# gata de lipit.
 #
-# Rețeaua externă: containerul NPM trebuie atașat la aceeași rețea ca `router`.
-#   docker network create manele-edge
-#   (și în compose-ul NPM: networks: [ manele-edge ])
-# Vezi docs/COOLIFY_R2.md.
+# Postgres și Redis sunt aici, în stack. Dacă preferi resursele gestionate de
+# Coolify (backup-uri programate din UI), scoate-le de aici și pune
+# POSTGRES_HOST / REDIS_HOST pe hostname-urile date de Coolify.
 
 services:
   postgres:
@@ -56,7 +59,7 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       API_PORT: 3000
-      # NPM + router = 2 hop-uri de proxy. Fără asta req.ip e IP-ul router-ului
+      # Traefik + router = 2 hop-uri de proxy. Fără asta req.ip e IP-ul router-ului
       # → throttler global și IP greșit în analytics/OpenReplay.
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-2}
       POSTGRES_HOST: postgres
@@ -216,18 +219,22 @@ services:
       api:
         condition: service_healthy
 
-  # Singurul serviciu pe care-l vede reverse proxy-ul extern.
+  # SINGURUL serviciu care primește domenii în Coolify.
+  #
+  # Alternativ la câmpul „Domains" din UI, poți declara domeniul aici cu
+  # variabila magică a lui Coolify (o singură valoare; restul domeniilor tot
+  # din UI):
+  #   environment:
+  #     SERVICE_FQDN_ROUTER_80: https://manelecadou.ro
   router:
     image: nginx:1.27-alpine
     restart: unless-stopped
     volumes:
       - ./deploy/router/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    # Fallback de debug pe host (NPM folosește DNS-ul Docker, nu portul ăsta).
-    ports:
-      - "127.0.0.1:8080:80"
-    networks:
-      - default
-      - edge
+    # `expose`, nu `ports`: Traefik-ul Coolify ajunge la container prin rețeaua
+    # Docker, nu printr-un port publicat pe host.
+    expose:
+      - "80"
     depends_on:
       - api
       - web
@@ -259,20 +266,13 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       OPS_ADMIN_USER_ID: ${OPS_ADMIN_USER_ID:-}
     volumes:
+      # Sub Coolify, sursa stă în /data/coolify/applications/<uuid>/ pe host —
+      # setează OPS_WORKSPACE_DIR pe path-ul ăla dacă pornești containerul ops.
       - ${OPS_WORKSPACE_DIR:-./}:/workspace
       - ops_home:/home/claude
     depends_on:
       postgres:
         condition: service_healthy
-
-networks:
-  default:
-  # Rețea partajată cu Nginx Proxy Manager. Creeaz-o o dată:
-  #   docker network create manele-edge
-  # și atașează containerul NPM la ea.
-  edge:
-    external: true
-    name: ${EDGE_NETWORK:-manele-edge}
 
 volumes:
   pg_data:

@@ -1,13 +1,8 @@
 VPS=VPSIonos
 REMOTE=/home/manele
 
-# Stack nou (Nginx Proxy Manager + R2). Setează-le când serverul e gata:
-#   make deploy-new VPS_NEW=user@ip
-VPS_NEW?=
-REMOTE_NEW?=/home/manele
-
 .PHONY: deploy deploy-api deploy-web deploy-admin deploy-ops ssh logs logs-api logs-web logs-admin logs-caddy logs-ops logs-file logs-429 backup rollback restart status \
-        deploy-new deploy-new-api deploy-new-web deploy-new-admin deploy-new-router logs-new status-new
+        deploy-coolify coolify-domains
 
 deploy:
 	@echo "→ git push + remote deploy (full)"
@@ -75,42 +70,25 @@ rollback:
 restart:
 	@ssh $(VPS) "cd $(REMOTE) && docker compose -f docker-compose.prod.yml restart"
 
-# --- Stack nou (docker-compose.coolify.yml, în spatele Nginx Proxy Manager) ---
-# `deploy/deploy.sh` e în repo, deci se actualizează singur cu git pull.
+# --- Stack nou pe Coolify (docker-compose.coolify.yml) ---------------------
+# Coolify face build-ul și restartul singur. Dacă „Auto Deploy" e pornit pe
+# resursă, `git push` e tot ce trebuie — target-urile de mai jos sunt pentru
+# când vrei să forțezi din terminal.
+#
+#   COOLIFY_URL=https://coolify.exemplu.ro
+#   COOLIFY_TOKEN=...            (Coolify → Keys & Tokens → API tokens)
+#   COOLIFY_RESOURCE_UUID=...    (din URL-ul resursei)
 
-define REQUIRE_VPS_NEW
-	@if [ -z "$(VPS_NEW)" ]; then echo "Setează VPS_NEW=user@ip (sau un alias din ~/.ssh/config)"; exit 1; fi
-endef
-
-deploy-new:
-	$(REQUIRE_VPS_NEW)
+deploy-coolify:
 	@git push origin main
-	@ssh $(VPS_NEW) "cd $(REMOTE_NEW) && ./deploy/deploy.sh full"
+	@if [ -n "$$COOLIFY_TOKEN" ]; then \
+		./deploy/coolify-deploy.sh; \
+	else \
+		echo "→ push făcut. Coolify preia de aici (sau apasă Deploy în UI)."; \
+		echo "  Pentru deploy forțat din terminal, setează COOLIFY_URL/TOKEN/RESOURCE_UUID."; \
+	fi
 
-deploy-new-api:
-	$(REQUIRE_VPS_NEW)
-	@git push origin main
-	@ssh $(VPS_NEW) "cd $(REMOTE_NEW) && ./deploy/deploy.sh api"
-
-deploy-new-web:
-	$(REQUIRE_VPS_NEW)
-	@git push origin main
-	@ssh $(VPS_NEW) "cd $(REMOTE_NEW) && ./deploy/deploy.sh web"
-
-deploy-new-admin:
-	$(REQUIRE_VPS_NEW)
-	@git push origin main
-	@ssh $(VPS_NEW) "cd $(REMOTE_NEW) && ./deploy/deploy.sh admin"
-
-logs-new:
-	$(REQUIRE_VPS_NEW)
-	@ssh $(VPS_NEW) "cd $(REMOTE_NEW) && docker compose -f docker-compose.coolify.yml logs -f --tail=100"
-
-status-new:
-	$(REQUIRE_VPS_NEW)
-	@ssh $(VPS_NEW) "cd $(REMOTE_NEW) && docker compose -f docker-compose.coolify.yml ps"
-
-deploy-new-router:
-	$(REQUIRE_VPS_NEW)
-	@git push origin main
-	@ssh $(VPS_NEW) "cd $(REMOTE_NEW) && ./deploy/deploy.sh router"
+# Lista de domenii pentru câmpul „Domains" al serviciului `router`.
+coolify-domains:
+	@echo "Rulează în containerul api al stack-ului:"
+	@echo "  docker compose -f docker-compose.coolify.yml exec api node scripts/coolify-domains.mjs"

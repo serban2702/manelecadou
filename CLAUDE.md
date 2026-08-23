@@ -30,7 +30,7 @@ Platformă SaaS multi-tenant pentru generare de manele AI personalizate (cadou).
 | Cache/queue  | Redis 7                             | `:1503` (host=`6379`)|
 | DB UI        | Adminer (doar local)                | `:1504`              |
 | Reverse proxy| Caddy 2 (stack vechi, Ionos)        | `:80`, `:443`        |
-| Router intern| nginx (stack nou, în spatele NPM)   | `:80` intern         |
+| Router intern| nginx (stack nou, sub Coolify)      | `:80` intern         |
 
 **Externals**: OpenAI (lyrics + AI assistant), sunoapi.org (audio), Stripe (payments, un singur cont pentru toate site-urile), Mailgun (transactional email), Cloudflare (DNS only — fără proxy).
 
@@ -51,7 +51,7 @@ manelecadou/
 │   │   │                     experiences, identity, collage, invoices,
 │   │   │                     recovery, media, database-admin, admin, health
 │   │   ├── src/storage/      disc local sau Cloudflare R2 (§19.3)
-│   │   ├── scripts/          migrare R2 + date prod + Proxy Hosts NPM (§19.4)
+│   │   ├── scripts/          migrare R2 + date prod + domenii Coolify (§19.4)
 │   │   ├── src/database/     TypeORM datasource + migrations runtime
 │   │   ├── src/mailer/       templates (i18n) + Mailgun/SMTP providers
 │   │   ├── src/openai/       lyrics writer/critic + translation
@@ -78,10 +78,10 @@ manelecadou/
 ├── Caddyfile                 reverse proxy + on-demand TLS (stack vechi)
 ├── deploy/
 │   ├── router/nginx.conf     rutare pe path/host pentru stack-ul nou (§19)
-│   └── deploy.sh             deploy pentru stack-ul nou (versionat, spre deosebire de cel de pe Ionos)
+│   └── coolify-deploy.sh     declanșează un deploy în Coolify (opțional — push-ul e de ajuns)
 ├── docker-compose.yml        DEV (postgres + redis + adminer + api hot-reload)
 ├── docker-compose.prod.yml   PROD Ionos (toate 6 servicii + caddy)
-├── docker-compose.coolify.yml PROD nou (fără caddy, cu router, R2) — §19
+├── docker-compose.coolify.yml PROD nou pe Coolify (fără caddy, cu router, R2) — §19
 ├── Makefile                  comenzi de zi cu zi (deploy, logs, backup...)
 ├── .env / .env.example       NU sunt commit-uite
 ├── .claude/skills/           start-app, add-site (skills locale)
@@ -997,32 +997,40 @@ Regula de atribuire e într-un singur loc:
 
 ---
 
-## 19. Stack nou: Nginx Proxy Manager + Cloudflare R2
+## 19. Stack nou: Coolify + Cloudflare R2
 
 Runbook complet de cutover: **`docs/COOLIFY_R2.md`**. Rezumat aici.
 
 ### 19.1 Traficul
 
 ```
-internet ─► NPM (TLS, Let's Encrypt) ─► router:80 ─┬─ /api /socket.io /health /uploads ─► api:3000
-                                                    ├─ admin.<domeniu>                 ─► admin:1505
-                                                    └─ restul                          ─► web:1500
+internet ─► Traefik (Coolify, TLS) ─► router:80 ─┬─ /api /socket.io /health /uploads ─► api:3000
+                                                  ├─ admin.<domeniu>                 ─► admin:1505
+                                                  └─ restul                          ─► web:1500
 ```
 
 `router` = nginx în stack, config în `deploy/router/nginx.conf`. Există pentru
-că NPM nu are echivalent de `on_demand_tls` și nici rutare pe path comodă: fără
-el, fiecare domeniu ar avea nevoie de config custom identic. Cu el, în NPM ai un
-singur tip de Proxy Host — **domeniu → `router:80`**.
+că ruta publică e împărțită pe path: în varianta nativă Coolify ar trebui patru
+intrări de path pe serviciul `api` pentru **fiecare** domeniu de tenant, plus
+grija la stripPrefix (care ar tăia `/api` din calea trimisă mai departe).
+
+**În Coolify, domeniile se pun pe un SINGUR serviciu: `router`.** Toate
+domeniile publice + `admin.<domeniu>`. `api`, `web`, `admin`, `postgres` și
+`redis` rămân fără domeniu. Un site nou = încă un rând în același câmp.
 
 Fișiere: `docker-compose.coolify.yml` (fără Caddy, cu paritate completă de env
-față de `docker-compose.prod.yml`), `deploy/deploy.sh` (în repo, spre deosebire
-de cel de pe Ionos), target-uri `make deploy-new*` (cer `VPS_NEW=`).
+față de `docker-compose.prod.yml`), `deploy/coolify-deploy.sh` (opțional — dacă
+„Auto Deploy" e pornit, `git push` e de ajuns), target `make deploy-coolify`.
+
+⚠️ Variabilele `NEXT_PUBLIC_*` se marchează ca **Build Variable** în Coolify.
+Next.js le fixează în bundle la build; dacă ajung doar la runtime, pixelii și
+cheia OpenReplay rămân goale în pagina livrată.
 
 ### 19.2 Două hop-uri de proxy
 
-`TRUST_PROXY_HOPS=2` în `.env`-ul stack-ului nou (NPM + router). Greșit,
-`req.ip` devine IP-ul router-ului → throttler global (429 pentru toți) și IP
-eronat în analytics/OpenReplay.
+`TRUST_PROXY_HOPS=2` (Traefik + router). Greșit, `req.ip` devine IP-ul
+router-ului → throttler global (429 pentru toți) și IP eronat în
+analytics/OpenReplay.
 
 ### 19.3 Fișiere pe R2
 
@@ -1043,14 +1051,22 @@ Tot ce scrie fișiere trece prin `StorageService` (`apps/api/src/storage/`):
 `delete` (ambele locuri). Dacă adaugi un serviciu care scrie în `uploads/`,
 folosește-l — altfel fișierul există doar pe containerul curent.
 
-### 19.4 Scripturi de migrare (`apps/api/scripts/`)
+Configurarea R2 se poate face și din admin `/settings` → Chei (DB întâi, env ca
+rezervă), cu reinițializare la salvare. Credențiale lipsă nu opresc API-ul: cade
+pe disc și loghează eroarea.
+
+### 19.4 Scripturi de operare (`apps/api/scripts/`)
 
 | Script | Când |
 |---|---|
 | `sync-uploads-to-r2.mjs` | oricând înainte + delta la cutover. Idempotent, paralel, compară mărimile |
 | `verify-r2-migration.mjs` | **poarta de cutover**: fiecare fișier referit din DB există în R2? Exit 0 = poți muta DNS-ul |
-| `migrate-prod-to-new-stack.mjs` | `--phase=pre` înainte de deploy (obligatoriu), `--phase=post` după, `--phase=rollout` pentru configurarea per tenant, `--phase=check` oricând |
-| `sync-npm-proxy-hosts.mjs` | după fiecare site nou din admin — ține locul lui `on_demand_tls` |
+| `migrate-prod-to-new-stack.mjs` | `--phase=pre` **pe Ionos, înainte de dump**, `--phase=post` după pornirea codului nou, `--phase=rollout` pentru configurarea per tenant, `--phase=check` oricând |
+| `coolify-domains.mjs` | lista de domenii pentru câmpul „Domains" al lui `router`. Read-only — o lipești tu |
 
 `--phase=pre` face un singur lucru, dar esențial: lărgește
 `video_collages.track` la `varchar(64)`. Vezi §10 pct. 10 pentru de ce.
+
+Se rulează **pe Ionos, înainte de `pg_dump`**: pe Coolify API-ul pornește odată
+cu restul stack-ului, deci n-ai o fereastră în care baza există dar codul nou
+n-a pornit încă. Cu ALTER-ul făcut din timp, dump-ul ajunge deja corect.

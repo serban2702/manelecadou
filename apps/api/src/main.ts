@@ -18,7 +18,7 @@ async function bootstrap() {
   //
   // Numărul de hop-uri diferă în funcție de stack:
   //   1 = Caddy direct (stack-ul vechi de pe Ionos)
-  //   2 = Nginx Proxy Manager → router intern (stack-ul nou)
+  //   2 = Traefik (Coolify) → router intern (stack-ul nou)
   const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? '1');
   app.set('trust proxy', Number.isFinite(trustProxyHops) && trustProxyHops > 0 ? trustProxyHops : 1);
 

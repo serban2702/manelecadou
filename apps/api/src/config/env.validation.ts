@@ -4,7 +4,7 @@ const schema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   API_PORT: z.coerce.number().default(3000),
   // Câte hop-uri de reverse proxy stau în fața API-ului (vezi main.ts).
-  // 1 = Caddy direct; 2 = Nginx Proxy Manager → router intern.
+  // 1 = Caddy direct; 2 = Traefik (Coolify) → router intern.
   TRUST_PROXY_HOPS: z.coerce.number().optional().default(1),
   APP_URL: z.string().url().default('http://localhost:1500'),
   ADMIN_URL: z.string().url().default('http://localhost:1505'),

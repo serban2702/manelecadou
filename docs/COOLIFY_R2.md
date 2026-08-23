@@ -1,17 +1,24 @@
-# Mutare pe stack nou: Nginx Proxy Manager + Cloudflare R2
+# Mutare pe Coolify + Cloudflare R2
 
-Runbook de cutover. Stare: **codul e pregătit; mutarea DNS-ului o faci tu.**
+Runbook de cutover. Stare: **codul e pregătit; contul R2 și serverul Coolify le
+faci tu.**
 
 Ionos (Caddy + disc local) rămâne pornit până noul stack e verificat. Nu se
 șterge nimic de pe el în ziua cutover-ului.
+
+> **Numele de mai jos sunt substituenți.** `manelecadou-uploads` și
+> `files.manelecadou.ro` vin din planul inițial, nu dintr-un cont R2 existent —
+> nu e configurat niciun bucket. Înlocuiește-le cu ce creezi tu. Codul le
+> citește din variabile de mediu, deci nu e nimic de modificat în cod.
 
 ---
 
 ## 1. Ce se schimbă
 
-| | Acum (Ionos) | După |
+| | Acum (Ionos) | După (Coolify) |
 |---|---|---|
-| TLS + domenii | Caddy, `on_demand_tls` | **Nginx Proxy Manager** (un Proxy Host per domeniu) |
+| TLS + domenii | Caddy, `on_demand_tls` | **Traefik**, gestionat de Coolify |
+| Deploy | `make deploy` → SSH → `deploy.sh` | Coolify (push pe git sau butonul Deploy) |
 | Rutare pe path | Caddyfile | `router` (nginx în stack, `deploy/router/nginx.conf`) |
 | Fișiere | volum `api_uploads` | **Cloudflare R2**, cu volumul local ca sursă de cache |
 | Compose | `docker-compose.prod.yml` | `docker-compose.coolify.yml` |
@@ -22,32 +29,46 @@ domeniile publice (tenantul se ia din `Host`), webhook-ul Stripe rămâne
 `https://manelecadou.ro/api/payments/webhook`.
 
 Nu se mută acum: OpenReplay (Hetzner), microserviciul media (Hetzner),
-containerul `ops` (pornește separat cu `--profile ops`).
+containerul `ops` (pornește separat, cu profilul `ops`).
 
 ---
 
-## 2. De ce un `router` și nu configurație în NPM
+## 2. De ce un `router` și nu domenii per serviciu
 
-NPM nu are echivalent pentru `on_demand_tls` și nici rutare pe path comodă din
-UI. Fără `router`, fiecare domeniu ar avea nevoie de config custom identic
-pentru `/api`, `/socket.io`, `/health`, `/uploads`.
+Ruta publică e împărțită pe path: `/api`, `/socket.io`, `/health` și `/uploads`
+merg la API, restul la web. În varianta nativă Coolify ar însemna **patru
+intrări de path pe serviciul `api`, pentru fiecare domeniu de tenant** — plus
+grija la stripPrefix, care ar tăia `/api` din calea trimisă mai departe și ar
+strica toate rutele.
 
-Cu `router`, în NPM ai un singur tip de Proxy Host: **domeniu → `router:80`**.
-Split-ul e în repo, versionat, identic pe toate domeniile.
+Cu `router`, în Coolify pui domeniile **într-un singur loc**:
 
 ```
-internet ─► NPM (TLS, Let's Encrypt) ─► router:80 ─┬─ /api /socket.io /health /uploads ─► api:3000
-                                                    ├─ admin.<domeniu>                 ─► admin:1505
-                                                    └─ restul                          ─► web:1500
+internet ─► Traefik (Coolify, TLS) ─► router:80 ─┬─ /api /socket.io /health /uploads ─► api:3000
+                                                  ├─ admin.<domeniu>                 ─► admin:1505
+                                                  └─ restul                          ─► web:1500
 ```
+
+Serviciul `router` primește toate domeniile. `api`, `web`, `admin`, `postgres`
+și `redis` rămân **fără niciun domeniu**. Un site nou = încă un rând în același
+câmp, nimic altceva.
+
+Lista, generată din baza de date:
+
+```bash
+docker compose -f docker-compose.coolify.yml exec api node scripts/coolify-domains.mjs
+```
+
+Nu scrie nimic în Coolify — doar afișează lista, ca s-o lipești. Pasul rămâne al
+tău pentru că o greșeală în acel câmp scoate site-uri de pe internet.
 
 ---
 
 ## 3. Pregătire (se poate face din timp, fără downtime)
 
 ### 3.1 Cloudflare R2
-1. Bucket `manelecadou-uploads`.
-2. Custom domain pe bucket: `files.manelecadou.ro` → asta devine `R2_PUBLIC_URL`.
+1. Bucket — alege numele, ex. `manelecadou-uploads`.
+2. Custom domain pe bucket, ex. `files.manelecadou.ro` → asta devine `R2_PUBLIC_URL`.
    **Obligatoriu**: fără el, `/uploads` se servește prin API, cu seek limitat în
    player (iOS Safari refuză frecvent redarea).
 3. S3 access key (Account ID, Access Key ID, Secret).
@@ -55,24 +76,32 @@ internet ─► NPM (TLS, Let's Encrypt) ─► router:80 ─┬─ /api /socket
    `assets` din OpenReplay descarcă asset-urile cu alt User-Agent
    (vezi CLAUDE.md §15.7 pct. 11).
 
-### 3.2 Server nou
-```bash
-docker network create manele-edge          # rețeaua partajată cu NPM
-```
-Atașează containerul NPM la ea (în compose-ul NPM: `networks: [manele-edge]`,
-declarată `external: true`). Fără asta NPM nu rezolvă `router` prin DNS-ul Docker.
+### 3.2 Resursa în Coolify
+- Tip **Docker Compose**, din repo-ul Git, cu `docker-compose.coolify.yml`.
+- Domeniile, toate, pe serviciul `router`.
+- Volumele numite din compose le gestionează Coolify. Nu șterge `api_uploads`
+  înainte de a confirma sync-ul pe R2.
 
-### 3.3 `.env`
-Copiază `.env`-ul de pe Ionos și adaugă:
+⚠️ **Variabilele `NEXT_PUBLIC_*` trebuie marcate ca „Build Variable"** în
+Coolify. Next.js le fixează în bundle la build; dacă ajung doar la runtime,
+pixelii, cheia OpenReplay și locale-ul implicit rămân goale în pagina livrată.
+Aceeași clasă de capcană ca `API_INTERNAL_URL` (CLAUDE.md §9.3), doar în
+cealaltă direcție.
+
+Alternativ, Postgres și Redis pot fi resurse gestionate de Coolify (cu
+backup-uri programate din UI) — atunci le scoți din compose și pui
+`POSTGRES_HOST` / `REDIS_HOST` pe hostname-urile date de Coolify.
+
+### 3.3 Variabile de mediu
+Copiază `.env`-ul de pe Ionos în Environment Variables și adaugă:
 ```
 TRUST_PROXY_HOPS=2
 STORAGE_DRIVER=r2
 R2_ACCOUNT_ID=…
 R2_ACCESS_KEY_ID=…
 R2_SECRET_ACCESS_KEY=…
-R2_BUCKET=manelecadou-uploads
-R2_PUBLIC_URL=https://files.manelecadou.ro
-EDGE_NETWORK=manele-edge
+R2_BUCKET=…
+R2_PUBLIC_URL=https://…
 ```
 `.env.example` are lista completă, comentată.
 
@@ -92,7 +121,7 @@ docker run --rm \
   -v /root/r2-migrate:/work -w /work \
   -e UPLOADS_DIR=/uploads \
   -e R2_ACCOUNT_ID=… -e R2_ACCESS_KEY_ID=… -e R2_SECRET_ACCESS_KEY=… \
-  -e R2_BUCKET=manelecadou-uploads \
+  -e R2_BUCKET=… \
   -e R2_DRY_RUN=1 \
   node:22-alpine sh -c 'npm init -y >/dev/null 2>&1; npm i --silent @aws-sdk/client-s3 pg >/dev/null 2>&1 && node sync-uploads-to-r2.mjs'
 ```
@@ -104,7 +133,7 @@ Idempotent, cu 12 fișiere în paralel; sare peste ce e deja urcat cu aceeași
 mărime (deci a doua rulare prinde și fișierele **suprascrise** între timp, nu
 doar pe cele noi).
 
-Pe **stack-ul nou** imaginea conține scripturile (`COPY scripts ./scripts` în
+Pe stack-ul Coolify imaginea conține scripturile (`COPY scripts ./scripts` în
 `apps/api/Dockerfile`), deci acolo e simplu:
 ```bash
 docker compose -f docker-compose.coolify.yml exec api node scripts/sync-uploads-to-r2.mjs
@@ -127,8 +156,7 @@ Deci poți face:
 1. **Întâi funcționalitatea**, pe Ionos: `--phase=pre`, `make deploy`,
    `--phase=post`, `--phase=rollout`. Site-urile arată la fel; capeți
    interfața nouă testabilă cu `?ui=cadou`, motorul Google, admin-ul nou.
-2. **Apoi infrastructura**, când ai timp: R2 + server nou + NPM, după runbook-ul
-   de mai jos.
+2. **Apoi infrastructura**, când ai timp: R2 + Coolify, după runbook-ul de mai jos.
 
 Avantajul: dacă apare o problemă, știi din care dintre cele două mutări vine.
 
@@ -136,7 +164,7 @@ Avantajul: dacă apare o problemă, știi din care dintre cele două mutări vin
 
 ## 4. Cutover
 
-### Pas 1 — migrarea de schemă, ÎNAINTE de a porni codul nou
+### Pas 1 — migrarea de schemă, PE IONOS, înainte de dump
 ```bash
 docker exec manele-api-1 node scripts/migrate-prod-to-new-stack.mjs --phase=pre
 ```
@@ -145,25 +173,40 @@ Lărgește `video_collages.track` de la `varchar(8)` la `varchar(64)`.
 lungime — face DROP + ADD, iar toate colajele existente ar rămâne cu
 `track = 'main'` (cele pe bonus s-ar rata la listare și la regenerare).
 
+Se rulează pe Ionos, **înainte** de dump, tocmai ca să nu ai problema pe
+Coolify: acolo API-ul pornește odată cu restul stack-ului, deci n-ai o fereastră
+în care baza există dar codul nou n-a pornit încă. Cu ALTER-ul făcut din timp,
+dump-ul ajunge pe Coolify deja corect, iar la primul boot TypeORM nu mai are ce
+atinge.
+
+Codul vechi de pe Ionos nu e afectat: e doar o lărgire de coloană.
+
+*(Dacă din orice motiv ajungi cu dump-ul nemigrat pe Coolify: pornește stack-ul
+o dată cu `DB_SYNCHRONIZE=false`, restaurează, rulează `--phase=pre`, apoi scoate
+variabila și redeployează.)*
+
 ### Pas 2 — dump + restore
 ```bash
 # pe Ionos
 docker exec manele-postgres-1 pg_dump -U manelecadou manelecadou | gzip > /backups/cutover.sql.gz
-# pe serverul nou
+# pe Coolify
 gunzip -c cutover.sql.gz | docker exec -i <postgres> psql -U manelecadou manelecadou
 ```
 
-### Pas 3 — pornește stack-ul nou
+### Pas 3 — deploy în Coolify
+Push pe branch, sau butonul Deploy. Urmărește logurile serviciului `api` până
+apare `storage=r2 bucket=…`.
+
+Din terminal, opțional:
 ```bash
-docker compose -f docker-compose.coolify.yml up -d --build
-docker compose -f docker-compose.coolify.yml logs -f api    # aștepți „storage=r2 bucket=…"
+COOLIFY_URL=… COOLIFY_TOKEN=… COOLIFY_RESOURCE_UUID=… make deploy-coolify
 ```
 
 ### Pas 4 — sync delta + verificare
 Delta se rulează încă de pe **Ionos** (acolo sunt fișierele), cu același
 container temporar ca la 3.4, fără `R2_DRY_RUN`.
 
-Verificarea se rulează oriunde are acces la DB-ul nou:
+Verificarea se rulează pe stack-ul nou:
 ```bash
 docker compose -f docker-compose.coolify.yml exec api node scripts/verify-r2-migration.mjs
 ```
@@ -175,19 +218,16 @@ dacă **nimic** nu lipsește. **Nu muta DNS-ul până nu iese 0.**
 Atașamentele de email (`mail_attachments.storagePath`) sunt excluse intenționat:
 stau pe volumul `api_mail_attach`, nu în uploads, și nu se migrează pe R2.
 
-### Pas 5 — NPM
-Manual, sau automat din DB:
+### Pas 5 — domeniile în Coolify
 ```bash
-NPM_URL=http://127.0.0.1:81 NPM_EMAIL=… NPM_PASSWORD=… \
-NPM_ADMIN_DOMAIN=admin.manelecadou.ro DEFAULT_SITE_DOMAIN=manelecadou.ro \
-PGHOST=… PGUSER=… PGPASSWORD=… PGDATABASE=… \
-node apps/api/scripts/sync-npm-proxy-hosts.mjs
+docker compose -f docker-compose.coolify.yml exec api node scripts/coolify-domains.mjs
 ```
-Creează un Proxy Host per domeniu activ cu `sslEnabled`, toate → `router:80`,
-cu websocket ON și `client_max_body_size 200M`. Cere certificat Let's Encrypt
-doar unde lipsește; domeniile al căror DNS nu e încă mutat eșuează la certificat
-și se reiau rulând scriptul din nou. Rulează-l după fiecare site nou adăugat din
-admin (ține locul lui `on_demand_tls`).
+Lipești lista în serviciul `router` → Domains. Traefik cere certificate doar
+pentru domeniile al căror A record e deja mutat; pe celelalte emiterea eșuează
+și se reia singură după DNS.
+
+Rulează scriptul din nou după fiecare site nou adăugat din admin — ține locul
+lui `on_demand_tls` din Caddy.
 
 ### Pas 6 — test pe un domeniu de probă
 Mută întâi un singur A record (ex. `test.manelecadou.ro`) și verifică:
@@ -197,12 +237,12 @@ Mută întâi un singur A record (ex. `test.manelecadou.ro`) și verifică:
 - admin: login prin magic link, chat live (websocket), upload de mostră
 
 ### Pas 7 — DNS live
-A records → IP-ul nou, **DNS only (nor gri)** în Cloudflare. Cu proxy portocaliu,
-Let's Encrypt eșuează la HTTP-01.
+A records → IP-ul serverului Coolify, **DNS only (nor gri)** în Cloudflare. Cu
+proxy portocaliu, Let's Encrypt eșuează la HTTP-01.
 
 ### Pas 8 — migrarea datelor, după ce API-ul nou a pornit
 ```bash
-node scripts/migrate-prod-to-new-stack.mjs --phase=post
+docker compose -f docker-compose.coolify.yml exec api node scripts/migrate-prod-to-new-stack.mjs --phase=post
 ```
 Completează `experienceSlug='classic'` pe rândurile vechi și îngheață cota de
 refaceri gratuite a comenzilor de dinainte de deploy (codul nou dă cotă pe
@@ -214,15 +254,10 @@ retroactiv refaceri în plus). Cu `--legacy-remakes=grant` faci invers.
 Admin → `/rollout` → pe fiecare site „Aplică lipsurile". Umple doar câmpuri
 goale; nu suprascrie prompturi, prețuri sau interfețe deja setate de operator.
 
-Echivalentul din linia de comandă, pentru toate site-urile deodată (rulează-l
-din containerul api, ca să aibă `JWT_SECRET` și rețeaua internă):
+Echivalentul din linia de comandă, pentru toate site-urile deodată:
 ```bash
-docker exec <api> node scripts/migrate-prod-to-new-stack.mjs --phase=rollout
+docker compose -f docker-compose.coolify.yml exec api node scripts/migrate-prod-to-new-stack.mjs --phase=rollout
 ```
-
-Nu comuta `musicEngine` pe Google decât după ce ai pus `GEMINI_API_KEY` și ai
-verificat prompturile Google pe stiluri/ocazii — și doar pe o singură interfață
-întâi, nu pe tot site-ul.
 
 ### Pas 10 — pornirea design-ului nou (separat de cutover)
 
@@ -271,6 +306,7 @@ Cutover-ul **nu** rupe nimic din trecut:
 | Stack-ul nou nu pornește | DNS-ul e încă pe Ionos → nu se vede nimic. Repari și reiei. |
 | DNS mutat, probleme mari | Muți A records înapoi pe IP-ul Ionos (TTL mic în ziua cutover-ului). |
 | Date stricate în DB-ul nou | `gunzip -c cutover.sql.gz \| psql` pe stack-ul nou. |
-| R2 face figuri | `STORAGE_DRIVER=disk` + restart api: fișierele se servesc din volum. |
+| R2 face figuri | `STORAGE_DRIVER=disk` + redeploy: fișierele se servesc din volum. |
+| Un deploy Coolify a stricat ceva | Coolify păstrează deployment-urile anterioare — Rollback din UI. |
 
 Ține TTL-ul DNS la 60s cu o zi înainte de cutover.

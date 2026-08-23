@@ -33,8 +33,8 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       API_PORT: 3000
-      # Caddy e singurul proxy în fața API-ului aici. Stack-ul nou (NPM +
-      # router) are 2 hop-uri — vezi docker-compose.coolify.yml.
+      # Caddy e singurul proxy în fața API-ului aici. Stack-ul nou (Traefik-ul
+      # Coolify + router) are 2 hop-uri — vezi docker-compose.coolify.yml.
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
       # Explicit: `UPLOADS_DIR` are default `''` în schema de env, iar `''` nu e
       # nullish — fără valoare aici, fișierele s-ar scrie în afara volumului.
