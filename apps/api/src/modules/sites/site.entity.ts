@@ -321,6 +321,8 @@ export interface SiteStyleEntry {
   i18n?: Record<string, { nm?: string; ds?: string; heat?: string }>;
   /** Override prompt Suno pentru acest stil (se pune în suno.stylePromptMap). */
   sunoPrompt?: string;
+  /** Prompt natural-language pentru Google Lyria 3 Pro (diferit de tag-urile Suno). */
+  googlePrompt?: string;
   /** Hint scurt pentru writer-ul OpenAI — pre-completează „Hint AI pentru versuri"
    *  în UI-ul de sample generation. Ex: „manea de jale, vocabular cu lacrimi/inimă". */
   lyricsHint?: string;
@@ -383,6 +385,10 @@ export interface SiteOccasionEntry {
   /** Icoană SVG configurabilă (override față de emoji `em`). */
   ic?: SiteIconConfig;
   i18n?: Record<string, { nm?: string }>;
+  /** Hint de stil Suno pentru ocazie (se adaugă la tag-urile de style). */
+  sunoPrompt?: string;
+  /** Prompt natural-language pentru Google Lyria pe această ocazie. */
+  googlePrompt?: string;
 }
 
 /**
@@ -498,6 +504,14 @@ export class Site {
 
   @Column({ type: 'jsonb', default: () => `'{}'::jsonb` })
   suno!: SiteSuno;
+
+  /**
+   * Motorul de generare audio pe acest site.
+   *  - suno   → sunoapi.org (implicit, 2 piese dintr-un task)
+   *  - google → Lyria 3 Pro (2 variante în paralel)
+   */
+  @Column({ type: 'varchar', length: 16, default: 'suno' })
+  musicEngine!: 'suno' | 'google';
 
   @Column({ type: 'jsonb', default: () => `'{}'::jsonb` })
   social!: SiteSocial;

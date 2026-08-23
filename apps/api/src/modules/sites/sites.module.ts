@@ -9,6 +9,8 @@ import { SiteContextMiddleware } from './site-context.middleware';
 import { SiteSamplesService } from './site-samples.service';
 import { SiteBrandUploadService } from './site-brand-upload.service';
 import { ExperienceAssetUploadService } from './experience-asset-upload.service';
+import { SiteRolloutService } from './site-rollout.service';
+import { AdminSiteRolloutController } from './site-rollout.controller';
 import { SunoModule } from '../suno/suno.module';
 import { LyricsModule } from '../lyrics/lyrics.module';
 // SettingsModule e @Global() — SettingsService e injectabil în SiteSamplesService
@@ -31,8 +33,8 @@ import { LyricsModule } from '../lyrics/lyrics.module';
       }),
     }),
   ],
-  providers: [SitesService, SiteSamplesService, SiteBrandUploadService, ExperienceAssetUploadService],
-  controllers: [PublicSiteController, AdminSitesController, AdminSiteSamplesController, CaddyAskController],
+  providers: [SitesService, SiteSamplesService, SiteBrandUploadService, ExperienceAssetUploadService, SiteRolloutService],
+  controllers: [PublicSiteController, AdminSitesController, AdminSiteSamplesController, CaddyAskController, AdminSiteRolloutController],
   exports: [SitesService, TypeOrmModule],
 })
 export class SitesModule implements NestModule {
