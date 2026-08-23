@@ -3,6 +3,9 @@ import { z } from 'zod';
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   API_PORT: z.coerce.number().default(3000),
+  // Câte hop-uri de reverse proxy stau în fața API-ului (vezi main.ts).
+  // 1 = Caddy direct; 2 = Nginx Proxy Manager → router intern.
+  TRUST_PROXY_HOPS: z.coerce.number().optional().default(1),
   APP_URL: z.string().url().default('http://localhost:1500'),
   ADMIN_URL: z.string().url().default('http://localhost:1505'),
   API_URL: z.string().url().default('http://localhost:1501'),
@@ -41,6 +44,8 @@ const schema = z.object({
   SUNO_API_BASE_URL: z.string().optional().default('https://api.sunoapi.org'),
   SUNO_API_KEY: z.string().optional().default(''),
   SUNO_MODEL: z.string().optional().default('V4_5'),
+  GEMINI_API_KEY: z.string().optional().default(''),
+  LYRIA_MODEL: z.string().optional().default('lyria-3-pro-preview'),
 
   STRIPE_SECRET_KEY: z.string().optional().default(''),
   STRIPE_WEBHOOK_SECRET: z.string().optional().default(''),
@@ -61,6 +66,15 @@ const schema = z.object({
   GA4_API_SECRET: z.string().optional().default(''),
   META_PIXEL_ID: z.string().optional().default(''),
   META_CAPI_TOKEN: z.string().optional().default(''),
+
+  STORAGE_DRIVER: z.enum(['disk', 'r2']).optional().default('disk'),
+  UPLOADS_DIR: z.string().optional().default(''),
+  R2_ACCOUNT_ID: z.string().optional().default(''),
+  R2_ACCESS_KEY_ID: z.string().optional().default(''),
+  R2_SECRET_ACCESS_KEY: z.string().optional().default(''),
+  R2_BUCKET: z.string().optional().default(''),
+  R2_ENDPOINT: z.string().optional().default(''),
+  R2_PUBLIC_URL: z.string().optional().default(''),
 });
 
 export type AppConfig = z.infer<typeof schema>;

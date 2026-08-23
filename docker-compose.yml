@@ -91,6 +91,18 @@ services:
       OPENAI_AUTOREPLY_MODEL: ${OPENAI_AUTOREPLY_MODEL:-}
       MAIL_CRED_KEY: ${MAIL_CRED_KEY:-}
       MAIL_ATTACH_DIR: ${MAIL_ATTACH_DIR:-/tmp/manelecadou-mail-attach}
+      # `UPLOADS_DIR` are default `''` în schema de env, iar `''` nu e nullish —
+      # fără valoare explicită aici, fișierele ies din volum.
+      UPLOADS_DIR: /app/uploads
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-disk}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET: ${R2_BUCKET:-}
+      R2_ENDPOINT: ${R2_ENDPOINT:-}
+      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      LYRIA_MODEL: ${LYRIA_MODEL:-}
       MAIL_POLL_INTERVAL_MS: ${MAIL_POLL_INTERVAL_MS:-60000}
       GA4_MEASUREMENT_ID: ${NEXT_PUBLIC_GA_ID:-}
       GA4_API_SECRET: ${GA4_API_SECRET:-}

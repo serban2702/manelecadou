@@ -1,3 +1,25 @@
+# Stack-ul nou: fără Caddy, în spatele unui reverse proxy extern
+# (Nginx Proxy Manager sau Traefik-ul Coolify) și cu fișierele pe Cloudflare R2.
+#
+# Traficul intră astfel:
+#
+#   internet → NPM (TLS, Let's Encrypt) → router:80 → api / web / admin
+#
+# `router` (nginx, config în deploy/router/nginx.conf) face split-ul pe path
+# și pe host, exact ca vechiul Caddyfile. În NPM ai nevoie de DOAR două
+# Proxy Host-uri:
+#
+#   1. toate domeniile publice (comma-separated) → router : 80
+#   2. admin.<domeniu>                           → router : 80
+#
+# Domeniu nou = îl adaugi în lista primului Proxy Host și ceri certificat.
+# `apps/api/scripts/sync-npm-proxy-hosts.mjs` face asta automat din DB.
+#
+# Rețeaua externă: containerul NPM trebuie atașat la aceeași rețea ca `router`.
+#   docker network create manele-edge
+#   (și în compose-ul NPM: networks: [ manele-edge ])
+# Vezi docs/COOLIFY_R2.md.
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -9,7 +31,8 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      # pg_dump --version în test ca deploy.sh să nu pornească fără binarul de backup.
+      test: ["CMD-SHELL", "pg_dump --version >/dev/null && pg_isready -U ${POSTGRES_USER}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -33,26 +56,15 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       API_PORT: 3000
-      # Caddy e singurul proxy în fața API-ului aici. Stack-ul nou (NPM +
-      # router) are 2 hop-uri — vezi docker-compose.coolify.yml.
-      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
-      # Explicit: `UPLOADS_DIR` are default `''` în schema de env, iar `''` nu e
-      # nullish — fără valoare aici, fișierele s-ar scrie în afara volumului.
-      UPLOADS_DIR: /app/uploads
-      STORAGE_DRIVER: ${STORAGE_DRIVER:-disk}
-      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
-      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
-      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
-      R2_BUCKET: ${R2_BUCKET:-}
-      R2_ENDPOINT: ${R2_ENDPOINT:-}
-      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      LYRIA_MODEL: ${LYRIA_MODEL:-}
+      # NPM + router = 2 hop-uri de proxy. Fără asta req.ip e IP-ul router-ului
+      # → throttler global și IP greșit în analytics/OpenReplay.
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-2}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       APP_URL: ${APP_URL}
@@ -64,9 +76,25 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       MAGIC_LINK_TTL_MIN: ${MAGIC_LINK_TTL_MIN:-15}
       SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY}
-      # Microserviciu media pe Hetzner (offload ffmpeg/resvg). Gol → randare locală.
+      MAIL_CRED_KEY: ${MAIL_CRED_KEY:-}
+
+      # --- Fișiere: Cloudflare R2 -------------------------------------------
+      # DB-ul păstrează path-uri /uploads/... ; GET /uploads face 302 spre
+      # R2_PUBLIC_URL (sau streamează din bucket dacă nu e domeniu public).
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-r2}
+      UPLOADS_DIR: /app/uploads
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET: ${R2_BUCKET:-}
+      R2_ENDPOINT: ${R2_ENDPOINT:-}
+      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
+
+      # --- Microserviciu media (ffmpeg/resvg pe Hetzner). Gol → local --------
       MEDIA_SERVICE_URL: ${MEDIA_SERVICE_URL:-}
       MEDIA_SERVICE_TOKEN: ${MEDIA_SERVICE_TOKEN:-}
+
+      # --- Mail --------------------------------------------------------------
       MAIL_PROVIDER: ${MAIL_PROVIDER:-mailgun}
       MAIL_FROM: ${MAIL_FROM}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-}
@@ -81,23 +109,30 @@ services:
       MAILGUN_API_URL: ${MAILGUN_API_URL:-}
       MAILGUN_FROM_EMAIL: ${MAILGUN_FROM_EMAIL:-}
       MAILGUN_WEBHOOK_SIGNING_KEY: ${MAILGUN_WEBHOOK_SIGNING_KEY:-}
+      MAIL_ATTACH_DIR: /app/mail-attach
+      MAIL_POLL_INTERVAL_MS: ${MAIL_POLL_INTERVAL_MS:-60000}
+
+      # --- Motoare audio -----------------------------------------------------
       SUNO_PROVIDER: ${SUNO_PROVIDER:-real}
       SUNO_API_BASE_URL: ${SUNO_API_BASE_URL:-https://api.sunoapi.org}
       SUNO_API_KEY: ${SUNO_API_KEY:-}
       SUNO_MODEL: ${SUNO_MODEL:-V4_5}
       SUNO_CREDIT_MONITOR_ENABLED: ${SUNO_CREDIT_MONITOR_ENABLED:-}
       SUNO_CREDIT_ALERT_THRESHOLD: ${SUNO_CREDIT_ALERT_THRESHOLD:-}
-      # Wingo Notifications — alerte push owner (monitor credite Suno)
-      WINGO_API_KEY: ${WINGO_API_KEY:-}
-      WINGO_NOTIFY_URL: ${WINGO_NOTIFY_URL:-}
+      # Google Lyria (motor alternativ, ales per interfață din admin).
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      LYRIA_MODEL: ${LYRIA_MODEL:-}
+
+      # --- Plăți -------------------------------------------------------------
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
       STRIPE_PRICE_FULL_RON: ${STRIPE_PRICE_FULL_RON:-}
+
+      # --- OpenAI + AI chat (Irina) ------------------------------------------
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       OPENAI_AUTOREPLY_MODEL: ${OPENAI_AUTOREPLY_MODEL:-}
-      # AI Chat agent (Faza 4-5) — overridable per-site din admin /settings
       AI_CHAT_MODEL: ${AI_CHAT_MODEL:-}
       AI_CHAT_TEMPERATURE: ${AI_CHAT_TEMPERATURE:-}
       AI_CHAT_SYSTEM_PROMPT: ${AI_CHAT_SYSTEM_PROMPT:-}
@@ -105,30 +140,30 @@ services:
       AI_CHAT_REQUIRE_APPROVAL_FOR_PAYMENT: ${AI_CHAT_REQUIRE_APPROVAL_FOR_PAYMENT:-true}
       AI_CHAT_REQUIRE_APPROVAL_FOR_GENERATION: ${AI_CHAT_REQUIRE_APPROVAL_FOR_GENERATION:-true}
       AI_CHAT_LEARN_NIGHTLY: ${AI_CHAT_LEARN_NIGHTLY:-false}
-      # Web Push (Faza 2) — VAPID keys pentru notificări admin
+
+      # --- Web Push admin ----------------------------------------------------
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
-      MAIL_CRED_KEY: ${MAIL_CRED_KEY:-}
-      # Gate suplimentar pe /admin/database (aceleași user:parolă ca terminalul ops).
-      OPS_TERMINAL_CREDENTIAL: ${OPS_TERMINAL_CREDENTIAL:-}
-      MAIL_ATTACH_DIR: /app/mail-attach
-      MAIL_POLL_INTERVAL_MS: ${MAIL_POLL_INTERVAL_MS:-60000}
+
+      # --- Analytics / alerte ------------------------------------------------
       GA4_MEASUREMENT_ID: ${NEXT_PUBLIC_GA_ID:-}
       GA4_API_SECRET: ${GA4_API_SECRET:-}
       META_PIXEL_ID: ${NEXT_PUBLIC_META_PIXEL_ID:-}
       META_CAPI_TOKEN: ${META_CAPI_TOKEN:-}
-      # Opțional, pentru testare CAPI: copiezi codul din Events Manager →
-      # Test events (ex. TEST8465) și-l setezi în .env. Cât timp e setat,
-      # toate evenimentele CAPI apar în tab-ul Test events în loc să intre
-      # în production data. Scoți env var-ul + restart api după validare.
       META_CAPI_TEST_EVENT_CODE: ${META_CAPI_TEST_EVENT_CODE:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
+      WINGO_API_KEY: ${WINGO_API_KEY:-}
+      WINGO_NOTIFY_URL: ${WINGO_NOTIFY_URL:-}
       LOGS_DIR: /app/logs
-      # Used by API ca să invalideze cache-ul Next.js după regenerări SEO etc.
+
+      # Gate suplimentar pe /admin/database (aceleași user:parolă ca ops).
+      OPS_TERMINAL_CREDENTIAL: ${OPS_TERMINAL_CREDENTIAL:-}
       WEB_INTERNAL_URL: http://web:1500
       REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
     volumes:
+      # Rămân și pe R2: volumul local e cache pentru ffmpeg + fallback dacă
+      # STORAGE_DRIVER=disk. Nu-l șterge înainte de sync-ul complet pe R2.
       - api_uploads:/app/uploads
       - api_backups:/app/backups
       - api_mail_attach:/app/mail-attach
@@ -161,7 +196,6 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      # Server-side calls (SSR, sitemap) hit API direct prin rețeaua Docker
       API_INTERNAL_URL: http://api:3000
       REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
     depends_on:
@@ -182,58 +216,67 @@ services:
       api:
         condition: service_healthy
 
-  # Terminal de operare cu Claude Code (CLAUDE.md §17). Expus DOAR prin Caddy
-  # la admin.manelecadou.ro/ops/ — ttyd face Basic Auth cu OPS_TERMINAL_CREDENTIAL.
-  # IMPORTANT: fără ANTHROPIC_API_KEY aici — Claude Code rulează pe abonamentul
-  # Max (login interactiv persistat pe volumul ops_home), nu pe API plătit.
+  # Singurul serviciu pe care-l vede reverse proxy-ul extern.
+  router:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./deploy/router/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    # Fallback de debug pe host (NPM folosește DNS-ul Docker, nu portul ăsta).
+    ports:
+      - "127.0.0.1:8080:80"
+    networks:
+      - default
+      - edge
+    depends_on:
+      - api
+      - web
+      - admin
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # Terminal de operare cu Claude Code (CLAUDE.md §17). Opt-in:
+  #   docker compose --profile ops -f docker-compose.coolify.yml up -d
   ops:
+    profiles: ["ops"]
     build:
       context: ./ops
     restart: unless-stopped
     environment:
-      OPS_TERMINAL_CREDENTIAL: ${OPS_TERMINAL_CREDENTIAL:?OPS_TERMINAL_CREDENTIAL lipsește din .env}
+      OPS_TERMINAL_CREDENTIAL: ${OPS_TERMINAL_CREDENTIAL:-}
       DISABLE_AUTOUPDATER: "1"
       TZ: Europe/Bucharest
-      # Postgres prin rolul dedicat claude_ops (DML pe public, fără DDL).
       PGHOST: postgres
       PGPORT: "5432"
       PGDATABASE: ${POSTGRES_DB}
       PGUSER: claude_ops
-      PGPASSWORD: ${OPS_DB_PASSWORD:?OPS_DB_PASSWORD lipsește din .env}
-      # API intern + semnare JWT de serviciu (ops-admin-token / api-admin).
+      PGPASSWORD: ${OPS_DB_PASSWORD:-}
       API_INTERNAL_URL: http://api:3000
       JWT_SECRET: ${JWT_SECRET}
       OPS_ADMIN_USER_ID: ${OPS_ADMIN_USER_ID:-}
     volumes:
-      # Repo-ul de pe VPS (root-owned ⇒ efectiv read-only pentru userul claude).
-      # Codul se modifică LOCAL + make deploy; aici doar citire/diagnoză.
-      - /home/manele:/workspace
-      # Home persistent: credențiale Claude (abonament Max), istoric, settings.
+      - ${OPS_WORKSPACE_DIR:-./}:/workspace
       - ops_home:/home/claude
     depends_on:
       postgres:
         condition: service_healthy
 
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - api
-      - web
-      - admin
+networks:
+  default:
+  # Rețea partajată cu Nginx Proxy Manager. Creeaz-o o dată:
+  #   docker network create manele-edge
+  # și atașează containerul NPM la ea.
+  edge:
+    external: true
+    name: ${EDGE_NETWORK:-manele-edge}
 
 volumes:
   pg_data:
   redis_data:
-  caddy_data:
-  caddy_config:
   api_uploads:
   api_backups:
   api_mail_attach:

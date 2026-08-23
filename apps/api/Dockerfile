@@ -25,6 +25,10 @@ WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
+# Scripturile de operare (migrare R2, migrare date prod, sincronizare NPM) —
+# se rulează cu `docker exec <api> node scripts/<nume>.mjs`. Fără linia asta nu
+# există în imagine și nu-și găsesc dependențele (`pg`, `@aws-sdk/client-s3`).
+COPY scripts ./scripts
 RUN mkdir -p /app/uploads /app/backups /app/mail-attach
 EXPOSE 3000
 ENTRYPOINT ["/sbin/tini", "--"]

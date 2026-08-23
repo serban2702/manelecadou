@@ -1,7 +1,13 @@
 VPS=VPSIonos
 REMOTE=/home/manele
 
-.PHONY: deploy deploy-api deploy-web deploy-admin deploy-ops ssh logs logs-api logs-web logs-admin logs-caddy logs-ops logs-file logs-429 backup rollback restart status
+# Stack nou (Nginx Proxy Manager + R2). Setează-le când serverul e gata:
+#   make deploy-new VPS_NEW=user@ip
+VPS_NEW?=
+REMOTE_NEW?=/home/manele
+
+.PHONY: deploy deploy-api deploy-web deploy-admin deploy-ops ssh logs logs-api logs-web logs-admin logs-caddy logs-ops logs-file logs-429 backup rollback restart status \
+        deploy-new deploy-new-api deploy-new-web deploy-new-admin deploy-new-router logs-new status-new
 
 deploy:
 	@echo "→ git push + remote deploy (full)"
@@ -68,3 +74,43 @@ rollback:
 
 restart:
 	@ssh $(VPS) "cd $(REMOTE) && docker compose -f docker-compose.prod.yml restart"
+
+# --- Stack nou (docker-compose.coolify.yml, în spatele Nginx Proxy Manager) ---
+# `deploy/deploy.sh` e în repo, deci se actualizează singur cu git pull.
+
+define REQUIRE_VPS_NEW
+	@if [ -z "$(VPS_NEW)" ]; then echo "Setează VPS_NEW=user@ip (sau un alias din ~/.ssh/config)"; exit 1; fi
+endef
+
+deploy-new:
+	$(REQUIRE_VPS_NEW)
+	@git push origin main
+	@ssh $(VPS_NEW) "cd $(REMOTE_NEW) && ./deploy/deploy.sh full"
+
+deploy-new-api:
+	$(REQUIRE_VPS_NEW)
+	@git push origin main
+	@ssh $(VPS_NEW) "cd $(REMOTE_NEW) && ./deploy/deploy.sh api"
+
+deploy-new-web:
+	$(REQUIRE_VPS_NEW)
+	@git push origin main
+	@ssh $(VPS_NEW) "cd $(REMOTE_NEW) && ./deploy/deploy.sh web"
+
+deploy-new-admin:
+	$(REQUIRE_VPS_NEW)
+	@git push origin main
+	@ssh $(VPS_NEW) "cd $(REMOTE_NEW) && ./deploy/deploy.sh admin"
+
+logs-new:
+	$(REQUIRE_VPS_NEW)
+	@ssh $(VPS_NEW) "cd $(REMOTE_NEW) && docker compose -f docker-compose.coolify.yml logs -f --tail=100"
+
+status-new:
+	$(REQUIRE_VPS_NEW)
+	@ssh $(VPS_NEW) "cd $(REMOTE_NEW) && docker compose -f docker-compose.coolify.yml ps"
+
+deploy-new-router:
+	$(REQUIRE_VPS_NEW)
+	@git push origin main
+	@ssh $(VPS_NEW) "cd $(REMOTE_NEW) && ./deploy/deploy.sh router"
