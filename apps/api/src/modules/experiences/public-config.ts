@@ -1,5 +1,5 @@
 import { EXPERIENCE_CATALOG, isKnownExperienceSlug } from './catalog';
-import { resolveExperiencePackages } from './package-resolve';
+import { resolveExperiencePackages, type SitePackagePricing } from './package-resolve';
 import type { ExperienceCatalogConfig, SiteExperienceConfig } from './types';
 
 function toPublicCatalog(catalog?: ExperienceCatalogConfig | null) {
@@ -53,10 +53,34 @@ function toPublicCatalog(catalog?: ExperienceCatalogConfig | null) {
     voices,
     demoIds: catalog.demoIds ?? null,
     reactionClips,
+    ...(Array.isArray(catalog.testimonials)
+      ? {
+          testimonials: catalog.testimonials.map((t) => ({
+            id: t.id,
+            stars: t.stars,
+            quote: t.quote,
+            name: t.name,
+            role: t.role,
+            avatar: t.avatar,
+            i18n: t.i18n,
+          })),
+        }
+      : {}),
   };
 }
 
-export function toPublicExperienceConfig(config?: SiteExperienceConfig | null) {
+/**
+ * Configul public al interfețelor.
+ *
+ * `sitePricing` = `{ prices: site.packagePricesCents, compareAt: site.packageCompareAtCents }`.
+ * Fără el, pachetele expuse cad pe prețul de LISTĂ din cod, care pe un tenant
+ * cu preț propriu (ex. EUR) diferă de ce taxează Stripe. Trebuie pasat mereu de
+ * la controller — vezi `PublicSiteController.serialize`.
+ */
+export function toPublicExperienceConfig(
+  config?: SiteExperienceConfig | null,
+  sitePricing?: SitePackagePricing | null,
+) {
   const defaultSlug = config?.defaultSlug && isKnownExperienceSlug(config.defaultSlug)
     ? config.defaultSlug
     : 'classic';
@@ -68,11 +92,14 @@ export function toPublicExperienceConfig(config?: SiteExperienceConfig | null) {
   }> = {};
   for (const { slug } of EXPERIENCE_CATALOG) {
     const item = config?.items?.[slug];
-    const enabled = slug === 'classic' ? true : item?.enabled !== false && !!item;
+    const enabled =
+      slug === 'classic' ||
+      slug === defaultSlug ||
+      (item?.enabled !== false && !!item);
     items[slug] = {
       enabled,
       utmRules: item?.utmRules ?? [],
-      packages: resolveExperiencePackages(slug, item?.packages ?? null),
+      packages: resolveExperiencePackages(slug, item?.packages ?? null, sitePricing ?? null),
       catalog: toPublicCatalog(item?.catalog),
     };
   }

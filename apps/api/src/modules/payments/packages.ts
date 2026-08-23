@@ -5,12 +5,13 @@
  *
  * Fiecare pachet definește ce LIVRABILE include:
  *  - song:        maneaua personalizată (toate pachetele)
- *  - instrumental: track instrumental separat (plus, premium)
- *  - socialImage:  4 variante de imagine social-share + upload propriu (plus, premium)
- *  - video:        videoclip slideshow generat (premium)
+ *  - instrumental: track instrumental separat
  *  - premiumPage:  pagină premium de ascultare (premium)
- *  - durationSec:  durata țintă a melodiei (premium = mai lungă)
+ *  - durationSec:  durata țintă a melodiei
+ *  - greetingClip: clip de urare AI (Veo) — setare; generarea vine mai târziu
  *  - deliveryLabel: copy de marketing pentru timpul de livrare (nu garantat tehnic)
+ *
+ * Imagini social + videoclip pe piesă (refren) au fost scoase.
  */
 
 export type PackageTier = 'basic' | 'plus' | 'premium';
@@ -63,7 +64,7 @@ export const PACKAGES: Record<PackageTier, PackageDef> = {
     priceCents: 4999,
     durationSec: 150,
     instrumental: false,
-    socialImage: true,
+    socialImage: false,
     video: false,
     premiumPage: false,
     deliveryLabel: 'Livrare prioritară',
@@ -71,7 +72,6 @@ export const PACKAGES: Record<PackageTier, PackageDef> = {
       'Tot din Standard',
       'Colaj cu maxim 4 poze — doar refrenul',
       'Manea mai calitativă',
-      '4 imagini pentru social media',
       'Livrare prioritară',
       '2 refaceri GRATUITE',
       '25% discount la a doua manea',
@@ -80,11 +80,13 @@ export const PACKAGES: Record<PackageTier, PackageDef> = {
   premium: {
     tier: 'premium',
     label: 'Premium',
-    priceCents: 6999,
+    // Prețul de LISTĂ (99.99 lei). Site-urile de producție au override în
+    // `site.packagePricesCents`; valoarea de aici e ce primește un site nou.
+    priceCents: 9999,
     durationSec: 150,
     instrumental: false,
-    socialImage: true,
-    video: true,
+    socialImage: false,
+    video: false,
     premiumPage: true,
     deliveryLabel: 'Livrare prioritară',
     featuresRo: [
@@ -107,6 +109,71 @@ export function isPackageTier(v: unknown): v is PackageTier {
 
 export function normalizeTier(v: unknown): PackageTier {
   return isPackageTier(v) ? v : 'basic';
+}
+
+/** Refacere contra cost după ce s-au epuizat cele gratuite (15 lei). */
+export const PAID_REMAKE_CENTS = 1500;
+
+export interface PackageFeatureDefaults {
+  remakes: number;
+  collage: boolean;
+  collagePhotoLimit: number;
+  collageFullTrack: boolean;
+  greetingCard: boolean;
+  socialPost: boolean;
+  nextSongDiscountPercent: number;
+  /** Clip de urare AI (Veo). Generarea nu e pornită încă. */
+  greetingClip: boolean;
+}
+
+export const PACKAGE_FEATURES: Record<PackageTier, PackageFeatureDefaults> = {
+  basic: {
+    remakes: 1,
+    collage: false,
+    collagePhotoLimit: 0,
+    collageFullTrack: false,
+    greetingCard: false,
+    socialPost: false,
+    nextSongDiscountPercent: 0,
+    greetingClip: false,
+  },
+  plus: {
+    remakes: 2,
+    collage: true,
+    collagePhotoLimit: 4,
+    collageFullTrack: false,
+    greetingCard: false,
+    socialPost: false,
+    nextSongDiscountPercent: 25,
+    greetingClip: false,
+  },
+  premium: {
+    remakes: 3,
+    collage: true,
+    collagePhotoLimit: 15,
+    collageFullTrack: true,
+    greetingCard: true,
+    socialPost: true,
+    nextSongDiscountPercent: 40,
+    greetingClip: false,
+  },
+};
+
+/** Câte refaceri gratuite: override din snapshot/admin, altfel Standard 1 / Plus 2 / Premium 3. */
+export function freeRemakeQuota(tier: unknown, remakesOverride?: number | null): number {
+  if (typeof remakesOverride === 'number' && Number.isFinite(remakesOverride) && remakesOverride >= 0) {
+    return Math.round(remakesOverride);
+  }
+  const t = normalizeTier(tier);
+  return PACKAGE_FEATURES[t].remakes;
+}
+
+export function freeRemakesUsed(g: {
+  freeRemakeUsedCount?: number | null;
+  freeRemakeUsedAt?: Date | string | null;
+}): number {
+  const n = g.freeRemakeUsedCount ?? 0;
+  return Math.max(n, g.freeRemakeUsedAt ? 1 : 0);
 }
 
 /** Prețul efectiv al unui pachet, cu override per-site (cents). */
@@ -162,8 +229,8 @@ export function packagesPitchRo(
  * Pitch pentru chat-ul Irinei — TOATE 3 pachetele (decizie owner 2026-06-13, review-uri
  * admin: clienții trebuie să vadă și varianta de 69.99, nu doar standard + plus):
  *  - Standard = basic (preț de intrare, maneaua personalizată)
- *  - Plus     = plus  (mai lungă + mai calitativă + imagini social media)
- *  - Premium  = premium (tot ce e în Plus + videoclip + pagină premium)
+ *  - Plus     = plus  (mai lungă + colaj 4 poze)
+ *  - Premium  = premium (colaj 15 poze + felicitare + pagină premium)
  * Folosit în ETAPA de alegere a pachetului, înainte de linkul de plată.
  */
 /** Cuvântul natural pentru monedă, folosit în chat (mai uman decât codul ISO). */
@@ -194,8 +261,8 @@ export function chatPackageUpsellRo(
   const premium = fmt(packagePriceCents('premium', overrides));
   const plusCompare = packageCompareAtCents('plus', opts?.compareAt, overrides);
   const plusLine = plusCompare
-    ? `Plus ${plus} ${cur} (redus de la ${fmt(plusCompare)} ${cur} — oferta valabila inca 3 zile) — mai lunga si mai calitativa, cu imagini pentru social media (TikTok/Instagram); `
-    : `Plus ${plus} ${cur} — colaj 4 poze (refren), manea mai calitativa, 4 imagini social, 2 refaceri si 25% la a doua manea; `;
+    ? `Plus ${plus} ${cur} (redus de la ${fmt(plusCompare)} ${cur} — oferta valabila inca 3 zile) — mai lunga, cu colaj 4 poze pe refren; `
+    : `Plus ${plus} ${cur} — colaj 4 poze (refren), manea mai calitativa, 2 refaceri si 25% la a doua manea; `;
   return (
     `Avem 3 pachete: Standard ${standard} ${cur} — maneaua ta in 5-10 minute, cu o refacere gratuita; ` +
     plusLine +

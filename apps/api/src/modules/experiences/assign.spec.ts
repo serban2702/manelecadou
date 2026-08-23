@@ -31,11 +31,19 @@ describe('isExperienceEnabled', () => {
 
   it('cadou follows enabled flag', () => {
     assert.equal(isExperienceEnabled('cadou', cadouOn), true);
-    assert.equal(isExperienceEnabled('cadou', null), true);
     assert.equal(
       isExperienceEnabled('cadou', { defaultSlug: 'classic', items: { cadou: { enabled: false, utmRules: [] } } }),
       false,
     );
+  });
+
+  it('no config entry means NOT enabled (stale cookie must not stick)', () => {
+    assert.equal(isExperienceEnabled('cadou', null), false);
+    assert.equal(isExperienceEnabled('cadou', { defaultSlug: 'classic', items: {} }), false);
+  });
+
+  it('the site default slug is enabled even without an items entry', () => {
+    assert.equal(isExperienceEnabled('cadou', { defaultSlug: 'cadou', items: {} }), true);
   });
 });
 
@@ -60,12 +68,14 @@ describe('resolveExperienceSlug', () => {
     assert.deepEqual(r, { slug: 'classic', reason: 'cookie' });
   });
 
-  it('?ui= still forces a known slug even if admin disabled it', () => {
+  it('?ui= is ignored when the experience is disabled', () => {
+    // Preview needs `enabled: true` (without making it the default). Otherwise a
+    // stray ?ui= link would stick the experience on visitors via the cookie.
     const r = resolveExperienceSlug({
       uiParam: 'cadou',
       config: { defaultSlug: 'classic', items: { cadou: { enabled: false, utmRules: [] } } },
     });
-    assert.deepEqual(r, { slug: 'cadou', reason: 'url' });
+    assert.deepEqual(r, { slug: 'classic', reason: 'default' });
   });
 
   it('cookie wins over person and utm', () => {
@@ -109,9 +119,38 @@ describe('resolveExperienceSlug', () => {
     assert.deepEqual(hit, { slug: 'cadou', reason: 'utm' });
   });
 
-  it('cookie cadou sticks even without admin item', () => {
+  it('a cookie for an unconfigured experience is dropped', () => {
+    // Covers the API-down case too: config null must not hand the site over to
+    // whatever slug an old cookie carries.
     const r = resolveExperienceSlug({ cookieSlug: 'cadou' });
-    assert.deepEqual(r, { slug: 'cadou', reason: 'cookie' });
+    assert.deepEqual(r, { slug: 'classic', reason: 'default' });
+
+    const noItem = resolveExperienceSlug({
+      cookieSlug: 'cadou',
+      config: { defaultSlug: 'classic', items: {} },
+    });
+    assert.deepEqual(noItem, { slug: 'classic', reason: 'default' });
+  });
+
+  it('a visitor already on an experience stays on it after it is turned off (spec §13)', () => {
+    // Sticky beats enabled=false so we do not swap someone's UI mid-order.
+    // The entry still exists in items — that is what separates this from a
+    // stale cookie for an experience the site never configured.
+    const off = { defaultSlug: 'classic', items: { cadou: { enabled: false, utmRules: [] } } };
+    assert.deepEqual(resolveExperienceSlug({ cookieSlug: 'cadou', config: off }), {
+      slug: 'cadou',
+      reason: 'cookie',
+    });
+    assert.deepEqual(resolveExperienceSlug({ personSlug: 'cadou', config: off }), {
+      slug: 'cadou',
+      reason: 'fingerprint',
+    });
+    // …but a fresh visitor is not sent there.
+    assert.deepEqual(resolveExperienceSlug({ config: off }), { slug: 'classic', reason: 'default' });
+    assert.deepEqual(resolveExperienceSlug({ uiParam: 'cadou', config: off }), {
+      slug: 'classic',
+      reason: 'default',
+    });
   });
 
   it('empty config falls back to classic', () => {

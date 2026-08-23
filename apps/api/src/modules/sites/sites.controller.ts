@@ -11,6 +11,7 @@ import { ExperienceAssetUploadService } from './experience-asset-upload.service'
 import { encryptSecret } from '../../common/crypto.util';
 import { PACKAGE_TIERS, packagePriceCents } from '../payments/packages';
 import { toPublicExperienceConfig } from '../experiences/public-config';
+import { sitePricingOf } from '../experiences/package-resolve';
 
 /**
  * Placeholder folosit de admin UI pentru câmpurile criptate (apiKey, smtp.pass):
@@ -79,7 +80,9 @@ export class PublicSiteController {
       packagePrices: effectivePackagePrices(site.packagePricesCents),
       // Prețuri „tăiate" de afișare (marketing) — gol = fără reducere afișată.
       packageCompareAtCents: site.packageCompareAtCents ?? null,
-      experienceConfig: toPublicExperienceConfig(site.experienceConfig),
+      // Prețurile per-site trebuie să ajungă și în pachetele de interfață:
+      // altfel vitrina ar afișa default-urile din cod, iar Stripe ar taxa altceva.
+      experienceConfig: toPublicExperienceConfig(site.experienceConfig, sitePricingOf(site)),
       brand: site.brand,
       seo: site.seo,
       analytics: site.analytics,
@@ -438,6 +441,7 @@ export class AdminSitesController {
       ipWhitelist: s.ipWhitelist ?? [],
       demoEnabled: s.demoEnabled ?? true,
       lyricsReviewEnabled: s.lyricsReviewEnabled ?? true,
+      musicEngine: s.musicEngine === 'google' ? 'google' : 'suno',
       topSource: s.topSource ?? 'seed',
       topTemplate: s.topTemplate ?? [],
       styles: s.styles ?? [],

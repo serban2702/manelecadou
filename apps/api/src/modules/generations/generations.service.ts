@@ -24,8 +24,19 @@ import { MailerService } from '../../mailer/mailer.module';
 import { paymentSuccessTemplate } from '../../mailer/templates/templates';
 import { brandingFromSite } from '../../mailer/branding';
 import { SitesService } from '../sites/sites.service';
-import { isPackageTier, normalizeTier, packageDef } from '../payments/packages';
-import { resolvePackageDef, snapshotFromDef } from '../experiences/package-resolve';
+import {
+  isPackageTier,
+  normalizeTier,
+  packageDef,
+  freeRemakeQuota,
+  freeRemakesUsed,
+  type PackageTier,
+} from '../payments/packages';
+import {
+  resolvePackageDef,
+  sitePricingOf,
+  snapshotFromDef,
+} from '../experiences/package-resolve';
 import { DEFAULT_EXPERIENCE_SLUG } from '../experiences/catalog';
 import { hashUnlock, verifyUnlock } from '../../common/unlock';
 
@@ -70,6 +81,38 @@ export interface MediaOpJob {
 /** Scoate sufixul de cache-bust (`?v=...`) ca să nu se acumuleze la swap/promote. */
 export function stripCacheBust(url: string): string {
   return url.replace(/\?v=\d+$/, '');
+}
+
+
+
+/**
+ * Ce livrabile „extra" au fost VÂNDUTE pe comanda asta.
+ *
+ * Sursa de adevăr e `packageSnapshot` — înghețat la crearea comenzii, deci
+ * păstrează ce s-a promis clientului ATUNCI. Pachetele actuale nu mai includ
+ * imagini social / videoclip pe piesă (scoase din ofertă), dar comenzile
+ * vândute înainte cu ele trebuie să le primească: ce s-a vândut, se livrează.
+ *
+ * Comenzile foarte vechi n-au snapshot → nu revendicăm nimic (nu inventăm
+ * promisiuni retroactiv din definiția curentă a pachetului, care oricum e goală).
+ */
+function soldExtras(gen: Generation): { socialImage: boolean; video: boolean } {
+  const snap = gen.packageSnapshot ?? null;
+  return { socialImage: !!snap?.socialImage, video: !!snap?.video };
+}
+
+/**
+ * True dacă piesa e livrată, dar îi lipsesc extras-urile care i-au fost vândute.
+ * Producerea efectivă se face în job-ul `upgrade-deliverables`
+ * (`GenerationsProcessor.processUpgradeDeliverables`).
+ */
+function extrasOwed(gen: Generation): boolean {
+  const sold = soldExtras(gen);
+  if (gen.type !== 'full' || gen.status !== 'succeeded') return false;
+  return (
+    (sold.socialImage && (gen.socialImages?.length ?? 0) === 0) ||
+    (sold.video && !gen.videoUrl)
+  );
 }
 
 @Injectable()
@@ -132,7 +175,7 @@ export class GenerationsService {
       const site = ctx.siteId ? await this.sites.findById(ctx.siteId) : null;
       const expSlug = ctx.experienceSlug || DEFAULT_EXPERIENCE_SLUG;
       const adminPkg = site?.experienceConfig?.items?.[expSlug]?.packages?.[tier] ?? null;
-      const resolved = resolvePackageDef(tier, expSlug, adminPkg);
+      const resolved = resolvePackageDef(tier, expSlug, adminPkg, sitePricingOf(site));
       const snap = snapshotFromDef(resolved);
       const guest = ctx.guestId
         ? await mgr.getRepository(GuestSession).findOne({ where: { id: ctx.guestId } })
@@ -287,9 +330,27 @@ export class GenerationsService {
     }));
   }
 
+  remakeStats(g: Generation): {
+    freeRemakeUsedAt: Date | null;
+    freeRemakeUsedCount: number;
+    freeRemakeQuota: number;
+    freeRemakeRemaining: number;
+    paidRemakeCents: number;
+  } {
+    const quota = freeRemakeQuota(g.packageTier, g.packageSnapshot?.remakes);
+    const used = freeRemakesUsed(g);
+    return {
+      freeRemakeUsedAt: g.freeRemakeUsedAt,
+      freeRemakeUsedCount: used,
+      freeRemakeQuota: quota,
+      freeRemakeRemaining: Math.max(0, quota - used),
+      paidRemakeCents: 1500,
+    };
+  }
+
   /**
-   * Refacere GRATUITĂ unică, cerută de owner de pe pagina manelei.
-   * Adaugă o variație-copil (nu înlocuiește piesele existente).
+   * Refacere GRATUITĂ cerută de owner de pe pagina manelei.
+   * Cota e pe pachet (Standard 1 / Plus 2 / Premium 3). Adaugă o variație-copil.
    */
   async requestFreeRemake(
     generationId: string,
@@ -297,15 +358,74 @@ export class GenerationsService {
     ctx: { userId: string | null; guestId: string | null },
   ): Promise<{ ok: true; variationId: string; status: string }> {
     const src = await this.findOne(generationId, ctx);
+    this.assertRemakeReady(src);
+    const used = freeRemakesUsed(src);
+    const quota = freeRemakeQuota(src.packageTier, src.packageSnapshot?.remakes);
+    if (used >= quota) {
+      throw new ConflictException('Refacerile gratuite s-au terminat. Poți reface contra 15 lei.');
+    }
+    const text = this.normalizeRemakeNotes(notes);
+    const child = await this.spawnRemake(src, text);
+    await this.repo.update(
+      { id: src.id },
+      {
+        freeRemakeUsedAt: src.freeRemakeUsedAt ?? new Date(),
+        freeRemakeUsedCount: used + 1,
+      },
+    );
+    this.logger.warn(`[free-remake] gen=${src.id.slice(0, 8)} used=${used + 1}/${quota} → ${child.id.slice(0, 8)}`);
+    return { ok: true, variationId: child.id, status: child.status };
+  }
+
+  /** Pregătește checkout-ul de 15 lei: cotele gratuite trebuie epuizate. */
+  async preparePaidRemake(
+    generationId: string,
+    notes: string,
+    ctx: { userId: string | null; guestId: string | null },
+  ): Promise<{ notes: string }> {
+    const src = await this.findOne(generationId, ctx);
+    this.assertRemakeReady(src);
+    const used = freeRemakesUsed(src);
+    const quota = freeRemakeQuota(src.packageTier, src.packageSnapshot?.remakes);
+    if (used < quota) {
+      throw new ConflictException('Mai ai refaceri gratuite. Folosește-le întâi.');
+    }
+    const working = await this.listWorkingVariants(src);
+    if (working.length) {
+      throw new ConflictException('O refacere e deja în lucru. Așteaptă să se termine.');
+    }
+    return { notes: this.normalizeRemakeNotes(notes) };
+  }
+
+  /** După webhook-ul plății de 15 lei — pornește refacerea fără a consuma cota gratuită. */
+  async applyPaidRemake(generationId: string, notes: string): Promise<Generation> {
+    const src = await this.repo.findOne({ where: { id: generationId } });
+    if (!src) throw new NotFoundException('Generation not found');
     if (!(src.type === 'full' || src.paidUnlocked)) {
       throw new ForbiddenException('Plătește comanda înainte de a reface.');
     }
     if (src.status !== 'succeeded') {
       throw new ConflictException('Maneaua încă nu e gata.');
     }
-    if (src.freeRemakeUsedAt) {
-      throw new ConflictException('Refacerea gratuită a fost deja folosită.');
+    const text = (notes ?? '').trim();
+    const child = await this.spawnRemake(
+      src,
+      text.length >= 8 ? text.slice(0, 1000) : 'Refacere plătită după cererea clientului.',
+    );
+    this.logger.warn(`[paid-remake] gen=${src.id.slice(0, 8)} → ${child.id.slice(0, 8)}`);
+    return child;
+  }
+
+  private assertRemakeReady(src: Generation): void {
+    if (!(src.type === 'full' || src.paidUnlocked)) {
+      throw new ForbiddenException('Plătește comanda înainte de a reface.');
     }
+    if (src.status !== 'succeeded') {
+      throw new ConflictException('Maneaua încă nu e gata.');
+    }
+  }
+
+  private normalizeRemakeNotes(notes: string): string {
     const text = (notes ?? '').trim();
     if (text.length < 8) {
       throw new BadRequestException('Spune-ne mai concret ce vrei schimbat (minim 8 caractere).');
@@ -313,21 +433,24 @@ export class GenerationsService {
     if (text.length > 1000) {
       throw new BadRequestException('Maxim 1000 de caractere.');
     }
+    return text;
+  }
 
+  private async spawnRemake(src: Generation, text: string): Promise<Generation> {
+    const working = await this.listWorkingVariants(src);
+    if (working.length) {
+      throw new ConflictException('O refacere e deja în lucru. Așteaptă să se termine.');
+    }
     const base = (src.message ?? '').trim();
     const message = [base, base ? '' : null, '[CERERE REFACERE — clientul vrea schimbat]', text]
       .filter((s): s is string => s != null)
       .join('\n');
-
-    const child = await this.adminRegenerate(src.id, {
+    return this.adminRegenerate(src.id, {
       target: 'new_track',
       lyricsMode: 'rewrite',
       label: 'Refacere',
       edits: { message },
     });
-    await this.repo.update({ id: src.id }, { freeRemakeUsedAt: new Date() });
-    this.logger.warn(`[free-remake] gen=${src.id.slice(0, 8)} → ${child.id.slice(0, 8)}`);
-    return { ok: true, variationId: child.id, status: child.status };
   }
 
   /**
@@ -875,13 +998,10 @@ export class GenerationsService {
     }
 
     // Livrabile: doar pentru o piesă full `succeeded` căreia îi lipsesc extras-urile
-    // noului tier. Generăm în fundal DOAR ce lipsește, fără să atingem audio-ul.
-    const def = packageDef(newTier);
-    const needsExtras =
-      newType === 'full' &&
-      gen.status === 'succeeded' &&
-      ((def.socialImage && (gen.socialImages?.length ?? 0) === 0) ||
-        (def.video && !gen.videoUrl));
+    // pe care le-a CUMPĂRAT (citite din `packageSnapshot`, nu din definiția curentă
+    // a pachetului — oferta s-a schimbat între timp). Generăm în fundal DOAR ce
+    // lipsește, fără să atingem audio-ul.
+    const needsExtras = extrasOwed(gen);
     if (needsExtras) gen.deliverablesReady = false;
 
     const saved = await this.repo.save(gen);
@@ -1229,7 +1349,7 @@ export class GenerationsService {
     const site = ctx.siteId ? await this.sites.findById(ctx.siteId) : null;
     const expSlug = ctx.experienceSlug || DEFAULT_EXPERIENCE_SLUG;
     const adminPkg = site?.experienceConfig?.items?.[expSlug]?.packages?.[tier] ?? null;
-    const snap = snapshotFromDef(resolvePackageDef(tier, expSlug, adminPkg));
+    const snap = snapshotFromDef(resolvePackageDef(tier, expSlug, adminPkg, sitePricingOf(site)));
     const gen = this.repo.create({
       ownerUserId: ctx.userId,
       ownerGuestId: ctx.userId ? null : ctx.guestId,
@@ -1269,15 +1389,22 @@ export class GenerationsService {
     const slug = experienceSlug || gen.experienceSlug || DEFAULT_EXPERIENCE_SLUG;
     const site = gen.siteId ? await this.sites.findById(gen.siteId) : null;
     const adminPkg = site?.experienceConfig?.items?.[slug]?.packages?.[target] ?? null;
-    const resolved = resolvePackageDef(target, slug, adminPkg);
+    const resolved = resolvePackageDef(target, slug, adminPkg, sitePricingOf(site));
     gen.packageTier = target;
     gen.experienceSlug = slug;
-    gen.packageSnapshot = snapshotFromDef(resolved);
-    const needsExtras =
-      gen.type === 'full' &&
-      gen.status === 'succeeded' &&
-      ((resolved.socialImage && (gen.socialImages?.length ?? 0) === 0) ||
-        (resolved.video && !gen.videoUrl));
+    // Upgrade-ul nu poate ȘTERGE ce s-a promis deja: dacă la cumpărare pachetul
+    // includea imagini social / videoclip (livrabile scoase între timp din ofertă),
+    // rămân promise și după upgrade. Flag-urile pot doar să rămână true — pachetele
+    // noi nu le mai activează niciodată, deci nu apar din senin.
+    const prevSnap = gen.packageSnapshot ?? null;
+    const nextSnap = snapshotFromDef(resolved);
+    gen.packageSnapshot = {
+      ...nextSnap,
+      video: nextSnap.video || !!prevSnap?.video,
+      socialImage: nextSnap.socialImage || !!prevSnap?.socialImage,
+      socialImageCount: Math.max(nextSnap.socialImageCount ?? 0, prevSnap?.socialImageCount ?? 0),
+    };
+    const needsExtras = extrasOwed(gen);
     if (needsExtras) gen.deliverablesReady = false;
     const saved = await this.repo.save(gen);
     if (needsExtras) {

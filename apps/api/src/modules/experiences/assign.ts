@@ -10,19 +10,49 @@ function norm(v: string | null | undefined): string {
   return (v ?? '').trim().toLowerCase();
 }
 
-/** classic cannot be turned off — a missing/disabled default must not lock the site. */
+/**
+ * classic cannot be turned off — a missing/disabled default must not lock the site.
+ * A slug with no config entry counts as NOT enabled: otherwise a stale `mc_ui`
+ * cookie (365 days) would force an experience onto a tenant that never turned it
+ * on, including when the config comes back null because the API is down. Must
+ * give the same verdict as `toPublicExperienceConfig` in public-config.ts.
+ */
 export function isExperienceEnabled(slug: string, config?: SiteExperienceConfig | null): boolean {
   if (!isKnownExperienceSlug(slug)) return false;
   if (slug === DEFAULT_EXPERIENCE_SLUG) return true;
+  if (slug === config?.defaultSlug) return true;
   const item = config?.items?.[slug];
-  if (!item) return true;
+  if (!item) return false;
   return item.enabled !== false;
+}
+
+/**
+ * Sticky: interfața pe care vizitatorul o are deja (cookie / person). Dacă
+ * operatorul o oprește (`enabled: false`) după ce omul a intrat pe ea, îl lăsăm
+ * pe ea — altfel i-am schimba UI-ul în mijlocul comenzii (spec §13).
+ * Diferența față de `isExperienceEnabled`: aici contează că interfața E
+ * CONFIGURATĂ pe site, chiar dacă e oprită. Un slug fără nicio intrare (sau cu
+ * config null pentru că API-ul a picat) tot nu trece — altfel un cookie vechi
+ * ar prelua un site care n-a activat-o niciodată.
+ */
+function isExperienceSticky(slug: string, config?: SiteExperienceConfig | null): boolean {
+  if (isExperienceEnabled(slug, config)) return true;
+  if (!isKnownExperienceSlug(slug)) return false;
+  return !!config?.items?.[slug];
 }
 
 function pickIfUsable(slug: string | null | undefined, config?: SiteExperienceConfig | null): string | null {
   if (!slug) return null;
   const trimmed = slug.trim();
   if (!isExperienceEnabled(trimmed, config)) return null;
+  return trimmed;
+}
+
+/** Ca `pickIfUsable`, dar acceptă și o interfață oprită pe care userul e deja. */
+function pickIfSticky(slug: string | null | undefined, config?: SiteExperienceConfig | null): string | null {
+  if (!slug) return null;
+  const trimmed = slug.trim();
+  if (!isExperienceSticky(trimmed, config)) return null;
   return trimmed;
 }
 
@@ -71,14 +101,17 @@ function defaultSlug(config?: SiteExperienceConfig | null): string {
 export function resolveExperienceSlug(input: ResolveExperienceInput): ResolveExperienceResult {
   const cfg = input.config ?? null;
 
-  // ?ui= forces any known slug (owner testing). enabled=false only blocks UTM/default.
-  const ui = input.uiParam?.trim() ?? '';
-  if (isKnownExperienceSlug(ui)) return { slug: ui, reason: 'url' };
+  // ?ui= is for internal preview but still respects `enabled`: to test an
+  // experience on a site you enable it without making it the default. Without
+  // the guard, a stray `?ui=cadou` link sticks the experience on visitors for a
+  // year through the cookie.
+  const ui = pickIfUsable(input.uiParam, cfg);
+  if (ui) return { slug: ui, reason: 'url' };
 
-  const fromCookie = pickIfUsable(input.cookieSlug, cfg);
+  const fromCookie = pickIfSticky(input.cookieSlug, cfg);
   if (fromCookie) return { slug: fromCookie, reason: 'cookie' };
 
-  const fromPerson = pickIfUsable(input.personSlug, cfg);
+  const fromPerson = pickIfSticky(input.personSlug, cfg);
   if (fromPerson) return { slug: fromPerson, reason: 'fingerprint' };
 
   const fromUtm = matchUtm(input);

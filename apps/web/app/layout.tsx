@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import { Cinzel, Manrope } from 'next/font/google';
+import { Cinzel, Manrope, Outfit } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages, getTranslations } from 'next-intl/server';
 import { cookies, headers } from 'next/headers';
@@ -19,11 +19,21 @@ import { getSiteConfig, siteSupportEmail, siteUrl as siteUrlOf } from '@/lib/sit
 import { isIpWhitelisted } from '@/lib/site-shared';
 import { SiteProvider } from '@/lib/site-context';
 import { ExperienceProvider } from '@/lib/experience-context';
+import { resolveExperienceSlug } from '@/experiences/assign';
 import { ExperienceBoot } from '@/components/ExperienceBoot';
 import './globals.css';
 
 const cinzel = Cinzel({ subsets: ['latin'], weight: ['700', '900'], variable: '--font-cinzel', display: 'swap' });
 const manrope = Manrope({ subsets: ['latin'], weight: ['400', '500', '600', '700', '800'], variable: '--font-manrope', display: 'swap' });
+// Outfit e folosit DOAR de interfața `cadou` (vezi experiences/cadou/theme.css).
+// Îl declarăm aici, ca pe celelalte fonturi, ca să fie self-hosted de next/font
+// în loc de un `@import` către fonts.googleapis.com (request extern,
+// render-blocking, nepreîncărcabil) livrat pe toate site-urile.
+// `preload: false` pentru că site-urile pe `classic` nu-l folosesc niciodată:
+// fără preload, browserul descarcă fișierul doar când chiar randează text cu el.
+// `latin-ext` e obligatoriu pentru diacriticele RO (ă/î/ș/ț/â) — CSS-ul Google
+// le livra prin unicode-range, deci fără subsetul ăsta ar fi o regresie vizibilă.
+const outfit = Outfit({ subsets: ['latin', 'latin-ext'], weight: ['400', '500', '600', '700', '800'], variable: '--font-outfit', display: 'swap', preload: false });
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:1500';
 
@@ -168,7 +178,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     : '';
 
   return (
-    <html lang={htmlLang} className={`${cinzel.variable} ${manrope.variable}`}>
+    <html lang={htmlLang} className={`${cinzel.variable} ${manrope.variable} ${outfit.variable}`}>
       <head>
         <style dangerouslySetInnerHTML={{ __html: brandVars }} />
         {clientIpScript && (
@@ -189,11 +199,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         ) : (
           <NextIntlClientProvider locale={effectiveLocale} messages={messages}>
             <SiteProvider value={site}>
-              <ExperienceProvider initialSlug={
-                (await headers()).get('x-mc-experience')
-                || (await cookies()).get('mc_ui')?.value
-                || 'classic'
-              }>
+              <ExperienceProvider initialSlug={resolveExperienceSlug({
+                // Header-ul îl pune middleware-ul (deja validat). Cookie-ul e
+                // control de client și trebuie retrecut prin gardă: rutele
+                // excluse din `matcher` nu trec prin middleware, iar un `mc_ui`
+                // rămas de la un test ar forța interfața pe un site care n-a
+                // activat-o. `resolveExperienceSlug` verifică `enabled`.
+                uiParam: (await headers()).get('x-mc-experience'),
+                cookieSlug: (await cookies()).get('mc_ui')?.value,
+                config: site.experienceConfig ?? null,
+              }).slug}>
               <Providers>
                 <ExperienceBoot />
                 {children}

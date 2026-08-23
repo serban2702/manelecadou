@@ -110,6 +110,7 @@ function styleFromOverride(s: ExperienceStyleOverride): SiteStyleEntry {
     ic: s.ic,
     i18n: s.i18n,
     sunoPrompt: s.sunoPrompt,
+    googlePrompt: s.googlePrompt,
     lyricsHint: s.lyricsHint,
     styleWeight: s.styleWeight,
     weirdnessConstraint: s.weirdnessConstraint,
@@ -130,7 +131,27 @@ function occasionFromOverride(o: ExperienceOccasionOverride): SiteOccasionEntry 
     nm: o.nm,
     ic: o.ic,
     i18n: o.i18n,
+    sunoPrompt: o.sunoPrompt,
+    googlePrompt: o.googlePrompt,
   };
+}
+
+export function resolveExperienceOccasionEntry(
+  site: Pick<Site, 'occasions' | 'experienceConfig'> | null | undefined,
+  slug: string | null | undefined,
+  occasionId: string | null | undefined,
+): SiteOccasionEntry | undefined {
+  if (!occasionId) return undefined;
+  return resolveExperienceOccasions(site, slug).find((o) => o.id === occasionId);
+}
+
+export function resolveExperienceGoogleStylePrompt(
+  site: Pick<Site, 'styles' | 'experienceConfig'> | null | undefined,
+  slug: string | null | undefined,
+  styleId: string | null | undefined,
+): string | undefined {
+  if (!styleId) return undefined;
+  return resolveExperienceStyleEntry(site as Site, slug, styleId)?.googlePrompt?.trim() || undefined;
 }
 
 function voiceFromOverride(v: ExperienceVoiceOverride): SiteVoiceEntry {
@@ -144,5 +165,6 @@ function voiceFromOverride(v: ExperienceVoiceOverride): SiteVoiceEntry {
     sunoVoice: v.sunoVoice,
     gender: v.gender,
     sunoPersonaId: v.sunoPersonaId,
+    sunoPersonaName: v.sunoPersonaName,
   };
 }

@@ -15,11 +15,34 @@ export interface ExperienceUpsellConfig {
 }
 
 export interface ExperiencePackageOverride {
+  /** Ascunde pachetul din vitrină pe această interfață. */
+  enabled?: boolean;
+  label?: string;
+  priceCents?: number;
+  compareAtCents?: number | null;
+  /** @deprecated scos — păstrat în JSON vechi, ignorat. */
   video?: boolean;
+  /** @deprecated scos — păstrat în JSON vechi, ignorat. */
   socialImage?: boolean;
+  /** @deprecated scos. */
+  socialImageCount?: number;
   instrumental?: boolean;
   premiumPage?: boolean;
   durationSec?: number;
+  /** Generarea piesei. Default true. */
+  generation?: boolean;
+  /** Refaceri gratuite incluse. */
+  remakes?: number;
+  collage?: boolean;
+  collagePhotoLimit?: number;
+  /** true = tot track-ul; false = doar refren. */
+  collageFullTrack?: boolean;
+  greetingCard?: boolean;
+  /** Clip de urare AI cu personaj (Veo). Setare; generarea vine mai târziu. */
+  greetingClip?: boolean;
+  socialPost?: boolean;
+  nextSongDiscountPercent?: number;
+  deliveryLabel?: string;
   features?: string[];
   upsell?: ExperienceUpsellConfig | null;
 }
@@ -39,6 +62,7 @@ export interface ExperienceStyleOverride {
   sampleUrl?: string;
   sampleStartSec?: number;
   sunoPrompt?: string;
+  googlePrompt?: string;
   lyricsHint?: string;
   styleWeight?: number;
   weirdnessConstraint?: number;
@@ -58,6 +82,8 @@ export interface ExperienceOccasionOverride {
   nm: string;
   ic?: { name: string; fill?: string; stroke?: string; strokeWidth?: number };
   i18n?: Record<string, { nm?: string }>;
+  sunoPrompt?: string;
+  googlePrompt?: string;
 }
 
 export interface ExperienceVoiceOverride {
@@ -70,6 +96,9 @@ export interface ExperienceVoiceOverride {
   sunoVoice?: string;
   gender?: 'm' | 'f';
   sunoPersonaId?: string;
+  /** Perechea lui sunoPersonaId; fără ea, numele persona se pierde la copierea
+   *  catalogului tenantului în catalogul unei interfețe. */
+  sunoPersonaName?: string;
 }
 
 export interface ExperienceReactionClip {
@@ -98,11 +127,28 @@ export interface ExperienceCatalogConfig {
   demoIds?: string[] | null;
   /** Reacții TikTok/Instagram pe homepage-ul Cadou. Gol = setul default din UI. */
   reactionClips?: ExperienceReactionClip[];
+  /**
+   * Testimoniale pe acest design.
+   * undefined = moștenește lista tenantului; [] = nicio recenzie; [...] = listă proprie.
+   */
+  testimonials?: ExperienceTestimonial[];
+}
+
+export interface ExperienceTestimonial {
+  id: string;
+  stars: number;
+  quote: string;
+  name: string;
+  role: string;
+  avatar: string;
+  i18n?: Record<string, { quote?: string; name?: string; role?: string }>;
 }
 
 export interface SiteExperienceItemConfig {
   enabled: boolean;
   utmRules: ExperienceUtmRule[];
+  /** Motor audio pe această interfață. Gol = motorul site-ului. */
+  musicEngine?: 'suno' | 'google' | null;
   packages?: Partial<Record<PackageTier, ExperiencePackageOverride>>;
   catalog?: ExperienceCatalogConfig;
 }
@@ -113,16 +159,33 @@ export interface SiteExperienceConfig {
 }
 
 export interface PackageSnapshot {
+  /** @deprecated mereu false pe comenzile noi. */
   video: boolean;
+  /** @deprecated mereu false pe comenzile noi. */
   socialImage: boolean;
   instrumental: boolean;
   premiumPage: boolean;
   durationSec: number;
+  remakes?: number;
+  collage?: boolean;
+  collagePhotoLimit?: number;
+  collageFullTrack?: boolean;
+  socialImageCount?: number;
+  greetingCard?: boolean;
+  greetingClip?: boolean;
+  socialPost?: boolean;
+  nextSongDiscountPercent?: number;
 }
 
 export interface ResolvedExperiencePackage extends PackageSnapshot {
   tier: PackageTier;
+  enabled: boolean;
+  label: string;
+  priceCents: number;
+  compareAtCents: number | null;
+  generation: boolean;
   features: string[];
+  deliveryLabel: string;
   upsell: ExperienceUpsellConfig | null;
 }
 

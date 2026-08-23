@@ -40,7 +40,6 @@ export const PACKAGES: PackageDef[] = [
       'Tot din Standard',
       'Colaj cu maxim 4 poze — doar refrenul',
       'Manea mai calitativă',
-      '4 imagini pentru social media',
       'Livrare prioritară',
       '2 refaceri GRATUITE',
       '25% discount la a doua manea',
@@ -49,7 +48,10 @@ export const PACKAGES: PackageDef[] = [
   },
   {
     tier: 'premium',
-    priceCents: 6999,
+    // Prețul de LISTĂ — trebuie să rămână identic cu `PACKAGES.premium.priceCents`
+    // din API (`apps/api/src/modules/payments/packages.ts`). E doar fallback de
+    // afișare: prețul real vine din quote (`/api/payments/quote`).
+    priceCents: 9999,
     nameRO: 'Premium',
     features: [
       'Tot din Plus',
@@ -67,6 +69,13 @@ export const PACKAGES: PackageDef[] = [
 ];
 
 export const DEFAULT_PACKAGE_TIER: PackageTier = 'basic';
+
+/** Refacere contra cost după ce s-au epuizat cele gratuite. */
+export const PAID_REMAKE_CENTS = 1500;
+
+export function freeRemakeQuota(tier: PackageTier): number {
+  return tier === 'premium' ? 3 : tier === 'plus' ? 2 : 1;
+}
 
 export function getPackage(tier: PackageTier): PackageDef {
   return PACKAGES.find((p) => p.tier === tier) ?? PACKAGES[1];

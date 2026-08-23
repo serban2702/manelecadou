@@ -238,10 +238,14 @@ export class Generation {
   @Column({ type: 'jsonb', nullable: true })
   inferenceMeta!: Record<string, { value: unknown; source: 'user_said' | 'inferred' | 'default' }> | null;
 
-  /** Momentul în care refacerea GRATUITĂ (o singură dată, când greșeala e a noastră)
-   *  a fost consumată pe această comandă. NULL = încă disponibilă. */
+  /** Momentul în care prima refacere GRATUITĂ a fost consumată pe această comandă.
+   *  NULL = nicio refacere gratuită încă. Cota e pe pachet (1/2/3); vezi freeRemakeUsedCount. */
   @Column({ type: 'timestamptz', nullable: true })
   freeRemakeUsedAt!: Date | null;
+
+  /** Câte refaceri gratuite a folosit owner-ul pe această comandă (cota = pachetul). */
+  @Column({ type: 'integer', default: 0 })
+  freeRemakeUsedCount!: number;
 
   /** Parolă (hash) setată de owner pentru a debloca conținutul PRIVAT al manelei
    *  (poze custom încărcate + colaje + image-videos) pentru alți vizitatori.

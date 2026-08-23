@@ -14,15 +14,44 @@ function norm(v: string | null | undefined): string {
 export function isExperienceEnabled(slug: string, config?: SiteExperienceConfigLite | null): boolean {
   if (!isKnownExperienceSlug(slug)) return false;
   if (slug === DEFAULT_EXPERIENCE_SLUG) return true;
+  if (slug === config?.defaultSlug) return true;
   const item = config?.items?.[slug];
-  if (!item) return true;
+  // Lipsa configurării înseamnă „nu e activată pe site-ul ăsta", nu „e liberă".
+  // Altfel un cookie mc_ui rămas de la un test (365 de zile) ar forța interfața
+  // pe un tenant care n-a activat-o niciodată — inclusiv când configul vine
+  // null pentru că API-ul a picat. Trebuie să dea același verdict ca
+  // `toPublicExperienceConfig` din experiences/public-config.ts.
+  if (!item) return false;
   return item.enabled !== false;
+}
+
+/**
+ * Sticky: interfața pe care vizitatorul o are deja (cookie / person). Dacă
+ * operatorul o oprește (`enabled: false`) după ce omul a intrat pe ea, îl lăsăm
+ * pe ea — altfel i-am schimba UI-ul în mijlocul comenzii (spec §13).
+ * Diferența față de `isExperienceEnabled`: aici contează că interfața E
+ * CONFIGURATĂ pe site, chiar dacă e oprită. Un slug fără nicio intrare (sau cu
+ * config null pentru că API-ul a picat) tot nu trece — altfel un cookie vechi
+ * ar prelua un site care n-a activat-o niciodată.
+ */
+function isExperienceSticky(slug: string, config?: SiteExperienceConfigLite | null): boolean {
+  if (isExperienceEnabled(slug, config)) return true;
+  if (!isKnownExperienceSlug(slug)) return false;
+  return !!config?.items?.[slug];
 }
 
 function pickIfUsable(slug: string | null | undefined, config?: SiteExperienceConfigLite | null): string | null {
   if (!slug) return null;
   const trimmed = slug.trim();
   if (!isExperienceEnabled(trimmed, config)) return null;
+  return trimmed;
+}
+
+/** Ca `pickIfUsable`, dar acceptă și o interfață oprită pe care userul e deja. */
+function pickIfSticky(slug: string | null | undefined, config?: SiteExperienceConfigLite | null): string | null {
+  if (!slug) return null;
+  const trimmed = slug.trim();
+  if (!isExperienceSticky(trimmed, config)) return null;
   return trimmed;
 }
 
@@ -63,11 +92,15 @@ function defaultSlug(config?: SiteExperienceConfigLite | null): string {
 
 export function resolveExperienceSlug(input: ResolveExperienceInput): ResolveExperienceResult {
   const cfg = input.config ?? null;
-  const ui = input.uiParam?.trim() ?? '';
-  if (isKnownExperienceSlug(ui)) return { slug: ui, reason: 'url' };
-  const fromCookie = pickIfUsable(input.cookieSlug, cfg);
+  // `?ui=` e pentru preview intern, dar respectă activarea: ca să testezi o
+  // interfață pe un site, o activezi (`enabled: true`) fără s-o pui default.
+  // Fără gardă, un link `?ui=cadou` scăpat pe social ar lipi interfața pe
+  // vizitatori un an prin cookie.
+  const ui = pickIfUsable(input.uiParam, cfg);
+  if (ui) return { slug: ui, reason: 'url' };
+  const fromCookie = pickIfSticky(input.cookieSlug, cfg);
   if (fromCookie) return { slug: fromCookie, reason: 'cookie' };
-  const fromPerson = pickIfUsable(input.personSlug, cfg);
+  const fromPerson = pickIfSticky(input.personSlug, cfg);
   if (fromPerson) return { slug: fromPerson, reason: 'fingerprint' };
   const fromUtm = matchUtm(input);
   if (fromUtm) return { slug: fromUtm, reason: 'utm' };

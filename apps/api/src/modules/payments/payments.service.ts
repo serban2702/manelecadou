@@ -72,6 +72,9 @@ interface CheckoutInput {
   experienceSlug?: string | null;
   upgradeGenerationId?: string;
   targetTier?: PackageTier;
+  /** Refacere plătită pe o manea deja livrată (15 lei). Nu deblochează o comandă nouă. */
+  remakeForGenerationId?: string;
+  remakeNotes?: string;
 
   // ============== Meta Pixel attribution ==============
   // Capturate la creare-checkout din controller (cookies + headers).
@@ -234,16 +237,26 @@ export class PaymentsService {
   /** Returnează prețul calculat (nu apelează Stripe). Suportă AMBELE modele:
    *  - PACHETE (input.packageTier setat) → total = prețul pachetului,
    *  - LEGACY (tip + premium) → comportamentul vechi, păstrat pentru compat. */
-  quote(site: Site, input: { tipAmount?: number; premium?: boolean; packageTier?: PackageTier }) {
+  quote(site: Site, input: { tipAmount?: number; premium?: boolean; packageTier?: PackageTier; experienceSlug?: string | null }) {
     if (input.packageTier) {
       const tier = normalizeTier(input.packageTier);
-      const total = this.sitePackageTotal(site, tier);
-      // Preț „tăiat" de afișare (marketing) — nu afectează checkout-ul.
-      const compareAtCents = packageCompareAtCents(
-        tier,
-        site.packageCompareAtCents ?? null,
-        site.packagePricesCents ?? null,
-      );
+      const slug = input.experienceSlug || site.experienceConfig?.defaultSlug || 'classic';
+      const adminPkg = site.experienceConfig?.items?.[slug]?.packages?.[tier] ?? null;
+      const total =
+        adminPkg && typeof adminPkg.priceCents === 'number' && adminPkg.priceCents > 0
+          ? Math.round(adminPkg.priceCents)
+          : this.sitePackageTotal(site, tier);
+      const compareFromPkg =
+        adminPkg && typeof adminPkg.compareAtCents === 'number' && adminPkg.compareAtCents > total
+          ? Math.round(adminPkg.compareAtCents)
+          : null;
+      const compareAtCents =
+        compareFromPkg ??
+        packageCompareAtCents(
+          tier,
+          site.packageCompareAtCents ?? null,
+          site.packagePricesCents ?? null,
+        );
       return { packageTier: tier, total, currency: site.currency, compareAtCents };
     }
     const tip = input.tipAmount ?? 0;
@@ -445,12 +458,16 @@ export class PaymentsService {
         ipAddress: input.ipAddress ?? null,
         sessionKey: input.sessionKey ?? null,
         visitorId: input.visitorId ?? null,
+        remakeForGenerationId: input.remakeForGenerationId ?? null,
+        remakeNotes: input.remakeNotes ?? null,
         ...attr,
       }),
     );
 
     const siteUrl = this.siteAppUrl(site);
-    const successPath = input.generationId
+    const successPath = input.remakeForGenerationId
+      ? `/m/${input.remakeForGenerationId}?remakePaid=1`
+      : input.generationId
       ? `/m/${input.generationId}?paymentId=${payment.id}&success=1`
       : `/checkout/success?paymentId=${payment.id}`;
     // Pay-first (site.demoEnabled=false): la cancel, generation-ul e `pending`
@@ -458,8 +475,9 @@ export class PaymentsService {
     // care include `pending`). Trimitem userul înapoi pe wizard la step 5 cu
     // datele restaurate ca să poată reîncerca plata.
     const isPayFirst = site.demoEnabled === false;
-    const cancelPath =
-      input.experienceSlug === 'cadou' && input.generationId
+    const cancelPath = input.remakeForGenerationId
+      ? `/m/${input.remakeForGenerationId}?remakeCanceled=1`
+      : input.experienceSlug === 'cadou' && input.generationId
         ? `/studio?paymentCanceled=1&genId=${input.generationId}`
         : isPayFirst && input.generationId
         ? `/?paymentCanceled=1&genId=${input.generationId}#generator`
@@ -531,6 +549,7 @@ export class PaymentsService {
         unlockGenerationId: input.unlockGenerationId ?? '',
         upgradeGenerationId: input.upgradeGenerationId ?? '',
         targetTier: input.targetTier ?? '',
+        remakeForGenerationId: input.remakeForGenerationId ?? '',
         promoCodeId: promoCodeId ?? '',
         appliedDiscountCents: String(appliedDiscountCents),
         experienceSlug: input.experienceSlug ?? '',
@@ -1012,6 +1031,27 @@ export class PaymentsService {
           );
         } catch (err) {
           this.logger.error(`markPaidAndQueue failed: ${(err as Error).message}`);
+        }
+      }
+
+      if (isPaid) {
+        const remakeRow = await this.repo.findOne({ where: { id: paymentId } });
+        const remakeGenId =
+          remakeRow?.remakeForGenerationId || session.metadata?.remakeForGenerationId || '';
+        if (remakeGenId) {
+          const lock = await this.repo
+            .createQueryBuilder()
+            .update(Payment)
+            .set({ remakeAppliedAt: () => 'NOW()' })
+            .where('id = :id AND "remakeAppliedAt" IS NULL', { id: paymentId })
+            .execute();
+          if (lock.affected && lock.affected > 0) {
+            try {
+              await this.generations.applyPaidRemake(remakeGenId, remakeRow?.remakeNotes ?? '');
+            } catch (err) {
+              this.logger.error(`applyPaidRemake failed: ${(err as Error).message}`);
+            }
+          }
         }
       }
 

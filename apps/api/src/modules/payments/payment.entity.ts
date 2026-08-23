@@ -220,6 +220,18 @@ export class Payment {
   @Column({ type: 'varchar', length: 8, nullable: true })
   stripeFeeCurrency!: string | null;
 
+  /** Refacere plătită (15 lei) pe o manea deja livrată — NU e o comandă nouă. */
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  remakeForGenerationId!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  remakeNotes!: string | null;
+
+  /** Setat atomic la webhook ca să nu pornim două refaceri pe același retry Stripe. */
+  @Column({ type: 'timestamptz', nullable: true })
+  remakeAppliedAt!: Date | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

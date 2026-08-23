@@ -5,6 +5,7 @@ import {
   Get,
   Headers,
   HttpCode,
+  Inject,
   NotFoundException,
   Param,
   Post,
@@ -13,6 +14,7 @@ import {
   UploadedFile,
   UseGuards,
   UseInterceptors,
+  forwardRef,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
@@ -25,10 +27,14 @@ import { experienceSlugFromRequest } from '../experiences/request-slug';
 import { GiftCodesService } from '../gift-codes/gift-codes.service';
 import {
   CurrentGuestId,
+  CurrentSite,
   CurrentSiteId,
   CurrentUser,
   AuthedRequestUser,
 } from '../../common/decorators';
+import { Site } from '../sites/site.entity';
+import { PaymentsService } from '../payments/payments.service';
+import { PAID_REMAKE_CENTS } from '../payments/packages';
 import { OptionalJwtAuthGuard } from '../../common/jwt.guard';
 import { verifyUnlock } from '../../common/unlock';
 
@@ -169,6 +175,8 @@ export class GenerationsController {
     private readonly svc: GenerationsService,
     private readonly giftCodes: GiftCodesService,
     private readonly socialUpload: SocialImageUploadService,
+    @Inject(forwardRef(() => PaymentsService))
+    private readonly payments: PaymentsService,
   ) {}
 
   @Get('recent')
@@ -277,7 +285,7 @@ export class GenerationsController {
         unlocked: true,
         variants,
         workingVariants,
-        freeRemakeUsedAt: g.freeRemakeUsedAt,
+        ...this.svc.remakeStats(g),
       };
     } catch {
       // Fallback: orice generation succeeded e accesibil public cu URL-ul direct.
@@ -410,6 +418,34 @@ export class GenerationsController {
     return this.svc.requestFreeRemake(id, body?.notes ?? '', {
       userId: user?.id ?? null,
       guestId: user ? null : guestId,
+    });
+  }
+
+  @Throttle({ short: { limit: 1, ttl: 30_000 }, medium: { limit: 3, ttl: 3_600_000 } })
+  @UseGuards(OptionalJwtAuthGuard)
+  @Post(':id/remake/pay')
+  @HttpCode(200)
+  async remakePay(
+    @Param('id') id: string,
+    @Body() body: { notes?: string },
+    @CurrentUser() user: AuthedRequestUser | null,
+    @CurrentGuestId() guestId: string | null,
+    @CurrentSite() site: Site,
+    @Req() req: Request,
+  ) {
+    const prepared = await this.svc.preparePaidRemake(id, body?.notes ?? '', {
+      userId: user?.id ?? null,
+      guestId: user ? null : guestId,
+    });
+    return this.payments.createCheckoutSession({
+      userId: user?.id ?? null,
+      guestId: user ? null : guestId,
+      overrideAmount: PAID_REMAKE_CENTS,
+      overrideProductName: 'Refacere manea',
+      remakeForGenerationId: id,
+      remakeNotes: prepared.notes,
+      site,
+      experienceSlug: experienceSlugFromRequest(req),
     });
   }
 

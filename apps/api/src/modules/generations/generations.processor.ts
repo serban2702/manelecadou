@@ -10,7 +10,8 @@ import { Generation } from './generation.entity';
 import { GENERATIONS_QUEUE } from './generations.constants';
 import type { MediaOpJob } from './generations.service';
 import { voiceArtistToGender } from '../../common/voice';
-import { SunoProvider, findChorusSegment } from '../suno/suno.types';
+import { SunoProvider, findChorusSegment, type SunoGenerateResult } from '../suno/suno.types';
+import { LyriaService, isNonRetryableError } from '../lyria/lyria.service';
 import { LyricsService } from '../lyrics/lyrics.module';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { User } from '../users/user.entity';
@@ -24,8 +25,10 @@ import { GenerationMediaService } from '../media/generation-media.service';
 import { normalizeTier, packageDef } from '../payments/packages';
 import { hashUnlock, generateSharePin } from '../../common/unlock';
 import {
+  resolveExperienceOccasionEntry,
   resolveExperienceStyleEntry,
   resolveExperienceStylePrompt,
+  resolveExperienceGoogleStylePrompt,
   resolveExperienceWriterPrompt,
   resolveStylePersonaId,
 } from '../experiences/catalog-resolve';
@@ -42,6 +45,7 @@ export class GenerationsProcessor extends WorkerHost {
     @InjectRepository(GuestSession) private readonly guests: Repository<GuestSession>,
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly suno: SunoProvider,
+    private readonly lyria: LyriaService,
     private readonly lyricsSvc: LyricsService,
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
@@ -67,6 +71,111 @@ export class GenerationsProcessor extends WorkerHost {
    *  cu backoff-ul de mai sus. Pentru type='demo' fără paidUnlocked → 3. */
   private maxAutoRetries(gen: Generation): number {
     return gen.paidUnlocked || gen.type === 'full' ? 50 : 3;
+  }
+
+  private async generateAudioTracks(args: {
+    gen: Generation;
+    site: Awaited<ReturnType<SitesService['findById']>>;
+    sunoSite: Generation extends never ? never : unknown;
+    sunoLyrics: string;
+    targetDuration: number;
+    vocalGender: 'm' | 'f' | undefined;
+    styleEntry: ReturnType<typeof resolveExperienceStyleEntry>;
+    voiceEntry: { sunoPersonaId?: string; gender?: 'm' | 'f' } | undefined;
+    occasionEntry: ReturnType<typeof resolveExperienceOccasionEntry>;
+    instrumental: boolean;
+    /** Limba versurilor (site.suno.lyricsLocale → site.locale → gen.locale → ro). */
+    lyricsLocale: string;
+  }): Promise<SunoGenerateResult & { demos?: Array<string | null> }> {
+    const {
+      gen, site, sunoSite, sunoLyrics, targetDuration, vocalGender,
+      styleEntry, voiceEntry, occasionEntry, instrumental, lyricsLocale,
+    } = args;
+    const expEngine = gen.experienceSlug
+      ? site?.experienceConfig?.items?.[gen.experienceSlug]?.musicEngine
+      : undefined;
+    const engine =
+      expEngine === 'google' || expEngine === 'suno'
+        ? expEngine
+        : site?.musicEngine === 'google'
+          ? 'google'
+          : 'suno';
+    if (engine === 'google') {
+      // Fallback-ul de stil urmează limba site-ului — pe piețele non-RO
+      // „Romanian manele" ar trage modelul spre limba greșită.
+      const fallbackStylePrompt =
+        lyricsLocale === 'ro'
+          ? 'Authentic Romanian manele song with oriental Hijaz scale, darbuka, accordion and violin.'
+          : 'Authentic Balkan manele/chalga song with oriental Hijaz scale, darbuka, accordion and violin.';
+      const stylePrompt =
+        resolveExperienceGoogleStylePrompt(site, gen.experienceSlug, gen.style) ||
+        styleEntry?.googlePrompt?.trim() ||
+        resolveExperienceStylePrompt(site, gen.experienceSlug, gen.style) ||
+        fallbackStylePrompt;
+      const occasionPrompt =
+        occasionEntry?.googlePrompt?.trim() || occasionEntry?.nm || gen.occasion || undefined;
+      if (instrumental) {
+        const one = await this.lyria.generateOne(
+          {
+            stylePrompt,
+            occasionPrompt,
+            lyrics: sunoLyrics,
+            vocalGender,
+            durationSec: targetDuration,
+            instrumental: true,
+            generationId: gen.id,
+            lyricsLocale,
+          },
+          1,
+        );
+        const saved = await this.audio.saveAndMakeDemo(gen.id, one.audio, 'instrumental');
+        return {
+          tracks: [{ audioUrl: saved.fullUrl, durationSec: targetDuration }],
+          providerJobId: `lyria:${one.interactionId}`,
+          demos: [saved.demoUrl],
+        };
+      }
+      const pair = await this.lyria.generatePair({
+        stylePrompt,
+        occasionPrompt,
+        lyrics: sunoLyrics,
+        vocalGender,
+        durationSec: targetDuration,
+        generationId: gen.id,
+        lyricsLocale,
+      });
+      const variants: Array<'full' | 'bonus'> = ['full', 'bonus'];
+      const tracks: SunoGenerateResult['tracks'] = [];
+      const demos: string[] = [];
+      for (let i = 0; i < pair.tracks.length; i++) {
+        const saved = await this.audio.saveAndMakeDemo(gen.id, pair.tracks[i].audio, variants[i] ?? 'full');
+        tracks.push({ audioUrl: saved.fullUrl, durationSec: targetDuration });
+        demos.push(saved.demoUrl);
+      }
+      return { tracks, providerJobId: pair.providerJobId, demos };
+    }
+
+    return this.suno.generate({
+      type: gen.type,
+      durationSec: targetDuration,
+      style: gen.style,
+      occasion: gen.occasion,
+      occasionPrompt: occasionEntry?.sunoPrompt,
+      recipientName: gen.recipientName,
+      message: gen.message,
+      dedication: gen.dedication ?? undefined,
+      voiceArtist: gen.voiceArtist,
+      lyrics: sunoLyrics,
+      lyricsAreCustom: !!gen.customLyrics?.trim(),
+      generationId: gen.id,
+      site: sunoSite as Parameters<SunoProvider['generate']>[0]['site'],
+      vocalGender,
+      personaId: resolveStylePersonaId(styleEntry, vocalGender) || voiceEntry?.sunoPersonaId,
+      styleWeight: styleEntry?.styleWeight,
+      weirdnessConstraint: styleEntry?.weirdnessConstraint,
+      negativeTags: styleEntry?.negativeTags,
+      instrumental,
+    });
   }
 
   /**
@@ -265,26 +374,19 @@ export class GenerationsProcessor extends WorkerHost {
           }
         : undefined;
 
-      const result = await this.suno.generate({
-        type: gen.type,
-        durationSec: targetDuration,
-        style: gen.style,
-        occasion: gen.occasion,
-        recipientName: gen.recipientName,
-        message: gen.message,
-        dedication: gen.dedication ?? undefined,
-        voiceArtist: gen.voiceArtist,
-        lyrics: sunoLyrics,
-        // Versurile puse/acceptate de client (customLyrics) sunt sacre: nu
-        // lăsăm provider-ul să mai adauge dedicația în deschidere.
-        lyricsAreCustom: !!gen.customLyrics?.trim(),
-        generationId: gen.id,
-        site: sunoSite,
+      const occasionEntry = resolveExperienceOccasionEntry(site, gen.experienceSlug, gen.occasion);
+      const result = await this.generateAudioTracks({
+        gen,
+        site,
+        sunoSite,
+        sunoLyrics,
+        targetDuration,
         vocalGender,
-        personaId: resolveStylePersonaId(styleEntry, vocalGender) || voiceEntry?.sunoPersonaId,
-        styleWeight: styleEntry?.styleWeight,
-        weirdnessConstraint: styleEntry?.weirdnessConstraint,
-        negativeTags: styleEntry?.negativeTags,
+        styleEntry,
+        voiceEntry,
+        occasionEntry,
+        instrumental: false,
+        lyricsLocale,
       });
 
       gen.tracks = result.tracks;
@@ -296,34 +398,42 @@ export class GenerationsProcessor extends WorkerHost {
       // doar URL-ul demo — nu există cale să recupereze full-ul din network.
       const mainSource = result.tracks[0]?.audioUrl;
       const bonusSource = result.tracks[1]?.audioUrl;
+      const localDemos = (result as { demos?: Array<string | null> }).demos;
       if (mainSource) {
-        try {
-          const m = await this.audio.downloadAndMakeDemo(gen.id, mainSource, 'full');
-          gen.audioUrl = m.fullUrl;
-          gen.demoAudioUrl = m.demoUrl;
-        } catch (err) {
-          this.logger.error(`audio processing failed for ${gen.id} (main): ${(err as Error).message}`);
-          // Fallback: păstrăm URL-ul Suno DOAR la noi în DB ca audioUrl, dar fără
-          // demo. Controller-ul nu expune nimic dacă lipsește demoAudioUrl.
+        if (localDemos?.[0]) {
           gen.audioUrl = mainSource;
-          gen.demoAudioUrl = null;
+          gen.demoAudioUrl = localDemos[0];
+        } else {
+          try {
+            const m = await this.audio.downloadAndMakeDemo(gen.id, mainSource, 'full');
+            gen.audioUrl = m.fullUrl;
+            gen.demoAudioUrl = m.demoUrl;
+          } catch (err) {
+            this.logger.error(`audio processing failed for ${gen.id} (main): ${(err as Error).message}`);
+            gen.audioUrl = mainSource;
+            gen.demoAudioUrl = null;
+          }
         }
       }
       if (bonusSource) {
-        try {
-          const b = await this.audio.downloadAndMakeDemo(gen.id, bonusSource, 'bonus');
-          gen.bonusAudioUrl = b.fullUrl;
-          gen.demoBonusAudioUrl = b.demoUrl;
-        } catch (err) {
-          this.logger.warn(`audio processing failed for ${gen.id} (bonus): ${(err as Error).message}`);
+        if (localDemos?.[1]) {
           gen.bonusAudioUrl = bonusSource;
-          gen.demoBonusAudioUrl = null;
+          gen.demoBonusAudioUrl = localDemos[1];
+        } else {
+          try {
+            const b = await this.audio.downloadAndMakeDemo(gen.id, bonusSource, 'bonus');
+            gen.bonusAudioUrl = b.fullUrl;
+            gen.demoBonusAudioUrl = b.demoUrl;
+          } catch (err) {
+            this.logger.warn(`audio processing failed for ${gen.id} (bonus): ${(err as Error).message}`);
+            gen.bonusAudioUrl = bonusSource;
+            gen.demoBonusAudioUrl = null;
+          }
         }
       }
 
       const def = snap ?? packageDef(tier);
-      const hasExtras =
-        gen.type === 'full' && (def.instrumental || def.socialImage || def.video);
+      const hasExtras = gen.type === 'full' && !!def.instrumental;
 
       // Melodia principală e gata → marcăm `succeeded` ACUM, ca să fie ascultabilă
       // imediat, FĂRĂ a aștepta extras-urile (instrumental/imagini/video). Acestea
@@ -340,36 +450,33 @@ export class GenerationsProcessor extends WorkerHost {
         // ===== INSTRUMENTAL (plus / premium) — în fundal, după ce melodia e live =====
         if (def.instrumental) {
           try {
-            const instr = await this.suno.generate({
-              type: gen.type,
-              durationSec: targetDuration,
-              style: gen.style,
-              occasion: gen.occasion,
-              recipientName: gen.recipientName,
-              message: gen.message,
-              dedication: gen.dedication ?? undefined,
-              voiceArtist: gen.voiceArtist,
-              lyrics: sunoLyrics,
-              lyricsAreCustom: !!gen.customLyrics?.trim(),
-              generationId: gen.id,
-              site: sunoSite,
+            const instr = await this.generateAudioTracks({
+              gen,
+              site,
+              sunoSite,
+              sunoLyrics,
+              targetDuration,
               vocalGender,
-              personaId: resolveStylePersonaId(styleEntry, vocalGender) || voiceEntry?.sunoPersonaId,
-              styleWeight: styleEntry?.styleWeight,
-              weirdnessConstraint: styleEntry?.weirdnessConstraint,
-              negativeTags: styleEntry?.negativeTags,
+              styleEntry,
+              voiceEntry,
+              occasionEntry,
               instrumental: true,
+              lyricsLocale,
             });
             const instrSource = instr.tracks[0]?.audioUrl;
             if (instrSource) {
-              try {
-                const im = await this.audio.downloadAndMakeDemo(gen.id, instrSource, 'instrumental');
-                gen.instrumentalUrl = im.fullUrl;
-              } catch (err) {
-                this.logger.warn(
-                  `instrumental audio processing failed for ${gen.id}: ${(err as Error).message}`,
-                );
+              if (instr.demos?.[0]) {
                 gen.instrumentalUrl = instrSource;
+              } else {
+                try {
+                  const im = await this.audio.downloadAndMakeDemo(gen.id, instrSource, 'instrumental');
+                  gen.instrumentalUrl = im.fullUrl;
+                } catch (err) {
+                  this.logger.warn(
+                    `instrumental audio processing failed for ${gen.id}: ${(err as Error).message}`,
+                  );
+                  gen.instrumentalUrl = instrSource;
+                }
               }
             }
           } catch (err) {
@@ -378,34 +485,7 @@ export class GenerationsProcessor extends WorkerHost {
           await this.repo.save(gen); // apare imediat la polling
         }
 
-        // ===== IMAGINI SOCIALE (plus / premium) =====
-        if (def.socialImage) {
-          try {
-            gen.socialImages = await this.media.generateSocialImages(gen);
-            gen.socialImageSelected = gen.socialImages[0] ?? null;
-          } catch (err) {
-            this.logger.warn(`social image generation failed for ${gen.id}: ${(err as Error).message}`);
-          }
-          await this.repo.save(gen);
-        }
-
-        // ===== VIDEO — clip SCURT stil TikTok din REFREN, pentru ambele piese =====
-        if (def.video) {
-          // Track 1 → clip.mp4 (full.mp3), Track 2 → clip2.mp4 (bonus.mp3).
-          gen.videoUrl = await this.generateChorusClip(gen, {
-            idx: 0,
-            audioPath: `/app/uploads/audio/${gen.id}/full.mp3`,
-            outName: 'clip.mp4',
-          });
-          if (gen.bonusAudioUrl) {
-            gen.videoUrlBonus = await this.generateChorusClip(gen, {
-              idx: 1,
-              audioPath: `/app/uploads/audio/${gen.id}/bonus.mp3`,
-              outName: 'clip2.mp4',
-            });
-          }
-          await this.repo.save(gen);
-        }
+        // Imagini social + videoclip pe piesă: scoase. Clip de urare Veo: mai târziu.
 
         gen.deliverablesReady = true;
         await this.repo.save(gen);
@@ -427,8 +507,13 @@ export class GenerationsProcessor extends WorkerHost {
       // `retryCount` e rezervat butonului manual (limită 3) — dacă auto-retry-ul
       // ar fi atins același contor, butonul manual s-ar bloca permanent după
       // câteva eșecuri Suno. Vezi GenerationsService.retry().
+      // Excepție: erorile marcate non-retryable (configurare lipsă — ex. cheia
+      // Gemini pentru motorul Google) NU se rezolvă prin reîncercare. Fără gard,
+      // o cheie neconfigurată ar arde ~50 tentative pe ~50 ore și ar ascunde
+      // mesajul real în spatele unui „auto-retry in 60min".
+      const nonRetryable = isNonRetryableError(err);
       const maxRetries = this.maxAutoRetries(gen);
-      const shouldAutoRetry = (gen.autoRetryCount ?? 0) < maxRetries;
+      const shouldAutoRetry = !nonRetryable && (gen.autoRetryCount ?? 0) < maxRetries;
       if (shouldAutoRetry) {
         gen.autoRetryCount = (gen.autoRetryCount ?? 0) + 1;
         const delayMs = this.nextRetryDelayMs(gen.autoRetryCount - 1);
@@ -446,7 +531,9 @@ export class GenerationsProcessor extends WorkerHost {
         gen.nextRetryAt = null;
         await this.repo.save(gen);
         this.logger.error(
-          `generation ${gen.id} failed permanently (auto-try ${gen.autoRetryCount}/${maxRetries}): ${gen.error}`,
+          nonRetryable
+            ? `generation ${gen.id} failed permanently (eroare de configurare, fără auto-retry): ${gen.error}`
+            : `generation ${gen.id} failed permanently (auto-try ${gen.autoRetryCount}/${maxRetries}): ${gen.error}`,
         );
       }
       void this.notifyChat(gen.id, 'failed');
@@ -607,15 +694,33 @@ export class GenerationsProcessor extends WorkerHost {
    * indiferent de eșecuri parțiale (fiecare pas e best-effort, ca în fluxul
    * normal de generare).
    */
+  /**
+   * Job „upgrade-deliverables" — produce livrabilele care i-au fost VÂNDUTE
+   * piesei și încă lipsesc (imagini social, clip pe refren), fără să atingă
+   * audio-ul.
+   *
+   * Sursa de adevăr e `gen.packageSnapshot`, adică ce s-a promis la momentul
+   * cumpărării — nu definiția curentă a pachetului. Imaginile social și clipul
+   * pe piesă au fost scoase din pachetele vândute azi (`socialImage: false`,
+   * `video: false` în PACKAGE_FEATURES), dar comenzile plătite ÎNAINTE le au în
+   * snapshot și trebuie să le primească. Fără asta, un client care a plătit
+   * Premium pe vechea ofertă rămâne definitiv fără videoclip.
+   *
+   * Instrumentalul e sărit intenționat: niciun tier nu-l include, iar generarea
+   * lui ar cere un apel Suno complet. `deliverablesReady` devine true chiar și
+   * la eșecuri parțiale — fiecare pas e best-effort, ca în fluxul normal.
+   */
   private async processUpgradeDeliverables(generationId: string): Promise<void> {
     const gen = await this.repo.findOne({ where: { id: generationId } });
     if (!gen) {
       this.logger.warn(`upgrade-deliverables: generation ${generationId} not found`);
       return;
     }
-    const def = gen.packageSnapshot ?? packageDef(normalizeTier(gen.packageTier));
+    const snap = gen.packageSnapshot ?? null;
+    const soldSocialImage = !!snap?.socialImage;
+    const soldVideo = !!snap?.video;
     try {
-      if (def.socialImage && (gen.socialImages?.length ?? 0) === 0) {
+      if (soldSocialImage && (gen.socialImages?.length ?? 0) === 0) {
         try {
           gen.socialImages = await this.media.generateSocialImages(gen);
           gen.socialImageSelected = gen.socialImageSelected ?? gen.socialImages[0] ?? null;
@@ -625,22 +730,27 @@ export class GenerationsProcessor extends WorkerHost {
         await this.repo.save(gen);
       }
 
-      if (def.video && !gen.videoUrl) {
+      if (soldVideo && !gen.videoUrl) {
+        // Path-uri sub formă de URL `/uploads/...`: VideoService le rezolvă prin
+        // storage (le aduce din R2 dacă nu sunt pe discul containerului).
         gen.videoUrl = await this.generateChorusClip(gen, {
           idx: 0,
-          audioPath: `/app/uploads/audio/${gen.id}/full.mp3`,
+          audioPath: `/uploads/audio/${gen.id}/full.mp3`,
           outName: 'clip.mp4',
         });
         if (gen.bonusAudioUrl && !gen.videoUrlBonus) {
           gen.videoUrlBonus = await this.generateChorusClip(gen, {
             idx: 1,
-            audioPath: `/app/uploads/audio/${gen.id}/bonus.mp3`,
+            audioPath: `/uploads/audio/${gen.id}/bonus.mp3`,
             outName: 'clip2.mp4',
           });
         }
         await this.repo.save(gen);
       }
-      this.logger.log(`upgrade-deliverables done for ${gen.id} (tier=${gen.packageTier})`);
+      this.logger.log(
+        `upgrade-deliverables done for ${gen.id} (tier=${gen.packageTier}, ` +
+          `vândut: social=${soldSocialImage} video=${soldVideo})`,
+      );
     } finally {
       gen.deliverablesReady = true;
       await this.repo.save(gen);

@@ -9,6 +9,7 @@ import { GenerationsController, PublicTopController } from './generations.contro
 import { AudioProcessorService } from './audio-processor.service';
 import { SocialImageUploadService } from './social-image-upload.service';
 import { SunoModule } from '../suno/suno.module';
+import { LyriaModule } from '../lyria/lyria.module';
 import { AuthModule } from '../auth/auth.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
@@ -26,6 +27,7 @@ import { SiteDemosModule } from '../site-demos/site-demos.module';
     TypeOrmModule.forFeature([Generation, GuestSession, User]),
     BullModule.registerQueue({ name: GENERATIONS_QUEUE }),
     SunoModule,
+    LyriaModule,
     AuthModule,
     forwardRef(() => PaymentsModule),
     MailerModule,

@@ -13,6 +13,13 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { experienceSlugFromRequest } from '../experiences/request-slug';
+import { isKnownExperienceSlug } from '../experiences/catalog';
+
+/** Slug de interfață venit din query string — acceptat doar dacă e în catalog. */
+function normalizeUiParam(ui?: string): string | null {
+  const v = (ui ?? '').trim();
+  return v && isKnownExperienceSlug(v) ? v : null;
+}
 
 /** Extrage o valoare de cookie din header brut. */
 function readCookieValue(cookieHeader: string | undefined, name: string): string | null {
@@ -159,15 +166,26 @@ export class PaymentsController {
 
   @Get('quote')
   async quote(
+    @Req() req: Request,
     @CurrentSite() site: Site,
     @Query('tipAmount') tipAmount?: string,
     @Query('premium') premium?: string,
     @Query('packageTier') packageTier?: string,
+    @Query('ui') ui?: string,
   ) {
     // Model PACHETE: dacă vine ?packageTier=basic|plus|premium → întoarcem
     // { packageTier, total, currency }. Altfel comportamentul legacy (tip+premium).
     if (packageTier && isPackageTier(packageTier)) {
-      return this.svc.quote(site, { packageTier: normalizeTier(packageTier) });
+      return this.svc.quote(site, {
+        packageTier: normalizeTier(packageTier),
+        // `?ui=` explicit, altfel interfața curentă a clientului (header-ul pe
+        // care lib/api.ts îl pune pe fiecare request). Fără fallback-ul ăsta,
+        // prețul AFIȘAT s-ar lua de pe `defaultSlug`, iar checkout-ul de pe
+        // interfața reală — două cifre diferite pe același ecran.
+        // `?ui=` e controlat de client — îl validăm pe catalog înainte să
+        // influențeze prețul afișat.
+        experienceSlug: normalizeUiParam(ui) || experienceSlugFromRequest(req),
+      });
     }
     const tip = Math.max(0, Math.min(1_000_000_000, Number(tipAmount ?? '0') || 0));
     return this.svc.quote(site, { tipAmount: tip, premium: premium === 'true' });
