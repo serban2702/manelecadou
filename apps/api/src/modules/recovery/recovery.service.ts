@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
-import { RecoveryState } from './recovery-state.entity';
+import { RecoveryState, RecoveryStageRecord } from './recovery-state.entity';
 import { Payment } from '../payments/payment.entity';
 import { Generation } from '../generations/generation.entity';
 import { PromoCode } from '../promo/promo-code.entity';
@@ -22,6 +22,14 @@ const LOOKBACK_DAYS = 14;
  *  (magic link, livrare melodie). Backlog-ul se drenează oricum: candidații cu
  *  eroare sunt reîncercați la fiecare tick de 10 min. */
 const MAX_SENDS_PER_RUN = 12;
+
+/** Câte trimiteri eșuate tolerăm per etapă înainte să renunțăm definitiv.
+ *  BUG observat 2026-08-23: fără plafon, o eroare PERMANENTĂ (host SMTP greșit
+ *  pe chalgapodarok.bg) ținea etapa „scadentă" la nesfârșit — cron-ul de 10 min
+ *  a reîncercat-o de 565 de ori în 5 zile și a emis un cod promo NOU la fiecare
+ *  încercare (565 coduri orfane). Plafonul închide etapa; erorile tranzitorii
+ *  (rețea, rate limit) tot au 5 șanse la interval de 10 min. */
+const MAX_STAGE_ATTEMPTS = 5;
 
 /** Lista default de emailuri interne excluse. Override prin setting
  *  `RECOVERY_EXCLUDE_EMAILS` (CSV; intrările care încep cu '@' = match pe sufix). */
@@ -50,6 +58,13 @@ const STAGES: RecoveryStageDef[] = [
   { key: 'h72', stage: 5, afterMs: 72 * HOUR, percent: 30, validHours: 48 },
   { key: 'd7', stage: 6, afterMs: 7 * 24 * HOUR, percent: 30, validHours: 72 },
 ];
+
+/** O etapă e „închisă" doar dacă a fost trimisă, sărită sau abandonată după
+ *  plafonul de încercări. Un rând cu doar `failedAttempts` rămâne scadent. */
+function isStageSettled(rec?: RecoveryStageRecord): boolean {
+  if (!rec) return false;
+  return Boolean(rec.sentAt || rec.skippedAt || rec.gaveUpAt);
+}
 
 /** Eveniment de abandon extras din payments/generations (SQL raw). */
 interface AbandonEvent {
@@ -255,9 +270,14 @@ export class RecoveryService {
 
       const anchorMs = new Date(state.anchorAt).getTime();
       const due = STAGES.filter(
-        (s) => anchorMs + s.afterMs <= now && !state.stagesSent?.[s.key],
+        (s) => anchorMs + s.afterMs <= now && !isStageSettled(state.stagesSent?.[s.key]),
       );
       if (due.length === 0) continue;
+
+      // Ținta se calculează ÎNAINTE de try ca s-o putem marca și pe ramura de
+      // eroare (altfel etapa eșuată rămânea nemarcată → reîncercare infinită).
+      const target = due[due.length - 1];
+      let issuedPromoCode: string | null = null;
 
       try {
         // Stop condition: plată paid după abandon → converted, nu mai trimitem.
@@ -271,7 +291,6 @@ export class RecoveryService {
         }
 
         // Doar cea mai avansată etapă scadentă; restul = skipped (fără spam).
-        const target = due[due.length - 1];
         const nowIso = new Date().toISOString();
         const stagesSent = { ...(state.stagesSent ?? {}) };
         for (const skipped of due.slice(0, -1)) {
@@ -295,18 +314,10 @@ export class RecoveryService {
         }
 
         // Cod promo personal: percent, 1 folosire, restricted pe email.
-        const validUntil = new Date(now + target.validHours * HOUR);
-        const promoCode = await this.promo.create({
-          siteId: state.siteId,
-          discountType: 'percent',
-          discountValue: target.percent,
-          validUntil,
-          maxUses: 1,
-          restrictedToEmail: state.email,
-          note: `Recovery stage ${target.stage}`,
-        });
-        promoCode.source = 'recovery';
-        await this.promoCodes.save(promoCode);
+        // Reutilizăm codul emis la o încercare eșuată anterioară dacă e încă
+        // valid — altfel fiecare retry lăsa în urmă un cod orfan.
+        const promoCode = await this.resolveStagePromo(state, target, now);
+        issuedPromoCode = promoCode.code;
 
         // CTA cu reducerea pre-aplicată: pe pagina manelei (`/m/<id>`) userul
         // reia plata cu codul aplicat automat, chiar fără sesiunea owner; `off`
@@ -345,13 +356,76 @@ export class RecoveryService {
         );
       } catch (e) {
         errors++;
-        state.lastError = (e as Error).message ?? String(e);
+        const message = (e as Error).message ?? String(e);
+        const prev: RecoveryStageRecord = state.stagesSent?.[target.key] ?? {};
+        const attempts = (prev.failedAttempts ?? 0) + 1;
+        const failedAtIso = new Date().toISOString();
+        const gaveUp = attempts >= MAX_STAGE_ATTEMPTS;
+
+        state.stagesSent = {
+          ...(state.stagesSent ?? {}),
+          [target.key]: {
+            ...prev,
+            failedAttempts: attempts,
+            lastFailedAt: failedAtIso,
+            lastError: message.slice(0, 300),
+            // Păstrăm codul emis ca să-l reutilizăm la următoarea încercare.
+            promoCode: issuedPromoCode ?? prev.promoCode,
+            ...(gaveUp ? { gaveUpAt: failedAtIso } : {}),
+          },
+        };
+        state.lastError = message;
         await this.states.save(state).catch(() => {});
-        this.logger.warn(`recovery send failed for ${state.email}: ${state.lastError}`);
+
+        if (gaveUp) {
+          this.logger.error(
+            `recovery stage ${target.stage} (${target.key}) ABANDONAT pentru ${state.email} după ${attempts} încercări: ${message}`,
+          );
+        } else {
+          this.logger.warn(
+            `recovery send failed for ${state.email} (încercarea ${attempts}/${MAX_STAGE_ATTEMPTS}): ${message}`,
+          );
+        }
       }
     }
 
     return { candidates: candidates.length, sent, converted, errors };
+  }
+
+  /**
+   * Codul promo al etapei. Emitem unul nou DOAR dacă nu avem deja unul valid
+   * dintr-o încercare eșuată anterioară — fără asta, fiecare retry lăsa în urmă
+   * un cod orfan (565 în 5 zile, observat 2026-08-23 pe chalgapodarok.bg).
+   */
+  private async resolveStagePromo(
+    state: RecoveryState,
+    target: RecoveryStageDef,
+    now: number,
+  ): Promise<PromoCode> {
+    const prevCode = state.stagesSent?.[target.key]?.promoCode;
+    if (prevCode) {
+      const existing = await this.promoCodes.findOne({
+        where: { code: prevCode, siteId: state.siteId ?? IsNull() },
+      });
+      const stillUsable =
+        existing &&
+        existing.active &&
+        (existing.usedCount ?? 0) < (existing.maxUses || 1) &&
+        (!existing.validUntil || new Date(existing.validUntil).getTime() > now);
+      if (existing && stillUsable) return existing;
+    }
+
+    const created = await this.promo.create({
+      siteId: state.siteId,
+      discountType: 'percent',
+      discountValue: target.percent,
+      validUntil: new Date(now + target.validHours * HOUR),
+      maxUses: 1,
+      restrictedToEmail: state.email,
+      note: `Recovery stage ${target.stage}`,
+    });
+    created.source = 'recovery';
+    return this.promoCodes.save(created);
   }
 
   /** Cea mai recentă plată 'paid' a emailului DUPĂ momentul dat (orice site —

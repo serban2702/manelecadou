@@ -12,11 +12,22 @@ import {
  * - trimisă → { sentAt, promoCode }
  * - sărită  → { skippedAt } (când cron-ul descoperă târziu mai multe etape
  *   scadente, trimite doar pe cea mai avansată și le marchează pe restul).
+ * - eșuată  → { failedAttempts, lastFailedAt, lastError } cât timp mai reîncercăm;
+ *   după plafon primește `gaveUpAt` și etapa nu mai e reîncercată niciodată.
+ *
+ * O etapă e „închisă" (nu mai e scadentă) doar cu `sentAt`, `skippedAt` sau
+ * `gaveUpAt` — vezi `isStageSettled` în recovery.service.ts.
  */
 export interface RecoveryStageRecord {
   sentAt?: string;
   promoCode?: string;
   skippedAt?: string;
+  /** Câte trimiteri au eșuat pentru etapa asta (plafonate). */
+  failedAttempts?: number;
+  lastFailedAt?: string;
+  lastError?: string;
+  /** Setat când am renunțat definitiv (plafon atins) — etapa e închisă. */
+  gaveUpAt?: string;
 }
 
 /**
