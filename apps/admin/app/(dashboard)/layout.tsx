@@ -7,6 +7,7 @@ import {
   BarChart3,
   BookOpen,
   ChevronRight,
+  ClipboardList,
   Coins,
   Contact,
   CreditCard,
@@ -111,6 +112,7 @@ const DESKTOP_NAV: NavEntry[] = [
       { href: '/suno', label: 'Suno credits', icon: Coins, scope: 'global' },
       { href: '/lyrics', label: 'Lyrics (AI)', icon: Mic2, scope: 'global' },
       { href: '/settings', label: 'Settings', icon: SettingsIcon, scope: 'global' },
+      { href: '/rollout', label: 'Lansare producție', icon: ClipboardList, scope: 'both' },
     ],
   },
   {

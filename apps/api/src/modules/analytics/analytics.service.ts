@@ -16,6 +16,9 @@ import { parseUserAgent } from './ua-parser';
 import { evaluateBot } from './bot-detection';
 import { inferGenderFromName, inferGenderFromEmail } from './gender-infer';
 import { FxRateService } from '../fx/fx-rate.service';
+import { EXPERIENCE_CATALOG } from '../experiences/catalog';
+import { experienceSlugFromRequest } from '../experiences/request-slug';
+import { experienceKeySql } from './experience-sql';
 import {
   normalizeSourceSql,
   attributionOrderBySql,
@@ -289,8 +292,10 @@ export class AnalyticsService {
     // Bot detection (multi-signal scoring)
     const bot = evaluateBot({ ua, userAgent: ctx.userAgent, geo, dto, req: ctx.req ?? null });
 
-    const expHeader = ctx.req?.headers?.['x-mc-experience'];
-    const experienceSlug = typeof expHeader === 'string' ? expHeader.trim().slice(0, 32) : null;
+    // `X-MC-Experience` e controlat de client și ajunge direct în DB, apoi în
+    // rapoartele pe interfețe. Acceptăm doar slug-uri din catalog (aceeași
+    // funcție ca pe restul rutelor); orice altceva → null, adică „necunoscut".
+    const experienceSlug = ctx.req ? experienceSlugFromRequest(ctx.req) : null;
     session = this.sessions.create({
       sessionKey: dto.sessionKey,
       visitorId: dto.visitorId ?? null,
@@ -1044,6 +1049,8 @@ export class AnalyticsService {
    *  - trafic atribuit (source/medium/campaign/device/os/browser/country/landing):
    *    sesiuni din analytics_sessions + plăți atribuite prin sessionKey→visitorId→IP+timp;
    *  - temporale (day/hour/dow): sesiuni pe startedAt, plăți pe createdAt (fără atribuire);
+   *  - interfață (experience): sesiuni + plăți au fiecare `experienceSlug` propriu,
+   *    deci se grupează direct, fără atribuire;
    *  - comandă (package/occasion/voiceGender/buyerGender): doar plăți/generări.
    */
   async marketingBreakdown(
@@ -1079,6 +1086,9 @@ export class AnalyticsService {
     }
     if (dimension === 'day' || dimension === 'hour' || dimension === 'dow') {
       return { dimension, hasTraffic: true, rows: await this.breakdownTemporal(range, dimension, siteId, excludeBots, excludeTests) };
+    }
+    if (dimension === 'experience') {
+      return { dimension, hasTraffic: true, rows: await this.breakdownExperience(range, siteId, excludeBots, excludeTests) };
     }
     if (dimension === 'buyerGender') {
       return { dimension, hasTraffic: false, rows: await this.breakdownBuyerGender(range, siteId, excludeTests) };
@@ -1301,6 +1311,89 @@ export class AnalyticsService {
     }
     // Temporal = sortare cronologică (nu pe revenue).
     return rows.sort((a, b) => a.key.localeCompare(b.key));
+  }
+
+  /**
+   * Defalcare pe INTERFAȚĂ (design-ul servit vizitatorului): `classic` vs `cadou`.
+   * Răspunde la „care design vinde mai bine" pe intervalul selectat.
+   *
+   * Spre deosebire de dimensiunile de trafic, aici NU e nevoie de atribuire prin
+   * sessionKey/IP: și sesiunea, și plata poartă `experienceSlug` propriu, scris
+   * la creare. Rândurile vechi (dinaintea interfețelor) au NULL — le citim ca
+   * `classic`, singurul design existent atunci (vezi experience-sql.ts).
+   */
+  private async breakdownExperience(
+    range: RangeQuery,
+    siteId: string | null,
+    excludeBots: boolean,
+    excludeTests = true,
+  ): Promise<MarketingBreakdownRow[]> {
+    const sParams: unknown[] = [range.from.toISOString(), range.to.toISOString()];
+    let sSite = '';
+    if (siteId) {
+      sParams.push(siteId);
+      sSite = `AND s."siteId" = $${sParams.length}::uuid`;
+    }
+    const bot = excludeBots ? `AND s."isBot" = false` : '';
+    const sessRows = (await this.sessions.query(
+      `SELECT ${experienceKeySql('s."experienceSlug"')} AS key,
+              COUNT(*)::int AS sessions,
+              COUNT(DISTINCT s."visitorId")::int AS visitors,
+              COALESCE(SUM(s."pageViews"),0)::int AS page_views
+       FROM analytics_sessions s
+       WHERE s."startedAt" BETWEEN $1 AND $2 ${sSite} ${bot}
+       GROUP BY key`,
+      sParams,
+    )) as Array<{ key: string; sessions: number; visitors: number; page_views: number }>;
+
+    const pParams: unknown[] = [range.from.toISOString(), range.to.toISOString()];
+    let pSite = '';
+    if (siteId) {
+      pParams.push(siteId);
+      pSite = `AND p."siteId" = $${pParams.length}::uuid`;
+    }
+    const payRows = (await this.payments.query(
+      `SELECT ${experienceKeySql('p."experienceSlug"')} AS key,
+              COUNT(*)::int AS initiated,
+              COUNT(*) FILTER (WHERE p.status='paid')::int AS purchases,
+              COUNT(*) FILTER (WHERE p.status='failed')::int AS failed,
+              COALESCE(SUM(${AnalyticsService.AMOUNT_RON}) FILTER (WHERE p.status='paid'),0)::int AS revenue
+       FROM payments p
+       LEFT JOIN guest_sessions gst ON gst.id = p."guestId"
+       WHERE p."createdAt" BETWEEN $1 AND $2 ${pSite} ${this.testFilter(excludeTests)}
+       GROUP BY key`,
+      pParams,
+    )) as Array<{ key: string; initiated: number; purchases: number; failed: number; revenue: number }>;
+
+    // Etichetele din catalog au sufix explicativ („Classic (site-ul actual)") —
+    // în tabel vrem doar numele designului.
+    const labels = new Map(
+      EXPERIENCE_CATALOG.map((e) => [e.slug as string, e.label.replace(/\s*\(.*\)\s*$/, '').trim() || e.slug]),
+    );
+    const map = new Map<string, MarketingBreakdownRow>();
+    const ensure = (key: string) => {
+      let row = map.get(key);
+      if (!row) {
+        row = {
+          key, label: labels.get(key) ?? key,
+          sessions: 0, visitors: 0, pageViews: 0,
+          initiated: 0, purchases: 0, failed: 0, revenueRon: 0,
+          aov: null, visitorConv: null, checkoutConv: null,
+        };
+        map.set(key, row);
+      }
+      return row;
+    };
+    for (const s of sessRows) {
+      const row = ensure(s.key);
+      row.sessions = Number(s.sessions); row.visitors = Number(s.visitors); row.pageViews = Number(s.page_views);
+    }
+    for (const p of payRows) {
+      const row = ensure(p.key);
+      row.initiated = Number(p.initiated); row.purchases = Number(p.purchases);
+      row.failed = Number(p.failed); row.revenueRon = Number(p.revenue);
+    }
+    return this.finalizeRows(Array.from(map.values()), true);
   }
 
   private async breakdownBuyerGender(range: RangeQuery, siteId: string | null, excludeTests = true): Promise<MarketingBreakdownRow[]> {

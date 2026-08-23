@@ -30,7 +30,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { SiteBadge } from '@/components/site-badge';
+import { ExperienceBadge } from '@/components/experience-badge';
 import { useSitesMap } from '@/lib/hooks/use-sites-map';
+import { useExperiences } from '@/lib/hooks/use-experiences';
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100, 200];
 const STATUS_OPTIONS = [
@@ -206,6 +208,7 @@ function PaymentCard({
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {showSite && <SiteBadge siteId={p.siteId} />}
         <SourceBadge attribution={p.attribution ?? null} />
+        <ExperienceBadge slug={p.experienceSlug} />
         {(p.attribution?.campaignName || p.attribution?.creative) && (
           <span className="text-[11px] text-muted-foreground">
             {p.attribution?.campaignName ?? '—'}
@@ -275,12 +278,14 @@ function InvoiceBadge({
 
 export default function PaymentsPage() {
   const { isAllSelected } = useSitesMap();
+  const { items: experiences } = useExperiences();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Filtre — sincronizate cu URL prin search params? Nu acum (overkill).
   // Toate sunt resetate când userul schimbă site-ul din selectorul global.
   const [status, setStatus] = useState('all');
   const [source, setSource] = useState('all');
+  const [experience, setExperience] = useState('all');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [pageSize, setPageSize] = useState(20);
@@ -296,7 +301,7 @@ export default function PaymentsPage() {
   // pentru un filtru care are doar 2 rezultate.
   useEffect(() => {
     setPage(0);
-  }, [status, source, debouncedSearch, pageSize]);
+  }, [status, source, experience, debouncedSearch, pageSize]);
 
   const params = useMemo(
     () => ({
@@ -304,9 +309,10 @@ export default function PaymentsPage() {
       offset: page * pageSize,
       status,
       source,
+      experience,
       search: debouncedSearch || undefined,
     }),
-    [pageSize, page, status, source, debouncedSearch],
+    [pageSize, page, status, source, experience, debouncedSearch],
   );
 
   const { data, loading: isLoading } = useAsync(
@@ -318,11 +324,12 @@ export default function PaymentsPage() {
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const hasFilters =
-    status !== 'all' || source !== 'all' || debouncedSearch.length > 0;
+    status !== 'all' || source !== 'all' || experience !== 'all' || debouncedSearch.length > 0;
 
   function resetFilters() {
     setStatus('all');
     setSource('all');
+    setExperience('all');
     setSearch('');
   }
 
@@ -389,6 +396,24 @@ export default function PaymentsPage() {
             </SelectContent>
           </Select>
         </div>
+        <div className="min-w-[160px]">
+          <Label className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 block">
+            Interfață
+          </Label>
+          <Select value={experience} onValueChange={setExperience}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Toate interfețele</SelectItem>
+              {experiences.map((e) => (
+                <SelectItem key={e.slug} value={e.slug}>
+                  {e.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="min-w-[110px]">
           <Label className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 block">
             Per pagină
@@ -450,6 +475,7 @@ export default function PaymentsPage() {
               <TableHead className="w-[110px]">Status</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Sursă</TableHead>
+              <TableHead>Interfață</TableHead>
               <TableHead>Campanie → Creativ</TableHead>
               <TableHead>OpenReplay</TableHead>
               <TableHead>Comandă</TableHead>
@@ -495,6 +521,9 @@ export default function PaymentsPage() {
                 </TableCell>
                 <TableCell>
                   <SourceBadge attribution={p.attribution ?? null} />
+                </TableCell>
+                <TableCell>
+                  <ExperienceBadge slug={p.experienceSlug} />
                 </TableCell>
                 <TableCell>
                   <CampaignCreativeCell attribution={p.attribution ?? null} />

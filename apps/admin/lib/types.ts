@@ -119,6 +119,9 @@ export interface AdminGeneration {
   instrumentalUrl?: string | null;
   /** URL videoclip (livrabil pachet). */
   videoUrl?: string | null;
+  /** Interfața (designul) pe care s-a făcut comanda. NULL pe comenzile de
+   *  dinaintea interfețelor — se afișează ca `classic`. */
+  experienceSlug?: string | null;
   /** Email-ul owner-ului (user.email sau guest.email). Populat de listGenerations. */
   ownerEmail?: string | null;
   /** Plata legată de această generare (via paymentId). Populat de listGenerations. */
@@ -258,6 +261,9 @@ export interface AdminPayment {
   guestId: string | null;
   createdAt: string;
   siteId?: string | null;
+  /** Interfața (designul) de pe care a plecat plata. NULL pe plățile de
+   *  dinaintea interfețelor — se afișează ca `classic`. */
+  experienceSlug?: string | null;
   /** IP-ul cumpărătorului la momentul plății (poate fi IPv4 sau IPv6). */
   ipAddress?: string | null;
   /** ID-ul sesiunii OpenReplay asociate plății (pentru replay). */
@@ -540,10 +546,15 @@ export interface SettingView {
   description?: string;
   kind: SettingKind;
   options?: string[];
+  optionLabels?: Record<string, string>;
   encrypted: boolean;
   hotReload: boolean;
   requiresRestart: boolean;
   placeholder?: string;
+  group?: string;
+  helpWhat?: string;
+  helpWhere?: string;
+  helpUrl?: string;
   value: string;
   source: 'db' | 'env' | 'unset';
   hasDbValue: boolean;

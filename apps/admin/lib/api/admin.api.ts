@@ -298,7 +298,13 @@ export class AdminApi {
   static stats(): Promise<AdminStats> { return http.get('/admin/stats'); }
   static users(): Promise<AdminUser[]> { return http.get('/admin/users'); }
   static guests(): Promise<AdminGuest[]> { return http.get('/admin/guests'); }
-  static generations(): Promise<AdminGeneration[]> { return http.get('/admin/generations'); }
+  /** `experience` = slug de interfață (classic/cadou); `all` sau lipsă = toate. */
+  static generations(params: { experience?: string } = {}): Promise<AdminGeneration[]> {
+    const qs = new URLSearchParams();
+    if (params.experience && params.experience !== 'all') qs.set('experience', params.experience);
+    const q = qs.toString();
+    return http.get(`/admin/generations${q ? `?${q}` : ''}`);
+  }
   static payments(params: {
     limit?: number;
     offset?: number;
@@ -307,6 +313,8 @@ export class AdminApi {
     search?: string;
     from?: string;
     to?: string;
+    /** Slug de interfață (classic/cadou); `all` = fără filtru. */
+    experience?: string;
   } = {}): Promise<{ items: AdminPayment[]; total: number }> {
     const qs = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => {

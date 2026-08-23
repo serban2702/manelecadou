@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useState, type AnchorHTMLAttributes, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type AnchorHTMLAttributes, type ReactNode } from 'react';
 
 /**
  * SPA router 100% client-side. Folosit ca să eliminăm RSC fetch-urile App Router-ului.
@@ -23,29 +23,87 @@ const Ctx = createContext<SpaRouterCtx>({ pathname: '/', navigate: () => {} });
 
 const SPA_NAV_EVENT = 'spa:navigate';
 
+type SpaNavGuard = (to: string, from: string) => boolean | Promise<boolean>;
+const spaNavGuards: SpaNavGuard[] = [];
+
+/** Guard înregistrat de un ecran (ex. studio dirty). Returnează false = anulează navigarea. */
+export function useSpaNavGuard(guard: SpaNavGuard) {
+  const ref = useRef(guard);
+  ref.current = guard;
+  useEffect(() => {
+    const fn: SpaNavGuard = (to, from) => ref.current(to, from);
+    spaNavGuards.push(fn);
+    return () => {
+      const i = spaNavGuards.indexOf(fn);
+      if (i >= 0) spaNavGuards.splice(i, 1);
+    };
+  }, []);
+}
+
 export function SpaRouter({ children }: { children: ReactNode }) {
   const [pathname, setPathname] = useState<string>(() =>
     typeof window === 'undefined' ? '/' : window.location.pathname,
   );
 
+  /** Ultimul pathname pe care SPA-ul chiar îl afișează (nu cel din bara de adrese
+   *  în timpul unui popstate încă neconfirmat). Referință pentru revert la Back. */
+  const shownRef = useRef(pathname);
+
   useEffect(() => {
-    const sync = () => setPathname(window.location.pathname);
-    window.addEventListener('popstate', sync);
+    const sync = () => {
+      shownRef.current = window.location.pathname;
+      setPathname(window.location.pathname);
+    };
+    /**
+     * Back / Forward. Browserul a schimbat DEJA URL-ul când ajungem aici, deci
+     * garda se rulează post-factum: dacă userul alege „Stai aici", punem înapoi
+     * pathname-ul de dinainte cu pushState (history.back() ar declanșa alt
+     * popstate și ar intra în buclă). Fără asta, Back sărea peste dialogul de
+     * „modificări nesalvate" și pierdeai schimbările în tăcere.
+     */
+    const onPop = () => {
+      const to = window.location.pathname;
+      const from = shownRef.current;
+      if (to === from) return;
+      if (spaNavGuards.length === 0) {
+        sync();
+        return;
+      }
+      void (async () => {
+        for (const g of spaNavGuards) {
+          const ok = await g(to, from);
+          if (!ok) {
+            if (window.location.pathname !== from) window.history.pushState({}, '', from);
+            return;
+          }
+        }
+        sync();
+      })();
+    };
+    window.addEventListener('popstate', onPop);
     window.addEventListener(SPA_NAV_EVENT, sync as EventListener);
     return () => {
-      window.removeEventListener('popstate', sync);
+      window.removeEventListener('popstate', onPop);
       window.removeEventListener(SPA_NAV_EVENT, sync as EventListener);
     };
   }, []);
 
   const navigate = useCallback<SpaRouterCtx['navigate']>((to, opts) => {
     if (typeof window === 'undefined') return;
-    if (window.location.pathname === to) return;
-    if (opts?.replace) window.history.replaceState({}, '', to);
-    else window.history.pushState({}, '', to);
-    window.dispatchEvent(new Event(SPA_NAV_EVENT));
-    // Sync imediat ca să nu așteptăm event-loop-ul.
-    setPathname(to);
+    const from = window.location.pathname;
+    if (from === to) return;
+    const run = async () => {
+      for (const g of spaNavGuards) {
+        const ok = await g(to, from);
+        if (!ok) return;
+      }
+      if (window.location.pathname === to) return;
+      if (opts?.replace) window.history.replaceState({}, '', to);
+      else window.history.pushState({}, '', to);
+      window.dispatchEvent(new Event(SPA_NAV_EVENT));
+      setPathname(to);
+    };
+    void run();
   }, []);
 
   return <Ctx.Provider value={{ pathname, navigate }}>{children}</Ctx.Provider>;

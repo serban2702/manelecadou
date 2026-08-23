@@ -277,7 +277,9 @@ export class AnalyticsAdminController {
 
   /** Matrice marketing: o dimensiune (rânduri) × metrici (coloane). `dimension`
    *  ∈ source/medium/campaign/device/os/browser/country/landing/day/hour/dow/
-   *  package/occasion/voiceGender/buyerGender. */
+   *  experience/package/occasion/voiceGender/buyerGender.
+   *  `experience` = defalcarea pe interfață (classic vs cadou) — sesiuni,
+   *  checkout-uri inițiate, plăți, venit și conversie per design. */
   @Get('marketing-breakdown')
   marketingBreakdown(
     @Query() q: { from?: string; to?: string; dimension?: string; excludeBots?: string; excludeTests?: string },

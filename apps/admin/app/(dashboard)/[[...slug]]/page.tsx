@@ -55,6 +55,7 @@ const Marketing       = dynamic(() => import('../marketing/_content'),       { s
 const SiteDemos       = dynamic(() => import('../site-demos/_content'),      { ssr: false, loading: Loading });
 const OpsTerminal     = dynamic(() => import('../terminal/_content'),        { ssr: false, loading: Loading });
 const SeoPages        = dynamic(() => import('../seo-pages/_content'),       { ssr: false, loading: Loading });
+const Rollout         = dynamic(() => import('../rollout/_content'),         { ssr: false, loading: Loading });
 
 const ROUTES: Record<string, ComponentType> = {
   '/':                   Dashboard,
@@ -84,13 +85,14 @@ const ROUTES: Record<string, ComponentType> = {
   '/site-demos':         SiteDemos,
   '/terminal':           OpsTerminal,
   '/seo-pages':          SeoPages,
+  '/rollout':            Rollout,
 };
 
 export default function CatchAll() {
   const pathname = useSpaPathname();
   // Normalize trailing slash.
   const key = pathname.replace(/\/+$/, '') || '/';
-  const View = ROUTES[key];
+  const View = ROUTES[key] ?? (key.startsWith('/site/') ? SiteConfig : undefined);
   if (!View) {
     return (
       <div className="text-center py-20">

@@ -267,6 +267,7 @@ export interface ProfitReport {
 export type MarketingDimension =
   | 'source' | 'medium' | 'campaign' | 'device' | 'os' | 'browser' | 'country' | 'landing'
   | 'day' | 'hour' | 'dow'
+  | 'experience'
   | 'package' | 'occasion' | 'voiceGender' | 'buyerGender';
 
 export interface MarketingSummary {

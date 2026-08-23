@@ -17,6 +17,12 @@ export interface SiteDto {
   /** Procent de suprataxă din dedicație (0–100). Default 5. */
   tipSurchargePercent?: number;
   giftPriceCents: number;
+  /** Override prețuri pachete (cents). Null = default PACKAGES (29,99 / 49,99 / 69,99). */
+  packagePricesCents?: Partial<Record<'basic' | 'plus' | 'premium', number>> | null;
+  /** Derivat din packagePricesCents + default. NU se trimite în PATCH. */
+  packagePrices?: Record<'basic' | 'plus' | 'premium', number>;
+  /** Preț tăiat (strikethrough) per pachet, cents. Omit cheia = fără tăiere. */
+  packageCompareAtCents?: Partial<Record<'basic' | 'plus' | 'premium', number>> | null;
   brand: {
     primaryColor?: string;
     accentColor?: string;
@@ -53,7 +59,9 @@ export interface SiteDto {
     voiceMap?: Record<string, string>;
     lyricsLocale?: string;
     writerSystemPrompt?: string;
+    writerUserTemplate?: string;
     criticSystemPrompt?: string;
+    criticUserTemplate?: string;
   };
   social?: {
     instagram?: string;
@@ -153,6 +161,8 @@ export interface SiteDto {
   /** Toggle: dacă true (default), wizardul are un pas de generare/review a versurilor
    *  înainte de plată (max 5 regenerări AI + validare + rescriere fonetică Suno). */
   lyricsReviewEnabled: boolean;
+  /** Motor audio: suno (implicit) sau google (Lyria 3 Pro, 2 variante în paralel). */
+  musicEngine?: 'suno' | 'google';
   /** Sursa datelor pentru pagina /top: 'seed' (date demo), 'live' (agregare din
    *  generations) sau 'template' (top curat manual din mostre — vezi topTemplate). */
   topSource: 'seed' | 'live' | 'template';
@@ -181,10 +191,13 @@ export interface ExperienceStyleOverride {
   nm: string;
   ds?: string;
   heat?: string;
+  ic?: SiteIconConfig;
+  i18n?: Record<string, { nm?: string; ds?: string; heat?: string }>;
   artUrl?: string;
   sampleUrl?: string;
   sampleStartSec?: number;
   sunoPrompt?: string;
+  googlePrompt?: string;
   lyricsHint?: string;
   styleWeight?: number;
   weirdnessConstraint?: number;
@@ -193,12 +206,20 @@ export interface ExperienceStyleOverride {
   sunoPersonaNameMale?: string;
   sunoPersonaIdFemale?: string;
   sunoPersonaNameFemale?: string;
+  /** @deprecated persona unică veche — fallback dacă male/female lipsesc. */
+  sunoPersonaId?: string;
+  /** @deprecated */
+  sunoPersonaName?: string;
 }
 
 export interface ExperienceOccasionOverride {
   id: string;
   em?: string;
   nm: string;
+  ic?: SiteIconConfig;
+  i18n?: Record<string, { nm?: string }>;
+  sunoPrompt?: string;
+  googlePrompt?: string;
 }
 
 export interface ExperienceVoiceOverride {
@@ -206,6 +227,14 @@ export interface ExperienceVoiceOverride {
   nm: string;
   tg?: string;
   av?: string;
+  ic?: SiteIconConfig;
+  i18n?: Record<string, { nm?: string; tg?: string }>;
+  sunoVoice?: string;
+  gender?: 'm' | 'f';
+  sunoPersonaId?: string;
+  /** Perechea lui sunoPersonaId. Fără el, „Nume persona" completat în panoul de
+   *  voce se pierde la copierea catalogului tenantului într-o interfață. */
+  sunoPersonaName?: string;
 }
 
 export interface ExperienceCatalogConfig {
@@ -215,6 +244,8 @@ export interface ExperienceCatalogConfig {
   writerSystemPrompt?: string;
   demoIds?: string[] | null;
   reactionClips?: ExperienceReactionClip[];
+  /** undefined = moștenește tenantul; [] = nicio recenzie; listă = proprii. */
+  testimonials?: SiteTestimonialEntry[];
 }
 
 export interface ExperienceReactionClip {
@@ -237,12 +268,28 @@ export interface ExperienceReactionClip {
 export interface ExperienceItemConfig {
   enabled: boolean;
   utmRules: Array<{ source?: string; campaign?: string; content?: string }>;
+  musicEngine?: 'suno' | 'google' | null;
   packages?: Partial<Record<'basic' | 'plus' | 'premium', {
+    enabled?: boolean;
+    label?: string;
+    priceCents?: number;
+    compareAtCents?: number | null;
     video?: boolean;
     socialImage?: boolean;
+    socialImageCount?: number;
     instrumental?: boolean;
     premiumPage?: boolean;
     durationSec?: number;
+    generation?: boolean;
+    remakes?: number;
+    collage?: boolean;
+    collagePhotoLimit?: number;
+    collageFullTrack?: boolean;
+    greetingCard?: boolean;
+    greetingClip?: boolean;
+    socialPost?: boolean;
+    nextSongDiscountPercent?: number;
+    deliveryLabel?: string;
     features?: string[];
     upsell?: { title: string; body: string; targetTier: 'plus' | 'premium' } | null;
   }>>;
@@ -262,9 +309,12 @@ export interface SiteStyleEntry {
   nm: string;
   ds: string;
   heat?: string;
+  /** Imagine de cover pe cardul de stil (Cadou). */
+  artUrl?: string;
   ic?: SiteIconConfig;
   i18n?: Record<string, { nm?: string; ds?: string; heat?: string }>;
   sunoPrompt?: string;
+  googlePrompt?: string;
   lyricsHint?: string;
   /** Cât strict urmează Suno tag-urile de style (0..1). Default Suno ~0.5. */
   styleWeight?: number;
@@ -276,6 +326,10 @@ export interface SiteStyleEntry {
   sunoPersonaNameMale?: string;
   sunoPersonaIdFemale?: string;
   sunoPersonaNameFemale?: string;
+  /** @deprecated persona unică veche — fallback dacă male/female lipsesc. */
+  sunoPersonaId?: string;
+  /** @deprecated */
+  sunoPersonaName?: string;
   /** Default-uri persistate pentru „Personalizează mostra" din admin. */
   sampleDefaults?: SiteSampleDefaults;
 }
@@ -322,6 +376,8 @@ export interface SiteOccasionEntry {
   nm: string;
   ic?: SiteIconConfig;
   i18n?: Record<string, { nm?: string }>;
+  sunoPrompt?: string;
+  googlePrompt?: string;
 }
 
 export interface SiteTestimonialEntry {
@@ -384,12 +440,56 @@ export type GenerateSampleResponse =
   | { ok: true; reused: true; entry: SampleEntryDto }
   | { ok: true; reused: false; candidates: SampleCandidateDto[]; sunoTaskId: string };
 
+export type RolloutStatus = 'ok' | 'missing' | 'partial' | 'info';
+
+export interface SiteRolloutCheck {
+  id: string;
+  title: string;
+  description: string;
+  group: string;
+  scope: 'global' | 'site';
+  autoApply: boolean;
+  status: RolloutStatus;
+  detail: string;
+}
+
+export interface SiteRolloutSiteRow {
+  id: string;
+  name: string;
+  domain: string;
+  locale: string;
+  currency: string;
+  musicEngine: 'suno' | 'google';
+  active: boolean;
+  missing: number;
+  partial: number;
+  autoFixable: number;
+  checks: SiteRolloutCheck[];
+}
+
+export interface SiteRolloutOverview {
+  checks: Array<Omit<SiteRolloutCheck, 'status' | 'detail'>>;
+  global: SiteRolloutCheck[];
+  sites: SiteRolloutSiteRow[];
+  totals: { sites: number; sitesWithGaps: number; autoFixable: number };
+}
+
 export const SitesApi = {
   listExperiences: () => http.get<Array<{ slug: string; label: string }>>('/admin/experiences'),
   list: () => http.get<SiteDto[]>('/admin/sites'),
   get: (id: string) => http.get<SiteDto>(`/admin/sites/${id}`),
   create: (body: Partial<SiteDto>) => http.post<SiteDto>('/admin/sites', body),
   update: (id: string, body: Partial<SiteDto>) => http.patch<SiteDto>(`/admin/sites/${id}`, body),
+
+  /** Registru de lansare: ce lipsește pe fiecare site față de seed-ul curent (Lyria, Cadou, etc.). */
+  rolloutOverview: () => http.get<SiteRolloutOverview>(`/admin/rollout`),
+  rolloutApplySite: (siteId: string, checkIds?: string[]) =>
+    http.post<{ applied: string[]; skipped: string[]; site: SiteRolloutSiteRow | null }>(
+      `/admin/rollout/${siteId}/apply`,
+      { checkIds },
+    ),
+  rolloutApplyAll: (checkIds?: string[]) =>
+    http.post<{ results: Array<{ applied: string[]; skipped: string[] }> }>(`/admin/rollout/apply-all`, { checkIds }),
   remove: (id: string) => http.delete<{ ok: true }>(`/admin/sites/${id}`),
   /** Upload asset brand (logo / OG / favicon / email banner). Răspunde cu URL-ul
    *  public + brand-ul actualizat (deja persistat în DB pe site). */

@@ -73,8 +73,8 @@ const presenceKey = (c: { userId: string | null; guestId: string | null }) =>
 
 const PACKAGE_OPTIONS: { tier: PackageTier; label: string; defaultCents: number; features: string }[] = [
   { tier: 'basic', label: 'Standard', defaultCents: 2999, features: 'Manea + versuri + livrare email' },
-  { tier: 'plus', label: 'Plus', defaultCents: 4999, features: '+ 4 imagini social-media' },
-  { tier: 'premium', label: 'Premium', defaultCents: 6999, features: '+ videoclip + pagină premium + colaj' },
+  { tier: 'plus', label: 'Plus', defaultCents: 4999, features: '+ colaj 4 poze (refren)' },
+  { tier: 'premium', label: 'Premium', defaultCents: 6999, features: '+ colaj 15 poze + felicitare + pagină premium' },
 ];
 
 const PACKAGE_DEFAULT_CENTS: Record<PackageTier, number> = { basic: 2999, plus: 4999, premium: 6999 };

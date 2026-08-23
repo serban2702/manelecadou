@@ -19,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { useSpaNavigate } from '@/lib/spa-router';
+import { MoneyInput } from '../site/fields/money-input';
 
 const LOCALES = ['ro', 'bg', 'sr', 'tr', 'el', 'hr', 'sl', 'bs', 'sq', 'mk', 'hu', 'en'];
 const CURRENCIES = ['RON', 'EUR', 'USD', 'BGN', 'RSD', 'TRY', 'HUF', 'GBP'];
@@ -48,7 +48,6 @@ const EMPTY_CREATE = {
 export default function SitesListPage() {
   const { data: sites, loading, refetch } = useAsync(() => SitesApi.list(), []);
   const { toast } = useToast();
-  const navigate = useSpaNavigate();
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_CREATE });
   const [saving, setSaving] = useState(false);
@@ -67,7 +66,7 @@ export default function SitesListPage() {
       toast({
         variant: 'destructive',
         title: 'Câmpuri lipsă',
-        description: 'slug, domain, name sunt obligatorii',
+        description: 'Cod intern, domeniu și nume sunt obligatorii',
       });
       return;
     }
@@ -166,19 +165,19 @@ export default function SitesListPage() {
                   )}
                   {s.hiddenMode && (
                     <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300">
-                      Hidden
+                      Ascuns
                     </span>
                   )}
                   {s.demoEnabled === false && (
                     <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">
-                      Pay-first
+                      Plată întâi
                     </span>
                   )}
                 </div>
                 <div className="text-xs text-muted-foreground truncate">
                   <code>{s.domain}</code> · {s.locale.toUpperCase()} · {s.currency}{' '}
-                  {(s.basePriceCents / 100).toFixed(2)} · {s.active ? 'activ' : 'inactiv'} · SSL{' '}
-                  {s.sslEnabled ? 'on' : 'off'} · {(s.styles ?? []).length} stiluri ·{' '}
+                  {(s.basePriceCents / 100).toFixed(2)} · {s.active ? 'activ' : 'inactiv'} · HTTPS{' '}
+                  {s.sslEnabled ? 'pornit' : 'oprit'} · {(s.styles ?? []).length} stiluri ·{' '}
                   {(s.voices ?? []).length} voci · {(s.occasions ?? []).length} ocazii
                 </div>
               </div>
@@ -216,7 +215,7 @@ export default function SitesListPage() {
             <DialogTitle>Adaugă site nou</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 py-2">
-            <Field label='Slug (intern, ex. "bg")'>
+            <Field label='Cod intern (ex. "bg")'>
               <Input
                 value={form.slug}
                 onChange={(e) =>
@@ -240,7 +239,7 @@ export default function SitesListPage() {
               />
             </Field>
             <div className="grid grid-cols-2 gap-2">
-              <Field label="Locale">
+              <Field label="Limbă">
                 <select
                   value={form.locale}
                   onChange={(e) => setForm({ ...form, locale: e.target.value })}
@@ -268,18 +267,18 @@ export default function SitesListPage() {
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <Field label="Preț bază (cents)">
-                <Input
-                  type="number"
-                  value={form.basePriceCents}
-                  onChange={(e) => setForm({ ...form, basePriceCents: Number(e.target.value) })}
+              <Field label="Preț bază">
+                <MoneyInput
+                  cents={form.basePriceCents}
+                  currency={form.currency}
+                  onChange={(cents) => setForm({ ...form, basePriceCents: cents ?? 0 })}
                 />
               </Field>
-              <Field label="Preț gift single (cents)">
-                <Input
-                  type="number"
-                  value={form.giftPriceCents}
-                  onChange={(e) => setForm({ ...form, giftPriceCents: Number(e.target.value) })}
+              <Field label="Preț cadou">
+                <MoneyInput
+                  cents={form.giftPriceCents}
+                  currency={form.currency}
+                  onChange={(cents) => setForm({ ...form, giftPriceCents: cents ?? 0 })}
                 />
               </Field>
             </div>

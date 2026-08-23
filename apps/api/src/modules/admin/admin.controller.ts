@@ -17,6 +17,7 @@ import {
   normalizeSourceSql,
   attributionOrderBySql,
 } from '../analytics/attribution-sql';
+import { experienceKeySql, normalizeExperienceFilter } from '../analytics/experience-sql';
 import { MailerService } from '../../mailer/mailer.module';
 import { SeederService } from '../../database/seeder/seeder.service';
 import { SitesService } from '../sites/sites.service';
@@ -441,12 +442,23 @@ export class AdminController {
   }
 
   @Get('generations')
-  async listGenerations(@Query('limit') limit = '50', @CurrentSiteId() siteId: string | null) {
-    const gens = await this.generations.find({
-      where: siteId ? { siteId } : {},
-      order: { createdAt: 'DESC' },
-      take: Math.min(Number(limit) || 50, 200),
-    });
+  async listGenerations(
+    @Query('limit') limit = '50',
+    @Query('experience') experience: string | undefined,
+    @CurrentSiteId() siteId: string | null,
+  ) {
+    const qb = this.generations
+      .createQueryBuilder('g')
+      .orderBy('g."createdAt"', 'DESC')
+      .take(Math.min(Number(limit) || 50, 200));
+    if (siteId) qb.andWhere('g."siteId" = :siteId', { siteId });
+    // Filtru pe interfață. Comenzile dinaintea interfețelor au NULL — sunt
+    // `classic` (vezi experience-sql.ts), deci intră în filtrul „Classic".
+    const expFilter = normalizeExperienceFilter(experience);
+    if (expFilter) {
+      qb.andWhere(`${experienceKeySql('g."experienceSlug"')} = :exp`, { exp: expFilter });
+    }
+    const gens = await qb.getMany();
     if (gens.length === 0) return [];
 
     // Pentru fiecare generare, recuperăm payment-ul legat (via paymentId direct
@@ -518,6 +530,7 @@ export class AdminController {
     @Query('search') search?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('experience') experience?: string,
     @CurrentSiteId() siteId: string | null = null,
   ) {
     const limit = Math.min(Math.max(Number(limitRaw) || 20, 1), 200);
@@ -538,6 +551,13 @@ export class AdminController {
 
     if (siteId) qb.andWhere('p."siteId" = :siteId', { siteId });
     if (status && status !== 'all') qb.andWhere('p.status = :status', { status });
+
+    // Filtru pe interfață. Plățile dinaintea interfețelor au NULL — sunt
+    // `classic` (vezi experience-sql.ts), deci intră în filtrul „Classic".
+    const expFilter = normalizeExperienceFilter(experience);
+    if (expFilter) {
+      qb.andWhere(`${experienceKeySql('p."experienceSlug"')} = :exp`, { exp: expFilter });
+    }
 
     if (search && search.trim()) {
       const term = `%${search.trim().toLowerCase()}%`;

@@ -258,6 +258,10 @@ const MKT_DIMENSIONS: Array<{ group: string; items: Array<{ value: MarketingDime
     ],
   },
   {
+    group: 'Interfață',
+    items: [{ value: 'experience', label: 'Design (classic / cadou)' }],
+  },
+  {
     group: 'Comandă',
     items: [
       { value: 'buyerGender', label: 'Gen cumpărător' },
@@ -466,6 +470,9 @@ function MarketingTab({ range }: { range: { from: string; to: string } }) {
         </CardContent>
       </Card>
 
+      {/* Interfețe — care design vinde mai bine */}
+      <ExperienceBreakdownCard range={range} excludeBots={excludeBots} excludeTests={excludeTests} />
+
       {/* Matricea de defalcare */}
       <Card>
         <CardHeader>
@@ -583,6 +590,123 @@ function MarketingTab({ range }: { range: { from: string; to: string } }) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/** Coloanele tabelului de interfețe — subset din MKT_COLUMNS (același format). */
+const EXPERIENCE_COLUMNS: Array<{ key: keyof MarketingBreakdownRow; label: string; kind: MktColKind; hint?: string }> = [
+  { key: 'sessions', label: 'Sesiuni', kind: 'num' },
+  { key: 'initiated', label: 'Comenzi începute', kind: 'num', hint: 'Checkout-uri create (orice status)' },
+  { key: 'purchases', label: 'Comenzi plătite', kind: 'num', hint: 'Plăți finalizate (paid)' },
+  { key: 'revenueRon', label: 'Venit', kind: 'money' },
+  { key: 'visitorConv', label: 'Conversie', kind: 'pct', hint: 'Comenzi plătite / sesiuni' },
+];
+
+/**
+ * Defalcare pe INTERFAȚĂ (design). Când același site rulează `classic` și
+ * `cadou` în paralel, ăsta e tabelul care spune care vinde mai bine.
+ *
+ * Folosește exact același raport ca matricea de mai jos
+ * (`marketing-breakdown?dimension=experience`), doar cu coloanele esențiale.
+ * Comenzile fără interfață (dinaintea acestei versiuni) sunt numărate la
+ * `classic` de către API.
+ */
+function ExperienceBreakdownCard({
+  range,
+  excludeBots,
+  excludeTests,
+}: {
+  range: { from: string; to: string };
+  excludeBots: boolean;
+  excludeTests: boolean;
+}) {
+  const breakdown = useAsync(
+    () => AnalyticsApi.marketingBreakdown(range, 'experience', excludeBots, excludeTests),
+    [range, excludeBots, excludeTests],
+  );
+  const rows = breakdown.data?.rows ?? [];
+  const totals = useMemo(
+    () =>
+      rows.reduce(
+        (acc, r) => {
+          acc.sessions += r.sessions ?? 0;
+          acc.initiated += r.initiated;
+          acc.purchases += r.purchases;
+          acc.revenueRon += r.revenueRon;
+          return acc;
+        },
+        { sessions: 0, initiated: 0, purchases: 0, revenueRon: 0 },
+      ),
+    [rows],
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Interfețe (design)</CardTitle>
+        <CardDescription>
+          Sesiuni, comenzi și venit per design servit vizitatorului — comenzile vechi, fără interfață, contează ca „Classic".
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {breakdown.isLoading ? (
+          <Skeleton className="h-40 w-full" />
+        ) : rows.length === 0 ? (
+          <Empty title="Date insuficiente" description="Nicio sesiune sau comandă în perioada selectată." />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Interfață</TableHead>
+                  {EXPERIENCE_COLUMNS.map((c) => (
+                    <TableHead key={c.key} className="text-right whitespace-nowrap" title={c.hint}>
+                      {c.label}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r) => (
+                  <TableRow key={r.key}>
+                    <TableCell className="font-medium">{r.label}</TableCell>
+                    {EXPERIENCE_COLUMNS.map((c) => {
+                      const val = r[c.key] as number | null;
+                      return (
+                        <TableCell
+                          key={c.key}
+                          className={cn(
+                            'text-right tabular-nums whitespace-nowrap',
+                            c.key === 'purchases' && (val ?? 0) > 0 && 'text-success font-medium',
+                            c.key === 'revenueRon' && (val ?? 0) > 0 && 'font-medium',
+                            c.kind === 'pct' && val != null && val >= 3 && 'text-success',
+                          )}
+                        >
+                          {fmtCell(val, c.kind)}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                ))}
+                <TableRow className="border-t-2 border-border font-semibold">
+                  <TableCell>Total ({rows.length})</TableCell>
+                  <TableCell className="text-right tabular-nums">{fmtCell(totals.sessions, 'num')}</TableCell>
+                  <TableCell className="text-right tabular-nums">{fmtCell(totals.initiated, 'num')}</TableCell>
+                  <TableCell className="text-right tabular-nums">{fmtCell(totals.purchases, 'num')}</TableCell>
+                  <TableCell className="text-right tabular-nums">{fmtCell(totals.revenueRon, 'money')}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {fmtCell(
+                      totals.sessions > 0 ? Math.round((totals.purchases / totals.sessions) * 10000) / 100 : null,
+                      'pct',
+                    )}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

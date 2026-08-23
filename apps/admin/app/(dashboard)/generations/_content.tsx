@@ -32,8 +32,17 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { SiteBadge } from '@/components/site-badge';
+import { ExperienceBadge } from '@/components/experience-badge';
 import { useSitesMap } from '@/lib/hooks/use-sites-map';
+import { useExperiences } from '@/lib/hooks/use-experiences';
 
 const STATUS_VARIANT: Record<string, BadgeProps['variant']> = {
   succeeded: 'success',
@@ -72,9 +81,13 @@ function packageLabel(t: string | null | undefined): string {
 export default function GenerationsPage() {
   const { toast } = useToast();
   const { isAllSelected } = useSitesMap();
+  const { items: experiences } = useExperiences();
+  // Filtrul se aplică pe server (nu in-memory) — lista e limitată la ultimele
+  // 50 de generări, deci o filtrare locală ar ascunde rândurile mai vechi.
+  const [experience, setExperience] = useState('all');
   const { data, loading: isLoading, refetch } = useAsync(
-    () => AdminApi.generations(),
-    [],
+    () => AdminApi.generations({ experience }),
+    [experience],
     { refetchInterval: 5000 },
   );
   const [uploadFor, setUploadFor] = useState<{ id: string; recipient: string } | null>(null);
@@ -163,10 +176,41 @@ export default function GenerationsPage() {
         description="Toate piesele generate · refresh la 5 secunde"
       />
 
+      {/* Toolbar filtre */}
+      <div className="flex flex-wrap items-end gap-3 mb-4 p-3 rounded-md border border-white/10 bg-white/[0.02]">
+        <div className="min-w-[180px]">
+          <Label className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 block">
+            Interfață
+          </Label>
+          <Select value={experience} onValueChange={setExperience}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Toate interfețele</SelectItem>
+              {experiences.map((e) => (
+                <SelectItem key={e.slug} value={e.slug}>
+                  {e.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {experience !== 'all' && (
+          <Button variant="ghost" size="sm" onClick={() => setExperience('all')}>
+            Resetează
+          </Button>
+        )}
+      </div>
+
       {isLoading ? (
         <Skeleton className="h-72 w-full" />
       ) : (data ?? []).length === 0 ? (
-        <Empty icon={<Music2 className="h-5 w-5" />} title="Nicio generare încă" />
+        <Empty
+          icon={<Music2 className="h-5 w-5" />}
+          title={experience !== 'all' ? 'Nicio generare pe interfața aleasă' : 'Nicio generare încă'}
+          description={experience !== 'all' ? 'Încearcă să resetezi filtrul.' : undefined}
+        />
       ) : (
         <>
         {/* Mobil: carduri */}
@@ -193,6 +237,7 @@ export default function GenerationsPage() {
 
                 <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
                   {isAllSelected && <SiteBadge siteId={g.siteId} />}
+                  <ExperienceBadge slug={g.experienceSlug} />
                   <code>{g.style}</code>
                   <span className="text-muted-foreground">/</span>
                   <code>{voiceLabel(g.voiceArtist)}</code>
@@ -251,6 +296,7 @@ export default function GenerationsPage() {
             <TableRow>
               <TableHead>Creată</TableHead>
               {isAllSelected && <TableHead>Site</TableHead>}
+              <TableHead>Interfață</TableHead>
               <TableHead>Tip</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Unlock</TableHead>
@@ -275,6 +321,9 @@ export default function GenerationsPage() {
                       <SiteBadge siteId={g.siteId} />
                     </TableCell>
                   )}
+                  <TableCell>
+                    <ExperienceBadge slug={g.experienceSlug} />
+                  </TableCell>
                   <TableCell>
                     <Badge variant={g.type === 'demo' ? 'info' : 'success'}>{g.type}</Badge>
                   </TableCell>
