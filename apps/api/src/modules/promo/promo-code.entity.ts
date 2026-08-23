@@ -58,11 +58,12 @@ export class PromoCode {
    * Sursa codului: 'admin' (creat manual din /promo), 'roata' (câștigat la roata norocului),
    * 'ai_request' (emis de AI Irina la cererea userului, max 20%),
    * 'recovery' (emis automat de programul de recovery emails — abandon plată),
-   * 'post_generation' (cod de fidelizare 40% trimis în emailul de melodie finalizată).
+   * 'post_generation' (cod de fidelizare 40% trimis în emailul de melodie finalizată),
+   * 'social_follow' (40% după follow TikTok + Facebook pe pagina manelei).
    * NULL pentru date legacy (înainte de tracking).
    */
   @Column({ type: 'varchar', length: 32, nullable: true })
-  source!: 'admin' | 'roata' | 'ai_request' | 'recovery' | 'post_generation' | null;
+  source!: 'admin' | 'roata' | 'ai_request' | 'recovery' | 'post_generation' | 'social_follow' | null;
 
   /** Dacă true, codul a fost emis de AI agent (audit pentru a urmări costul reducerilor). */
   @Column({ type: 'boolean', default: false })

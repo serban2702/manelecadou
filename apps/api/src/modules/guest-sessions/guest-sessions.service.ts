@@ -1,15 +1,19 @@
 import { Inject, Injectable, NotFoundException, Optional, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { ModuleRef } from '@nestjs/core';
 import { Repository } from 'typeorm';
 import { GuestSession } from './guest-session.entity';
 import { IdentityService } from '../identity/identity.service';
+import { PromoService } from '../promo/promo.service';
 
 @Injectable()
 export class GuestSessionsService {
   constructor(
     @InjectRepository(GuestSession)
     private readonly repo: Repository<GuestSession>,
-    @Optional() @Inject(forwardRef(() => IdentityService))
+    private readonly moduleRef: ModuleRef,
+    @Optional()
+    @Inject(forwardRef(() => IdentityService))
     private readonly identity?: IdentityService,
   ) {}
 
@@ -70,6 +74,49 @@ export class GuestSessionsService {
 
   get repository(): Repository<GuestSession> {
     return this.repo;
+  }
+
+  followState(g: GuestSession): {
+    facebook: boolean;
+    tiktok: boolean;
+    promoCode: string | null;
+  } {
+    const meta = (g.meta ?? {}) as Record<string, unknown>;
+    return {
+      facebook: typeof meta.followFacebookAt === 'string' && !!meta.followFacebookAt,
+      tiktok: typeof meta.followTiktokAt === 'string' && !!meta.followTiktokAt,
+      promoCode: typeof meta.followPromoCode === 'string' ? meta.followPromoCode : null,
+    };
+  }
+
+  async markSocialFollow(
+    id: string,
+    network: 'facebook' | 'tiktok',
+    siteId: string | null,
+  ): Promise<{ facebook: boolean; tiktok: boolean; promoCode: string | null }> {
+    const g = await this.getOrThrow(id);
+    const meta: Record<string, unknown> = { ...(g.meta ?? {}) };
+    const now = new Date().toISOString();
+    if (network === 'facebook' && !meta.followFacebookAt) meta.followFacebookAt = now;
+    if (network === 'tiktok' && !meta.followTiktokAt) meta.followTiktokAt = now;
+
+    if (meta.followFacebookAt && meta.followTiktokAt && !meta.followPromoCode) {
+      try {
+        const promoSvc = this.moduleRef.get(PromoService, { strict: false });
+        const promo = await promoSvc.issueSocialFollowDiscount({
+          siteId: g.siteId ?? siteId,
+          guestId: g.id,
+          email: g.email,
+        });
+        meta.followPromoCode = promo.code;
+      } catch {
+        /* PromoService indisponibil — flag-urile de follow rămân, codul se emite la următorul click */
+      }
+    }
+
+    g.meta = meta;
+    await this.repo.save(g);
+    return this.followState(g);
   }
 }
 

@@ -115,12 +115,12 @@ export class IdentityService {
     const assigned = resolveExperienceSlug({
       uiParam: dto.uiParam,
       cookieSlug: dto.cookieSlug,
-      personSlug: person.experienceSlug,
       utm: dto.utm,
       config: site?.experienceConfig ?? null,
     });
-    // ?ui= always rewrites person slug. Otherwise keep existing person slug.
-    if (assigned.reason === 'url' || !person.experienceSlug) {
+    // Sticky UI = cookie / ?ui= / UTM. Fingerprint nu suprascrie default-ul din admin
+    // (incognito tot are același deviceKey).
+    if (assigned.reason === 'url' || assigned.reason === 'utm' || assigned.reason === 'cookie' || !person.experienceSlug) {
       person.experienceSlug = assigned.slug;
     }
     person.lastSeenAt = new Date();

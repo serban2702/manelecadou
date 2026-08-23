@@ -49,6 +49,7 @@ import { MarketingModule } from './modules/marketing/marketing.module';
 import { CollageModule } from './modules/collage/collage.module';
 import { RecoveryModule } from './modules/recovery/recovery.module';
 import { FxModule } from './modules/fx/fx.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { FxModule } from './modules/fx/fx.module';
       }),
     }),
     DatabaseModule,
+    StorageModule,
     SitesModule,
     IdentityModule,
     ExperiencesModule,

@@ -10,7 +10,7 @@ import { ChatGateway } from '../chat/chat.gateway';
 import { Conversation, WizardData, WizardState } from '../chat/conversation.entity';
 import { ChatMessage, ChatMessagePayload } from '../chat/message.entity';
 import { PaymentsService } from '../payments/payments.service';
-import { normalizeTier, packageLabel, packageDef, currencyWord, chatPackageUpsellRo, packageCompareAtCents, type PackageTier } from '../payments/packages';
+import { normalizeTier, packageLabel, packageDef, PACKAGE_FEATURES, currencyWord, chatPackageUpsellRo, packageCompareAtCents, type PackageTier } from '../payments/packages';
 import { packageTotalCents } from '../payments/pricing';
 import { GenerationsService } from '../generations/generations.service';
 import { Generation } from '../generations/generation.entity';
@@ -1811,11 +1811,26 @@ banilor și nu spune că are „drept de refund 30 zile" (vezi regula 29). BUG o
 conv 9d844ab9: AI a spus clientului că are drept de refund 30 zile — fals, nu oferim refund.
 
 PACHETE (în chat le prezinți pe TOATE 3 — chiar înainte de linkul de plată, vezi ETAPA 5.5):
-- STANDARD = ${price} (preț de intrare — maneaua personalizată), durează ${basicDuration}.
-- PLUS = ${plusPrice}${plusOldPrice ? ` (REDUS de la ${plusOldPrice} — ofertă valabilă încă 3 zile)` : ''} (mai lungă și mai calitativă + imagini pentru social media), durează ${plusDuration}.
-- PREMIUM = ${premiumPrice} (tot ce e în Plus + videoclip + pagină premium de ascultare), durează ${premiumDuration}.
+- STANDARD = ${price} (preț de intrare — maneaua personalizată, 1 refacere gratuită), durează ${basicDuration}.
+- PLUS = ${plusPrice}${plusOldPrice ? ` (REDUS de la ${plusOldPrice} — ofertă valabilă încă 3 zile)` : ''} (mai lungă + colaj video cu maxim 4 poze, doar pe refren; 2 refaceri gratuite; 25% reducere la următoarea manea), durează ${plusDuration}.
+- PREMIUM = ${premiumPrice} (tot ce e în Plus + colaj video cu până la 15 poze pe TOATĂ melodia + felicitare + pagină premium; 3 refaceri gratuite; 40% reducere la următoarea manea), durează ${premiumDuration}.
 Când userul întreabă „cât costă?", spune că prețul PLEACĂ DE LA ${price} (Standard) și că
 sunt 3 pachete din care alege — nu ascunde variantele Plus și Premium.
+
+📸 SINGURUL livrabil cu poze e COLAJUL VIDEO (pozele clientului + melodia pe fundal):
+- Standard — NU are colaj deloc.
+- Plus — colaj cu MAXIM 4 poze, doar pe REFREN.
+- Premium — colaj cu până la 15 poze, pe TOATĂ melodia.
+Clientul își încarcă SINGUR pozele, gratuit, de pe pagina melodiei (/m/...), DUPĂ livrare — nu i le
+punem noi și nu le trimite în chat (vezi regula 32).
+⛔ LIVRABILE SCOASE DIN OFERTĂ — nu mai există la NICIUN pachet și NU le mai oferi NICIODATĂ,
+nici ca bonus, nici ca „primești și...": „poza de share" / imaginea statică de la distribuirea
+linkului, imaginile pentru social media (TikTok/Instagram), videoclipul generat automat pe piesă.
+(Comenzile plătite ÎNAINTE de scoatere, care le aveau vândute, le primesc în continuare printr-un
+proces separat — dar asta nu e ceva ce se OFERĂ acum, în chat.)
+🎁 Felicitarea personalizată și postarea pe Facebook/TikTok de la Premium le face ECHIPA, manual —
+nu vin automat odată cu melodia. Le poți menționa ca beneficiu real al pachetului, dar ⛔ NU promite
+un termen („în X minute/ore", „imediat după plată") și NU spune că se generează automat.
 
 ⏱️ CÂT DUREAZĂ MELODIA (lungimea piesei — NU confunda cu timpul de generare de 5-10 min):
 Standard ${basicDuration}, Plus ${plusDuration}, Premium ${premiumDuration} — durate aproximative, dar REALE.
@@ -2324,12 +2339,15 @@ ETAPA 5.5 — UPSELL PACHET (OBLIGATORIU înainte de finalize — NU-l sări):
     „${packageUpsell}"
   → 💎 RECOMANDĂ ACTIV varianta PLUS (${plusPrice}) sau PREMIUM (${premiumPrice}) — cu
     căldură, nu cu presiune: „cei mai mulți aleg Plus sau Premium — sună mai bine, e mai
-    lungă și primești și imaginile pentru TikTok/Instagram". Dacă userul ezită sau zice
-    că e mult, Standard e perfect — confirmă fără să insiști a doua oară.
+    lungă și îți poți pune pozele într-un colaj video peste melodie". Dacă userul ezită sau
+    zice că e mult, Standard e perfect — confirmă fără să insiști a doua oară.
+    ⛔ NU vinde „imagini pentru TikTok/Instagram" și NU „poza de share" — nu mai există (vezi
+    blocul PACHETE). Argumentul cu poze e COLAJUL VIDEO: la Plus 4 poze pe refren, la Premium
+    15 poze pe toată melodia.
   → Mapare alegere → tier:
     • „standard" / „cel mai ieftin" / „simplu" / „${price}" → wizard_update({packageTier: 'basic'})
-    • „plus" / „mijloc" / „mai bună" / „cu imagini" / „${plusPrice}" → wizard_update({packageTier: 'plus'})
-    • „premium" / „cea mai bună" / „completă" / „cu video" / „${premiumPrice}" → wizard_update({packageTier: 'premium'})
+    • „plus" / „mijloc" / „mai bună" / „cu poze" / „cu colaj" / „${plusPrice}" → wizard_update({packageTier: 'plus'})
+    • „premium" / „cea mai bună" / „completă" / „colaj pe toată melodia" / „mai multe poze" / „${premiumPrice}" → wizard_update({packageTier: 'premium'})
   → Dacă userul deja a cerut clar ceva (ex. „o vreau premium", „cea mai completă") poți
     seta direct tier-ul fără să mai întrebi.
   → Dacă userul nu alege explicit dar CONTINUĂ comanda („nu conteaza", „oricare", „tu
@@ -2350,7 +2368,7 @@ ETAPA 5.5 — UPSELL PACHET (OBLIGATORIU înainte de finalize — NU-l sări):
     «Pachet: Premium» dar linkul a ieșit «Plus» — client confuz, a crezut că ia premium.
   → 🚫 NU INVENTA prețuri, nume de pachete sau un al 4-lea pachet. Folosește EXCLUSIV textul
     «${packageUpsell}» de mai sus, cu prețurile EXACTE de acolo. NU există „ultra premium",
-    nu există colaj video la 69.99, nu există alte tier-uri. Dacă nu ești sigură pe un preț,
+    nu există un pachet de 69.99, nu există alte tier-uri. Dacă nu ești sigură pe un preț,
     folosește litera mesajului de upsell — NU improviza cifre. BUG observat 2026-06-19 conv
     8067beb4: AI a inventat „manea premium la 49.99" și „ultra premium la 69.99 cu colaj
     video" (pachete + prețuri inexistente), apoi a trimis lista corectă de 2 ori la rând cu
@@ -2708,15 +2726,21 @@ REGULI STRICTE:
     în sistem. Irina i-a trimis linkul melodiei vechi cu „ți-am trimis-o și pe email" și i-a
     repetat de 2 ori că la comanda asta apare Raul Blaga — fără să caute plata reclamată și fără
     să anunțe echipa. Clientul a rămas convins că a plătit 69 lei degeaba.
-32. ⛔ POZE / IMAGINI / COLAJ VIDEO NU SUNT MODIFICARE DE MELODIE. Pozele de share și
-    colajul video sunt FEATURE-URI DE PACHET pe pagina melodiei (/m/...). Sunt DOUĂ
-    livrabile DIFERITE — nu le amesteca: (1) „poza de share" = imaginea STATICĂ afișată
-    când distribui linkul (Plus și Premium; se alege/încarcă din secțiunea „Poza ta de
-    share"); (2) „colajul video" = VIDEO cu pozele clientului și melodia pe fundal —
-    există DOAR la Premium. Când clientul cere „să pun o fotografie și pe fundal să fie
-    melodia" / „poza peste melodie" / „video cu pozele mele" → vrea COLAJUL VIDEO
-    (Premium), NU poza de share. Clientul își încarcă SINGUR pozele direct de pe
-    pagina piesei, GRATUIT, fără nicio regenerare. NU apela
+32. ⛔ POZE / IMAGINI / COLAJ VIDEO NU SUNT MODIFICARE DE MELODIE. Colajul video e un
+    FEATURE DE PACHET pe pagina melodiei (/m/...), nu o refacere a piesei. E SINGURUL
+    livrabil cu poze pe care îl avem: VIDEO cu pozele clientului și melodia pe fundal.
+    • Standard — NU include colaj deloc.
+    • Plus — colaj cu MAXIM 4 poze, doar pe REFREN.
+    • Premium — colaj cu până la 15 poze, pe TOATĂ melodia.
+    ⛔ NU mai există „poza de share" (imaginea statică de la distribuirea linkului), NU
+    există imagini pentru social media și NU există videoclip generat automat pe piesă —
+    au fost SCOASE din ofertă. Nu le pomeni și nu le oferi NIMĂNUI, la niciun pachet.
+    (Clienții care le-au plătit ÎNAINTE de scoatere le primesc în continuare printr-un
+    proces separat — dar nu se mai vând și nu se mai promit în chat.)
+    Când clientul cere „să pun o fotografie și pe fundal să fie melodia" / „poza peste
+    melodie" / „video cu pozele mele" / „poza de share" → vrea COLAJUL VIDEO: îi trebuie
+    Plus (4 poze, refren) sau Premium (15 poze, toată melodia). Clientul își încarcă SINGUR
+    pozele direct de pe pagina piesei, GRATUIT, fără nicio regenerare. NU apela
     request_modification pentru poze/imagini/video — regenerarea reface DOAR audio+versuri
     și NU poate adăuga poze; ai încasa bani pentru ceva ce nu se livrează. Dacă userul vrea
     poze/colaj: explică-i unde le încarcă pe pagina melodiei; dacă pachetul lui nu include
@@ -2726,8 +2750,8 @@ REGULI STRICTE:
     NU include feature-ul de poze (Standard/basic — nu are încărcare de poze/colaj). NU o
     trata ca eroare de UI de îndrumat pas-cu-pas la nesfârșit și NU bucla cerând iar și iar
     email/link ca „să găsești comanda" doar ca s-o explici. Spune DIRECT și scurt: la pachetul
-    Standard nu e inclusă încărcarea de poze (de asta rămâne sigla); pentru poza de share îi
-    trebuie Plus, iar pentru colajul video cu pozele lui — Premium. Abia dacă insistă că a
+    Standard nu e inclusă încărcarea de poze (de asta rămâne sigla); pentru colaj îi trebuie
+    Plus (4 poze, doar refrenul) sau Premium (15 poze, toată melodia). Abia dacă insistă că a
     plătit pachetul cu poze dar tot nu merge → inspect_customer_data + escalate_to_human.
     BUG observat 2026-07-08 conv 7d48c0fe: user a vrut „poze la varianta 3" (ca la varianta 1,
     unde și le pusese singur), AI a vândut o „modificare amplă" de 29.99 → s-a regenerat
@@ -2749,24 +2773,31 @@ REGULI STRICTE:
     identificată. Acum pachetul vine în check_order_status → folosește-l.
     BUG observat 2026-08-13 conv eb815130 (ACELAȘI client, de data asta pe PLUS): aceeași
     cerere de colaj („o fotografie și pe fundal să fie melodia") → Irina a răspuns „la Plus
-    pozele merg din pagina piesei" (a confundat poza de share cu colajul video) și a ținut
-    clientul în troubleshooting („poză mai mică", „ce telefon", „Chrome sau Facebook?",
-    „aia e bara de Conținut privat") pe o funcție pe care Plus n-o are. Colajul video =
-    DOAR Premium. Dacă pachetul n-are colaj → spui direct, oferi upgrade, NU depanezi.
+    pozele merg din pagina piesei" și a ținut clientul în troubleshooting („poză mai mică",
+    „ce telefon", „Chrome sau Facebook?", „aia e bara de Conținut privat") pe o funcție pe
+    care pachetul lui, la acel moment, n-o avea. ⚠️ ATENȚIE, CONCLUZIA S-A SCHIMBAT: în
+    august 2026 colajul video era DOAR la Premium, de asta răspunsul era greșit. ACUM Plus
+    ARE colaj (4 poze, doar pe refren), iar Premium îl are pe toată melodia (15 poze) — deci
+    unui client pe Plus îi confirmi colajul, dar cu limitele lui reale. Lecția care rămâne:
+    verifici pachetul REAL în check_order_status înainte să confirmi ceva și, dacă pachetul
+    n-are feature-ul cerut, spui direct și oferi upgrade — NU depanezi la nesfârșit.
     📸 POZE ÎNAINTE DE COMANDĂ (user fără comandă încă, întreabă „pot să-ți dau poze?"):
     răspunde SCURT și adevărat, într-un singur mesaj, apoi continuă tunelul:
     • ⛔ NU poate trimite poze aici, în chat — widgetul lui nu are buton de încărcare. NU-l
       invita („trimite-mi pozele", „dă-mi pozele aici") — ar aștepta degeaba și ar pleca.
     • ⛔ NU le punem NOI. Clientul își încarcă SINGUR pozele, gratuit, direct de pe pagina
       melodiei (/m/...), DUPĂ livrare. Nu promite „le punem noi în pagina melodiei".
-    • Ce pachet îi trebuie: poza de share (imaginea statică de la distribuirea linkului) —
-      Plus sau Premium; colajul video (pozele lui + melodia pe fundal) — DOAR Premium.
+    • Ce pachet îi trebuie: colajul video (pozele lui + melodia pe fundal) vine la Plus
+      (maxim 4 poze, doar pe refren) și la Premium (până la 15 poze, pe toată melodia). La
+      Standard nu există. ⛔ NU-i oferi „poza de share" / imagini de social media / videoclip
+      generat automat — nu mai există (vezi blocul PACHETE).
     • ⛔ NU lăsa subiectul fără răspuns. Dacă userul aduce vorba de poze/video/colaj și tu
       răspunzi doar cu prețul sau doar cu pachetele, el rămâne cu întrebarea în aer și
       pleacă. Întâi îi lămurești pozele într-o propoziție, apoi mergi mai departe.
     BUG observat 2026-08-17 conv d379c0ab: „Pot să-ți dau poze" → „Da, sigur. Dacă vrei să le
-    punem în pagina melodiei sau în colaj, îmi spui ce pachet alegi" (le punem noi = fals,
-    share și colaj amestecate); userul a insistat „Poze și sa fie ceva de iubita mea" și a
+    punem în pagina melodiei sau în colaj, îmi spui ce pachet alegi" (le punem noi = fals, iar
+    „în pagina melodiei" era un al doilea livrabil inventat pe lângă colaj — azi există DOAR
+    colajul video); userul a insistat „Poze și sa fie ceva de iubita mea" și a
     primit „Ce frumos 🥰 ... Maneaua costa 29.99 lei. Sunteti de acord?" — pozele, cerute de
     două ori, n-au mai fost atinse niciodată. Clientul nu a mai scris.
 33. RETRAGEREA UNEI MODIFICĂRI CERUTE (link de modificare NEPLĂTIT încă): schimbările se
@@ -2865,7 +2896,7 @@ REGULI STRICTE:
             languageHint: { type: 'string', description: 'OPTIONAL: limba în care userul cere EXPLICIT versurile, DOAR dacă diferă de limba site-ului (ex. „ucraineană", „rusă", „germană"). Setează-o imediat ce userul cere altă limbă. OBLIGATORIU apoi: generează versurile cu generate_lyrics (ies în acea limbă și se cântă exact așa) și lasă userul să le aprobe ÎNAINTE de plată — altfel melodia iese în limba site-ului. Lasă GOL dacă userul vrea limba implicită a site-ului.' },
             voiceArtist: { type: 'string', enum: ['male', 'female'], description: 'Vocea maneaua: male (bărbătească) sau female (feminină).' },
             customLyrics: { type: 'string', description: 'Versurile complete pe care userul le SCRIE/LIPEȘTE el însuși („cu versurile mele" + un bloc de strofe/rânduri de cântec). Salvate VERBATIM și SACRE — se cântă EXACT așa, writer-ul NU le rescrie. Pune AICI orice bloc de versuri finite lipit de user, NU în message. NU rula generate_lyrics peste ele.' },
-            packageTier: { type: 'string', enum: ['basic', 'plus', 'premium'], description: 'Pachetul ales de user. În CHAT oferi toate 3: basic = STANDARD (preț de intrare, doar manea), plus = PLUS (mai lungă + mai calitativă + imagini social), premium = PREMIUM (tot ce e în Plus + videoclip + pagină premium). Setează-l în ETAPA 5.5, înainte de finalize. Default basic dacă userul nu alege.' },
+            packageTier: { type: 'string', enum: ['basic', 'plus', 'premium'], description: 'Pachetul ales de user. În CHAT oferi toate 3: basic = STANDARD (preț de intrare, doar maneaua, fără colaj), plus = PLUS (mai lungă + colaj video cu maxim 4 poze, doar pe refren), premium = PREMIUM (colaj video cu până la 15 poze pe toată melodia + felicitare + pagină premium). Setează-l în ETAPA 5.5, înainte de finalize. Default basic dacă userul nu alege.' },
           },
         },
       },
@@ -2957,7 +2988,7 @@ REGULI STRICTE:
       },
       {
         name: 'check_order_status',
-        description: 'Verifică statusul ultimei comenzi din conversația curentă (plată + generare manea). Folosește când userul întreabă „unde-i melodia?", „a ajuns plata?", „cât mai durează?", înainte să raportezi progresul, ȘI OBLIGATORIU înainte de orice răspuns despre POZE / COLAJ / imagini (packageInfo îți spune dacă pachetul clientului le include). Returnează: paid (true/false), generationStatus, audioReady, linkToSong, packageInfo {tier, label, canUploadPhotos, socialImages, videoCollage}.',
+        description: 'Verifică statusul ultimei comenzi din conversația curentă (plată + generare manea). Folosește când userul întreabă „unde-i melodia?", „a ajuns plata?", „cât mai durează?", înainte să raportezi progresul, ȘI OBLIGATORIU înainte de orice răspuns despre POZE / COLAJ / imagini (packageInfo îți spune dacă pachetul clientului le include). Returnează: paid (true/false), generationStatus, audioReady, linkToSong, packageInfo {tier, label, canUploadPhotos, videoCollage, premiumPage}. `canUploadPhotos`/`videoCollage` = are sau nu COLAJ VIDEO (singurul livrabil cu poze: Plus 4 poze pe refren, Premium 15 poze pe toată melodia). Câmpul `socialImages` e mereu false — imaginile social au fost scoase din ofertă.',
         parameters: { type: 'object', properties: {} },
       },
       {
@@ -3535,13 +3566,15 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     // intre și să contrazică AI-ul în fața clientului.
     const tier = normalizeTier((generation as { packageTier?: string | null }).packageTier);
     const def = packageDef(tier);
+    const feat = PACKAGE_FEATURES[tier];
     const packageInfo = {
       tier,
       label: packageLabel(tier),
-      socialImages: def.socialImage,
-      videoCollage: def.video,
+      socialImages: false,
+      videoCollage: feat.collage,
+      greetingClip: feat.greetingClip,
       premiumPage: def.premiumPage,
-      canUploadPhotos: def.socialImage || def.video,
+      canUploadPhotos: feat.collage,
     };
     let upgradePrices = '';
     try {
@@ -3555,26 +3588,27 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       /* fără prețuri e ok — regula rămâne validă */
     }
     // BUG observat 2026-08-13 conv eb815130 (client pe PLUS): „vreau să pun o fotografie și
-    // pe fundal să fie melodia" = COLAJ VIDEO (doar Premium), dar instrucțiunea de aici zicea
-    // generic „INCLUDE poze → confirmă și îndrumă-l pe pagina piesei" pentru orice pachet cu
+    // pe fundal să fie melodia" = COLAJ VIDEO, dar instrucțiunea de aici zicea generic
+    // „INCLUDE poze → confirmă și îndrumă-l pe pagina piesei" pentru orice pachet cu
     // socialImage. Irina a confirmat de 3× că „la Plus pozele merg din pagina piesei" și a
     // ținut clientul în troubleshooting (poza mai mică, browser, telefon, „Conținut privat")
-    // pe o funcție pe care pachetul lui n-o are; un coleg uman a intrat cu „pentru poză
-    // trebuie maneaua premium". Distincția share vs colaj e acum explicită per pachet.
+    // pe o funcție pe care pachetul lui, la acel moment, n-o avea; un coleg uman a intrat cu
+    // „pentru poză trebuie maneaua premium".
+    // ⚠️ CONCLUZIA S-A SCHIMBAT: atunci colajul era DOAR la Premium. ACUM colajul există și
+    // la Plus (max 4 poze, doar refrenul) și la Premium (până la 15 poze, toată piesa), iar
+    // „poza de share" / imaginile social au fost SCOASE complet (PACKAGES.socialImage=false
+    // peste tot). Instrucțiunea de mai jos e explicită per pachet, cu limitele reale.
     instruction +=
       `\n\n📦 PACHETUL comenzii: ${packageInfo.label} (${tier}). ` +
-      `⚠️ Sunt DOUĂ livrabile diferite cu poze — nu le amesteca: ` +
-      `(1) „poza de share" = imaginea statică afișată când distribui linkul melodiei (Plus și Premium; se alege/încarcă din secțiunea „📸 Poza ta de share" de pe pagina piesei); ` +
-      `(2) „colajul video" = video cu pozele clientului și melodia pe fundal (DOAR Premium). ` +
-      `Când clientul cere „să pun o fotografie și pe fundal să fie melodia" / „poza peste melodie" / „video cu pozele mele" → vrea COLAJUL VIDEO, nu poza de share. ` +
-      (def.video
-        ? `Pachetul lui include TOT (poza de share + colaj video): confirmă și îndrumă-l pe pagina piesei${linkToSong ? ` (${linkToSong})` : ''} — își încarcă singur pozele, gratuit, fără regenerare.`
-        : def.socialImage
-          ? `⛔ Pachetul lui ${packageInfo.label} NU include colajul video — are DOAR poza de share. Dacă cere poza cu melodia pe fundal / video cu poze: spune-i DIRECT și o SINGURĂ dată că la ${packageInfo.label} colajul video nu e inclus și că îi trebuie Premium, apoi întreabă-l dacă vrea upgrade.${upgradePrices} ` +
-            `⛔ NU-i spune generic „pozele merg la ${packageInfo.label}", NU-l trimite să „încarce poza" ca soluție la colaj și NU porni troubleshooting (poză mai mică / alt browser / ce telefon ai) pe o funcție pe care pachetul lui n-o are.`
-          : `⛔ NU include NICIO parte cu poze (nici poza de share, nici colaj video) — clientul NU are butonul de poze pe pagina piesei. ` +
-            `Dacă întreabă „pot pune o fotografie / poză de fundal / colaj?" → răspunde DIRECT și o SINGURĂ dată: la pachetul ${packageInfo.label} nu e inclusă partea de poze; pentru poza de share îi trebuie Plus, iar pentru colaj video cu pozele lui — Premium.${upgradePrices} ` +
-            `⛔ NU-i spune „da, se poate", NU-i promite ghidaj pas-cu-pas și NU inventa un „buton de colaj" — nu există la pachetul lui. Nu repeta explicația reformulat: spui o dată, clar, apoi întrebi dacă vrea upgrade.`) +
+      `SINGURUL livrabil cu poze e COLAJUL VIDEO: clientul își încarcă singur pozele de pe pagina melodiei, iar noi le montăm pe melodie. ` +
+      `⛔ NU mai promiți „poza de share", NU mai promiți imagini de social media și NU mai promiți videoclip generat automat pe piesă — astea NU mai există la niciun pachet. ` +
+      (feat.collage
+        ? `Pachetul lui INCLUDE colajul: confirmă și îndrumă-l pe pagina piesei${linkToSong ? ` (${linkToSong})` : ''} — își încarcă singur pozele, gratuit, fără regenerare.` +
+          (tier === 'plus'
+            ? ` La Plus colajul e pe refren, maxim 4 poze. Dacă vrea toată piesa / mai multe poze → Premium.`
+            : ` La Premium colajul e pe toată piesa, până la 15 poze.`)
+        : `⛔ NU include colaj / încărcare de poze. Dacă întreabă „pot pune o fotografie / colaj?" → o SINGURĂ dată: la ${packageInfo.label} nu e inclus; pentru colaj îi trebuie Plus (4 poze, refren) sau Premium (15 poze, toată piesa).${upgradePrices} ` +
+          `⛔ NU-i spune „da, se poate" și NU inventa un buton de poze.`) +
       (ctx.conv.email
         ? ` ⛔ Comanda e DEJA identificată — NU cere emailul „ca să verifici/cauți" (îl ai: ${ctx.conv.email}). Răspunde direct la ce a întrebat.`
         : ` ⛔ Comanda e DEJA identificată în conversație — NU cere emailul „ca să verifici". Răspunde direct la ce a întrebat.`);
@@ -4973,9 +5007,48 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       }
     }
 
-    // GUARD anti-PROMISIUNE DE POZE pe un pachet care NU le include. Încărcarea de poze /
-    // colajul video există DOAR la Plus (imagini social) și Premium (colaj video). Pe Basic
-    // butonul nu există deloc, deci orice „da, se poate pune poza pe pagina piesei" e o
+    // GUARD anti-LIVRABIL MORT. „Poza de share" (imaginea statică de la distribuirea
+    // linkului), imaginile pentru social media și videoclipul generat automat pe piesă au
+    // fost SCOASE din ofertă — nu mai există la NICIUN pachet. Singurul livrabil cu poze e
+    // COLAJUL VIDEO (Plus: max 4 poze, doar refrenul; Premium: până la 15 poze, toată
+    // melodia). Comenzile plătite ÎNAINTE de scoatere, care le aveau vândute, le primesc în
+    // continuare printr-un proces separat — dar Irina nu are voie să le mai OFERE nimănui.
+    // Garda NU depinde de pachet (livrabilele nu există nicăieri), deci rulează și la
+    // PRE-VÂNZARE, unde încă nu avem o comandă din care să citim tier-ul — exact locul în
+    // care promisiunea costă cel mai mult.
+    {
+      const t = trimmed.toLowerCase();
+      const deadRe =
+        /(poz[aăe] de share|imagin[ei] de share|imagini (?:de |pentru )?social|videoclip generat|clip generat automat|clip pe pies[aă])/;
+      const m = deadRe.exec(t);
+      if (m) {
+        // „nu mai oferim poza de share" / „poza de share nu mai există" / „au fost scoase"
+        // sunt răspunsuri CORECTE — blocăm PROMISIUNEA, nu negarea. Negația poate sta și
+        // înainte, și după termen, în aceeași propoziție.
+        const before = t.slice(Math.max(0, m.index - 60), m.index);
+        const after = t.slice(m.index + m[0].length, m.index + m[0].length + 45);
+        const negated =
+          /\bnu\b[^.!?]{0,30}$/.test(before) ||
+          /^[^.!?]{0,15}\bnu\b[^.!?]{0,25}(exist|ofer|avem|facem|include|vine|se mai)/.test(after) ||
+          /^[^.!?]{0,25}(a fost|au fost) scoas/.test(after);
+        if (!negated) {
+          this.logger.warn(`DEAD_DELIVERABLE blocked on conv=${ctx.conv.id.slice(0, 8)}`);
+          return {
+            sent: false,
+            messageType: 'noop',
+            status: 'DEAD_DELIVERABLE_BLOCKED',
+            instruction:
+              `STAI — „poza de share", imaginile pentru social media și videoclipul generat automat pe piesă NU mai există la niciun pachet. Nu le oferi și nu le pomeni. ` +
+              `Singurul livrabil cu poze e COLAJUL VIDEO: la Plus maxim 4 poze și doar pe refren, la Premium până la 15 poze pe toată melodia; la Standard nu există deloc. ` +
+              `Clientul își încarcă SINGUR pozele, gratuit, de pe pagina melodiei, după livrare. Rescrie mesajul vorbind DOAR despre colaj.`,
+          };
+        }
+      }
+    }
+
+    // GUARD anti-PROMISIUNE DE POZE pe un pachet care NU le include. Colajul video există
+    // DOAR la Plus (max 4 poze, doar refrenul) și Premium (până la 15 poze, toată melodia).
+    // Pe Basic butonul nu există deloc, deci orice „da, se poate pune poza pe pagina piesei" e o
     // promisiune imposibilă — clientul o încearcă, nu găsește nimic și un coleg uman trebuie
     // să contrazică AI-ul în fața lui. BUG observat 2026-07-23 conv eb815130: client pe Basic
     // („vreau să pun o fotografie și pe fundal să fie melodia") → Irina a confirmat de 3 ori
@@ -4996,39 +5069,17 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           const resolved = convFresh ? await this.resolveCustomerGeneration(convFresh) : null;
           if (resolved) {
             const gTier = normalizeTier((resolved.generation as { packageTier?: string | null }).packageTier);
-            const gDef = packageDef(gTier);
-            // Pe Basic, „îți trebuie Plus/Premium" e upsell legitim → trece. Restul se blochează.
-            if (!gDef.socialImage && !gDef.video && !mentionsUpgrade && !/\bplus\b/.test(t)) {
+            const gFeat = PACKAGE_FEATURES[gTier];
+            if (!gFeat.collage && !mentionsUpgrade && !/\bplus\b/.test(t) && !/\bpremium\b/.test(t)) {
               this.logger.warn(`PHOTO_PROMISE blocked on conv=${ctx.conv.id.slice(0, 8)} — pachet ${gTier} fără poze.`);
               return {
                 sent: false,
                 messageType: 'noop',
                 status: 'PHOTO_PROMISE_ON_BASIC_BLOCKED',
                 instruction:
-                  `STAI — clientul are pachetul ${packageLabel(gTier)}, care NU include încărcarea de poze / colaj video / imagini social. ` +
-                  `Mesajul tău îi promitea că „se poate" pune poza — pe pagina lui butonul ăla NU există, deci l-ai trimite după o funcție inexistentă și un coleg uman ar trebui să te contrazică în fața lui. ` +
-                  `Spune-i ADEVĂRUL, scurt și o SINGURĂ dată: la pachetul ${packageLabel(gTier)} nu e inclusă partea cu poze; pentru poza de share e nevoie de Plus, iar pentru colaj video cu pozele lui — Premium. ` +
-                  `Apoi întreabă-l dacă vrea upgrade. ⛔ NU reformula aceeași confirmare greșită și NU inventa pași de urmat.`,
-              };
-            }
-            // BUG observat 2026-08-13 conv eb815130 (client pe PLUS): „la Plus pozele merg din
-            // pagina piesei" repetat de 3×, pe o cerere de COLAJ („o fotografie și pe fundal să
-            // fie melodia") — colajul video există DOAR la Premium. Vechiul „denies" lăsa orice
-            // mesaj care conținea „plus" să treacă, deci exact promisiunile greșite scăpau.
-            // Aici blocăm pe pachete FĂRĂ video promisiunile care vorbesc de colaj/fundal/video
-            // fără să numească Premium ca soluție.
-            const promisesCollage = /(colaj|slideshow|fundal|videoclip|\bvideo\b|peste melodie)/.test(t);
-            if (!gDef.video && gDef.socialImage && promisesCollage && !mentionsUpgrade) {
-              this.logger.warn(`COLLAGE_PROMISE blocked on conv=${ctx.conv.id.slice(0, 8)} — pachet ${gTier} fără colaj video.`);
-              return {
-                sent: false,
-                messageType: 'noop',
-                status: 'COLLAGE_PROMISE_ON_PLUS_BLOCKED',
-                instruction:
-                  `STAI — clientul are pachetul ${packageLabel(gTier)}, care NU include colajul video cu pozele lui (există DOAR la Premium). ` +
-                  `La ${packageLabel(gTier)} are doar „poza de share" — imaginea statică de la distribuirea linkului, NU un video cu poza și melodia pe fundal. ` +
-                  `Spune-i DIRECT și o SINGURĂ dată: pentru colajul video cu pozele lui îi trebuie Premium, apoi întreabă-l dacă vrea upgrade. ` +
-                  `⛔ NU-l trimite să „încarce poza" ca soluție și NU porni troubleshooting (poză mai mică / alt browser / ce telefon) pe o funcție pe care pachetul lui n-o are.`,
+                  `STAI — clientul are pachetul ${packageLabel(gTier)}, care NU include încărcarea de poze / colajul video. ` +
+                  `Spune-i o SINGURĂ dată: la ${packageLabel(gTier)} nu e inclus colajul; pentru colaj îi trebuie Plus (maxim 4 poze, doar pe refren) sau Premium (până la 15 poze, pe toată melodia). ` +
+                  `Apoi întreabă-l dacă vrea upgrade. ⛔ NU-i oferi „poza de share", imagini de social media sau videoclip generat automat — nu mai există la niciun pachet.`,
               };
             }
           }
@@ -5065,7 +5116,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
             messageType: 'noop',
             status: 'PHOTO_HANDLING_MISPROMISE_BLOCKED',
             instruction:
-              'STAI — mesajul tău spune ceva neadevărat despre poze. ADEVĂRUL: clientul NU poate trimite poze aici în chat (widgetul lui nu are buton de încărcare) și NU le punem NOI — el și le încarcă SINGUR, gratuit, direct pe pagina melodiei, după livrare. Reformulează scurt și corect, fără să amesteci cele două livrabile: „poza de share" = imaginea statică de la distribuirea linkului (Plus și Premium), „colajul video" = video cu pozele lui și melodia pe fundal (DOAR Premium). Dacă încă nu are comandă, spune-i ce pachet îi trebuie pentru ce vrea și continuă comanda.',
+              'STAI — mesajul tău spune ceva neadevărat despre poze. ADEVĂRUL: clientul NU poate trimite poze aici în chat și NU le punem NOI — el și le încarcă SINGUR pe pagina melodiei, după livrare, dacă pachetul include colaj video (Plus: maxim 4 poze, doar pe refren; Premium: până la 15 poze, pe toată melodia; Standard: deloc). Nu-i oferi „poza de share", imagini de social media sau videoclip generat automat pe piesă — nu mai există. Dacă încă nu are comandă, spune-i ce pachet îi trebuie pentru colaj și continuă comanda.',
           };
         }
       }
@@ -7048,8 +7099,9 @@ ${transcript}`;
     // Am prins: e pentru iubita ta. Maneaua costa 29.99 lei. Sunteti de acord?" — pozele,
     // cerute de DOUĂ ori, n-au mai fost atinse niciodată; clientul n-a mai scris. Pozele sunt
     // un subiect cu reguli proprii (regula 32): nu se trimit în chat, se încarcă singur pe
-    // pagina melodiei, share = Plus/Premium, colaj video = DOAR Premium. Blocăm o singură
-    // dată per run: quote-ul pleacă oricum dacă modelul reapelează.
+    // pagina melodiei, iar singurul livrabil cu poze e colajul video — Plus (max 4 poze, doar
+    // refrenul) și Premium (până la 15 poze, toată melodia); la Standard nu există. Blocăm o
+    // singură dată per run: quote-ul pleacă oricum dacă modelul reapelează.
     if (!ctx.photoQuestionNudged) {
       const lastUserMsg = await this.msg.findOne({
         where: { conversationId: ctx.conv.id, authorRole: 'user' },
@@ -7074,7 +7126,7 @@ ${transcript}`;
             sent: false,
             status: 'PHOTO_QUESTION_UNANSWERED',
             instruction:
-              'STAI — userul tocmai a adus vorba de POZE / imagini / colaj video, iar tu erai gata să-i răspunzi cu prețul, fără să atingi subiectul. Ignorat, subiectul îl face să plece. Răspunde-i ÎNTÂI, scurt și concret (un singur `send_message`, max 2 propoziții), cu adevărul din regula 32: pozele NU se trimit aici în chat (chatul nu are încărcare de fișiere de partea ta); clientul își încarcă SINGUR pozele, gratuit, direct pe pagina melodiei, după livrare — poza de share vine la Plus și Premium, iar colajul video (poze + melodia pe fundal) DOAR la Premium. NU promite că „poți să-i pui pozele" și NU-l invita să ți le trimită. ABIA DUPĂ acest răspuns continuă tunelul (preț / pachete).',
+              'STAI — userul tocmai a adus vorba de POZE / imagini / colaj video, iar tu erai gata să-i răspunzi cu prețul, fără să atingi subiectul. Ignorat, subiectul îl face să plece. Răspunde-i ÎNTÂI, scurt și concret (un singur `send_message`, max 2 propoziții), cu adevărul din regula 32: pozele NU se trimit aici în chat (chatul nu are încărcare de fișiere de partea ta); clientul își încarcă SINGUR pozele, gratuit, direct pe pagina melodiei, după livrare — singurul livrabil cu poze e COLAJUL VIDEO (poze + melodia pe fundal), care vine la Plus (maxim 4 poze, doar pe refren) și la Premium (până la 15 poze, pe toată melodia); la Standard nu există. ⛔ NU-i oferi „poza de share", imagini de social media sau videoclip generat automat — nu mai există. NU promite că „poți să-i pui pozele" și NU-l invita să ți le trimită. ABIA DUPĂ acest răspuns continuă tunelul (preț / pachete).',
           };
         }
       }

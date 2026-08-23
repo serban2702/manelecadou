@@ -99,6 +99,28 @@ export class PromoService {
     });
   }
 
+  /** 40% one-shot după follow TikTok + Facebook pe pagina manelei. Idempotent pe guest. */
+  async issueSocialFollowDiscount(input: {
+    siteId: string | null;
+    guestId: string;
+    email?: string | null;
+  }): Promise<PromoCode> {
+    const note = `social_follow guest:${input.guestId}`;
+    const existing = await this.codes.findOne({
+      where: { note, source: 'social_follow' },
+    });
+    if (existing) return existing;
+    return this.create({
+      siteId: input.siteId,
+      discountType: 'percent',
+      discountValue: 40,
+      maxUses: 1,
+      restrictedToEmail: null,
+      note,
+      source: 'social_follow',
+    });
+  }
+
   /** Listare admin. siteId === null → cross-site (admin „Toate"). */
   async list(siteId: string | null): Promise<PromoCode[]> {
     const where: FindOptionsWhere<PromoCode> = siteId ? { siteId } : {};

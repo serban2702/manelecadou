@@ -8,9 +8,11 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
     "lint": "eslint src --ext .ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --require ts-node/register --test \"src/**/*.spec.ts\""
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1116.0",
     "@nestjs/bullmq": "^10.2.1",
     "@nestjs/common": "^10.4.6",
     "@nestjs/config": "^3.2.3",

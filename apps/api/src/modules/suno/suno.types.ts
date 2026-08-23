@@ -3,6 +3,8 @@ export interface SunoGenerateInput {
   durationSec: number;
   style: string;
   occasion: string;
+  /** Prompt/tag extra de pe ocazie (dacă e setat în catalog). */
+  occasionPrompt?: string;
   recipientName: string;
   message: string;
   dedication?: string;

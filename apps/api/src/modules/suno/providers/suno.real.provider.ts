@@ -678,7 +678,7 @@ export class SunoRealProvider extends SunoProvider {
     const siteSuno = i.site?.suno;
     const styleOverride = siteSuno?.stylePromptMap?.[i.style];
     if (styleOverride) {
-      const occasionHint = i.occasion ? `, themed for ${i.occasion}` : '';
+      const occasionHint = occasionStyleHint(i);
       return genderTag + alignVocalGender(`${styleOverride}${occasionHint}`, i.vocalGender);
     }
     // Bază obligatorie: scări orientale + instrumentație + vocal style autentic manele.
@@ -738,7 +738,7 @@ export class SunoRealProvider extends SunoProvider {
     };
 
     const styleText = styleMap[i.style] ?? `${i.style} manele subgenre`;
-    const occasionHint = i.occasion ? `, themed for ${i.occasion}` : '';
+    const occasionHint = occasionStyleHint(i);
     return genderTag + alignVocalGender(`${CORE}, ${styleText}${occasionHint}`, i.vocalGender);
   }
 
@@ -868,6 +868,12 @@ function modelLimits(model: string): {
  * `\bman\b` nu prinde "woman", nici "Romanian") — word boundary garantează asta.
  * Versurile (lyrics) NU trec niciodată prin această funcție — sunt cântate literal.
  */
+function occasionStyleHint(i: SunoGenerateInput): string {
+  const extra = i.occasionPrompt?.trim();
+  if (extra) return `, ${extra}`;
+  return i.occasion ? `, themed for ${i.occasion}` : '';
+}
+
 function alignVocalGender(text: string, gender?: 'm' | 'f'): string {
   if (!text || (gender !== 'm' && gender !== 'f')) return text;
   if (gender === 'f') {
