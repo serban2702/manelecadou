@@ -2,9 +2,12 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { api, resolveMediaUrl, type CollageDto, type GenerationDto } from '@/lib/api';
 import { claimPlayback, releasePlayback } from '@/lib/audio-registry';
-import { cadouClipLabel, cadouClipTracks } from './video-tracks';
+import { useSite } from '@/lib/site-context';
+import { cadouClipLabel, cadouClipTracks, useCadouTrackLabels } from './video-tracks';
+import { CadouFold } from './Fold';
 
 function CadouClipPlayer({
   src,
@@ -15,6 +18,8 @@ function CadouClipPlayer({
   poster?: string | null;
   label: string;
 }) {
+  const site = useSite();
+  const t = useTranslations('cadou.video.section');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const stopRef = useRef<(() => void) | null>(null);
   const [busyShare, setBusyShare] = useState<'tiktok' | 'send' | null>(null);
@@ -40,7 +45,7 @@ function CadouClipPlayer({
 
   const fileShare = async (kind: 'tiktok' | 'send') => {
     setBusyShare(kind);
-    const title = `${label} — Manele Cadou`;
+    const title = t('shareTitle', { label, site: site.name });
     try {
       const res = await fetch(src);
       const blob = await res.blob();
@@ -50,9 +55,7 @@ function CadouClipPlayer({
         await navigator.share({
           files: [file],
           title,
-          text: kind === 'tiktok'
-            ? 'Videoclipul manelei mele — gata de TikTok'
-            : title,
+          text: kind === 'tiktok' ? t('shareTiktokText') : title,
         });
         return;
       }
@@ -98,7 +101,7 @@ function CadouClipPlayer({
           onClick={() => void fileShare('tiktok')}
           disabled={busyShare !== null}
         >
-          {busyShare === 'tiktok' ? 'Se pregătește…' : 'Postează pe TikTok'}
+          {busyShare === 'tiktok' ? t('shareTiktokBusy') : t('shareTiktok')}
         </button>
         <button
           type="button"
@@ -106,10 +109,10 @@ function CadouClipPlayer({
           onClick={() => void fileShare('send')}
           disabled={busyShare !== null}
         >
-          {busyShare === 'send' ? 'Se trimite…' : 'Trimite clipul'}
+          {busyShare === 'send' ? t('shareSendBusy') : t('shareSend')}
         </button>
         <a className="cadou-clip-btn" href={src} download>
-          Descarcă
+          {t('download')}
         </a>
       </div>
     </article>
@@ -117,13 +120,14 @@ function CadouClipPlayer({
 }
 
 function CadouClipLoader({ label }: { label: string }) {
+  const t = useTranslations('cadou.video.section');
   return (
     <article className="cadou-clip is-loading" aria-live="polite">
       <div className="cadou-clip-lab">{label}</div>
       <div className="cadou-clip-frame cadou-clip-wait">
         <span className="cadou-clip-spin" aria-hidden />
-        <strong>Montăm clipul</strong>
-        <span>Pozele tale pe melodie. Câteva minute.</span>
+        <strong>{t('loaderTitle')}</strong>
+        <span>{t('loaderSub')}</span>
       </div>
     </article>
   );
@@ -132,19 +136,26 @@ function CadouClipLoader({ label }: { label: string }) {
 export function CadouVideoSection({
   generation,
   cover,
+  password,
+  defaultOpen = true,
 }: {
   generation: GenerationDto;
   cover: string;
+  /** Parola de privacy (livrabil vechi) — un vizitator deblocat vede colajele. */
+  password?: string;
+  defaultOpen?: boolean;
 }) {
+  const t = useTranslations('cadou.video.section');
+  const trackLabels = useCadouTrackLabels();
   const g = generation;
-  const tracks = useMemo(() => cadouClipTracks(g), [g]);
+  const tracks = useMemo(() => cadouClipTracks(g, trackLabels), [g, trackLabels]);
   const [collages, setCollages] = useState<CollageDto[]>([]);
   const [polling, setPolling] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const list = await api.listCollages(g.id);
+      const list = await api.listCollages(g.id, password);
       if (cancelled) return;
       setCollages(list);
       if (list.some((c) => c.status === 'pending' || c.status === 'processing')) {
@@ -152,7 +163,7 @@ export function CadouVideoSection({
       }
     })();
     return () => { cancelled = true; };
-  }, [g.id]);
+  }, [g.id, password]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -163,7 +174,7 @@ export function CadouVideoSection({
   useEffect(() => {
     if (!polling) return;
     const tick = async () => {
-      const list = await api.listCollages(g.id);
+      const list = await api.listCollages(g.id, password);
       setCollages(list);
       if (!list.some((c) => c.status === 'pending' || c.status === 'processing')) {
         setPolling(false);
@@ -171,12 +182,12 @@ export function CadouVideoSection({
     };
     const id = setInterval(() => void tick(), 4000);
     return () => clearInterval(id);
-  }, [polling, g.id]);
+  }, [polling, g.id, password]);
 
   const byTrack = (list: CollageDto[]) =>
     [...list].sort((a, b) => {
-      const ia = tracks.findIndex((t) => t.track === a.track);
-      const ib = tracks.findIndex((t) => t.track === b.track);
+      const ia = tracks.findIndex((t2) => t2.track === a.track);
+      const ib = tracks.findIndex((t2) => t2.track === b.track);
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     });
   const working = byTrack(collages.filter((c) => c.status === 'pending' || c.status === 'processing'));
@@ -191,18 +202,15 @@ export function CadouVideoSection({
   if (!isOwner && orderedDone.length === 0 && working.length === 0) return null;
 
   return (
-    <section id="cadou-video" className="cadou-song-card cadou-video">
-      <h2>Videoclipul</h2>
+    <CadouFold id="cadou-video" title={t('title')} className="cadou-video" defaultOpen={defaultOpen}>
       <p className="cadou-video-lead">
-        {tracks.length > 1
-          ? `Câte un clip vertical pe fiecare variantă a manelei (${tracks.length}). Gata de TikTok.`
-          : 'Clip vertical pe manea, gata de TikTok.'}
+        {tracks.length > 1 ? t('leadMany', { count: tracks.length }) : t('leadOne')}
       </p>
 
       {working.length > 0 && (
         <div className="cadou-clips">
-          {(working.length ? working : tracks.map((t) => ({ id: t.track, track: t.track } as CollageDto))).map((c) => (
-            <CadouClipLoader key={c.id} label={cadouClipLabel(c.track, tracks)} />
+          {(working.length ? working : tracks.map((tr) => ({ id: tr.track, track: tr.track } as CollageDto))).map((c) => (
+            <CadouClipLoader key={c.id} label={cadouClipLabel(c.track, tracks, trackLabels)} />
           ))}
         </div>
       )}
@@ -214,28 +222,28 @@ export function CadouVideoSection({
               key={c.id}
               src={resolveMediaUrl(c.videoUrl!)!}
               poster={poster}
-              label={cadouClipLabel(c.track, tracks)}
+              label={cadouClipLabel(c.track, tracks, trackLabels)}
             />
           ))}
         </div>
       )}
 
       {failed.length > 0 && working.length === 0 && orderedDone.length === 0 && (
-        <p className="cadou-err" role="alert">Nu am putut monta videoclipul. Încearcă din nou cu pozele tale.</p>
+        <p className="cadou-err" role="alert">{t('failed')}</p>
       )}
 
       {isOwner && working.length === 0 && (
         <div className="cadou-video-cta">
           {orderedDone.length === 0 ? (
             <>
-              <p>Încarcă pozele și le montăm pe fiecare variantă a manelei.</p>
-              <Link href={studioHref} className="cadou-cta">Fă videoclipul</Link>
+              <p>{t('ctaLead')}</p>
+              <Link href={studioHref} className="cadou-cta">{t('ctaMake')}</Link>
             </>
           ) : (
-            <Link href={studioHref} className="cadou-ghost">Fă alt videoclip</Link>
+            <Link href={studioHref} className="cadou-ghost">{t('ctaAnother')}</Link>
           )}
         </div>
       )}
-    </section>
+    </CadouFold>
   );
 }

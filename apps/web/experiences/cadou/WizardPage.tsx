@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { api, ApiError, ensureGuestSession, type GenerationDto } from '@/lib/api';
 import { useSession } from '@/lib/providers';
 import { useSite } from '@/lib/site-context';
@@ -10,7 +11,7 @@ import { OCC, VOICES } from '@/lib/seed-data';
 import { useExperienceCatalog } from '../use-experience-catalog';
 import { PACKAGES, type PackageTier } from '@/lib/packages';
 import { CadouShell } from './Shell';
-import { CadouPackGrid } from './PackCard';
+import { CadouPackGrid, useCadouPackageQuotes } from './PackCard';
 import { CadouStyleCard, useCadouStylePreview } from './StyleCard';
 import {
   EMPTY_CADOU,
@@ -18,24 +19,27 @@ import {
   saveCadouWizard,
   type CadouWizardData,
 } from './wizard-storage';
-import { defaultStoryForStyle, isPresetStoryMsg, storiesForStyle } from './stories';
+import { useCadouStories } from './stories';
+import { fromLineRe, stripFromLine, useCadouFromName } from './from-name';
 
-const STEPS = ['Stil', 'Detalii', 'Extra', 'Plată'] as const;
+/** Pașii wizardului — etichetele vin din `cadou.wizard`. */
+const STEP_KEYS = ['stepStyle', 'stepDetails', 'stepExtra', 'stepPay'] as const;
 
 function emailOk(v: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 }
 
-function wizardFromGeneration(g: GenerationDto): CadouWizardData {
+/** `fromLabel` = eticheta „de la" a locale-ului; parsarea acceptă și varianta RO legacy. */
+function wizardFromGeneration(g: GenerationDto, fromLabel: string): CadouWizardData {
   const rec = (g.recipientName ?? '').trim();
   const noDedic = !rec || rec === '—';
-  const fromLine = g.message?.match(/(?:^|\n)\s*De la\s+(.+?)\s*$/im);
+  const fromLine = g.message?.match(fromLineRe(fromLabel));
   const fromName = (
     (g.dedication && g.dedication !== rec ? g.dedication : '') ||
     fromLine?.[1]?.trim() ||
     ''
   );
-  const msg = (g.message ?? '').replace(/(?:^|\n)\s*De la\s+.+\s*$/im, '').trim();
+  const msg = stripFromLine(g.message, fromLabel);
   const tier = g.packageTier === 'plus' || g.packageTier === 'premium' ? g.packageTier : 'basic';
   return {
     ...EMPTY_CADOU,
@@ -55,22 +59,6 @@ function wizardFromGeneration(g: GenerationDto): CadouWizardData {
 
 function CadouErr({ children }: { children: ReactNode }) {
   return <p className="cadou-err" role="alert">{children}</p>;
-}
-
-function afterPayNotes(tier: PackageTier): string[] {
-  const remakes = tier === 'premium' ? 3 : tier === 'plus' ? 2 : 1;
-  const remakeLabel = remakes === 1 ? 'o refacere gratuită' : `${remakes} refaceri gratuite`;
-  const lines = [
-    `După plată vom genera maneaua și dacă doriți vreo modificare, beneficiați de ${remakeLabel}.`,
-  ];
-  if (tier === 'plus' || tier === 'premium') {
-    lines.push('Colajul cu imagini se va face după generarea manelei.');
-  }
-  if (tier === 'premium') {
-    lines.push('Felicitarea personalizată se face după generarea manelei.');
-    lines.push('Postarea pe Facebook și TikTok, cu dedicație, se face după ce maneaua e gata.');
-  }
-  return lines;
 }
 
 function CadouTapHand() {
@@ -95,6 +83,8 @@ function CadouTapHand() {
 
 function WizardInner() {
   const site = useSite();
+  const t = useTranslations('cadou.wizard');
+  const fromLabel = useCadouFromName().label;
   const session = useSession();
   const search = useSearchParams();
   const catalog = useExperienceCatalog();
@@ -113,9 +103,10 @@ function WizardInner() {
   const [submitting, setSubmitting] = useState(false);
   const [promoDraft, setPromoDraft] = useState('');
   const [promo, setPromo] = useState<{ code: string; discountCents: number } | null>(null);
-  const [quotes, setQuotes] = useState<Partial<Record<PackageTier, { total: number; compareAtCents?: number | null }>>>({});
+  const quotes = useCadouPackageQuotes();
   const restored = useRef(false);
   const hydrated = useRef(false);
+  const followPromoTried = useRef(false);
 
   const point = (on: boolean, children: ReactNode, kind: 'field' | 'area' | 'grid' | 'voice' = 'field') => (
     <div className={`cadou-field cadou-field-${kind}`}>
@@ -124,7 +115,8 @@ function WizardInner() {
     </div>
   );
 
-  const stories = useMemo(() => storiesForStyle(data.style), [data.style]);
+  const storyPresets = useCadouStories();
+  const stories = useMemo(() => storyPresets.forStyle(data.style), [storyPresets, data.style]);
 
   useEffect(() => {
     if (step !== 0) stylePreview.stop();
@@ -133,19 +125,19 @@ function WizardInner() {
   useEffect(() => {
     if (!restored.current) return;
     if (step !== 1 || !data.style) return;
-    const list = storiesForStyle(data.style);
-    const preset = defaultStoryForStyle(data.style);
+    const list = storyPresets.forStyle(data.style);
+    const preset = storyPresets.defaultForStyle(data.style);
     const occOk = (id?: string) => !!id && occasions.some((o) => o.id === id);
     setData((d) => {
       if (list.some((s) => s.msg === d.msg)) return d;
-      if (d.msg.trim() && !isPresetStoryMsg(d.msg)) return d;
+      if (d.msg.trim() && !storyPresets.isPresetMsg(d.msg)) return d;
       return {
         ...d,
         msg: preset.msg,
         occ: occOk(preset.occ) ? preset.occ! : d.occ,
       };
     });
-  }, [step, data.style, occasions]);
+  }, [step, data.style, occasions, storyPresets]);
 
   const upd = <K extends keyof CadouWizardData>(k: K, v: CadouWizardData[K]) =>
     setData((d) => ({ ...d, [k]: v }));
@@ -163,10 +155,10 @@ function WizardInner() {
         try {
           const g = await api.getGeneration(genId);
           if (g && !g.paidUnlocked) {
-            setData((d) => ({ ...wizardFromGeneration(g), email: d.email }));
+            setData((d) => ({ ...wizardFromGeneration(g, fromLabel), email: d.email }));
             setGenerationId(g.id);
             setStep(3);
-            setError('Plata nu a putut fi efectuată. Comanda e salvată — poți încerca din nou.');
+            setError(t('errPaymentCanceled'));
             ok = true;
           }
         } catch {
@@ -182,7 +174,7 @@ function WizardInner() {
             });
             if (snap.generationId) setGenerationId(snap.generationId);
             setStep(3);
-            setError('Plata nu a putut fi efectuată. Comanda e salvată — poți încerca din nou.');
+            setError(t('errPaymentCanceled'));
           }
         }
         hydrated.current = true;
@@ -200,14 +192,14 @@ function WizardInner() {
       if (snap.generationId) setGenerationId(snap.generationId);
       const s = canceled ? 3 : Math.min(3, Math.max(0, snap.step));
       setStep(Number.isFinite(fromUrlStep) && fromUrlStep >= 1 && !canceled ? Math.min(3, fromUrlStep - 1) : s);
-      if (canceled) setError('Plata nu a putut fi efectuată. Comanda e salvată — poți încerca din nou.');
+      if (canceled) setError(t('errPaymentCanceled'));
       hydrated.current = true;
       return;
     }
     if (fromUrlStyle) setData((d) => ({ ...d, style: fromUrlStyle }));
     if (fromUrlStep >= 1 && fromUrlStep <= 4) setStep(fromUrlStep - 1);
     hydrated.current = true;
-  }, [search]);
+  }, [search, fromLabel, t]);
 
   useEffect(() => {
     if (!session.email || data.email) return;
@@ -227,34 +219,17 @@ function WizardInner() {
     }
   }, [step, data, generationId]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const next: typeof quotes = {};
-      for (const tier of ['basic', 'plus', 'premium'] as PackageTier[]) {
-        try {
-          const q = await api.priceQuote(tier);
-          next[tier] = { total: q.total, compareAtCents: q.compareAtCents };
-        } catch {
-          const fallback = PACKAGES.find((p) => p.tier === tier);
-          if (fallback) next[tier] = { total: fallback.priceCents };
-        }
-      }
-      if (!cancelled) setQuotes(next);
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  const currentPrice = (PACKAGES.find((p) => p.tier === data.packageTier)?.priceCents
-    ?? quotes[data.packageTier]?.total
-    ?? site.basePriceCents);
+  // Prețul AFIȘAT trebuie să fie prețul TAXAT: quote-ul API ține cont de prețul
+  // per-site (`packagePricesCents`) și de override-urile pe interfață. Constantele
+  // din `@/lib/packages` sunt doar fallback până vine răspunsul.
+  const currentPrice = quotes.byTier[data.packageTier]?.total || site.basePriceCents;
   const afterPromo = Math.max(0, currentPrice - (promo?.discountCents ?? 0));
-  const fromPrice = quotes.basic?.total ?? site.basePriceCents;
-  const quotedCompare = (quotes.basic?.compareAtCents && quotes.basic.compareAtCents > fromPrice)
-    ? quotes.basic.compareAtCents
-    : (site.standardPriceCents && site.standardPriceCents > fromPrice ? site.standardPriceCents : 0);
-  const compareAt = quotedCompare || fromPrice * 2;
-  const discountPct = compareAt > fromPrice ? Math.round((1 - fromPrice / compareAt) * 100) : 50;
+  const fromPrice = quotes.byTier.basic.total || site.basePriceCents;
+  // Preț „tăiat" doar dacă e chiar configurat (quote sau `standardPriceCents`).
+  // Fără ancore inventate — un „-50%" fals față de un preț care n-a existat.
+  const compareAt = quotes.byTier.basic.compareAtCents
+    ?? (site.standardPriceCents && site.standardPriceCents > fromPrice ? site.standardPriceCents : 0);
+  const discountPct = compareAt > fromPrice ? Math.round((1 - fromPrice / compareAt) * 100) : 0;
 
   const stepValid = (s: number): boolean => {
     if (s === 0) return !!data.style;
@@ -288,13 +263,54 @@ function WizardInner() {
   };
 
   const promoFailText = (reason?: string): string => {
-    if (reason === 'expired') return 'Codul a expirat.';
-    if (reason === 'not_yet_valid') return 'Codul nu e încă activ.';
-    if (reason === 'used_up') return 'Codul nu mai poate fi folosit.';
-    if (reason === 'wrong_email') return 'Codul e valabil doar pentru alt email.';
-    if (reason === 'empty') return 'Introdu un cod de reducere.';
-    return 'Nu recunoaștem acest cod. Verifică-l și încearcă din nou.';
+    if (reason === 'expired') return t('promoExpired');
+    if (reason === 'not_yet_valid') return t('promoNotYetValid');
+    if (reason === 'used_up') return t('promoUsedUp');
+    if (reason === 'wrong_email') return t('promoWrongEmail');
+    if (reason === 'empty') return t('promoEmpty');
+    return t('promoUnknown');
   };
+
+  useEffect(() => {
+    // Așteptăm quote-ul: `validatePromo` calculează reducerea pe baza prețului
+    // trimis, iar fallback-ul din cod ar da alt discount decât cel real.
+    if (promo || followPromoTried.current || !quotes.loaded || !currentPrice) return;
+    (async () => {
+      let code: string | null = null;
+      try {
+        code = window.localStorage.getItem('mc_follow_promo');
+      } catch {
+        code = null;
+      }
+      if (!code) {
+        try {
+          const me = await api.guestMe();
+          code = me.followPromoCode ?? null;
+          if (code) {
+            try { window.localStorage.setItem('mc_follow_promo', code); } catch { /* */ }
+          }
+        } catch {
+          return;
+        }
+      }
+      if (!code) {
+        followPromoTried.current = true;
+        return;
+      }
+      try {
+        const r = await api.validatePromo(code, data.email || undefined, currentPrice);
+        if (r.ok) {
+          followPromoTried.current = true;
+          setPromo({ code, discountCents: r.appliedDiscountCents ?? 0 });
+          setPromoDraft(code);
+          return;
+        }
+        if (r.reason !== 'wrong_email') followPromoTried.current = true;
+      } catch {
+        followPromoTried.current = true;
+      }
+    })();
+  }, [promo, quotes.loaded, currentPrice, data.email]);
 
   const applyPromo = async () => {
     const code = promoDraft.trim();
@@ -312,7 +328,7 @@ function WizardInner() {
       setPromo({ code, discountCents: r.appliedDiscountCents ?? 0 });
       setPromoError(null);
     } catch {
-      setPromoError('Nu am putut verifica codul. Încearcă din nou.');
+      setPromoError(t('promoCheckFailed'));
     }
   };
 
@@ -365,13 +381,28 @@ function WizardInner() {
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 503
-          ? 'Plățile sunt temporar indisponibile. Încearcă în câteva minute.'
+          ? t('errPaymentsUnavailable')
           : e instanceof ApiError && /guest session/i.test(e.message)
-            ? 'Sesiunea a expirat. Reîncearcă plata.'
-            : 'Nu am putut deschide plata. Verifică emailul și încearcă din nou.',
+            ? t('errSessionExpired')
+            : t('errCheckout'),
       );
       setSubmitting(false);
     }
+  };
+
+  const afterPayNotes = (tier: PackageTier): string[] => {
+    const remakes = tier === 'premium' ? 3 : tier === 'plus' ? 2 : 1;
+    const lines = [
+      remakes === 1 ? t('afterPayRemakeOne') : t('afterPayRemakeMany', { count: String(remakes) }),
+    ];
+    if (tier === 'plus' || tier === 'premium') {
+      lines.push(t('afterPayCollage'));
+    }
+    if (tier === 'premium') {
+      lines.push(t('afterPayCard'));
+      lines.push(t('afterPaySocial'));
+    }
+    return lines;
   };
 
   const styleName = styles.find((s) => s.id === data.style)?.nm ?? data.style;
@@ -383,27 +414,29 @@ function WizardInner() {
       <div className="cadou-wrap">
         <div className="cadou-panel cadou-wizard-head" data-step={step}>
           <div className="cadou-hero-mini">
-            <h1>Creează maneaua ta</h1>
-            <p>Alege stilul, adaugă detaliile și noi creăm muzica.</p>
+            <h1>{t('title')}</h1>
+            <p>{t('lead')}</p>
             <div className="cadou-offer">
-              <div className="cadou-offer-badge">🎁 1+1 GRATIS{discountPct > 0 ? ` · ${discountPct}% REDUCERE` : ''}</div>
+              <div className="cadou-offer-badge">
+                {discountPct > 0 ? t('offerBadgeDiscount', { pct: String(discountPct) }) : t('offerBadge')}
+              </div>
               <div className="cadou-offer-price">
                 {compareAt > 0 && <s>{formatPrice(site, compareAt)}</s>}
                 <strong>{formatPrice(site, fromPrice)}</strong>
               </div>
-              <div className="cadou-offer-trust">★ 4,9/5 din peste 10.000 recenzii · ♪ 100.000+ melodii create</div>
+              <div className="cadou-offer-trust">{t('offerTrust')}</div>
             </div>
           </div>
           <div className="cadou-stepper">
-            {STEPS.map((label, i) => (
+            {STEP_KEYS.map((key, i) => (
               <button
-                key={label}
+                key={key}
                 type="button"
                 className={i === step ? 'on' : i < step ? 'done' : ''}
                 onClick={() => { if (i <= step) goto(i); }}
               >
                 <span className="dot">{i < step ? '✓' : i + 1}</span>
-                <span>{label}</span>
+                <span>{t(key)}</span>
               </button>
             ))}
           </div>
@@ -413,7 +446,7 @@ function WizardInner() {
 
         {step === 0 && (
           <>
-            <div className="cadou-kicker" style={{ textAlign: 'center', marginBottom: 12 }}>Alege stilul muzical</div>
+            <div className="cadou-kicker" style={{ textAlign: 'center', marginBottom: 12 }}>{t('styleKicker')}</div>
             {point(
               nudge && !data.style,
               <div className="cadou-grid">
@@ -433,14 +466,14 @@ function WizardInner() {
               </div>,
               'grid',
             )}
-            {nudge && !data.style && <CadouErr>Alege un stil muzical ca să continui.</CadouErr>}
+            {nudge && !data.style && <CadouErr>{t('errStyle')}</CadouErr>}
           </>
         )}
 
         {step === 1 && (
           <div className="cadou-form">
             <div>
-              <div className="cadou-label">Alege o poveste</div>
+              <div className="cadou-label">{t('storyLabel')}</div>
               <div className="cadou-chips stories" style={{ marginTop: 10 }}>
                 {stories.map((st) => (
                   <button
@@ -462,64 +495,64 @@ function WizardInner() {
               </div>
             </div>
             <div>
-              <div className="cadou-label">Ce vrei să menționăm în melodie</div>
+              <div className="cadou-label">{t('msgLabel')}</div>
               {point(
                 nudge && !data.msg.trim(),
                 <textarea
                   className={`cadou-area${nudge && !data.msg.trim() ? ' err' : ''}`}
                   value={data.msg}
                   onChange={(e) => upd('msg', e.target.value)}
-                  placeholder="Despre ce vrei să fie maneaua ta?"
+                  placeholder={t('msgPlaceholder')}
                   aria-invalid={nudge && !data.msg.trim()}
                 />,
                 'area',
               )}
-              {nudge && !data.msg.trim() && <CadouErr>Scrie în căsuța de mai sus despre ce vrei să fie maneaua.</CadouErr>}
+              {nudge && !data.msg.trim() && <CadouErr>{t('errMsg')}</CadouErr>}
             </div>
             <div className="cadou-from-to">
               <div>
-                <div className="cadou-label">De la cine</div>
+                <div className="cadou-label">{t('fromLabel')}</div>
                 {point(
                   nudge && !data.fromName.trim(),
                   <input
                     className={`cadou-input${nudge && !data.fromName.trim() ? ' err' : ''}`}
                     value={data.fromName}
                     onChange={(e) => upd('fromName', e.target.value)}
-                    placeholder="Ex.: Mihai, familia…"
+                    placeholder={t('fromPlaceholder')}
                     autoComplete="name"
                     autoCapitalize="words"
                     enterKeyHint="next"
                     aria-invalid={nudge && !data.fromName.trim()}
                   />,
                 )}
-                {nudge && !data.fromName.trim() && <CadouErr>Completează câmpul „De la cine”.</CadouErr>}
+                {nudge && !data.fromName.trim() && <CadouErr>{t('errFrom')}</CadouErr>}
               </div>
               {!data.noDedic && (
                 <div>
-                  <div className="cadou-label">Pentru cine</div>
+                  <div className="cadou-label">{t('toLabel')}</div>
                   {point(
                     nudge && !data.name.trim(),
                     <input
                       className={`cadou-input${nudge && !data.name.trim() ? ' err' : ''}`}
                       value={data.name}
                       onChange={(e) => upd('name', e.target.value)}
-                      placeholder="Ex.: Ionuț, Maria…"
+                      placeholder={t('toPlaceholder')}
                       autoComplete="name"
                       autoCapitalize="words"
                       enterKeyHint="next"
                       aria-invalid={nudge && !data.name.trim()}
                     />,
                   )}
-                  {nudge && !data.name.trim() && <CadouErr>Completează câmpul „Pentru cine”.</CadouErr>}
+                  {nudge && !data.name.trim() && <CadouErr>{t('errTo')}</CadouErr>}
                 </div>
               )}
             </div>
             <label className="cadou-check">
               <input type="checkbox" checked={data.noDedic} onChange={(e) => upd('noDedic', e.target.checked)} />
-              Nu dedic nimănui — vreau doar maneaua
+              {t('noDedication')}
             </label>
             <div>
-              <div className="cadou-label">Ocazia (opțional)</div>
+              <div className="cadou-label">{t('occasionLabel')}</div>
               <div className="cadou-chips occasions" style={{ marginTop: 10 }}>
                 {occasions.map((o) => (
                   <button
@@ -540,7 +573,7 @@ function WizardInner() {
         {step === 2 && (
           <div className="cadou-form">
             <div>
-              <div className="cadou-label">Voce</div>
+              <div className="cadou-label">{t('voiceLabel')}</div>
               {point(
                 nudge && !data.voice,
                 <div className="cadou-voices">
@@ -551,20 +584,21 @@ function WizardInner() {
                       className={`cadou-voice${data.voice === v.id ? ' on' : ''}${v.id === 'male' ? ' is-rec' : ''}`}
                       onClick={() => upd('voice', v.id === 'female' ? 'female' : 'male')}
                     >
-                      {v.id === 'male' && <span className="cadou-voice-badge">Recomandat</span>}
+                      {v.id === 'male' && <span className="cadou-voice-badge">{t('voiceRecommended')}</span>}
                       {v.av} {v.nm}
                     </button>
                   ))}
                 </div>,
                 'voice',
               )}
-              {nudge && !data.voice && <CadouErr>Alege vocea: bărbătească sau feminină.</CadouErr>}
+              {nudge && !data.voice && <CadouErr>{t('errVoice')}</CadouErr>}
             </div>
             <div>
-              <div className="cadou-label">Pachet</div>
+              <div className="cadou-label">{t('packageLabel')}</div>
               <CadouPackGrid
                 selected={data.packageTier}
                 onSelect={(tier) => upd('packageTier', tier)}
+                quotes={quotes}
               />
             </div>
             <label className="cadou-check">
@@ -573,7 +607,7 @@ function WizardInner() {
                 checked={data.useCustomLyrics}
                 onChange={(e) => upd('useCustomLyrics', e.target.checked)}
               />
-              Vreau să scriu propriile versuri
+              {t('customLyricsCheck')}
             </label>
             {data.useCustomLyrics && (
               <>
@@ -583,18 +617,18 @@ function WizardInner() {
                     className={`cadou-area${nudge && !data.customLyrics.trim() ? ' err' : ''}`}
                     value={data.customLyrics}
                     onChange={(e) => upd('customLyrics', e.target.value)}
-                    placeholder="Scrie versurile tale…"
+                    placeholder={t('customLyricsPlaceholder')}
                     aria-invalid={nudge && !data.customLyrics.trim()}
                   />,
                   'area',
                 )}
                 {nudge && !data.customLyrics.trim() && (
-                  <CadouErr>Scrie versurile tale în căsuța de mai sus.</CadouErr>
+                  <CadouErr>{t('errCustomLyrics')}</CadouErr>
                 )}
               </>
             )}
             <div>
-              <div className="cadou-label">Emailul tău *</div>
+              <div className="cadou-label">{t('emailLabel')}</div>
               {point(
                 nudge && !emailOk(data.email),
                 <input
@@ -605,13 +639,13 @@ function WizardInner() {
                   enterKeyHint="next"
                   value={data.email}
                   onChange={(e) => upd('email', e.target.value)}
-                  placeholder="email@exemplu.ro"
+                  placeholder={t('emailPlaceholder')}
                   aria-invalid={nudge && !emailOk(data.email)}
                 />,
               )}
-              <div className="cadou-hint">Te anunțăm când maneaua e gata. Fără spam.</div>
+              <div className="cadou-hint">{t('emailHint')}</div>
               {nudge && !emailOk(data.email) && (
-                <CadouErr>Introdu un email valid ca să-ți trimitem maneaua.</CadouErr>
+                <CadouErr>{t('errEmail')}</CadouErr>
               )}
             </div>
             <label className={`cadou-check${nudge && !data.privacy ? ' err' : ''}`}>
@@ -619,10 +653,10 @@ function WizardInner() {
                 <input type="checkbox" checked={data.privacy} onChange={(e) => upd('privacy', e.target.checked)} />
                 {nudge && !data.privacy && <CadouTapHand key={errPulse} />}
               </span>
-              Sunt de acord cu politica de confidențialitate și să primesc emailuri despre comandă.
+              {t('privacy')}
             </label>
             {nudge && !data.privacy && (
-              <CadouErr>Trebuie să bifezi căsuța de mai sus.</CadouErr>
+              <CadouErr>{t('errPrivacy')}</CadouErr>
             )}
           </div>
         )}
@@ -633,30 +667,28 @@ function WizardInner() {
               <div className="cadou-pay-warn" role="alert">{error}</div>
             )}
             <h2 className="cadou-pay-title">
-              {data.noDedic ? (
-                <>Maneaua <em>ta</em></>
-              ) : (
-                <>Maneaua pentru <em>{data.name}</em></>
-              )}
+              {data.noDedic
+                ? t.rich('payTitleSelf', { em: (chunks) => <em>{chunks}</em> })
+                : t.rich('payTitleFor', { em: (chunks) => <em>{chunks}</em>, name: data.name })}
             </h2>
             <div className="cadou-recap">
               {([
-                ['Genul', styleName, 0],
-                ['De la', data.fromName || '—', 1],
-                ['Pentru', data.noDedic ? 'fără dedicație' : data.name, 1],
-                ['Ocazia', occName || '—', 1],
-                ['Pachet', PACKAGES.find((p) => p.tier === data.packageTier)?.nameRO ?? data.packageTier, 2],
-                ['Voce', voiceName, 2],
-                ['Email', data.email, 2],
+                [t('recapStyle'), styleName, 0],
+                [t('recapFrom'), data.fromName || '—', 1],
+                [t('recapTo'), data.noDedic ? t('recapNoDedication') : data.name, 1],
+                [t('recapOccasion'), occName || '—', 1],
+                [t('recapPackage'), PACKAGES.find((p) => p.tier === data.packageTier)?.nameRO ?? data.packageTier, 2],
+                [t('recapVoice'), voiceName, 2],
+                [t('recapEmail'), data.email, 2],
               ] as const).map(([k, v, jump]) => (
                 <div key={k} className="cadou-recap-row">
                   <span><b>{k}</b> · {v}</span>
-                  <button type="button" className="cadou-ghost" onClick={() => goto(jump)}>Modifică</button>
+                  <button type="button" className="cadou-ghost" onClick={() => goto(jump)}>{t('recapEdit')}</button>
                 </div>
               ))}
             </div>
             <div>
-              <div className="cadou-label">Cod de reducere</div>
+              <div className="cadou-label">{t('promoLabel')}</div>
               <div className="cadou-row">
                 <input
                   className={`cadou-input${promoError ? ' err' : ''}`}
@@ -665,17 +697,17 @@ function WizardInner() {
                     setPromoDraft(e.target.value);
                     if (promoError) setPromoError(null);
                   }}
-                  placeholder="PROMO"
+                  placeholder={t('promoPlaceholder')}
                   autoCapitalize="characters"
                   aria-invalid={!!promoError}
                 />
-                <button type="button" className="cadou-cta" onClick={applyPromo}>Aplică</button>
+                <button type="button" className="cadou-cta" onClick={applyPromo}>{t('promoApply')}</button>
               </div>
               {promoError && <p className="cadou-promo-err" role="alert">{promoError}</p>}
               {promo && (
                 <div className="cadou-promo-ok">
                   <span className="cadou-promo-ok-mark" aria-hidden>✓</span>
-                  <span>Cod <b>{promo.code}</b> aplicat</span>
+                  <span>{t.rich('promoApplied', { b: (chunks) => <b>{chunks}</b>, code: promo.code })}</span>
                   <span className="cadou-promo-ok-save">−{formatPrice(site, promo.discountCents)}</span>
                 </div>
               )}
@@ -692,13 +724,13 @@ function WizardInner() {
 
         <div className="cadou-wizard-nav">
           {step > 0 && (
-            <button type="button" className="cadou-nav-back" onClick={() => goto(step - 1)}>Înapoi</button>
+            <button type="button" className="cadou-nav-back" onClick={() => goto(step - 1)}>{t('back')}</button>
           )}
           {step < 3 ? (
-            <button type="button" className="cadou-cta" onClick={next}>Continuă</button>
+            <button type="button" className="cadou-cta" onClick={next}>{t('next')}</button>
           ) : (
             <button type="button" className="cadou-cta" onClick={pay} disabled={submitting}>
-              {submitting ? 'Se deschide plata…' : `Plătește ${formatPrice(site, afterPromo)}`}
+              {submitting ? t('payBusy') : t('pay', { price: formatPrice(site, afterPromo) })}
             </button>
           )}
         </div>

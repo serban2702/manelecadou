@@ -3,8 +3,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
+import { useTranslations } from 'next-intl';
 import { ChatWidget } from '@/components/ChatWidget';
 import { DemosPopup } from '@/components/DemosPopup';
+import { LangSwitcher } from '@/components/LangSwitcher';
+import { CountrySwitcher } from '@/components/CountrySwitcher';
+import { Cookie } from '@/components/sections';
 import { useSite } from '@/lib/site-context';
 import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
@@ -12,8 +16,14 @@ import { useCadouFromPrice } from './from-price';
 import { openDemosModal, useWizardReachedPackage } from '@/lib/wizard';
 import './theme.css';
 
+// Identic cu `components/SiteShell.tsx` (decizie 2026-05-26): marketing cookies
+// active din prima secundă, fără prompt. Pentru re-activare, scoate constanta
+// și restaurează `setCookieOpen(true)`.
+const HIDE_COOKIE_BANNER = true;
+
 export function CadouShell({ children }: { children: ReactNode }) {
   const site = useSite();
+  const t = useTranslations('cadou.shell');
   const pathname = usePathname();
   const studio = getPagePath(site.locale, 'studio');
   const top = getPagePath(site.locale, 'top');
@@ -23,6 +33,7 @@ export function CadouShell({ children }: { children: ReactNode }) {
   const logo = site.brand?.logoUrl || '/logo-80.png';
   const [menuOpen, setMenuOpen] = useState(false);
   const [demosOpen, setDemosOpen] = useState(false);
+  const [cookieOpen, setCookieOpen] = useState(false);
   const reachedPackage = useWizardReachedPackage();
   const fromPrice = useCadouFromPrice();
 
@@ -36,11 +47,25 @@ export function CadouShell({ children }: { children: ReactNode }) {
     setMenuOpen(false);
   }, [pathname]);
 
-  const ticker = [
-    '💯 SATISFACȚIE GARANTATĂ — Regenerăm gratuit dacă nu îți place!',
-    '🔥 1+1 GRATIS — A doua manea cadou!',
-    '⚡ Gata în câteva minute — Livrare pe email!',
-  ];
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (HIDE_COOKIE_BANNER) {
+      if (!window.localStorage.getItem('mc_cookie_consent')) {
+        window.localStorage.setItem('mc_cookie_consent', 'all');
+      }
+      return;
+    }
+    if (!window.localStorage.getItem('mc_cookie_consent')) setCookieOpen(true);
+  }, []);
+
+  const closeCookie = (mode: 'rej' | 'all') => {
+    setCookieOpen(false);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('mc_cookie_consent', mode);
+    }
+  };
+
+  const ticker = [t('ticker1'), t('ticker2'), t('ticker3')];
   const items = [...ticker, ...ticker];
 
   const nav: Array<{
@@ -50,12 +75,12 @@ export function CadouShell({ children }: { children: ReactNode }) {
     cta?: boolean;
     listen?: boolean;
   }> = [
-    { href: '/', label: 'ACASĂ', match: (p: string) => p === '/' },
-    { href: studio, label: 'FĂ O MANEA', match: (p: string) => p.startsWith('/studio'), cta: true },
-    { href: asculta, label: 'ASCULTĂ', match: (p: string) => p.startsWith('/asculta'), listen: true },
-    { href: top, label: 'TOPUL MANELIȘTILOR', match: (p: string) => p.startsWith('/top') },
-    { href: istoric, label: 'ISTORIC', match: (p: string) => p.startsWith('/istoric') },
-    { href: mine, label: 'MANELELE MELE', match: (p: string) => p.startsWith('/manelele-mele') },
+    { href: '/', label: t('navHome'), match: (p: string) => p === '/' },
+    { href: studio, label: t('navStudio'), match: under(studio), cta: true },
+    { href: asculta, label: t('navListen'), match: under(asculta), listen: true },
+    { href: top, label: t('navTop'), match: under(top) },
+    { href: istoric, label: t('navHistory'), match: under(istoric) },
+    { href: mine, label: t('navMine'), match: under(mine) },
   ];
 
   const renderLink = (n: (typeof nav)[number]) => {
@@ -91,8 +116,8 @@ export function CadouShell({ children }: { children: ReactNode }) {
     <div className="cadou-root">
       <div className="cadou-ticker" aria-hidden>
         <div className="cadou-ticker-track">
-          {items.map((t, i) => (
-            <span key={i} style={{ padding: '0 28px' }}>{t}</span>
+          {items.map((text, i) => (
+            <span key={i} style={{ padding: '0 28px' }}>{text}</span>
           ))}
         </div>
       </div>
@@ -103,10 +128,16 @@ export function CadouShell({ children }: { children: ReactNode }) {
           <span>{site.name}</span>
         </Link>
         <nav className="cadou-nav">{nav.map(renderLink)}</nav>
+        <div className="cadou-header-tools">
+          {/* Ambele switcher-e sunt gate-uite pe același flag din admin
+              („Meniu selectare limbă"), la fel ca pe interfața classic. */}
+          {site.langSwitcherEnabled === true && <CountrySwitcher />}
+          <LangSwitcher />
+        </div>
         <button
           type="button"
           className="cadou-burger"
-          aria-label={menuOpen ? 'Închide meniul' : 'Deschide meniul'}
+          aria-label={menuOpen ? t('menuClose') : t('menuOpen')}
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((o) => !o)}
         >
@@ -116,27 +147,37 @@ export function CadouShell({ children }: { children: ReactNode }) {
       {menuOpen && <nav className="cadou-nav-mobile">{nav.map(renderLink)}</nav>}
       <div className="cadou-main">{children}</div>
       <footer className="cadou-footer">
-        <div>{site.name} · plăți prin Stripe</div>
+        <div>{t('payments', { name: site.name })}</div>
         <div style={{ marginTop: 8 }}>
-          <Link href={getPagePath(site.locale, 'terms')}>Termeni</Link>
+          <Link href={getPagePath(site.locale, 'terms')}>{t('terms')}</Link>
           {' · '}
-          <Link href={getPagePath(site.locale, 'privacy')}>Confidențialitate</Link>
+          <Link href={getPagePath(site.locale, 'privacy')}>{t('privacy')}</Link>
           {' · '}
-          <Link href={getPagePath(site.locale, 'cookies')}>Cookies</Link>
+          <Link href={getPagePath(site.locale, 'cookies')}>{t('cookies')}</Link>
           {' · '}
-          <Link href={getPagePath(site.locale, 'contact')}>Contact</Link>
+          <Link href={getPagePath(site.locale, 'contact')}>{t('contact')}</Link>
           {' · '}
-          <Link href={getPagePath(site.locale, 'faq')}>FAQ</Link>
+          <Link href={getPagePath(site.locale, 'faq')}>{t('faq')}</Link>
         </div>
       </footer>
       {!onStudio && !onSong && !onMine && (
         <Link href={studio} className="cadou-sticky">
-          <strong>Fă o manea</strong>
-          <span>{formatPrice(site, fromPrice)} · 1+1</span>
+          <strong>{t('stickyCta')}</strong>
+          <span>{t('stickyMeta', { price: formatPrice(site, fromPrice) })}</span>
         </Link>
       )}
       <ChatWidget />
       <DemosPopup open={demosOpen} onClose={() => setDemosOpen(false)} />
+      {!HIDE_COOKIE_BANNER && cookieOpen && <Cookie onClose={closeCookie} />}
     </div>
   );
+}
+
+/**
+ * Pe site-urile cu slug-uri localizate (`/slushai`, `/akouse`…) comparația cu
+ * slug-ul canonic RO nu se potrivea niciodată, deci starea „activ" din meniu nu
+ * se aprindea. Comparăm cu href-ul real al linkului.
+ */
+function under(href: string): (p: string) => boolean {
+  return (p: string) => p === href || p.startsWith(`${href}/`);
 }

@@ -14,3 +14,6 @@ apps/admin/.next/
 *.log
 backup_*.sql.gz
 .claude/settings.local.json
+.grok/
+scratchpad-bak/
+*.tsbuildinfo

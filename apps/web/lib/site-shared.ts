@@ -96,6 +96,7 @@ export interface SiteConfig {
       packages: Record<string, {
         video: boolean;
         socialImage: boolean;
+        greetingClip?: boolean;
         instrumental: boolean;
         premiumPage: boolean;
         durationSec: number;
@@ -107,6 +108,7 @@ export interface SiteConfig {
         occasions?: SiteOccasionEntry[];
         voices?: SiteVoiceEntry[];
         demoIds?: string[] | null;
+        testimonials?: SiteTestimonialEntry[];
         reactionClips?: Array<{
           id: string;
           platform: 'tiktok' | 'instagram';

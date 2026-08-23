@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { resolveMediaUrl } from '@/lib/api';
 import { claimPlayback, releasePlayback } from '@/lib/audio-registry';
 
@@ -14,14 +15,20 @@ function fmt(sec: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function fileName(label?: string): string {
-  const base = (label || 'manea')
+function slugify(raw: string): string {
+  return raw
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'manea';
-  return `manea-${base}.mp3`;
+    .replace(/^-+|-+$/g, '');
+}
+
+/** `fileBase` vine din traduceri (`cadou.player.fileBase`) — numele descărcării. */
+function fileName(fileBase: string, label?: string): string {
+  const prefix = slugify(fileBase) || 'manea';
+  const base = slugify(label || fileBase) || prefix;
+  return `${prefix}-${base}.mp3`;
 }
 
 /** Same-origin `/uploads/...` so `download` works (local rewrite / prod Caddy). */
@@ -102,6 +109,7 @@ export function CadouDemoPlayer({
   startSec?: number;
   label?: string;
 }) {
+  const t = useTranslations('cadou.player');
   const src = resolveMediaUrl(audioUrl) ?? audioUrl;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const stopRef = useRef<(() => void) | null>(null);
@@ -232,7 +240,7 @@ export function CadouDemoPlayer({
           type="button"
           className="cadou-demo-play"
           onClick={() => void toggle()}
-          aria-label={playing ? 'Pauză' : 'Redă'}
+          aria-label={playing ? t('pause') : t('play')}
         >
           {playing ? (
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
@@ -259,7 +267,7 @@ export function CadouDemoPlayer({
               a.currentTime = next;
               setCur(next);
             }}
-            aria-label="Poziție"
+            aria-label={t('seek')}
           />
           <div className="cadou-demo-times">
             <span>{fmt(cur)}</span>
@@ -272,7 +280,7 @@ export function CadouDemoPlayer({
           type="button"
           className="cadou-demo-mute"
           onClick={toggleMute}
-          aria-label={muted || vol === 0 ? 'Activează sunetul' : 'Dezactivează sunetul'}
+          aria-label={muted || vol === 0 ? t('unmute') : t('mute')}
         >
           <SpeakerIcon level={speaker} />
         </button>
@@ -283,7 +291,7 @@ export function CadouDemoPlayer({
           step={0.01}
           value={muted ? 0 : vol}
           onChange={(e) => changeVol(Number(e.target.value))}
-          aria-label="Volum"
+          aria-label={t('volume')}
         />
         {playing && (
           <span className="cadou-demo-eq" aria-hidden>
@@ -293,14 +301,14 @@ export function CadouDemoPlayer({
         <a
           className="cadou-demo-dl"
           href={downloadHref(src)}
-          download={fileName(label)}
-          aria-label="Descarcă maneaua"
+          download={fileName(t('fileBase'), label)}
+          aria-label={t('downloadAria')}
         >
           <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
             <path d="M12 4v10.2M8.2 10.8 12 14.6l3.8-3.8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M5 18.2h14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
           </svg>
-          Descarcă
+          {t('download')}
         </a>
       </div>
     </div>

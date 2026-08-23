@@ -1,9 +1,13 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useExperience } from '@/lib/experience-context';
-import CadouVideoPage from '@/experiences/cadou/VideoPage';
+// Lazy, ca `registry.ts`: importat static, codul + CSS-ul interfeței `cadou`
+// (~62 kB de temă) ar intra în chunk-ul rutei și pe site-urile care rulează
+// `classic`, unde ramura de mai jos nu se atinge niciodată.
+const CadouVideoPage = dynamic(() => import('@/experiences/cadou/VideoPage'));
 
 export default function GenerationVideoPage() {
   const exp = useExperience();

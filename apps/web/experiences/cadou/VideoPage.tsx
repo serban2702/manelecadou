@@ -1,28 +1,41 @@
 'use client';
 
 import Link from 'next/link';
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { api, ApiError, resolveMediaUrl, type GenerationDto } from '@/lib/api';
+import { useTranslations } from 'next-intl';
+import { api, ApiError, type GenerationDto } from '@/lib/api';
 import { CadouShell } from './Shell';
-import { cadouStyleArt } from './style-art';
-import { displayRecipient } from './from-name';
-import { cadouClipTracks } from './video-tracks';
+import { useCadouFromName } from './from-name';
+import { cadouClipTracks, useCadouTrackLabels } from './video-tracks';
 
 const MAX_IMAGES = 15;
-const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_MB = 10;
+const MAX_BYTES = MAX_MB * 1024 * 1024;
 
 export default function CadouVideoPage() {
   return (
     <CadouShell>
-      <Suspense fallback={<div className="cadou-wrap cadou-song-wrap"><div className="cadou-panel cadou-song"><p className="cadou-hint">Încărcăm…</p></div></div>}>
+      <Suspense fallback={<CadouVideoFallback />}>
         <CadouVideoInner />
       </Suspense>
     </CadouShell>
   );
 }
 
+function CadouVideoFallback() {
+  const t = useTranslations('cadou.video.page');
+  return (
+    <div className="cadou-wrap cadou-song-wrap">
+      <div className="cadou-panel cadou-song"><p className="cadou-hint">{t('loading')}</p></div>
+    </div>
+  );
+}
+
 function CadouVideoInner() {
+  const t = useTranslations('cadou.video.page');
+  const fromName = useCadouFromName();
+  const trackLabels = useCadouTrackLabels();
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const id = params?.id;
@@ -32,7 +45,6 @@ function CadouVideoInner() {
   const [error, setError] = useState<string | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
-  const [pickedSocial, setPickedSocial] = useState<string[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -45,39 +57,31 @@ function CadouVideoInner() {
     } catch (e) {
       setError(
         e instanceof ApiError && (e.status === 401 || e.status === 403)
-          ? 'Doar cine a comandat maneaua poate face videoclipul.'
-          : 'Nu am putut încărca maneaua.',
+          ? t('errForbidden')
+          : t('errLoad'),
       );
     }
-  }, [id]);
+  }, [id, t]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
   useEffect(() => () => { previews.forEach((u) => URL.revokeObjectURL(u)); }, [previews]);
 
-  const tracks = g ? cadouClipTracks(g) : [];
-  const social = useMemo(() => {
-    if (!g) return [];
-    const set = new Set<string>();
-    for (const u of g.socialImages ?? []) if (u) set.add(u);
-    if (g.socialImageUploaded) set.add(g.socialImageUploaded);
-    if (g.socialImageSelected) set.add(g.socialImageSelected);
-    return [...set];
-  }, [g]);
+  const tracks = g ? cadouClipTracks(g, trackLabels) : [];
 
   const acceptFiles = (all: File[]) => {
     const picked = all.filter((f) => f.type.startsWith('image/'));
     if (picked.length === 0) {
-      if (all.length > 0) setError('Alege doar imagini (JPG, PNG, WEBP).');
+      if (all.length > 0) setError(t('errOnlyImages'));
       return;
     }
     if (picked.length > MAX_IMAGES) {
-      setError(`Maxim ${MAX_IMAGES} imagini.`);
+      setError(t('errMaxImages', { max: MAX_IMAGES }));
       return;
     }
     const tooBig = picked.find((f) => f.size > MAX_BYTES);
     if (tooBig) {
-      setError(`„${tooBig.name}” depășește 10MB.`);
+      setError(t('errTooBig', { name: tooBig.name, max: MAX_MB }));
       return;
     }
     previews.forEach((u) => URL.revokeObjectURL(u));
@@ -86,109 +90,52 @@ function CadouVideoInner() {
     setPreviews(picked.map((f) => URL.createObjectURL(f)));
   };
 
-  const toggleSocial = (url: string) => {
-    setPickedSocial((prev) => (prev.includes(url) ? prev.filter((u) => u !== url) : [...prev, url]));
-  };
-
   const submit = async () => {
     if (!id || !g) return;
-    if (files.length === 0 && pickedSocial.length === 0) {
-      setError('Adaugă cel puțin o imagine.');
+    if (files.length === 0) {
+      setError(t('errNoImages'));
       return;
     }
     setSubmitting(true);
     setError(null);
     try {
-      const extra = await Promise.all(
-        pickedSocial.map(async (url, i) => {
-          const abs = resolveMediaUrl(url) ?? url;
-          const res = await fetch(abs);
-          const blob = await res.blob();
-          const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
-          return new File([blob], `social-${i + 1}.${ext}`, { type: blob.type || 'image/jpeg' });
-        }),
-      );
-      const all = [...files, ...extra].slice(0, MAX_IMAGES);
-      await api.createCollageBatch(id, all, '9x16');
+      await api.createCollageBatch(id, files.slice(0, MAX_IMAGES), '9x16');
       router.replace(`/m/${id}#cadou-video`);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Nu am putut porni videoclipurile. Încearcă din nou.');
+      setError(e instanceof ApiError ? e.message : t('errStart'));
       setSubmitting(false);
     }
   };
 
-  const titleName = displayRecipient(g?.recipientName);
-  const cover = g
-    ? (resolveMediaUrl(g.coverUrl) ?? cadouStyleArt(g.style))
-    : cadouStyleArt('iubire');
+  const titleName = fromName.displayRecipient(g?.recipientName);
   const songHref = id ? `/m/${id}` : '/manelele-mele';
   const paid = !!g && (g.type === 'full' || g.paidUnlocked);
   const canMake = !!g && g.isOwner && paid && tracks.length > 0 && g.status === 'succeeded';
 
   return (
     <div className="cadou-wrap cadou-song-wrap">
+      <Link href={songHref} className="cadou-song-back">{t('back')}</Link>
       <article className="cadou-panel cadou-song">
-        <Link href={songHref} className="cadou-song-back">← Înapoi la manea</Link>
         {error && <p className="cadou-err" role="alert">{error}</p>}
-        {!g && !error && <p className="cadou-hint">Încărcăm…</p>}
+        {!g && !error && <p className="cadou-hint">{t('loading')}</p>}
 
         {g && (
           <>
-            <div className="cadou-kicker">Videoclip</div>
-            <h1>Pozele pentru {titleName}</h1>
+            <div className="cadou-kicker">{t('kicker')}</div>
+            <h1>{t('titleFor', { name: titleName })}</h1>
             <p className="cadou-song-meta">
-              {tracks.length > 1
-                ? `Se montează ${tracks.length} videoclipuri — câte unul pe fiecare variantă.`
-                : 'Se montează un videoclip vertical pe manea.'}
+              {tracks.length > 1 ? t('metaMany', { count: tracks.length }) : t('metaOne')}
             </p>
 
             {!canMake && (
               <div className="cadou-song-status">
-                <p>
-                  {g.isOwner
-                    ? 'Videoclipul e disponibil după ce maneaua e gata.'
-                    : 'Doar cine a comandat maneaua poate face videoclipul.'}
-                </p>
-                <Link href={songHref} className="cadou-cta">Vezi maneaua</Link>
+                <p>{g.isOwner ? t('notReadyOwner') : t('notReadyOther')}</p>
+                <Link href={songHref} className="cadou-cta">{t('seeSong')}</Link>
               </div>
             )}
 
             {canMake && (
               <>
-                <div className="cadou-video-head">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={cover} alt="" />
-                  <div>
-                    <div className="ttl">Format TikTok 9:16</div>
-                    <div className="who">
-                      {tracks.map((t) => t.label).join(' · ')}
-                    </div>
-                  </div>
-                </div>
-
-                {social.length > 0 && (
-                  <div className="cadou-video-social">
-                    <div className="cadou-song-track-lab">Sau alege din pozele generate</div>
-                    <div className="cadou-video-thumbs">
-                      {social.map((url) => {
-                        const on = pickedSocial.includes(url);
-                        return (
-                          <button
-                            key={url}
-                            type="button"
-                            className={on ? 'is-on' : undefined}
-                            onClick={() => toggleSocial(url)}
-                            aria-pressed={on}
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={resolveMediaUrl(url) ?? url} alt="" />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
                 <input
                   ref={fileRef}
                   type="file"
@@ -217,17 +164,19 @@ function CadouVideoInner() {
                 >
                   <strong>
                     {files.length > 0
-                      ? `${files.length === 1 ? '1 poză selectată' : `${files.length} poze selectate`} — apasă să schimbi`
-                      : dragOver ? 'Lasă pozele aici' : 'Încarcă pozele'}
+                      ? (files.length === 1
+                        ? t('dropSelectedOne')
+                        : t('dropSelectedMany', { count: files.length }))
+                      : dragOver ? t('dropOver') : t('dropIdle')}
                   </strong>
-                  <span>max 15 · până la 10MB · JPG / PNG / WEBP</span>
+                  <span>{t('dropHint', { max: MAX_IMAGES, mb: MAX_MB })}</span>
                 </div>
 
                 {previews.length > 0 && (
                   <div className="cadou-video-thumbs">
                     {previews.map((src, i) => (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img key={src + i} src={src} alt={`Poză ${i + 1}`} />
+                      <img key={src + i} src={src} alt={t('thumbAlt', { index: i + 1 })} />
                     ))}
                   </div>
                 )}
@@ -237,13 +186,13 @@ function CadouVideoInner() {
                     type="button"
                     className="cadou-cta"
                     onClick={() => void submit()}
-                    disabled={submitting || (files.length === 0 && pickedSocial.length === 0)}
+                    disabled={submitting || files.length === 0}
                   >
                     {submitting
-                      ? 'Trimitem…'
+                      ? t('submitting')
                       : tracks.length > 1
-                        ? `Creează ${tracks.length} videoclipuri`
-                        : 'Creează videoclipul'}
+                        ? t('submitMany', { count: tracks.length })
+                        : t('submitOne')}
                   </button>
                 </div>
               </>

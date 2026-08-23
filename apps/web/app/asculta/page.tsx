@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Suspense, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -11,7 +12,10 @@ import { getPagePath } from '@/lib/page-slugs';
 import { ManeaPlayer } from '@/components/ManeaPlayer';
 import { useExperienceCatalog } from '@/experiences/use-experience-catalog';
 import { useExperience } from '@/lib/experience-context';
-import CadouListenPage from '@/experiences/cadou/ListenPage';
+// Lazy, ca `registry.ts`: importat static, codul + CSS-ul interfeței `cadou`
+// (~62 kB de temă) ar intra în chunk-ul rutei și pe site-urile care rulează
+// `classic`, unde ramura de mai jos nu se atinge niciodată.
+const CadouListenPage = dynamic(() => import('@/experiences/cadou/ListenPage'));
 
 const CATEGORY_KEYS = [
   'aniversare',

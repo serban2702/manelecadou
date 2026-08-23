@@ -6,8 +6,9 @@ import { getTranslations } from 'next-intl/server';
 import { SiteShell } from '@/components/SiteShell';
 import { getSiteConfig, siteUrl } from '@/lib/site-config';
 import { getPagePath } from '@/lib/page-slugs';
+import { apiInternalUrl } from '@/lib/api-internal';
 
-const API_INTERNAL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
+const API_INTERNAL = apiInternalUrl();
 
 interface SeoPageDetail {
   slug: string;

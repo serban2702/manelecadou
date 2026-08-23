@@ -1,63 +1,88 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { api, ApiError } from '@/lib/api';
+import { formatPrice } from '@/lib/site-shared';
+import { useSite } from '@/lib/site-context';
+import { PAID_REMAKE_CENTS } from '@/lib/packages';
+import { CadouFold } from './Fold';
 
 const MAX = 1000;
 
 export function CadouRemakeCard({
   generationId,
-  usedAt,
+  remaining = 0,
+  quota = 1,
+  paidCents = PAID_REMAKE_CENTS,
   busy: parentBusy,
+  canceled,
+  defaultOpen = true,
   onStarted,
 }: {
   generationId: string;
-  usedAt?: string | null;
+  remaining?: number;
+  quota?: number;
+  paidCents?: number;
   busy?: boolean;
+  canceled?: boolean;
+  defaultOpen?: boolean;
   onStarted: () => void;
 }) {
+  const site = useSite();
+  const t = useTranslations('cadou.remake');
   const [notes, setNotes] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const used = !!usedAt;
   const len = notes.trim().length;
+  const freeLeft = remaining > 0;
+  const price = formatPrice(site, paidCents || PAID_REMAKE_CENTS);
+
+  const leftCopy = remaining <= 0
+    ? (quota === 1 ? t('usedOne') : t('usedMany', { quota }))
+    : remaining === 1
+      ? t('leftOne')
+      : t('leftMany', { remaining });
 
   const submit = async () => {
-    if (used || busy) return;
+    if (busy || parentBusy) return;
     if (len < 8) {
-      setErr('Spune-ne mai concret ce vrei schimbat.');
+      setErr(t('errShort'));
       return;
     }
     setBusy(true);
     setErr(null);
     try {
-      await api.requestRemake(generationId, notes.trim());
-      setNotes('');
-      onStarted();
+      if (freeLeft) {
+        await api.requestRemake(generationId, notes.trim());
+        setNotes('');
+        onStarted();
+      } else {
+        const r = await api.requestPaidRemake(generationId, notes.trim());
+        window.location.href = r.url;
+      }
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : 'Nu am putut porni refacerea.');
+      setErr(e instanceof ApiError ? e.message : t('errStart'));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <section className="cadou-song-card cadou-remake">
-      <h2>Refă maneaua</h2>
-      {used || parentBusy ? (
-        <p className="cadou-remake-lead">
-          {parentBusy
-            ? 'Refacem o variantă nouă după ce ne-ai spus. Piesele actuale rămân. Durează câteva minute.'
-            : 'Ai folosit refacerea gratuită. Varianta nouă apare mai sus, lângă celelalte. Alte modificări — din chat.'}
-        </p>
+    <CadouFold title={t('title')} className="cadou-remake" defaultOpen={defaultOpen}>
+      {parentBusy ? (
+        <p className="cadou-remake-lead">{t('busyLead')}</p>
       ) : (
         <>
+          <p className="cadou-remake-count">{leftCopy}</p>
           <p className="cadou-remake-lead">
-            Nu-ți convine ceva? Scrie ce vrei schimbat. Refacem o dată gratuit și
-            îți adăugăm o variantă nouă — piesele actuale rămân.
+            {freeLeft ? t('leadFree') : t('leadPaid', { price })}
           </p>
+          {canceled && (
+            <p className="cadou-pay-warn" role="status">{t('canceled')}</p>
+          )}
           <label className="cadou-remake-lab" htmlFor="cadou-remake-notes">
-            Ce nu-ți convine
+            {t('label')}
           </label>
           <textarea
             id="cadou-remake-notes"
@@ -69,10 +94,11 @@ export function CadouRemakeCard({
               setNotes(e.target.value.slice(0, MAX));
               if (err) setErr(null);
             }}
-            placeholder="ex. vreau voce de femeie, scoate «la mulți ani», mai tristă…"
+            placeholder={t('placeholder')}
           />
           <div className="cadou-remake-meta">
-            <span>{len}/1000</span>
+            {/* String, nu number — altfel ICU ar grupa miile („1.000"). */}
+            <span>{t('counter', { len: String(len), max: String(MAX) })}</span>
           </div>
           {err && <p className="cadou-err" role="alert">{err}</p>}
           <button
@@ -81,10 +107,14 @@ export function CadouRemakeCard({
             onClick={() => void submit()}
             disabled={busy || len < 8}
           >
-            {busy ? 'Pornim refacerea…' : 'Refă maneaua'}
+            {busy
+              ? (freeLeft ? t('busyFree') : t('busyPaid'))
+              : freeLeft
+                ? t('ctaFree')
+                : t('ctaPaid', { price })}
           </button>
         </>
       )}
-    </section>
+    </CadouFold>
   );
 }

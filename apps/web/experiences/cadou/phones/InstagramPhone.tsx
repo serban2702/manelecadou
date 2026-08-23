@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useTranslations } from 'next-intl';
 import { PhoneFrame } from './PhoneFrame';
 import {
   IconCamera,
@@ -41,7 +42,8 @@ export function InstagramPhone({
   muted?: boolean;
   onBindVideo?: (el: HTMLVideoElement | null) => void;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const tPlayer = useTranslations('cadou.player');
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [liked, setLiked] = useState(false);
   const [following, setFollowing] = useState(false);
   const [burst, setBurst] = useState(0);
@@ -79,7 +81,7 @@ export function InstagramPhone({
       <button
         type="button"
         className="phone-tap"
-        aria-label={playing ? 'Pauză' : 'Redă'}
+        aria-label={playing ? tPlayer('pause') : tPlayer('play')}
         onClick={() => {
           const v = videoRef.current;
           if (v) onToggle(v);

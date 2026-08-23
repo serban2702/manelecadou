@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { api, resolveMediaUrl } from '@/lib/api';
+import { useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { resolveMediaUrl } from '@/lib/api';
 import { releasePlayback } from '@/lib/audio-registry';
-import { useExperienceCatalog } from '../use-experience-catalog';
-import { CADOU_REACTIONS, type CadouReactionClip } from './reactions';
+import { type CadouReactionClip } from './reactions';
+import { useCadouReactionClips } from './use-reaction-clips';
 import { InstagramPhone } from './phones/InstagramPhone';
 import { PhoneStage } from './phones/PhoneFrame';
 import { startPhoneMedia } from './phones/play-reaction';
@@ -133,36 +133,17 @@ function PhoneCard({ clip }: { clip: CadouReactionClip }) {
 }
 
 export function CadouReactionsRow() {
-  const { reactionClips } = useExperienceCatalog();
-  const { data } = useQuery({
-    queryKey: ['site-demos'],
-    queryFn: () => api.siteDemos(),
-    staleTime: 60_000,
-  });
-
-  const clips = useMemo(() => {
-    const base = (reactionClips?.length ? reactionClips : CADOU_REACTIONS).slice(0, 8);
-    const demos = data?.items ?? [];
-    return base.map((c) => {
-      const demo = c.demoId ? demos.find((d) => d.id === c.demoId) : null;
-      if (!demo) return c;
-      return {
-        ...c,
-        audioUrl: demo.audioUrl || c.audioUrl,
-        previewStartSec: demo.previewStartSec ?? c.previewStartSec,
-        song: c.song || demo.title,
-      };
-    });
-  }, [reactionClips, data?.items]);
+  const t = useTranslations('cadou.reactions');
+  const clips = useCadouReactionClips(8);
 
   if (!clips.length) return null;
 
   return (
     <section className="cadou-section cadou-panel" id="reactii">
-      <div className="cadou-kicker">Reacții filmate</div>
-      <h2>Oameni reali, manele reale</h2>
-      <p className="lead">Așa arată surpriza — din TikTok și Instagram, cu piese generate de noi.</p>
-      <div className="cadou-phones" aria-label="Reacții">
+      <div className="cadou-kicker">{t('kicker')}</div>
+      <h2>{t('title')}</h2>
+      <p className="lead">{t('lead')}</p>
+      <div className="cadou-phones" aria-label={t('aria')}>
         {clips.map((c) => <PhoneCard key={c.id} clip={c} />)}
       </div>
     </section>

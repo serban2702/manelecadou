@@ -1090,5 +1090,694 @@
     "dedicationTo": "pentru {to}",
     "dedicationFrom": "de la {from}",
     "play": "Redă"
+  },
+  "cadou": {
+    "shell": {
+      "ticker1": "💯 SATISFACȚIE GARANTATĂ — Regenerăm gratuit dacă nu îți place!",
+      "ticker2": "🔥 1+1 GRATIS — A doua manea cadou!",
+      "ticker3": "⚡ Gata în câteva minute — Livrare pe email!",
+      "navHome": "ACASĂ",
+      "navStudio": "FĂ O MANEA",
+      "navListen": "ASCULTĂ",
+      "navTop": "TOPUL MANELIȘTILOR",
+      "navHistory": "ISTORIC",
+      "navMine": "MANELELE MELE",
+      "menuOpen": "Deschide meniul",
+      "menuClose": "Închide meniul",
+      "payments": "{name} · plăți prin Stripe",
+      "terms": "Termeni",
+      "privacy": "Confidențialitate",
+      "cookies": "Cookies",
+      "contact": "Contact",
+      "faq": "FAQ",
+      "stickyCta": "Fă o manea",
+      "stickyMeta": "{price} · 1+1"
+    },
+    "song": {
+      "loading": "Încărcăm cadoul…",
+      "back": "← Manelele mele",
+      "errForbidden": "Maneaua e disponibilă doar pentru cine a comandat-o.",
+      "errLoad": "Nu am putut încărca maneaua.",
+      "confirmingPayment": "Confirmăm plata…",
+      "awaitingPay": "Plata nu s-a finalizat. Revino și închide comanda ca să pornim maneaua.",
+      "resumePayment": "Reia plata",
+      "workingLyrics": "Scriem versurile…",
+      "workingRhyme": "Verificăm rima…",
+      "workingMusic": "Compunem muzica…",
+      "workingVoice": "Ajustăm vocea…",
+      "stretchMix": "Ajustăm vocea și mix-ul…",
+      "stretchPolish": "Lustruim ultimele detalii…",
+      "stretchAlmost": "Încă puțin — nu închide pagina.",
+      "waitOnLyrics": "Compunem audio-ul pe versurile tale.",
+      "waitRemaining": "Mai ai {time}",
+      "waitLabelAlmost": "sub 1 min · aproape gata",
+      "waitLabelEta": "timp rămas · estimare 6 min",
+      "waitTitleAlmost": "Aproape gata",
+      "waitTitleLyrics": "Versurile sunt gata",
+      "waitTitleMaking": "Compunem maneaua",
+      "playTitleMany": "Ascultă variantele",
+      "playTitleOne": "Ascultă maneaua",
+      "forName": "Pentru {name}",
+      "fromName": "de la {from}",
+      "personalized": "Manea personalizată",
+      "trackMain": "Maneaua",
+      "trackBonus": "Varianta 2",
+      "pendingTitle": "Compunem varianta nouă…",
+      "pendingSub": "Piesele de mai sus rămân. Câteva minute.",
+      "lyricsTitle": "Versurile",
+      "orderTitle": "Detaliile comenzii",
+      "orderStyle": "Stil",
+      "orderOccasion": "Ocazia",
+      "orderVoice": "Voce",
+      "orderFor": "Pentru",
+      "orderFrom": "De la",
+      "orderPackage": "Pachet",
+      "orderStory": "Povestea",
+      "orderCustomLyrics": "Versuri proprii",
+      "orderNoDedication": "fără dedicație",
+      "voiceFemale": "Feminină",
+      "voiceMale": "Bărbătească"
+    },
+    "video": {
+      "section": {
+        "title": "Videoclipul",
+        "leadMany": "Câte un clip vertical pe fiecare variantă a manelei ({count}). Gata de TikTok.",
+        "leadOne": "Clip vertical pe manea, gata de TikTok.",
+        "loaderTitle": "Montăm clipul",
+        "loaderSub": "Pozele tale pe melodie. Câteva minute.",
+        "shareTitle": "{label} — {site}",
+        "shareTiktokText": "Videoclipul manelei mele — gata de TikTok",
+        "shareTiktokBusy": "Se pregătește…",
+        "shareTiktok": "Postează pe TikTok",
+        "shareSendBusy": "Se trimite…",
+        "shareSend": "Trimite clipul",
+        "download": "Descarcă",
+        "failed": "Nu am putut monta videoclipul. Încearcă din nou cu pozele tale.",
+        "ctaLead": "Încarcă pozele și le montăm pe fiecare variantă a manelei.",
+        "ctaMake": "Fă videoclipul",
+        "ctaAnother": "Fă alt videoclip"
+      },
+      "page": {
+        "loading": "Încărcăm…",
+        "back": "← Înapoi la manea",
+        "errForbidden": "Doar cine a comandat maneaua poate face videoclipul.",
+        "errLoad": "Nu am putut încărca maneaua.",
+        "errOnlyImages": "Alege doar imagini (JPG, PNG, WEBP).",
+        "errMaxImages": "Maxim {max} imagini.",
+        "errTooBig": "„{name}” depășește {max}MB.",
+        "errNoImages": "Adaugă cel puțin o imagine.",
+        "errStart": "Nu am putut porni videoclipurile. Încearcă din nou.",
+        "kicker": "Videoclip",
+        "titleFor": "Pozele pentru {name}",
+        "metaMany": "Se montează {count} videoclipuri — câte unul pe fiecare variantă.",
+        "metaOne": "Se montează un videoclip vertical pe manea.",
+        "notReadyOwner": "Videoclipul e disponibil după ce maneaua e gata.",
+        "notReadyOther": "Doar cine a comandat maneaua poate face videoclipul.",
+        "seeSong": "Vezi maneaua",
+        "dropSelectedOne": "1 poză selectată — apasă să schimbi",
+        "dropSelectedMany": "{count} poze selectate — apasă să schimbi",
+        "dropOver": "Lasă pozele aici",
+        "dropIdle": "Încarcă pozele",
+        "dropHint": "max {max} · până la {mb}MB · JPG / PNG / WEBP",
+        "thumbAlt": "Poză {index}",
+        "submitting": "Trimitem…",
+        "submitMany": "Creează {count} videoclipuri",
+        "submitOne": "Creează videoclipul"
+      }
+    },
+    "remake": {
+      "title": "Refă maneaua",
+      "usedOne": "Ai folosit refacerea gratuită.",
+      "usedMany": "Ai folosit cele {quota} refaceri gratuite.",
+      "leftOne": "Mai ai o refacere gratuită.",
+      "leftMany": "Mai ai {remaining} refaceri gratuite.",
+      "busyLead": "Refacem o variantă nouă după ce ne-ai spus. Piesele actuale rămân. Durează câteva minute.",
+      "leadFree": "Nu-ți convine ceva? Scrie ce vrei schimbat. Îți adăugăm o variantă nouă — piesele actuale rămân.",
+      "leadPaid": "Poți reface contra {price}. Îți adăugăm o variantă nouă — piesele actuale rămân.",
+      "canceled": "Plata pentru refacere nu s-a finalizat. Poți încerca din nou.",
+      "label": "Ce nu-ți convine",
+      "placeholder": "ex. vreau voce de femeie, scoate «la mulți ani», mai tristă…",
+      "counter": "{len}/{max}",
+      "errShort": "Spune-ne mai concret ce vrei schimbat.",
+      "errStart": "Nu am putut porni refacerea.",
+      "busyFree": "Pornim refacerea…",
+      "busyPaid": "Se deschide plata…",
+      "ctaFree": "Refă maneaua",
+      "ctaPaid": "Refă maneaua · {price}"
+    },
+    "mine": {
+      "kicker": "Biblioteca ta",
+      "title": "Manelele mele",
+      "lead": "Toate cadourile pe care le-ai făcut. Deschide una ca s-o asculți.",
+      "ctaMore": "Fă încă o manea",
+      "loading": "Încărcăm manelele tale…",
+      "error": "Nu am putut încărca lista. Încearcă din nou.",
+      "emptyText": "N-ai făcut încă nicio manea.",
+      "emptyCta": "Fă prima manea",
+      "statusPay": "Plată neterminată",
+      "statusReady": "Gata",
+      "statusWorking": "Se compune",
+      "statusView": "Vezi cadoul",
+      "actionResume": "Reia plata",
+      "actionListen": "Ascultă",
+      "actionLyrics": "Vezi versurile",
+      "cardFor": "Pentru {name}",
+      "cardFrom": "De la {from}",
+      "cardGo": "{action} →"
+    },
+    "listen": {
+      "kicker": "Demo-uri reale",
+      "title": "Ascultă manele generate de noi",
+      "lead": "Exemple complete, cu nume și povești — ca să știi ce primești.",
+      "all": "Toate",
+      "loading": "Încărcăm demo-urile…",
+      "empty": "Niciun demo încă. Fă tu prima manea.",
+      "emptyCta": "Fă o manea!",
+      "ctaLike": "Fă o manea ca astea",
+      "dedicFrom": "de la {from}",
+      "dedicTo": "pentru {to}",
+      "showLyrics": "Vezi versurile",
+      "hideLyrics": "Ascunde versurile"
+    },
+    "follow": {
+      "title": "Următoarea manea mai ieftină",
+      "badge": "−40%",
+      "done": "Mulțumim pentru follow. Ai 40% reducere la următoarea manea.",
+      "doneCode": "Codul tău: <b>{code}</b>.",
+      "doneAuto": "Îl aplicăm automat la plată.",
+      "lead": "Dă follow pe Facebook și TikTok și primești 40% reducere la următoarea manea.",
+      "leadOne": "Dă follow pe {network} și primești 40% reducere la următoarea manea.",
+      "facebook": "Facebook",
+      "tiktok": "TikTok",
+      "facebookDone": "Facebook · urmărit",
+      "facebookCta": "Follow pe Facebook",
+      "tiktokDone": "TikTok · urmărit",
+      "tiktokCta": "Follow pe TikTok"
+    },
+    "player": {
+      "play": "Redă",
+      "pause": "Pauză",
+      "seek": "Poziție",
+      "volume": "Volum",
+      "unmute": "Activează sunetul",
+      "mute": "Dezactivează sunetul",
+      "download": "Descarcă",
+      "downloadAria": "Descarcă maneaua",
+      "fileBase": "manea"
+    },
+    "upsell": {
+      "basicTitle": "Vrei și colaj cu poze?",
+      "basicBody": "Upgrade la Plus: manea mai lungă + colaj cu maxim 4 poze pe refren.",
+      "plusTitle": "Colaj pe toată piesa",
+      "plusBody": "Upgrade la Premium: colaj cu 15 poze pe toată melodia, felicitare și pagină premium.",
+      "error": "Nu am putut deschide upgrade-ul.",
+      "decline": "Nu, mulțumesc",
+      "busy": "Se deschide…",
+      "cta": "Upgrade →"
+    },
+    "reactions": {
+      "kicker": "Reacții filmate",
+      "title": "Oameni reali, manele reale",
+      "lead": "Așa arată surpriza — din TikTok și Instagram, cu piese generate de noi.",
+      "aria": "Reacții",
+      "clips": {
+        "iubire": {
+          "username": "andreea.m",
+          "caption": "Mihai mi-a pus-o pe boxă. Am început să plâng din prima. Te iubesc 😭❤️ #manelecadou #deiubire",
+          "song": "De iubire · Pentru Andreea"
+        },
+        "pahar": {
+          "username": "costel.la.masa",
+          "caption": "Fratele meu Marian mi-a făcut surpriza la zi. N-am mai putut. La mulți ani mie 🥂",
+          "song": "Clasică de pahar · Pentru Costel"
+        },
+        "jale": {
+          "username": "noapte.pe.centura",
+          "caption": "Am ascultat-o în mașină și a trebuit să opresc. Elena… cineva nu te-a uitat.",
+          "song": "De jale · Pentru Elena"
+        },
+        "oriental": {
+          "username": "roxana.acasă",
+          "caption": "Daniel mi-a pus-o în bucătărie, lângă oala cu ciorbă. Am plâns de fericire.",
+          "song": "Orientală · Pentru Roxana"
+        },
+        "opulenta": {
+          "username": "bogdan.leu",
+          "caption": "Mi-au pus-o la masă. A rămas fără cuvinte. Așa se face o manea 👑 #deopulenta",
+          "song": "De opulență · Pentru Bogdan Leu"
+        },
+        "birt": {
+          "username": "baietii.dela.birt",
+          "caption": "I-am pus-o lu’ Sorin la tejghea. S-a spart masa. 😂🍺",
+          "song": "De pahar · Pentru Sorin"
+        },
+        "modern": {
+          "username": "gasca.lui.alex",
+          "caption": "Surpriza lu’ Alex. Mașina, manea, tot. La mulți ani frate 🔥",
+          "song": "Modernă · Pentru Alex"
+        },
+        "nunta": {
+          "username": "finii.lui.nelu",
+          "caption": "I-am cântat lu’ Nelu la nuntă. Nașu’ a plâns. Asta e cadoul care nu se uită.",
+          "song": "Cu trompetă · Pentru Nelu"
+        }
+      }
+    },
+    "style": {
+      "playSample": "Ascultă mostra {name}",
+      "stopSample": "Oprește mostra {name}",
+      "cta": "Fă o manea!"
+    },
+    "tracks": {
+      "variant1": "Varianta 1",
+      "variant2": "Varianta 2",
+      "clip": "Videoclip"
+    },
+    "from": {
+      "label": "De la",
+      "you": "tine"
+    },
+    "testimonials": {
+      "costel": {
+        "quote": "I-am pus-o șefului la masă. S-a făcut liniște. L-am văzut cum își șterge ochii și întoarce capul, să nu-l vadă băieții.",
+        "name": "Costel B.",
+        "role": "Buzău"
+      },
+      "andreea": {
+        "quote": "La nuntă, socrul a auzit numele lui în manea și m-a luat în brațe. Plângea. Mi-a zis că n-a primit niciodată un cadou care să-l lovească așa.",
+        "name": "Andreea M.",
+        "role": "Pitești"
+      },
+      "vasile": {
+        "quote": "Nașu’ s-a ridicat de la masă în timpul piesei. Îi tremura mâna pe pahar. După aia m-a strâns și a zis doar atât: mulțumesc, fiu.",
+        "name": "Vasile P.",
+        "role": "Cluj"
+      },
+      "geta": {
+        "quote": "I-am pus-o soțului seara, în bucătărie. N-a zis nimic un minut întreg. Apoi m-a luat de mână și a ținut-o pe repeat până dimineața.",
+        "name": "Geta D.",
+        "role": "București"
+      },
+      "robert": {
+        "quote": "Mama a plâns din prima strofă. Am filmat-o. TikTok-ul a făcut 200K, dar momentul ăla n-are vizualizări — e despre ea.",
+        "name": "Robert T.",
+        "role": "Iași"
+      },
+      "maria": {
+        "quote": "I-am făcut-o fratelui meu, după un an în care nu ne-am vorbit. Când a auzit versurile, a venit la mine. Ne-am împăcat fără un cuvânt.",
+        "name": "Maria I.",
+        "role": "Craiova"
+      }
+    },
+    "stories": {
+      "iubire": {
+        "iubit": {
+          "label": "Pentru iubitul meu",
+          "msg": "Ești totul pentru mine. Îți mulțumesc pentru toate sacrificiile făcute pentru familia noastră. Am trecut împreună prin greutățile vieții, dar nimeni și nimic nu a învins iubirea noastră."
+        },
+        "iubita": {
+          "label": "Pentru iubita mea",
+          "msg": "Ești lumina mea. Ți-am construit o casă și o viață, și te iubesc mai mult ca ieri, mai puțin ca mâine. Nu te schimb pe nimeni."
+        },
+        "sot": {
+          "label": "Pentru soțul meu",
+          "msg": "Ești cel mai bun soț și cel mai bun tată. Am ales să stau lângă tine la bine și la greu, ani de zile, și tot ce am, am cu tine."
+        },
+        "sotie": {
+          "label": "Pentru soția mea",
+          "msg": "Tu ții casa și copiii. Ești viața mea. Tot ce am făcut, am făcut pentru noi — te iubesc și îți mulțumesc."
+        },
+        "ziIubire": {
+          "label": "La mulți ani, iubirea mea",
+          "msg": "La mulți ani! Ești cel mai prețios lucru din viața mea. Mulțumesc pentru iubirea de care dai dovadă în fiecare zi și pentru toate sacrificiile pe care le faci pentru mine."
+        },
+        "copil": {
+          "label": "Pentru copilul meu",
+          "msg": "Te iubesc din tot sufletul și sunt mândru de tine. Ești minunea mea. Să știi că sunt lângă tine, oricând, oriunde."
+        }
+      },
+      "romantica": {
+        "plecat": {
+          "label": "Pentru cineva plecat",
+          "msg": "Nu te-am uitat. Te plângem și acum, copiii și nepoții. Îmi e dor de tine în fiecare zi și te țin aproape în inimă."
+        },
+        "tata": {
+          "label": "Dor de tata",
+          "msg": "Tată, ne-ai lăsat cu mare dor. Ai fost cel mai bun om pentru noi și pentru nepoți. Te plâng și te iubesc, oriunde ești."
+        },
+        "mama": {
+          "label": "Dor de mama",
+          "msg": "Mamă, îmi e dor de tine. De mâncarea ta, de vorba ta, de liniștea din casă. Te plâng și te iubesc."
+        },
+        "inimaFranta": {
+          "label": "Inimă frântă",
+          "msg": "M-ai durut când ai plecat. N-am apucat să-ți spun tot ce aveam pe suflet. Te iubesc și acum, deși nu mai ești lângă mine."
+        },
+        "departe": {
+          "label": "Departe de casă",
+          "msg": "Sunt departe, în străinătate, și-mi e dor de voi. Trag pentru familia noastră și mă întorc. Așteptați-mă acasă."
+        },
+        "neuitat": {
+          "label": "Nu te-am uitat",
+          "msg": "Nu te-am uitat. Îmi e dor de tine în fiecare noapte. Inima mea tot la tine se întoarce."
+        }
+      },
+      "clasic": {
+        "frate": {
+          "label": "La mulți ani, frate",
+          "msg": "La mulți ani, frate. Să te ții pe picioare, să stăm la masă până-n zori, cu paharul sus și cu vorba bună. Te iubesc, frate."
+        },
+        "prieten": {
+          "label": "Pentru un prieten",
+          "msg": "Ești cel mai bun prieten. Pe tine mă bazez. La mulți ani — să râdem și să ridicăm paharul împreună, ca întotdeauna."
+        },
+        "tata": {
+          "label": "Pentru tata",
+          "msg": "La mulți ani, tăicuțu. De la copii și de la gineri: sănătate, liniște și o masă ca pe vremuri. Fără tine nu am fi noi."
+        },
+        "sotieZi": {
+          "label": "Pentru soție, la zi",
+          "msg": "Azi e despre tine. La mulți ani, sănătate și fericire. Ne-ai fost alături, soțul tău și copiii îți mulțumesc din suflet."
+        },
+        "nas": {
+          "label": "Pentru naș / fin",
+          "msg": "Să trăiești. Să ne întâlnim la mese și să nu uităm de unde am pornit. Ești de-al nostru, naș / fine, și te respectăm."
+        },
+        "familie": {
+          "label": "Pentru familie",
+          "msg": "Să fim sănătoși, să ne strângem la masă și să uităm de griji. Vă iubesc pe toți — casa e plină când sunteți voi."
+        }
+      },
+      "opulenta": {
+        "sef": {
+          "label": "Pentru șeful meu",
+          "msg": "Te respect. Ai vorba grea și fără tine nu s-ar mișca nimic. Îți mulțumesc că m-ai ținut aproape și că ești omul de la masă."
+        },
+        "nas": {
+          "label": "Pentru naș / fin",
+          "msg": "Să ai noroc și bani curați. Nu uita cine ți-a stat alături. Ești finul / nașul nostru și te ținem la inimă."
+        },
+        "frate": {
+          "label": "Pentru fratele meu",
+          "msg": "Ești cel mai bun frate din lume. Ai fost lângă mine la bune și la rele. Te iubesc, frate, și meriți tot ce e mai bun."
+        },
+        "ziSefu": {
+          "label": "La mulți ani, șefu'",
+          "msg": "La mulți ani, șefu'. Ești omul de la masă, cel mai șmecher din cercul nostru. Să-ți meargă totul din plin."
+        },
+        "reusit": {
+          "label": "Pentru cine a reușit",
+          "msg": "Ai pornit de jos și acum stai la masă cu banii pe față. Meriți tot ce ai. Sunt mândru de tine."
+        },
+        "tata": {
+          "label": "Pentru tata, omul casei",
+          "msg": "Tată, ai muncit de dimineață până noaptea ca noi să nu simțim greul. Te iubim infinit. Ești omul casei noastre."
+        }
+      },
+      "trompeta": {
+        "nunta": {
+          "label": "La nuntă",
+          "msg": "Azi e nunta voastră. Vă doresc ani mulți împreună, copii și nepoți. Ridicați-vă, că masa e a voastră."
+        },
+        "prieten": {
+          "label": "Pentru un prieten",
+          "msg": "La mulți ani, prietene. De când te-am cunoscut, ești omul pe care ne putem baza. Îți spun din suflet, cu drag."
+        },
+        "aniversare": {
+          "label": "Ani de căsătorie",
+          "msg": "Am trecut împreună prin bune și prin rele. Rămân lângă tine până la adânci bătrâneți — iubiți de copii și de nepoți."
+        },
+        "baiat": {
+          "label": "Pentru băiatul nostru",
+          "msg": "La mulți ani, băiatul nostru. Urmează-ți visurile cu curaj. Ești minunea casei și mândria noastră."
+        },
+        "nas": {
+          "label": "Pentru naș",
+          "msg": "Ești omul de onoare. Nunta e mai nuntă cu tine la masă. Te respectăm și-ți mulțumim că ești al nostru."
+        },
+        "familie": {
+          "label": "Pentru familia la masă",
+          "msg": "Azi suntem toți adunați. Să răsune sala, să fie voie bună și sănătate. Vă iubesc — masa e a noastră."
+        }
+      },
+      "oriental": {
+        "sotie": {
+          "label": "Pentru soția mea",
+          "msg": "Ești regina casei. Cu tine pe masă e pace. Te iubesc, ești tot ce am, la bine și la rău."
+        },
+        "sot": {
+          "label": "Pentru soțul meu",
+          "msg": "Ești soțul meu minunat, taticul copiilor. Te iubesc infinit. Ești toată viața noastră."
+        },
+        "ziFamilie": {
+          "label": "La mulți ani în familie",
+          "msg": "La mulți ani, sănătate și fericire. Să retrăim clipele frumoase împreună — tu, eu, copiii, toată casa."
+        },
+        "iubireDeparte": {
+          "label": "Iubire de departe",
+          "msg": "Iubirea mea, îmi e dor de tine. Îi mulțumesc lui Dumnezeu că suntem împreună. Te iubesc enorm, oriunde am fi."
+        },
+        "copil": {
+          "label": "Pentru copilul meu",
+          "msg": "La mulți ani. Parcă ieri te purtam în brațe. Mami și tati sunt mândri de tine — crești frumos și sănătos."
+        },
+        "strainatate": {
+          "label": "Pentru cine e în străinătate",
+          "msg": "Ești departe, dar inima e acasă. Să-ți meargă mașina, casa și familia. Te așteptăm cu masa pusă."
+        }
+      }
+    },
+    "home": {
+      "heroKicker": "Fă-ți maneaua mai jos!",
+      "heroTitle": "Creează-ți propria manea în 2 minute!",
+      "heroLead": "Alege stilul, adaugă detaliile și noi generăm o manea unică pentru tine — gata în câteva minute.",
+      "heroDeal": "1+1 GRATIS",
+      "heroRemake": "O refacere <b>GRATUITĂ</b> dacă nu-ți place",
+      "heroCta": "Fă o manea!",
+      "heroSocial": "🔥 {count} manele create azi",
+      "statSongs": "Manele generate",
+      "statSongsValue": "100.000+",
+      "statRating": "Rating utilizatori",
+      "statRatingValue": "4,9/5",
+      "statTime": "Timp de generare",
+      "statTimeValue": "2–5 min",
+      "statUsers": "Utilizatori activi",
+      "statUsersValue": "2.000+",
+      "recentLabel": "Recent generate:",
+      "recentChip": "▶ {name} · {style}",
+      "recent": [
+        {
+          "name": "Ionuț",
+          "style": "De jale"
+        },
+        {
+          "name": "Maria",
+          "style": "De iubire"
+        },
+        {
+          "name": "Bogdan",
+          "style": "De opulență"
+        },
+        {
+          "name": "Elena",
+          "style": "Clasică de pahar"
+        },
+        {
+          "name": "Andrei",
+          "style": "Cu trompetă"
+        },
+        {
+          "name": "Cristina",
+          "style": "Orientală"
+        },
+        {
+          "name": "Florin",
+          "style": "De pahar"
+        },
+        {
+          "name": "Roxana",
+          "style": "Tallava"
+        },
+        {
+          "name": "Cătălin",
+          "style": "Kuchek"
+        },
+        {
+          "name": "Simona",
+          "style": "Trapanele"
+        }
+      ],
+      "stylesKicker": "Stiluri disponibile",
+      "stylesTitle": "Alege stilul tău",
+      "stylesLead": "Fiecare stil are un suflet aparte. Alege-l pe cel care îți reprezintă povestea.",
+      "howKicker": "Cum funcționează",
+      "howTitle": "Cum funcționează generarea?",
+      "howLead": "În doar 4 pași simpli, ai propria manea personalizată",
+      "step1Title": "Completează detaliile",
+      "step1Text": "Alege stilul și titlul",
+      "step2Title": "Noi generăm versurile",
+      "step2Text": "Compunem versuri pe gustul tău",
+      "step3Title": "Creăm muzica",
+      "step3Text": "Compunem melodia perfectă",
+      "step4Title": "Primești maneaua",
+      "step4Text": "Descarcă și împărtășește",
+      "howHint": "*sau ne dai tu versurile tale",
+      "midTitle": "Gata să îți creezi maneaua?",
+      "midLead": "Începe acum procesul de generare în doar câteva click-uri!",
+      "midCta": "Generează manea acum",
+      "midPillDeal": "{price} · 1+1 GRATIS",
+      "midPillRemake": "O refacere GRATUITĂ dacă nu-ți place",
+      "reactionKicker": "Cadoul care nu se uită",
+      "reactionTitle": "Imaginează-ți reacția…",
+      "reactionText": "O manea personalizată pentru fratele tău, prietena ta, sau șeful de la petrecere. Cadoul pe care nu-l uită nimeni.",
+      "reactionCta": "Creează surpriza",
+      "testiKicker": "Ce spun utilizatorii",
+      "testiTitle": "Reacții reale",
+      "testiLead": "Mii de fani care au primit maneaua perfectă.",
+      "testiQuote": "„{text}”",
+      "testiWho": "{name} · {role}",
+      "pricingKicker": "Tarife",
+      "pricingTitle": "Prețuri simple, fără surprize",
+      "pricingLead": "O singură plată. Niciun abonament, nicio taxă ascunsă.",
+      "pricingNote": "🔒 Stripe securizat · ⚡ Livrare instant · ✅ Garanție 30 zile",
+      "faqKicker": "Întrebări frecvente",
+      "faqTitle": "Răspunsuri rapide",
+      "faq1Q": "Ce este {name}?",
+      "faq1A": "Un generator de manele AI personalizate. Alegi stilul, spui povestea și primești o manea unică cu numele destinatarului, gata de ascultat și de dat cadou.",
+      "faq2Q": "Cât durează generarea?",
+      "faq2A": "De obicei 2–5 minute. Îți trimitem maneaua pe email imediat ce e gata.",
+      "faq3Q": "Ce se întâmplă dacă nu-mi place?",
+      "faq3A": "Ai o refacere GRATUITĂ dacă nu-ți place. Regenerăm până ești mulțumit.",
+      "faq4Q": "Pot scrie eu versurile?",
+      "faq4A": "Da. La pasul Extra bifezi „Vreau să scriu propriile versuri” și le folosim literal.",
+      "faqAll": "Vezi toate întrebările și răspunsurile →"
+    },
+    "wizard": {
+      "stepStyle": "Stil",
+      "stepDetails": "Detalii",
+      "stepExtra": "Extra",
+      "stepPay": "Plată",
+      "title": "Creează maneaua ta",
+      "lead": "Alege stilul, adaugă detaliile și noi creăm muzica.",
+      "offerBadge": "🎁 1+1 GRATIS",
+      "offerBadgeDiscount": "🎁 1+1 GRATIS · {pct}% REDUCERE",
+      "offerTrust": "★ 4,9/5 din peste 10.000 recenzii · ♪ 100.000+ melodii create",
+      "styleKicker": "Alege stilul muzical",
+      "errStyle": "Alege un stil muzical ca să continui.",
+      "storyLabel": "Alege o poveste",
+      "msgLabel": "Ce vrei să menționăm în melodie",
+      "msgPlaceholder": "Despre ce vrei să fie maneaua ta?",
+      "errMsg": "Scrie în căsuța de mai sus despre ce vrei să fie maneaua.",
+      "fromLabel": "De la cine",
+      "fromPlaceholder": "Ex.: Mihai, familia…",
+      "errFrom": "Completează câmpul „De la cine”.",
+      "toLabel": "Pentru cine",
+      "toPlaceholder": "Ex.: Ionuț, Maria…",
+      "errTo": "Completează câmpul „Pentru cine”.",
+      "noDedication": "Nu dedic nimănui — vreau doar maneaua",
+      "occasionLabel": "Ocazia (opțional)",
+      "voiceLabel": "Voce",
+      "voiceRecommended": "Recomandat",
+      "errVoice": "Alege vocea: bărbătească sau feminină.",
+      "packageLabel": "Pachet",
+      "customLyricsCheck": "Vreau să scriu propriile versuri",
+      "customLyricsPlaceholder": "Scrie versurile tale…",
+      "errCustomLyrics": "Scrie versurile tale în căsuța de mai sus.",
+      "emailLabel": "Emailul tău *",
+      "emailPlaceholder": "email@exemplu.ro",
+      "emailHint": "Te anunțăm când maneaua e gata. Fără spam.",
+      "errEmail": "Introdu un email valid ca să-ți trimitem maneaua.",
+      "privacy": "Sunt de acord cu politica de confidențialitate și să primesc emailuri despre comandă.",
+      "errPrivacy": "Trebuie să bifezi căsuța de mai sus.",
+      "payTitleSelf": "Maneaua <em>ta</em>",
+      "payTitleFor": "Maneaua pentru <em>{name}</em>",
+      "recapStyle": "Genul",
+      "recapFrom": "De la",
+      "recapTo": "Pentru",
+      "recapOccasion": "Ocazia",
+      "recapPackage": "Pachet",
+      "recapVoice": "Voce",
+      "recapEmail": "Email",
+      "recapNoDedication": "fără dedicație",
+      "recapEdit": "Modifică",
+      "promoLabel": "Cod de reducere",
+      "promoPlaceholder": "PROMO",
+      "promoApply": "Aplică",
+      "promoApplied": "Cod <b>{code}</b> aplicat",
+      "promoExpired": "Codul a expirat.",
+      "promoNotYetValid": "Codul nu e încă activ.",
+      "promoUsedUp": "Codul nu mai poate fi folosit.",
+      "promoWrongEmail": "Codul e valabil doar pentru alt email.",
+      "promoEmpty": "Introdu un cod de reducere.",
+      "promoUnknown": "Nu recunoaștem acest cod. Verifică-l și încearcă din nou.",
+      "promoCheckFailed": "Nu am putut verifica codul. Încearcă din nou.",
+      "afterPayRemakeOne": "După plată vom genera maneaua și dacă doriți vreo modificare, beneficiați de o refacere gratuită.",
+      "afterPayRemakeMany": "După plată vom genera maneaua și dacă doriți vreo modificare, beneficiați de {count} refaceri gratuite.",
+      "afterPayCollage": "Colajul cu imagini se va face după generarea manelei.",
+      "afterPayCard": "Felicitarea personalizată se face după generarea manelei.",
+      "afterPaySocial": "Postarea pe Facebook și TikTok, cu dedicație, se face după ce maneaua e gata.",
+      "back": "Înapoi",
+      "next": "Continuă",
+      "payBusy": "Se deschide plata…",
+      "pay": "Plătește {price}",
+      "errPaymentCanceled": "Plata nu a putut fi efectuată. Comanda e salvată — poți încerca din nou.",
+      "errPaymentsUnavailable": "Plățile sunt temporar indisponibile. Încearcă în câteva minute.",
+      "errSessionExpired": "Sesiunea a expirat. Reîncearcă plata.",
+      "errCheckout": "Nu am putut deschide plata. Verifică emailul și încearcă din nou."
+    },
+    "packs": {
+      "recommended": "Recomandat",
+      "cta": "Alege {name}"
+    },
+    "legacy": {
+      "clips": {
+        "title": "🎬 Videoclipuri (refren)",
+        "titleFold": "Videoclipuri pe refren",
+        "leadOne": "Clipul scurt pe refren, din pachetul tău.",
+        "leadMany": "Cele {count} clipuri scurte pe refren, din pachetul tău.",
+        "download": "Descarcă",
+        "pending": "⏳ Se montează videoclipul… (apare automat în câteva minute)",
+        "pendingTitle": "Montăm videoclipul",
+        "pendingSub": "Apare automat în câteva minute."
+      },
+      "social": {
+        "title": "📸 Poza ta de share",
+        "titleFold": "Poza de share",
+        "lead": "Alege poza care apare când distribui melodia pe TikTok, Facebook sau Instagram.",
+        "leadGuest": "Poza care apare când melodia e distribuită pe TikTok, Facebook sau Instagram.",
+        "alt": "Variantă poză de share",
+        "yours": "A ta",
+        "upload": "⬆ Încarcă poza ta",
+        "uploadShort": "Încarcă poza ta",
+        "uploading": "Se încarcă…",
+        "download": "⬇ Descarcă poza",
+        "downloadShort": "Descarcă poza",
+        "errSelect": "Nu am putut salva selecția. Încearcă din nou.",
+        "errUpload": "Încărcarea a eșuat."
+      },
+      "unlock": {
+        "title": "🔒 Conținut privat",
+        "titleFold": "Conținut privat",
+        "lead": "Introdu parola pentru a vedea pozele și colajele.",
+        "placeholder": "Parola",
+        "checking": "Verific…",
+        "submit": "Deblochează",
+        "wrong": "Parolă greșită. Mai încearcă."
+      },
+      "pin": {
+        "title": "🔒 Parolă pentru pozele private",
+        "titleFold": "Parolă pentru pozele private",
+        "lead": "Cine are linkul + parola poate vedea pozele tale custom și colajele.",
+        "active": "Parola e activă.",
+        "currentLabel": "Parola curentă (o poți partaja)",
+        "placeholderNew": "Parolă nouă",
+        "placeholderSet": "Setează o parolă",
+        "save": "Salvează",
+        "saving": "Salvez…",
+        "saved": "✓ Salvat",
+        "clear": "Șterge parola",
+        "errSave": "Nu am putut salva parola."
+      }
+    }
   }
 }

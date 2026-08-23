@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { useQuery } from '@tanstack/react-query';
 import { api, type SiteDemoDto } from '@/lib/api';
 import { useSite } from '@/lib/site-context';
@@ -13,6 +14,7 @@ import { cadouArtForDemo, cadouStyleIdFromTitle } from './style-art';
 
 export default function CadouListenPage() {
   const site = useSite();
+  const t = useTranslations('cadou.listen');
   const studio = getPagePath(site.locale, 'studio');
   const { demoIds, styles } = useExperienceCatalog();
   const [styleKey, setStyleKey] = useState('');
@@ -44,9 +46,9 @@ export default function CadouListenPage() {
     <CadouShell>
       <div className="cadou-wrap">
         <section className="cadou-section cadou-panel">
-          <div className="cadou-kicker">Demo-uri reale</div>
-          <h2>Ascultă manele generate de noi</h2>
-          <p className="lead">Exemple complete, cu nume și povești — ca să știi ce primești.</p>
+          <div className="cadou-kicker">{t('kicker')}</div>
+          <h2>{t('title')}</h2>
+          <p className="lead">{t('lead')}</p>
 
           {styleFilters.length > 1 && (
             <div className="cadou-chips" style={{ justifyContent: 'center', marginBottom: 22 }}>
@@ -55,7 +57,7 @@ export default function CadouListenPage() {
                 className={`cadou-chip${!styleKey ? ' on' : ''}`}
                 onClick={() => setStyleKey('')}
               >
-                Toate
+                {t('all')}
               </button>
               {styleFilters.map((s) => (
                 <button
@@ -71,11 +73,11 @@ export default function CadouListenPage() {
           )}
 
           {isLoading ? (
-            <p className="cadou-hint" style={{ textAlign: 'center' }}>Încărcăm demo-urile…</p>
+            <p className="cadou-hint" style={{ textAlign: 'center' }}>{t('loading')}</p>
           ) : filtered.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '28px 8px' }}>
-              <p className="cadou-hint">Niciun demo încă. Fă tu prima manea.</p>
-              <Link href={studio} className="cadou-cta" style={{ marginTop: 14 }}>Fă o manea!</Link>
+              <p className="cadou-hint">{t('empty')}</p>
+              <Link href={studio} className="cadou-cta" style={{ marginTop: 14 }}>{t('emptyCta')}</Link>
             </div>
           ) : (
             <div className="cadou-listen-grid">
@@ -86,7 +88,7 @@ export default function CadouListenPage() {
           )}
 
           <div style={{ textAlign: 'center', marginTop: 28 }}>
-            <Link href={studio} className="cadou-cta">Fă o manea ca astea</Link>
+            <Link href={studio} className="cadou-cta">{t('ctaLike')}</Link>
           </div>
         </section>
       </div>
@@ -95,8 +97,12 @@ export default function CadouListenPage() {
 }
 
 function CadouDemoCard({ demo }: { demo: SiteDemoDto }) {
+  const t = useTranslations('cadou.listen');
   const [lyrics, setLyrics] = useState(false);
-  const dedic = [demo.fromName && `de la ${demo.fromName}`, demo.toName && `pentru ${demo.toName}`]
+  const dedic = [
+    demo.fromName && t('dedicFrom', { from: demo.fromName }),
+    demo.toName && t('dedicTo', { to: demo.toName }),
+  ]
     .filter(Boolean)
     .join(' ');
   const cover = cadouArtForDemo({
@@ -119,7 +125,7 @@ function CadouDemoCard({ demo }: { demo: SiteDemoDto }) {
       {demo.lyrics && (
         <>
           <button type="button" className="cadou-listen-lyrics-btn" onClick={() => setLyrics((v) => !v)}>
-            {lyrics ? 'Ascunde versurile' : 'Vezi versurile'}
+            {lyrics ? t('hideLyrics') : t('showLyrics')}
           </button>
           {lyrics && <pre className="cadou-listen-lyrics">{demo.lyrics}</pre>}
         </>

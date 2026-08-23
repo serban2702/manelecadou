@@ -10,6 +10,9 @@ import { track } from '@/lib/tracking';
 import { track as trackEvent } from '@/lib/tracker';
 import { ManeaPlayer } from '@/components/ManeaPlayer';
 import { VideoPlayer } from '@/components/VideoPlayer';
+import { ChorusClipsSection } from '@/components/ChorusClipsSection';
+import { SocialImagesSection } from '@/components/SocialImagesSection';
+import { OwnerPasswordControl, UnlockPrompt, useUnlockPassword } from '@/components/UnlockPassword';
 import { STYLES, VOICES, OCC } from '@/lib/seed-data';
 import { useSite } from '@/lib/site-context';
 import { useSession } from '@/lib/providers';
@@ -47,18 +50,9 @@ function ShareGenerationViewInner() {
   const [unlocking, setUnlocking] = useState(false);
   // Parola de privacy (non-owner) — persistată în localStorage ca refresh-ul să
   // păstreze accesul. `null` = neintrodusă / owner.
-  const [unlockPw, setUnlockPw] = useState<string | null>(null);
+  const { password: unlockPw, unlock } = useUnlockPassword(params.id);
   const viewTrackedRef = useRef(false);
   const purchaseTrackedRef = useRef(false);
-
-  // Citește parola persistată la mount (înainte de primul refresh).
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const saved = window.localStorage.getItem(`mc_unlock_${params.id}`);
-      if (saved) setUnlockPw(saved);
-    } catch {/* ignore */}
-  }, [params.id]);
 
   const refresh = useCallback(async () => {
     try {
@@ -169,7 +163,8 @@ function ShareGenerationViewInner() {
   const inProgress = IN_PROGRESS_STATUSES.has(g.status) && !awaitingPayment;
   // Pachetele plus/premium au livrabile extra (imagini sociale; + videoclip la
   // premium) care se generează în fundal după ce melodia e gata. Cât
-  // `deliverablesReady` e false, arătăm placeholder-e „se generează".
+  // `deliverablesReady` e false, arătăm placeholder-e „se generează" — altfel
+  // clientul care a plătit nu vede nimic din ce a cumpărat.
   const tierHasExtras = g.packageTier === 'plus' || g.packageTier === 'premium';
   const enriching = isPaid && tierHasExtras && g.deliverablesReady === false;
   // Lookup chain: admin-defined config per site (cu i18n localizare) → seed-data
@@ -263,11 +258,9 @@ function ShareGenerationViewInner() {
       {/* Privacy: non-owner cu manea privată — cere parola. */}
       {!isOwner && g.hasUnlockPassword && !g.unlocked && (
         <UnlockPrompt
-          onUnlocked={(pw) => {
-            setUnlockPw(pw);
-            try { window.localStorage.setItem(`mc_unlock_${params.id}`, pw); } catch {/* ignore */}
-            // refresh se declanșează automat via effect [unlockPw].
-          }}
+          skin="classic"
+          // refresh se declanșează automat via effect [unlockPw].
+          onUnlocked={unlock}
           generationId={params.id}
         />
       )}
@@ -275,6 +268,7 @@ function ShareGenerationViewInner() {
       {/* Privacy: owner setează/șterge parola peste pozele private. */}
       {isOwner && isPaid && g.status === 'succeeded' && (g.packageTier === 'plus' || g.packageTier === 'premium') && (
         <OwnerPasswordControl
+          skin="classic"
           generationId={g.id}
           hasPassword={!!g.hasUnlockPassword}
           currentPin={g.unlockPin ?? null}
@@ -333,43 +327,14 @@ function ShareGenerationViewInner() {
 
       {/* Videoclipurile sunt clipuri SCURTE verticale (refren, stil TikTok).
           Le afișăm UNUL LÂNGĂ ALTUL — 2 coloane, inclusiv pe mobil (verticale
-          înguste). Dacă există doar unul, e afișat singur (flex se descurcă). */}
-      {(() => {
-        const videoPoster = resolveMediaUrl(
-          g.socialImageUploaded ?? g.socialImageSelected ?? g.coverUrl,
-        );
-        const clips = [g.videoUrl, g.videoUrlBonus].filter(Boolean) as string[];
-        if (clips.length > 0) {
-          return (
-            <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
-                🎬 Videoclipuri (refren)
-              </div>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                {clips.map((url, i) => (
-                  <div key={url + i} style={{ flex: 1, minWidth: 0 }}>
-                    <VideoPlayer src={resolveMediaUrl(url)!} poster={videoPoster} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        }
-        // Cât livrabilele premium se montează și încă nu există niciun video.
-        if (enriching && g.packageTier === 'premium') {
-          return (
-            <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
-                🎬 Videoclipuri (refren)
-              </div>
-              <div className="ld" style={{ fontSize: 13, opacity: 0.85 }}>
-                ⏳ Se montează videoclipul… (apare automat în câteva minute)
-              </div>
-            </div>
-          );
-        }
-        return null;
-      })()}
+          înguste). Dacă există doar unul, e afișat singur (flex se descurcă).
+          `pending`: cât livrabilele premium se montează și încă nu există niciun
+          video. */}
+      <ChorusClipsSection
+        generation={g}
+        skin="classic"
+        pending={enriching && g.packageTier === 'premium'}
+      />
 
       {/* Colaj video din pozele tale — DOAR pachetul premium (cel mai scump),
           după plată și melodie finalizată. Owner SAU vizitator deblocat poate
@@ -379,15 +344,23 @@ function ShareGenerationViewInner() {
       )}
 
       {g.status === 'succeeded' && !!(g.socialImages && g.socialImages.length) ? (
-        <SocialImageSection
+        <SocialImagesSection
           generation={g}
           isOwner={isOwner}
-          password={unlockPw ?? undefined}
+          skin="classic"
           // BUG FIX: endpoint-urile select/upload întorc un obiect PARȚIAL
           // (ex. `{ ok, socialImageSelected }`). Înlocuirea totală a obiectului
           // golea pagina (titlu fără nume, „Demo — preview"). Facem MERGE ca să
           // păstrăm restul câmpurilor (recipientName, type, audioUrl, videoUrl…).
           onUpdated={(fresh) => setG((prev) => (prev ? { ...prev, ...fresh } : prev))}
+          renderExtra={(selected) => (
+            <ImageVideoLauncher
+              generation={g}
+              isOwner={isOwner}
+              selected={selected}
+              password={unlockPw ?? undefined}
+            />
+          )}
         />
       ) : enriching ? (
         <div style={{
@@ -532,168 +505,6 @@ function GenerationProgress({
           </pre>
         </div>
       )}
-    </div>
-  );
-}
-
-/** Card de deblocare (non-owner) — input parolă + buton „Deblochează". */
-function UnlockPrompt({
-  generationId,
-  onUnlocked,
-}: {
-  generationId: string;
-  onUnlocked: (password: string) => void;
-}) {
-  const [pw, setPw] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function submit() {
-    if (!pw.trim()) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      const r = await api.checkUnlock(generationId, pw);
-      if (r.ok) {
-        onUnlocked(pw);
-      } else {
-        setErr('Parolă greșită. Mai încearcă.');
-      }
-    } catch {
-      setErr('Parolă greșită. Mai încearcă.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div style={{
-      marginTop: 14, padding: 16, borderRadius: 12,
-      background: 'rgba(241,200,77,0.06)', border: '1px solid rgba(241,200,77,0.3)',
-    }}>
-      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--gold-2)', marginBottom: 4 }}>
-        🔒 Conținut privat
-      </div>
-      <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
-        Introdu parola pentru a vedea pozele și colajele.
-      </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <input
-          type="password"
-          value={pw}
-          onChange={(e) => { setPw(e.target.value); setErr(null); }}
-          onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
-          placeholder="Parola"
-          style={{
-            flex: 1, padding: '8px 10px', borderRadius: 8,
-            background: 'rgba(0,0,0,0.3)', border: '1px solid var(--line)',
-            color: 'var(--gold-2)', fontFamily: 'inherit', fontSize: 13,
-          }}
-        />
-        <button
-          type="button"
-          onClick={submit}
-          disabled={!pw.trim() || busy}
-          className="btn btn-gold"
-          style={{ padding: '8px 16px', opacity: busy ? 0.7 : 1 }}
-        >
-          {busy ? 'Verific…' : 'Deblochează'}
-        </button>
-      </div>
-      {err && <div style={{ marginTop: 8, fontSize: 12, color: '#ff8888' }}>{err}</div>}
-    </div>
-  );
-}
-
-/** Control owner — setează/șterge parola de privacy peste pozele/colajele private. */
-function OwnerPasswordControl({
-  generationId,
-  hasPassword,
-  currentPin,
-  onChanged,
-}: {
-  generationId: string;
-  hasPassword: boolean;
-  currentPin?: string | null;
-  onChanged: () => void;
-}) {
-  const [pw, setPw] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-
-  async function save(value: string | null) {
-    setBusy(true);
-    setErr(null);
-    setSaved(false);
-    try {
-      await api.setUnlockPassword(generationId, value);
-      setPw('');
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-      onChanged();
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : 'Nu am putut salva parola.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div style={{
-      marginTop: 14, padding: 16, borderRadius: 12,
-      background: 'rgba(241,200,77,0.06)', border: '1px solid rgba(241,200,77,0.2)',
-    }}>
-      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
-        🔒 Parolă pentru pozele private
-      </div>
-      <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
-        Cine are linkul + parola poate vedea pozele tale custom și colajele.
-        {hasPassword && !currentPin && <b style={{ color: 'var(--gold-2)' }}> Parola e activă.</b>}
-      </div>
-      {currentPin && (
-        <div style={{
-          marginBottom: 12, padding: '10px 12px', borderRadius: 8, textAlign: 'center',
-          background: 'rgba(0,0,0,0.3)', border: '1px solid var(--line)',
-        }}>
-          <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 2 }}>Parola curentă (o poți partaja)</div>
-          <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: 'var(--gold)' }}>{currentPin}</div>
-        </div>
-      )}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <input
-          type="text"
-          value={pw}
-          onChange={(e) => { setPw(e.target.value); setErr(null); }}
-          placeholder={hasPassword ? 'Parolă nouă' : 'Setează o parolă'}
-          style={{
-            flex: '1 1 160px', padding: '8px 10px', borderRadius: 8,
-            background: 'rgba(0,0,0,0.3)', border: '1px solid var(--line)',
-            color: 'var(--gold-2)', fontFamily: 'inherit', fontSize: 13,
-          }}
-        />
-        <button
-          type="button"
-          onClick={() => save(pw)}
-          disabled={!pw.trim() || busy}
-          className="btn btn-gold"
-          style={{ padding: '8px 16px', opacity: busy ? 0.7 : 1 }}
-        >
-          {busy ? 'Salvez…' : saved ? '✓ Salvat' : 'Salvează'}
-        </button>
-        {hasPassword && (
-          <button
-            type="button"
-            onClick={() => save(null)}
-            disabled={busy}
-            className="btn btn-ghost"
-            style={{ padding: '8px 16px' }}
-          >
-            Șterge parola
-          </button>
-        )}
-      </div>
-      {err && <div style={{ marginTop: 8, fontSize: 12, color: '#ff8888' }}>{err}</div>}
     </div>
   );
 }
@@ -1127,190 +938,47 @@ function ShareSection({ generationId, recipientName, imageUrl }: { generationId:
 }
 
 /**
- * Galerie de poze de share (plus/premium). Afișează variantele generate ca
- * thumbnails stil Spotify, una preselectată (`socialImageSelected`). Click pe
- * alta → select optimistic + persist. Buton de upload pentru poza proprie.
+ * Butonul „🎬 Fă videoclip cu imaginea asta" + panoul image→video (owner-only),
+ * randate sub galeria de poze de share prin `renderExtra`. Pe rând separat +
+ * text pe mai multe linii (butonul auriu trunchia textul când era pe același
+ * rând cu download).
  */
-function SocialImageSection({
+function ImageVideoLauncher({
   generation,
   isOwner,
+  selected,
   password,
-  onUpdated,
 }: {
   generation: GenerationDto;
   isOwner: boolean;
+  /** Poza aleasă în galerie (URL ORIGINAL, nu resolved). */
+  selected: string | null;
   password?: string;
-  // Backend-ul întoarce un obiect PARȚIAL (doar câmpurile schimbate), deci
-  // callback-ul primește un Partial<GenerationDto>, iar părintele face merge.
-  onUpdated: (fresh: Partial<GenerationDto>) => void;
 }) {
-  const images = generation.socialImages ?? [];
-  const fileRef = useRef<HTMLInputElement | null>(null);
-  const [selected, setSelected] = useState<string | null>(
-    generation.socialImageSelected ?? images[0] ?? null,
-  );
-  const [uploaded, setUploaded] = useState<string | null>(generation.socialImageUploaded ?? null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  // Panel image→video (owner-only).
   const [iv2Open, setIv2Open] = useState(false);
-
-  // Sincronizează cu prop-ul când conținutul privat devine vizibil (ex. după
-  // deblocare cu parolă, `socialImageUploaded` apare nou din backend).
-  useEffect(() => {
-    if (generation.socialImageUploaded != null) setUploaded(generation.socialImageUploaded);
-  }, [generation.socialImageUploaded]);
-
-  async function pick(url: string) {
-    const prev = selected;
-    setSelected(url); // optimistic
-    setErr(null);
-    try {
-      const fresh = await api.selectSocialImage(generation.id, url);
-      onUpdated(fresh);
-    } catch {
-      setSelected(prev); // rollback
-      setErr('Nu am putut salva selecția. Încearcă din nou.');
-    }
-  }
-
-  async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // permite re-upload același fișier
-    if (!file) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      const fresh = await api.uploadSocialImage(generation.id, file);
-      onUpdated(fresh);
-      // `fresh` poate fi parțial — luăm câmpurile dacă există, altfel păstrăm starea.
-      const freshUploaded = fresh.socialImageUploaded ?? null;
-      setUploaded(freshUploaded);
-      setSelected(fresh.socialImageSelected ?? freshUploaded ?? selected);
-    } catch (e2) {
-      setErr(e2 instanceof ApiError ? e2.message : 'Încărcarea a eșuat.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const allThumbs = uploaded ? [uploaded, ...images] : images;
-
+  if (!isOwner || !selected) return null;
   return (
-    <div style={{
-      marginTop: 20, padding: 16, borderRadius: 12,
-      background: 'rgba(241,200,77,0.06)',
-      border: '1px solid rgba(241,200,77,0.2)',
-    }}>
-      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
-        📸 Poza ta de share
-      </div>
-      <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
-        Alege poza care apare când distribui melodia pe TikTok, Facebook sau Instagram.
-      </div>
+    <>
+      <button
+        type="button"
+        onClick={() => setIv2Open((v) => !v)}
+        className="btn btn-gold"
+        style={{
+          width: '100%', marginTop: 8, whiteSpace: 'normal', height: 'auto',
+          minHeight: 46, lineHeight: 1.25, padding: '11px 14px', textAlign: 'center',
+        }}
+      >
+        🎬 Fă videoclip cu imaginea asta
+      </button>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-        {allThumbs.map((url) => {
-          const resolved = resolveMediaUrl(url)!;
-          const isSel = selected === url;
-          return (
-            <button
-              key={url}
-              type="button"
-              onClick={() => pick(url)}
-              style={{
-                position: 'relative', padding: 0, borderRadius: 10, overflow: 'hidden',
-                border: `3px solid ${isSel ? 'var(--gold)' : 'transparent'}`,
-                cursor: 'pointer', background: '#000', aspectRatio: '1 / 1',
-                boxShadow: isSel ? '0 4px 16px rgba(241,200,77,0.4)' : 'none',
-              }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={resolved}
-                alt="Variantă poză de share"
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-              />
-              {isSel && (
-                <span style={{
-                  position: 'absolute', top: 6, right: 6,
-                  width: 22, height: 22, borderRadius: '50%',
-                  background: 'var(--gold)', color: '#2a1a04',
-                  display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 900,
-                }}>✓</span>
-              )}
-              {uploaded === url && (
-                <span style={{
-                  position: 'absolute', bottom: 0, left: 0, right: 0,
-                  fontSize: 10, fontWeight: 700, textAlign: 'center',
-                  padding: '3px 0', background: 'rgba(0,0,0,0.6)', color: 'var(--gold)',
-                }}>A ta</span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        onChange={onUpload}
-        style={{ display: 'none' }}
-      />
-      <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-        {/* Upload poză proprie — doar owner. */}
-        {isOwner && (
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={busy}
-            className="btn btn-ghost"
-            style={{ flex: '1 1 140px', opacity: busy ? 0.6 : 1 }}
-          >
-            {busy ? 'Se încarcă…' : '⬆ Încarcă poza ta'}
-          </button>
-        )}
-        {/* Descarcă varianta selectată (PNG) — publică, oricine poate. */}
-        {selected && (
-          <a
-            href={resolveMediaUrl(selected)!}
-            download
-            onClick={() => trackEvent({ type: 'image_download', props: { generationId: generation.id, kind: 'social' } })}
-            className="btn btn-ghost"
-            style={{ flex: '1 1 140px', textAlign: 'center', textDecoration: 'none' }}
-          >
-            ⬇ Descarcă poza
-          </a>
-        )}
-      </div>
-
-      {/* Image→video — doar owner. Pe rând separat + text pe mai multe linii
-          (butonul auriu trunchia textul când era pe același rând cu download). */}
-      {isOwner && selected && (
-        <button
-          type="button"
-          onClick={() => setIv2Open((v) => !v)}
-          className="btn btn-gold"
-          style={{
-            width: '100%', marginTop: 8, whiteSpace: 'normal', height: 'auto',
-            minHeight: 46, lineHeight: 1.25, padding: '11px 14px', textAlign: 'center',
-          }}
-        >
-          🎬 Fă videoclip cu imaginea asta
-        </button>
-      )}
-
-      {isOwner && iv2Open && selected && (
+      {iv2Open && (
         <ImageVideoPanel
           generation={generation}
           imageUrl={selected}
           password={password}
         />
       )}
-
-      {err && <div style={{ marginTop: 8, fontSize: 12, color: '#ff8888' }}>{err}</div>}
-    </div>
+    </>
   );
 }
 

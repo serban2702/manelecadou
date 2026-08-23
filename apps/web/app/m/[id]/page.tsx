@@ -1,13 +1,14 @@
 import type { Metadata } from 'next';
 import { ExperienceSongView } from '@/components/ExperiencePage';
 import { getSiteConfig, siteUrl } from '@/lib/site-config';
+import { apiInternalUrl } from '@/lib/api-internal';
 
 // Fetch SSR (generateMetadata) → URL INTERN Docker. `NEXT_PUBLIC_API_URL` e gol
 // ("") în prod, ceea ce ar produce un fetch RELATIV pe server (`/api/...`) care
 // aruncă „Failed to parse URL" → metadata cădea mereu pe fallback-ul generic
 // (titlu „cadou" + OG image default), deci preview-ul de share era rupt.
 // Convenția SSR: vezi lib/site-config.ts + §9.3 CLAUDE.md.
-const API_INTERNAL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://api:3000';
+const API_INTERNAL = apiInternalUrl();
 
 interface PageGen {
   id: string;

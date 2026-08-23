@@ -244,6 +244,9 @@ export interface MeGuest {
   freeDemoUsed: boolean;
   email: string | null;
   claimedByUserId?: string | null;
+  followFacebook?: boolean;
+  followTiktok?: boolean;
+  followPromoCode?: string | null;
 }
 
 export interface MeUser {
@@ -326,8 +329,12 @@ export interface GenerationDto {
   }>;
   /** Variații-copil încă în lucru (doar owner). */
   workingVariants?: Array<{ id: string; label: string; status: string; createdAt: string }>;
-  /** ISO — setat după refacerea gratuită unică. */
+  /** ISO — setat după prima refacere gratuită. */
   freeRemakeUsedAt?: string | null;
+  freeRemakeUsedCount?: number;
+  freeRemakeQuota?: number;
+  freeRemakeRemaining?: number;
+  paidRemakeCents?: number;
 }
 
 /** Colaj video sau image→video atașat unei generări. */
@@ -543,6 +550,16 @@ export const api = {
     request<{ ok: boolean; variationId: string; status: string }>(`/generations/${id}/remake`, {
       method: 'POST',
       body: JSON.stringify({ notes }),
+    }),
+  requestPaidRemake: (id: string, notes: string) =>
+    request<{ url: string; paymentId: string }>(`/generations/${id}/remake/pay`, {
+      method: 'POST',
+      body: JSON.stringify({ notes }),
+    }),
+  markSocialFollow: (network: 'facebook' | 'tiktok') =>
+    request<{ facebook: boolean; tiktok: boolean; promoCode: string | null }>('/guest-sessions/me/follow', {
+      method: 'POST',
+      body: JSON.stringify({ network }),
     }),
   unlockGeneration: (id: string, paymentId: string) =>
     request<GenerationDto>(`/generations/${id}/unlock`, {

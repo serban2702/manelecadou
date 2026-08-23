@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { resolveMediaUrl } from '@/lib/api';
 import { registerBackgroundPlayback, releasePlayback } from '@/lib/audio-registry';
-import { useExperienceCatalog } from '../use-experience-catalog';
-import { CADOU_REACTIONS, type CadouReactionClip } from './reactions';
+import { type CadouReactionClip } from './reactions';
+import { useCadouReactionClips } from './use-reaction-clips';
 import { InstagramPhone } from './phones/InstagramPhone';
 import { PhoneStage } from './phones/PhoneFrame';
 import { startPhoneMedia } from './phones/play-reaction';
@@ -166,8 +166,7 @@ function HeroPhone({
 }
 
 export function CadouHeroReaction() {
-  const { reactionClips } = useExperienceCatalog();
-  const list = reactionClips.length ? reactionClips : CADOU_REACTIONS;
+  const list = useCadouReactionClips();
   const clips = pickHeroClips(list);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(false);

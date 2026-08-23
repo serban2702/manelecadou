@@ -29,7 +29,8 @@ Platformă SaaS multi-tenant pentru generare de manele AI personalizate (cadou).
 | DB           | Postgres 16                         | `:1502` (host=`5432`)|
 | Cache/queue  | Redis 7                             | `:1503` (host=`6379`)|
 | DB UI        | Adminer (doar local)                | `:1504`              |
-| Reverse proxy| Caddy 2 (prod only)                 | `:80`, `:443`        |
+| Reverse proxy| Caddy 2 (stack vechi, Ionos)        | `:80`, `:443`        |
+| Router intern| nginx (stack nou, în spatele NPM)   | `:80` intern         |
 
 **Externals**: OpenAI (lyrics + AI assistant), sunoapi.org (audio), Stripe (payments, un singur cont pentru toate site-urile), Mailgun (transactional email), Cloudflare (DNS only — fără proxy).
 
@@ -43,11 +44,14 @@ Platformă SaaS multi-tenant pentru generare de manele AI personalizate (cadou).
 manelecadou/
 ├── apps/
 │   ├── api/                  NestJS — toate modulele backend
-│   │   ├── src/modules/      auth, sites, payments, suno, lyrics, mail,
+│   │   ├── src/modules/      auth, sites, payments, suno, lyria, lyrics, mail,
 │   │   │                     chat, analytics, generations, gift-codes,
 │   │   │                     promo, roulette, kb, errors, ai-assistant,
 │   │   │                     guest-sessions, users, settings, suggestions,
-│   │   │                     database-admin, admin (KPIs), health
+│   │   │                     experiences, identity, collage, invoices,
+│   │   │                     recovery, media, database-admin, admin, health
+│   │   ├── src/storage/      disc local sau Cloudflare R2 (§19.3)
+│   │   ├── scripts/          migrare R2 + date prod + Proxy Hosts NPM (§19.4)
 │   │   ├── src/database/     TypeORM datasource + migrations runtime
 │   │   ├── src/mailer/       templates (i18n) + Mailgun/SMTP providers
 │   │   ├── src/openai/       lyrics writer/critic + translation
@@ -56,6 +60,7 @@ manelecadou/
 │   │   └── Dockerfile.dev    dev hot-reload (nest start --watch)
 │   ├── web/                  Next.js — site-uri publice multi-tenant
 │   │   ├── app/              app router (page.tsx server / client)
+│   │   ├── experiences/      interfețe: classic + cadou, registry, assign (§18)
 │   │   ├── components/       SiteShell, Generator, MaintenancePage, Tracker...
 │   │   ├── lib/site-shared.ts  funcții pure (server-safe import)
 │   │   ├── lib/site-config.ts  getSiteConfig() — server-only (next/headers)
@@ -70,9 +75,13 @@ manelecadou/
 │       │                     guests, settings, database
 │       ├── app/login/        magic link flow
 │       └── lib/api/          client SDK către NestJS API
-├── Caddyfile                 reverse proxy + on-demand TLS
+├── Caddyfile                 reverse proxy + on-demand TLS (stack vechi)
+├── deploy/
+│   ├── router/nginx.conf     rutare pe path/host pentru stack-ul nou (§19)
+│   └── deploy.sh             deploy pentru stack-ul nou (versionat, spre deosebire de cel de pe Ionos)
 ├── docker-compose.yml        DEV (postgres + redis + adminer + api hot-reload)
-├── docker-compose.prod.yml   PROD (toate 6 servicii + caddy)
+├── docker-compose.prod.yml   PROD Ionos (toate 6 servicii + caddy)
+├── docker-compose.coolify.yml PROD nou (fără caddy, cu router, R2) — §19
 ├── Makefile                  comenzi de zi cu zi (deploy, logs, backup...)
 ├── .env / .env.example       NU sunt commit-uite
 ├── .claude/skills/           start-app, add-site (skills locale)
@@ -346,7 +355,20 @@ Aplicabil deja la: `/cadou/redeem`, `/cadou/success`, `/login/verify`, `/m/[id]/
 
 **Niciodată** hardcoda `https://api.manelecadou.ro` — nu există. Use same-origin:
 - Client: `${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/...` → produce `/api/...` în prod
-- Server (SSR, middleware): `${process.env.API_INTERNAL_URL}/api/...` → `http://api:3000/api/...` (Docker DNS)
+- Server (SSR, middleware): `apiInternalUrl()` din `apps/web/lib/api-internal.ts`
+
+**Capcană gravă**: nu pune `API_INTERNAL_URL` în `next.config.ts › env`. Cheile de
+acolo sunt substituite la BUILD (DefinePlugin), iar în imaginea Docker variabila nu
+există atunci → se bake-uiește `""`, și valoarea de la runtime din compose
+(`http://api:3000`) devine ignorată. Efectul e tăcut și total: `fetch("/api/...")`
+relativ pe server → „Failed to parse URL" → middleware-ul cade pe fallback
+(**hiddenMode nu mai blochează**, ipWhitelist ignorat, locale mereu `ro`) și
+`getSiteConfig()` randează brandul RO pe toate domeniile. Citește variabila direct
+din `process.env`, prin helperul din `lib/api-internal.ts`.
+
+Tot acolo: folosește `||`, nu `??`. `NEXT_PUBLIC_API_URL` e string **gol** în
+producție (same-origin), iar `??` nu tratează `''` ca lipsă.
+
 
 ### 9.4 Path API NestJS
 
@@ -362,6 +384,17 @@ Global prefix `api` cu exclude pentru `/health`. Toate rutele controllerelor sun
 
 8 limbi în `apps/web/messages/`: ro, bg, sr, tr, el, hr, sl, bs. Switcher e ascuns prin `NEXT_PUBLIC_SHOW_LANG_SWITCHER=false` în prod (un domeniu = o limbă).
 
+`ro.json` e sursa de adevăr. `i18n/request.ts` completează cheile lipsă dintr-o
+limbă cu textul românesc — o traducere care întârzie produce o propoziție în
+altă limbă, nu o pagină cu `cadou.song.title` pe ecran. Ca golul să nu rămână
+invizibil:
+
+```bash
+cd apps/web && pnpm run check:messages   # iese cu 1 dacă lipsește ceva
+```
+
+Rulează-l după orice cheie nouă.
+
 ---
 
 ## 10. Gotchas / Lecții
@@ -374,7 +407,10 @@ Global prefix `api` cu exclude pentru `/health`. Toate rutele controllerelor sun
 6. **Stripe = un singur cont** pentru toate site-urile. Webhook unic la `https://manelecadou.ro/api/payments/webhook`. `STRIPE_WEBHOOK_SECRET` global. Site-ul curent se ia din `metadata.siteId` în webhook.
 7. **Suno + OpenAI** sunt per-site prin `site.suno` (basePrompt, stylePromptMap, writerSystemPrompt, lyricsLocale, voiceMap, styleSamples, voiceSamples). Setabil din admin.
 8. **Volume Docker** — `caddy_data` conține TLS certs Let's Encrypt. Backup-uiește-l periodic. `pg_data` are toate datele. `api_uploads` are fișierele upload-uite (logo-uri, samples audio).
-9. **`deploy.sh` e pe VPS, nu în repo** — `/home/manele/deploy.sh` (chmod +x). Nu se update-uiește prin `git pull`. Pentru modificări, edit-uiește-l direct via SSH.
+9. **`deploy.sh` e pe VPS, nu în repo** — `/home/manele/deploy.sh` (chmod +x). Nu se update-uiește prin `git pull`. Pentru modificări, edit-uiește-l direct via SSH. (Stack-ul nou are `deploy/deploy.sh` **în repo** — vezi §19.)
+10. **`synchronize` NU face ALTER la schimbarea de lungime a unui varchar** — face `DROP COLUMN` + `ADD COLUMN`, tăcut. Tabelul din §6.2 zice „schimbi tipul", dar și `varchar(8)` → `varchar(64)` intră aici. Lărgirea se face manual cu `ALTER TABLE ... TYPE`, apoi synchronize vede lungimea corectă și nu mai atinge coloana.
+11. **Nu pre-crea manual index-uri** pentru coloane noi. `RdbmsSchemaBuilder.dropOldIndices` șterge la boot orice index de pe un tabel gestionat al cărui nume nu e în metadata TypeORM.
+12. **`z.string().optional().default('')` + `??` = bug** — `''` nu e nullish, deci fallback-ul nu se declanșează. A lovit `UPLOADS_DIR` (path gol → fișierele scrise în afara volumului) și `NEXT_PUBLIC_API_URL`. Pentru env care poate fi gol, folosește `||` sau `.trim() ||`.
 
 ---
 
@@ -859,3 +895,162 @@ creează sesiunea `ops` detached dacă nu există încă.
    Update Claude Code = rebuild imagine (auto-updater oprit, non-root).
 5. **Rebuild-ul NU șterge login-ul** (volumul `ops_home` rămâne). `docker volume rm
    manele_ops_home` = re-login necesar.
+
+
+---
+
+## 18. Interfețe (experiences) — classic vs. cadou
+
+Un tenant poate rula **mai multe design-uri** peste aceleași date. Interfața nu e
+un site nou: același `siteId`, aceleași comenzi, același chat.
+
+### 18.1 Modelul
+
+Registry-ul e în cod (`EXPERIENCE_CATALOG = ['classic', 'cadou']`), configurarea
+per tenant e în `sites.experienceConfig` (jsonb):
+
+```jsonc
+{
+  "defaultSlug": "classic",
+  "items": {
+    "cadou": {
+      "enabled": true,
+      "utmRules": [{ "source": "facebook" }],
+      "musicEngine": "suno",        // opțional; altfel site.musicEngine
+      "packages": { /* override de preț/livrabile pe tier */ },
+      "catalog":  { /* stiluri/ocazii/voci proprii + prompturi */ }
+    }
+  }
+}
+```
+
+`experienceConfig = NULL` ⇒ site-ul rulează `classic`, exact ca înainte. E
+fallback-ul sigur, testat: toate site-urile de producție pornesc așa.
+
+### 18.2 Cum se alege interfața la un request
+
+Ordinea (identică în `apps/api/src/modules/experiences/assign.ts` și
+`apps/web/experiences/assign.ts` — **ține-le sincronizate**):
+
+`?ui=` → cookie `mc_ui` → person (fingerprint/device) → UTM → `defaultSlug` → `classic`
+
+**Fiecare pas trece prin `isExperienceEnabled`**, inclusiv `?ui=`. Un slug fără
+intrare în `items` NU e activat. Fără garda asta, un link `?ui=cadou` scăpat pe
+social ar lipi interfața pe vizitatori 365 de zile prin cookie, iar când API-ul
+pică și configul vine `null`, orice cookie vechi ar prelua site-ul.
+
+Ca să testezi o interfață pe un site: `enabled: true`, dar **fără** s-o pui
+`defaultSlug`. Atunci `?ui=` merge pentru tine, iar restul lumii vede classic.
+
+Middleware-ul pune header-ul `x-mc-experience`; `app/layout.tsx` retrece
+cookie-ul prin `resolveExperienceSlug` (rutele excluse din `matcher` nu văd
+middleware-ul).
+
+### 18.3 Precedența datelor
+
+| Ce | Ordine |
+|---|---|
+| Catalog (stiluri/ocazii/voci) | `items[slug].catalog.*` → `site.*` |
+| Prompt de stil | `entry.sunoPrompt` → `site.suno.stylePromptMap[id]` |
+| Preț pachet | `items[slug].packages[tier].priceCents` → `site.packagePricesCents[tier]` → default din cod |
+| Motor audio | `items[slug].musicEngine` → `site.musicEngine` → `suno` |
+| Livrabile | `generation.packageSnapshot` (înghețat la cumpărare) → `PACKAGE_FEATURES[tier]` |
+
+`packageSnapshot` e mecanismul care garantează că **ce s-a vândut rămâne
+livrat**: dacă schimbi definiția unui pachet, comenzile vechi păstrează ce li
+s-a promis.
+
+### 18.3.1 Limita de font a interfeței `cadou`
+
+`cadou` folosește **Outfit**, care are pe Google Fonts doar subseturile `latin`
+și `latin-ext`. Acoperă româna (ș, ț, ă, â, î) și limbile sud-slave cu alfabet
+latin, dar **nu are greacă și nici chirilic**. Pe un site `el` sau `bg`, textul
+cade pe `system-ui` din stiva de fallback — lizibil, dar altă literă decât în
+RO. Dacă lansezi `cadou` pe piața greacă sau bulgară, alege întâi o pereche de
+fonturi care acoperă scriptul respectiv.
+
+Interfața `classic` nu e afectată: Cinzel + Manrope, cu alte subseturi.
+
+### 18.4 Cum compari două interfețe
+
+Fără măsurare, rularea a două design-uri în paralel nu răspunde la nimic.
+
+- **`/analytics` → Marketing → cardul „Interfețe (design)"**: sesiuni, comenzi
+  începute, comenzi plătite, venit și conversie, per interfață.
+- Aceeași defalcare e disponibilă și ca dimensiune în matricea de marketing
+  (`GET /api/admin/analytics/marketing-breakdown?dimension=experience`).
+- Listele de **generări** și **plăți** au coloană + filtru „Interfață".
+
+Rândurile de dinainte de această versiune au `experienceSlug` NULL și se citesc
+peste tot ca `classic` — inclusiv în filtre, deci nu dispar din liste.
+
+Regula de atribuire e într-un singur loc:
+`apps/api/src/modules/analytics/experience-sql.ts`.
+
+### 18.5 Ce trebuie făcut la activarea unei interfețe pe un site
+
+1. Admin `/site` → Interfețe → activezi design-ul.
+2. Interfețe → design → Pachete (preț, refaceri, colaj) și Catalog (prompturi).
+3. Admin `/rollout` → „Aplică lipsurile" umple doar câmpurile goale din seed.
+   **Seed-ul e în română** — pe site-uri non-RO nu se aplică automat; acolo
+   prompturile se scriu manual, în limba site-ului.
+
+---
+
+## 19. Stack nou: Nginx Proxy Manager + Cloudflare R2
+
+Runbook complet de cutover: **`docs/COOLIFY_R2.md`**. Rezumat aici.
+
+### 19.1 Traficul
+
+```
+internet ─► NPM (TLS, Let's Encrypt) ─► router:80 ─┬─ /api /socket.io /health /uploads ─► api:3000
+                                                    ├─ admin.<domeniu>                 ─► admin:1505
+                                                    └─ restul                          ─► web:1500
+```
+
+`router` = nginx în stack, config în `deploy/router/nginx.conf`. Există pentru
+că NPM nu are echivalent de `on_demand_tls` și nici rutare pe path comodă: fără
+el, fiecare domeniu ar avea nevoie de config custom identic. Cu el, în NPM ai un
+singur tip de Proxy Host — **domeniu → `router:80`**.
+
+Fișiere: `docker-compose.coolify.yml` (fără Caddy, cu paritate completă de env
+față de `docker-compose.prod.yml`), `deploy/deploy.sh` (în repo, spre deosebire
+de cel de pe Ionos), target-uri `make deploy-new*` (cer `VPS_NEW=`).
+
+### 19.2 Două hop-uri de proxy
+
+`TRUST_PROXY_HOPS=2` în `.env`-ul stack-ului nou (NPM + router). Greșit,
+`req.ip` devine IP-ul router-ului → throttler global (429 pentru toți) și IP
+eronat în analytics/OpenReplay.
+
+### 19.3 Fișiere pe R2
+
+`STORAGE_DRIVER=r2`. DB-ul păstrează în continuare path-uri `/uploads/...`;
+`GET /uploads/*` din API face:
+
+1. fișierul e pe disc → îl servește `express.static` (cu Range — seek în player)
+2. altfel, dacă `R2_PUBLIC_URL` e setat → 302 spre CDN
+3. altfel → proxy stream din bucket (cu Range)
+
+Deci **niciun URL vechi nu se rupe**, iar un fișier scăpat de sync nu devine
+404. `R2_PUBLIC_URL` (custom domain pe bucket) e obligatoriu în producție: fără
+el tot audio-ul trece prin API și iOS Safari refuză des redarea.
+
+Tot ce scrie fișiere trece prin `StorageService` (`apps/api/src/storage/`):
+`saveBuffer` (scrie local + urcă), `syncFile` (urcă ce a produs ffmpeg),
+`ensureLocal` (aduce pe disc pentru ffmpeg), `list` (disc + bucket reunite),
+`delete` (ambele locuri). Dacă adaugi un serviciu care scrie în `uploads/`,
+folosește-l — altfel fișierul există doar pe containerul curent.
+
+### 19.4 Scripturi de migrare (`apps/api/scripts/`)
+
+| Script | Când |
+|---|---|
+| `sync-uploads-to-r2.mjs` | oricând înainte + delta la cutover. Idempotent, paralel, compară mărimile |
+| `verify-r2-migration.mjs` | **poarta de cutover**: fiecare fișier referit din DB există în R2? Exit 0 = poți muta DNS-ul |
+| `migrate-prod-to-new-stack.mjs` | `--phase=pre` înainte de deploy (obligatoriu), `--phase=post` după, `--phase=rollout` pentru configurarea per tenant, `--phase=check` oricând |
+| `sync-npm-proxy-hosts.mjs` | după fiecare site nou din admin — ține locul lui `on_demand_tls` |
+
+`--phase=pre` face un singur lucru, dar esențial: lărgește
+`video_collages.track` la `varchar(64)`. Vezi §10 pct. 10 pentru de ce.

@@ -1,11 +1,12 @@
 import { headers } from 'next/headers';
 import { cache } from 'react';
 import type { SiteConfig } from './site-shared';
+import { apiInternalUrl } from './api-internal';
 
 // Re-export tipurile + helperii puri ca să rămână import path-ul vechi funcțional
 export { formatPrice, siteUrl, siteSupportEmail, type SiteConfig } from './site-shared';
 
-const API_INTERNAL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://api:3000';
+const API_INTERNAL = apiInternalUrl();
 
 /**
  * Configul site-ului curent rezolvat din Host header. Server-only (folosește

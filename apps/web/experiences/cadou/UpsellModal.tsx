@@ -1,8 +1,38 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
+import { useSite } from '@/lib/site-context';
+import { useExperience } from '@/lib/experience-context';
 import type { PackageTier } from '@/lib/packages';
+
+type Upsell = { title: string; body: string; targetTier: 'plus' | 'premium' };
+
+/**
+ * Upsell-ul propus pentru pachetul curent. Sursa de adevăr e configul din admin
+ * (`experienceConfig.items[<interfață>].packages[<tier>].upsell`); dacă site-ul
+ * n-are încă entry pentru pachetul ăsta, cădem pe textele default traduse.
+ * `upsell: null` setat explicit din admin = fără upsell.
+ */
+function useUpsell(currentTier: PackageTier): Upsell | null {
+  const site = useSite();
+  const exp = useExperience();
+  const t = useTranslations('cadou.upsell');
+  const packages = site.experienceConfig?.items?.[exp.slug]?.packages;
+  const configured = packages?.[currentTier];
+  if (configured) {
+    const u = configured.upsell;
+    return u && u.title && u.body ? u : null;
+  }
+  if (currentTier === 'basic') {
+    return { title: t('basicTitle'), body: t('basicBody'), targetTier: 'plus' };
+  }
+  if (currentTier === 'plus') {
+    return { title: t('plusTitle'), body: t('plusBody'), targetTier: 'premium' };
+  }
+  return null;
+}
 
 export function CadouUpsellModal({
   generationId,
@@ -13,11 +43,8 @@ export function CadouUpsellModal({
   currentTier: PackageTier;
   onClose: () => void;
 }) {
-  const upsell = currentTier === 'basic'
-    ? { title: 'Vrei și poze pentru social?', body: 'Upgrade la Plus: manea mai lungă + poze pentru TikTok / Instagram.', targetTier: 'plus' as const }
-    : currentTier === 'plus'
-      ? { title: 'Adaugă videoclipul', body: 'Upgrade la Premium și primești videoclipul personalizat.', targetTier: 'premium' as const }
-      : null;
+  const t = useTranslations('cadou.upsell');
+  const upsell = useUpsell(currentTier);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   if (!upsell) return null;
@@ -39,9 +66,9 @@ export function CadouUpsellModal({
         window.location.href = r.url;
         return;
       }
-      setErr('Nu am putut deschide upgrade-ul.');
+      setErr(t('error'));
     } catch {
-      setErr('Nu am putut deschide upgrade-ul.');
+      setErr(t('error'));
     } finally {
       setBusy(false);
     }
@@ -60,9 +87,9 @@ export function CadouUpsellModal({
         <p style={{ color: 'var(--cadou-muted)' }}>{upsell.body}</p>
         {err && <p className="cadou-err">{err}</p>}
         <div className="cadou-row" style={{ marginTop: 16 }}>
-          <button type="button" className="cadou-ghost" onClick={onClose}>Nu, mulțumesc</button>
+          <button type="button" className="cadou-ghost" onClick={onClose}>{t('decline')}</button>
           <button type="button" className="cadou-cta" onClick={go} disabled={busy}>
-            {busy ? 'Se deschide…' : 'Upgrade →'}
+            {busy ? t('busy') : t('cta')}
           </button>
         </div>
       </div>

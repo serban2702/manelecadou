@@ -34,7 +34,7 @@ function readParam(name: string): string | null {
   return new URLSearchParams(window.location.search).get(name);
 }
 
-export async function bootIdentity(): Promise<{ slug: string; adoptedGuest: boolean } | null> {
+export async function bootIdentity(): Promise<{ slug: string; adoptedGuest: boolean; reason?: string } | null> {
   const uiParam = readParam('ui');
   const cookieMatch = typeof document !== 'undefined'
     ? document.cookie.match(/(?:^|;\s*)mc_ui=([^;]+)/)
@@ -70,7 +70,7 @@ export async function bootIdentity(): Promise<{ slug: string; adoptedGuest: bool
       },
     });
     if (res.adoptedGuest && res.guestId) setGuestId(res.guestId);
-    return { slug: res.experienceSlug, adoptedGuest: res.adoptedGuest };
+    return { slug: res.experienceSlug, adoptedGuest: res.adoptedGuest, reason: res.reason };
   } catch {
     return null;
   }

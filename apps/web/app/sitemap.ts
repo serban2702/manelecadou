@@ -3,8 +3,9 @@ import { headers } from 'next/headers';
 import { getSiteConfig, siteUrl as buildSiteUrl } from '@/lib/site-config';
 import { getLegalPath } from '@/lib/legal-slugs';
 import { getPagePath, type PageKey } from '@/lib/page-slugs';
+import { apiInternalUrl } from '@/lib/api-internal';
 
-const API_INTERNAL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
+const API_INTERNAL = apiInternalUrl();
 
 const STATIC_PAGES: Array<{ key: PageKey | 'home'; priority: number; changeFrequency: 'weekly' | 'daily' | 'monthly' }> = [
   { key: 'home',          priority: 1.0, changeFrequency: 'weekly' },

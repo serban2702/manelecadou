@@ -3,49 +3,20 @@
 import Link from 'next/link';
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useSite } from '@/lib/site-context';
 import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
 import { CadouShell } from './Shell';
-import { CADOU_TESTI } from './testimonials';
+import { useCadouTestimonials } from './testimonials';
 import { CadouHeroReaction } from './HeroReaction';
 import { CadouReactionsRow } from './ReactionsRow';
-import { CadouPackGrid } from './PackCard';
+import { CadouPackGrid, useCadouPackageQuotes } from './PackCard';
 import { CadouStyleCard, useCadouStylePreview } from './StyleCard';
 import { useExperienceCatalog } from '../use-experience-catalog';
-import { useCadouFromPrice } from './from-price';
 
-const RECENT = [
-  ['Ionuț', 'De jale'],
-  ['Maria', 'De iubire'],
-  ['Bogdan', 'De opulență'],
-  ['Elena', 'Clasică de pahar'],
-  ['Andrei', 'Cu trompetă'],
-  ['Cristina', 'Orientală'],
-  ['Florin', 'De pahar'],
-  ['Roxana', 'Tallava'],
-  ['Cătălin', 'Kuchek'],
-  ['Simona', 'Trapanele'],
-];
-
-const FAQS = [
-  {
-    q: 'Ce este Manele Cadou?',
-    a: 'Un generator de manele AI personalizate. Alegi stilul, spui povestea și primești o manea unică cu numele destinatarului, gata de ascultat și de dat cadou.',
-  },
-  {
-    q: 'Cât durează generarea?',
-    a: 'De obicei 2–5 minute. Îți trimitem maneaua pe email imediat ce e gata.',
-  },
-  {
-    q: 'Ce se întâmplă dacă nu-mi place?',
-    a: 'Ai o refacere GRATUITĂ dacă nu-ți place. Regenerăm până ești mulțumit.',
-  },
-  {
-    q: 'Pot scrie eu versurile?',
-    a: 'Da. La pasul Extra bifezi „Vreau să scriu propriile versuri” și le folosim literal.',
-  },
-];
+/** Un rând din banda „Recent generate" (`cadou.home.recent`). */
+type CadouRecent = { name: string; style: string };
 
 function CadouStripeCancelBounce() {
   const search = useSearchParams();
@@ -62,14 +33,51 @@ function CadouStripeCancelBounce() {
 
 export default function CadouHomePage() {
   const site = useSite();
-  const { styles } = useExperienceCatalog();
+  const t = useTranslations('cadou.home');
+  const { styles, testimonials } = useExperienceCatalog();
+  const seedTesti = useCadouTestimonials();
   const stylePreview = useCadouStylePreview();
   const studio = getPagePath(site.locale, 'studio');
   const faqPath = getPagePath(site.locale, 'faq');
-  const testi = CADOU_TESTI;
-  const basic = useCadouFromPrice();
+  const locale = site.locale;
+  const testi = (testimonials == null
+    ? seedTesti.map((item) => ({ ...item, stars: 5 }))
+    : testimonials.map((item) => {
+        const tr = item.i18n?.[locale] ?? {};
+        return {
+          id: item.id,
+          quote: tr.quote ?? item.quote,
+          name: tr.name ?? item.name,
+          role: tr.role ?? item.role,
+          stars: Math.max(0, Math.min(5, item.stars ?? 5)),
+        };
+      }));
+  // Prețurile vin din quote-ul API (per-site), NU din constantele de cod: hero-ul
+  // și grila de tarife împart același cache, deci nu pot arăta cifre diferite.
+  const quotes = useCadouPackageQuotes();
+  const basic = quotes.byTier.basic.total;
   const [openFaq, setOpenFaq] = useState<number | null>(0);
-  const todayCount = 80 + (new Date().getHours() * 3);
+  // Contorul depinde de ORA locală: pe server se calculează în UTC, în browser în
+  // fusul vizitatorului — randat direct, cele două valori diferă și hidratarea
+  // crapă. Îl calculăm doar după montare, deci exclusiv pe client.
+  const [todayCount, setTodayCount] = useState<number | null>(null);
+  useEffect(() => {
+    setTodayCount(80 + new Date().getHours() * 3);
+  }, []);
+
+  const recent = (t.raw('recent') as CadouRecent[] | undefined) ?? [];
+  const steps: Array<[string, string, string, string]> = [
+    ['01', '📝', t('step1Title'), t('step1Text')],
+    ['02', '✍️', t('step2Title'), t('step2Text')],
+    ['03', '🎵', t('step3Title'), t('step3Text')],
+    ['04', '🎧', t('step4Title'), t('step4Text')],
+  ];
+  const faqs = [
+    { q: t('faq1Q', { name: site.name }), a: t('faq1A') },
+    { q: t('faq2Q'), a: t('faq2A') },
+    { q: t('faq3Q'), a: t('faq3A') },
+    { q: t('faq4Q'), a: t('faq4A') },
+  ];
 
   return (
     <CadouShell>
@@ -82,21 +90,23 @@ export default function CadouHomePage() {
             aria-hidden
           />
           <div className="cadou-hero-left">
-            <div className="cadou-kicker">Fă-ți maneaua mai jos!</div>
-            <h1 className="cadou-gold-text">Creează-ți propria manea în 2 minute!</h1>
-            <p>Alege stilul, adaugă detaliile și noi generăm o manea unică pentru tine — gata în câteva minute.</p>
+            <div className="cadou-kicker">{t('heroKicker')}</div>
+            <h1 className="cadou-gold-text">{t('heroTitle')}</h1>
+            <p>{t('heroLead')}</p>
             <div className="cadou-hero-deal">
               <div className="cadou-hero-price">
                 <b>{formatPrice(site, basic)}</b>
-                <em>1+1 GRATIS</em>
+                <em>{t('heroDeal')}</em>
               </div>
               <div className="cadou-hero-remake">
                 <span className="cadou-hero-remake-mark" aria-hidden>✓</span>
-                <span>O refacere <strong>GRATUITĂ</strong> dacă nu-ți place</span>
+                <span>{t.rich('heroRemake', { b: (chunks) => <strong>{chunks}</strong> })}</span>
               </div>
             </div>
-            <Link href={studio} className="cadou-cta">Fă o manea!</Link>
-            <p className="cadou-hero-social">🔥 {todayCount} manele create azi</p>
+            <Link href={studio} className="cadou-cta">{t('heroCta')}</Link>
+            {todayCount !== null && (
+              <p className="cadou-hero-social">{t('heroSocial', { count: String(todayCount) })}</p>
+            )}
           </div>
           <div className="cadou-hero-right">
             <CadouHeroReaction />
@@ -104,27 +114,29 @@ export default function CadouHomePage() {
         </section>
 
         <div className="cadou-stats">
-          <div><b>100.000+</b><span>Manele generate</span></div>
-          <div><b>4,9/5</b><span>Rating utilizatori</span></div>
-          <div><b>2–5 min</b><span>Timp de generare</span></div>
-          <div><b>2.000+</b><span>Utilizatori activi</span></div>
+          <div><b>{t('statSongsValue')}</b><span>{t('statSongs')}</span></div>
+          <div><b>{t('statRatingValue')}</b><span>{t('statRating')}</span></div>
+          <div><b>{t('statTimeValue')}</b><span>{t('statTime')}</span></div>
+          <div><b>{t('statUsersValue')}</b><span>{t('statUsers')}</span></div>
         </div>
 
         <div className="cadou-recent" aria-hidden>
-          <span className="cadou-recent-lab">Recent generate:</span>
+          <span className="cadou-recent-lab">{t('recentLabel')}</span>
           <div className="cadou-recent-mask">
             <div className="cadou-recent-track">
-              {[...RECENT, ...RECENT].map(([name, style], i) => (
-                <span key={`${name}-${i}`} className="cadou-recent-chip">▶ {name} · {style}</span>
+              {[...recent, ...recent].map((r, i) => (
+                <span key={`${r.name}-${i}`} className="cadou-recent-chip">
+                  {t('recentChip', { name: r.name, style: r.style })}
+                </span>
               ))}
             </div>
           </div>
         </div>
 
         <section className="cadou-section cadou-panel" id="stiluri">
-          <div className="cadou-kicker">Stiluri disponibile</div>
-          <h2>Alege stilul tău</h2>
-          <p className="lead">Fiecare stil are un suflet aparte. Alege-l pe cel care îți reprezintă povestea.</p>
+          <div className="cadou-kicker">{t('stylesKicker')}</div>
+          <h2>{t('stylesTitle')}</h2>
+          <p className="lead">{t('stylesLead')}</p>
           <div className="cadou-grid">
             {styles.map((s) => (
               <CadouStyleCard
@@ -141,32 +153,27 @@ export default function CadouHomePage() {
         <CadouReactionsRow />
 
         <section className="cadou-section cadou-panel">
-          <div className="cadou-kicker">Cum funcționează</div>
-          <h2>Cum funcționează generarea?</h2>
-          <p className="lead">În doar 4 pași simpli, ai propria manea personalizată</p>
+          <div className="cadou-kicker">{t('howKicker')}</div>
+          <h2>{t('howTitle')}</h2>
+          <p className="lead">{t('howLead')}</p>
           <div className="cadou-steps">
-            {[
-              ['01', '📝', 'Completează detaliile', 'Alege stilul și titlul'],
-              ['02', '✍️', 'Noi generăm versurile', 'Compunem versuri pe gustul tău'],
-              ['03', '🎵', 'Creăm muzica', 'Compunem melodia perfectă'],
-              ['04', '🎧', 'Primești maneaua', 'Descarcă și împărtășește'],
-            ].map(([n, ic, t, d]) => (
+            {steps.map(([n, ic, title, text]) => (
               <div key={n} className="cadou-step">
                 <div className="n">{n}</div>
                 <div className="ic">{ic}</div>
-                <h3>{t}</h3>
-                <p>{d}</p>
+                <h3>{title}</h3>
+                <p>{text}</p>
               </div>
             ))}
           </div>
-          <p className="cadou-hint" style={{ textAlign: 'center', marginTop: 8 }}>*sau ne dai tu versurile tale</p>
+          <p className="cadou-hint" style={{ textAlign: 'center', marginTop: 8 }}>{t('howHint')}</p>
           <div className="cadou-mid">
-            <h3>Gata să îți creezi maneaua?</h3>
-            <p>Începe acum procesul de generare în doar câteva click-uri!</p>
-            <Link href={studio} className="cadou-cta">Generează manea acum</Link>
+            <h3>{t('midTitle')}</h3>
+            <p>{t('midLead')}</p>
+            <Link href={studio} className="cadou-cta">{t('midCta')}</Link>
             <div className="cadou-pills" style={{ justifyContent: 'center' }}>
-              <span className="cadou-pill dark">{formatPrice(site, basic)} · 1+1 GRATIS</span>
-              <span className="cadou-pill dark">O refacere GRATUITĂ dacă nu-ți place</span>
+              <span className="cadou-pill dark">{t('midPillDeal', { price: formatPrice(site, basic) })}</span>
+              <span className="cadou-pill dark">{t('midPillRemake')}</span>
             </div>
           </div>
         </section>
@@ -175,46 +182,45 @@ export default function CadouHomePage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/cadou/reaction.jpg" alt="" />
           <div>
-            <div className="cadou-kicker">Cadoul care nu se uită</div>
-            <h2>Imaginează-ți reacția…</h2>
-            <p>
-              O manea personalizată pentru fratele tău, prietena ta, sau șeful de la petrecere.
-              Cadoul pe care nu-l uită nimeni.
-            </p>
-            <Link href={studio} className="cadou-cta">Creează surpriza</Link>
+            <div className="cadou-kicker">{t('reactionKicker')}</div>
+            <h2>{t('reactionTitle')}</h2>
+            <p>{t('reactionText')}</p>
+            <Link href={studio} className="cadou-cta">{t('reactionCta')}</Link>
           </div>
         </section>
 
+        {testi.length > 0 && (
         <section className="cadou-section cadou-panel">
-          <div className="cadou-kicker">Ce spun utilizatorii</div>
-          <h2>Reacții reale</h2>
-          <p className="lead">Mii de fani care au primit maneaua perfectă.</p>
+          <div className="cadou-kicker">{t('testiKicker')}</div>
+          <h2>{t('testiTitle')}</h2>
+          <p className="lead">{t('testiLead')}</p>
           <div className="cadou-quotes">
             {testi.slice(0, 6).map((q) => (
               <article key={q.id} className="cadou-quote">
-                <div className="stars">★★★★★</div>
-                <p>„{q.quote}”</p>
-                <div className="who">{q.name}{q.role ? ` · ${q.role}` : ''}</div>
+                <div className="stars">{'★'.repeat(q.stars)}</div>
+                <p>{t('testiQuote', { text: q.quote })}</p>
+                <div className="who">{q.role ? t('testiWho', { name: q.name, role: q.role }) : q.name}</div>
               </article>
             ))}
           </div>
         </section>
+        )}
 
         <section className="cadou-section cadou-panel" id="tarife">
-          <div className="cadou-kicker">Tarife</div>
-          <h2>Prețuri simple, fără surprize</h2>
-          <p className="lead">O singură plată. Niciun abonament, nicio taxă ascunsă.</p>
-          <CadouPackGrid ctaHref={studio} />
+          <div className="cadou-kicker">{t('pricingKicker')}</div>
+          <h2>{t('pricingTitle')}</h2>
+          <p className="lead">{t('pricingLead')}</p>
+          <CadouPackGrid ctaHref={studio} quotes={quotes} />
           <p className="cadou-hint" style={{ textAlign: 'center', marginTop: 16 }}>
-            🔒 Stripe securizat · ⚡ Livrare instant · ✅ Garanție 30 zile
+            {t('pricingNote')}
           </p>
         </section>
 
         <section className="cadou-section cadou-panel">
-          <div className="cadou-kicker">Întrebări frecvente</div>
-          <h2>Răspunsuri rapide</h2>
+          <div className="cadou-kicker">{t('faqKicker')}</div>
+          <h2>{t('faqTitle')}</h2>
           <div className="cadou-faq">
-            {FAQS.map((item, i) => (
+            {faqs.map((item, i) => (
               <button
                 key={item.q}
                 type="button"
@@ -228,7 +234,7 @@ export default function CadouHomePage() {
           </div>
           <p style={{ textAlign: 'center', marginTop: 18 }}>
             <Link href={faqPath} className="cadou-ghost" style={{ textDecoration: 'none' }}>
-              Vezi toate întrebările și răspunsurile →
+              {t('faqAll')}
             </Link>
           </p>
         </section>

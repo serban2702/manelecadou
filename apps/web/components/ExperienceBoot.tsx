@@ -18,7 +18,7 @@ export function ExperienceBoot() {
       if (r.adoptedGuest) {
         window.dispatchEvent(new CustomEvent('mc:identity-adopted'));
       }
-      if (!ui && r.slug && r.slug !== exp.slug) {
+      if (!ui && r.slug && r.slug !== exp.slug && (r.reason === 'url' || r.reason === 'utm')) {
         try {
           if (sessionStorage.getItem('mc_ui_reloaded')) return;
           sessionStorage.setItem('mc_ui_reloaded', '1');

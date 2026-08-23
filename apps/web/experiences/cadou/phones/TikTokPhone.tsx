@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useTranslations } from 'next-intl';
 import { PhoneFrame } from './PhoneFrame';
 import {
   IconBookmark,
@@ -47,7 +48,8 @@ export function TikTokPhone({
   muted?: boolean;
   onBindVideo?: (el: HTMLVideoElement | null) => void;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const tPlayer = useTranslations('cadou.player');
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
   const [burst, setBurst] = useState(0);
@@ -98,7 +100,7 @@ export function TikTokPhone({
       <button
         type="button"
         className="phone-tap"
-        aria-label={playing ? 'Pauză' : 'Redă'}
+        aria-label={playing ? tPlayer('pause') : tPlayer('play')}
         onClick={() => {
           const v = videoRef.current;
           if (v) onToggle(v);

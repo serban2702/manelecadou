@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
@@ -9,7 +10,10 @@ import { STYLES, VOICES, OCC } from '@/lib/seed-data';
 import { useSite } from '@/lib/site-context';
 import { getPagePath } from '@/lib/page-slugs';
 import { useExperience } from '@/lib/experience-context';
-import CadouMinePage from '@/experiences/cadou/MinePage';
+// Lazy, ca `registry.ts`: importat static, codul + CSS-ul interfeței `cadou`
+// (~62 kB de temă) ar intra în chunk-ul rutei și pe site-urile care rulează
+// `classic`, unde ramura de mai jos nu se atinge niciodată.
+const CadouMinePage = dynamic(() => import('@/experiences/cadou/MinePage'));
 
 const STATUS_COLOR: Record<string, { color: string; bg: string }> = {
   queued:           { color: '#ffd680', bg: 'rgba(241,200,77,0.12)' },

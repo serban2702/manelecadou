@@ -13,6 +13,7 @@ import { formatPrice, siteSupportEmail, siteUrl } from '@/lib/site-shared';
 import { useSite } from '@/lib/site-context';
 import { getLegalPath } from '@/lib/legal-slugs';
 import { getPagePath } from '@/lib/page-slugs';
+import { useExperienceCatalog } from '@/experiences/use-experience-catalog';
 
 export function Hero({ onGen, onListen }: { onGen: () => void; onListen: () => void }) {
   const t = useTranslations('hero');
@@ -393,12 +394,22 @@ export function Leaderboard() {
 
 export function Testimonials() {
   const site = useSite();
+  const { testimonials } = useExperienceCatalog();
   const locale = site.locale;
 
-  // Folosește testimonialele configurate per-site dacă există, altfel fallback
-  // la lista hardcoded din seed-data.ts (TESTI — formatul vechi).
-  const items = (site.testimonials ?? []).length > 0
-    ? (site.testimonials ?? []).map((t) => {
+  // Folosește testimonialele configurate (catalog experiență → per-site) dacă
+  // există, altfel fallback la lista hardcoded din seed-data.ts (TESTI —
+  // formatul vechi). Listă goală ⇒ tot fallback, nu secțiune goală.
+  const items = !testimonials?.length
+    ? TESTI.map((t, i) => ({
+        key: `seed-${i}`,
+        stars: t.stars,
+        q: t.q,
+        nm: t.nm,
+        rl: t.rl,
+        av: t.av,
+      }))
+    : testimonials.map((t) => {
         const tr = t.i18n?.[locale] ?? {};
         return {
           key: t.id,
@@ -408,15 +419,7 @@ export function Testimonials() {
           rl: tr.role ?? t.role,
           av: t.avatar,
         };
-      })
-    : TESTI.map((t, i) => ({
-        key: `seed-${i}`,
-        stars: t.stars,
-        q: t.q,
-        nm: t.nm,
-        rl: t.rl,
-        av: t.av,
-      }));
+      });
 
   return (
     <div className="testi-scroll">

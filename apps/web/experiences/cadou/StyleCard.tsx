@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import type { SiteStyleEntry } from '@/lib/site-shared';
 import { useSamplePreview } from '@/lib/use-sample-preview';
 import { cadouStyleArt } from './style-art';
@@ -52,6 +53,7 @@ export function CadouStyleCard({
   playing: boolean;
   onTogglePlay: () => void;
 }) {
+  const t = useTranslations('cadou.style');
   const playBtn = (
     <button
       type="button"
@@ -61,7 +63,9 @@ export function CadouStyleCard({
         e.stopPropagation();
         onTogglePlay();
       }}
-      aria-label={playing ? `Oprește mostra ${style.nm}` : `Ascultă mostra ${style.nm}`}
+      aria-label={playing
+        ? t('stopSample', { name: style.nm })
+        : t('playSample', { name: style.nm })}
     >
       {playing ? <PauseGlyph /> : <PlayGlyph />}
     </button>
@@ -72,7 +76,7 @@ export function CadouStyleCard({
       {playBtn}
       {selected ? <span className="cadou-style-check" aria-hidden>✓</span> : null}
       <span className="nm">{style.nm}</span>
-      {href ? <span className="go">Fă o manea!</span> : null}
+      {href ? <span className="go">{t('cta')}</span> : null}
     </>
   );
 

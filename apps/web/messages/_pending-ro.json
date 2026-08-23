@@ -1,0 +1,54 @@
+{
+  "cadou": {
+    "legacy": {
+      "clips": {
+        "title": "🎬 Videoclipuri (refren)",
+        "titleFold": "Videoclipuri pe refren",
+        "leadOne": "Clipul scurt pe refren, din pachetul tău.",
+        "leadMany": "Cele {count} clipuri scurte pe refren, din pachetul tău.",
+        "download": "Descarcă",
+        "pending": "⏳ Se montează videoclipul… (apare automat în câteva minute)",
+        "pendingTitle": "Montăm videoclipul",
+        "pendingSub": "Apare automat în câteva minute."
+      },
+      "social": {
+        "title": "📸 Poza ta de share",
+        "titleFold": "Poza de share",
+        "lead": "Alege poza care apare când distribui melodia pe TikTok, Facebook sau Instagram.",
+        "leadGuest": "Poza care apare când melodia e distribuită pe TikTok, Facebook sau Instagram.",
+        "alt": "Variantă poză de share",
+        "yours": "A ta",
+        "upload": "⬆ Încarcă poza ta",
+        "uploadShort": "Încarcă poza ta",
+        "uploading": "Se încarcă…",
+        "download": "⬇ Descarcă poza",
+        "downloadShort": "Descarcă poza",
+        "errSelect": "Nu am putut salva selecția. Încearcă din nou.",
+        "errUpload": "Încărcarea a eșuat."
+      },
+      "unlock": {
+        "title": "🔒 Conținut privat",
+        "titleFold": "Conținut privat",
+        "lead": "Introdu parola pentru a vedea pozele și colajele.",
+        "placeholder": "Parola",
+        "checking": "Verific…",
+        "submit": "Deblochează",
+        "wrong": "Parolă greșită. Mai încearcă."
+      },
+      "pin": {
+        "title": "🔒 Parolă pentru pozele private",
+        "titleFold": "Parolă pentru pozele private",
+        "lead": "Cine are linkul + parola poate vedea pozele tale custom și colajele.",
+        "active": "Parola e activă.",
+        "currentLabel": "Parola curentă (o poți partaja)",
+        "placeholderNew": "Parolă nouă",
+        "placeholderSet": "Setează o parolă",
+        "save": "Salvează",
+        "saving": "Salvez…",
+        "saved": "✓ Salvat",
+        "clear": "Șterge parola",
+        "errSave": "Nu am putut salva parola."
+      }
+    }
+  }
+}

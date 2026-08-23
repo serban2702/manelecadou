@@ -3,8 +3,9 @@ import { isIpWhitelisted } from '@/lib/site-shared';
 import { resolveCanonicalPath } from '@/lib/page-slugs';
 import { resolveExperienceSlug } from '@/experiences/assign';
 import type { SiteExperienceConfigLite } from '@/experiences/types';
+import { apiInternalUrl } from '@/lib/api-internal';
 
-const API_INTERNAL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://api:3000';
+const API_INTERNAL = apiInternalUrl();
 
 // Cache simplu in-memory pentru a evita un round-trip API la fiecare request.
 // TTL 15s e suficient — admin update propagă <30s. Cheia include hidden +
@@ -99,11 +100,16 @@ export async function middleware(req: NextRequest) {
   } else {
     res = NextResponse.next({ request: { headers: requestHeaders } });
   }
-  res.cookies.set('mc_ui', assigned.slug, {
-    path: '/',
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 365,
-  });
+  // Cookie doar pentru alegere explicită (?ui= / UTM). Default-ul din admin
+  // trebuie să se aplice imediat la vizitatorii noi — un cookie plantat pe
+  // default îngheață UI-ul vechi după ce schimbi implicita.
+  if (assigned.reason !== 'default') {
+    res.cookies.set('mc_ui', assigned.slug, {
+      path: '/',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 365,
+    });
+  }
   return res;
 }
 

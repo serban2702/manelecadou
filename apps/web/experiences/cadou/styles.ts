@@ -1,11 +1,16 @@
 import { STYLES } from '@/lib/seed-data';
 import type { SiteStyleEntry } from '@/lib/site-shared';
 
-/** Stilurile pe interfața Cadou — 6, cele mai cerute în RO. */
-const CADOU_STYLES: Array<{ id: string; nm?: string }> = [
+/**
+ * Stilurile pe interfața Cadou — 6, cele mai cerute în RO.
+ * `nmFrom` împrumută numele (și traducerile lui) de la un alt stil din catalog,
+ * ca să nu ținem un literal RO aici: `clasic` se afișează cu numele lui `pahar`
+ * („De pahar"), tradus per-site / per-locale ca orice alt stil.
+ */
+const CADOU_STYLES: Array<{ id: string; nmFrom?: string }> = [
   { id: 'iubire' },
   { id: 'romantica' },
-  { id: 'clasic', nm: 'De pahar' },
+  { id: 'clasic', nmFrom: 'pahar' },
   { id: 'opulenta' },
   { id: 'trompeta' },
   { id: 'oriental' },
@@ -21,6 +26,23 @@ export function resolveCadouStyles(siteStyles?: SiteStyleEntry[] | null): SiteSt
   return CADOU_STYLES.map((pick) => {
     const src = byId.get(pick.id);
     if (!src) return null;
-    return pick.nm ? { ...src, nm: pick.nm } : src;
+    const alias = pick.nmFrom ? byId.get(pick.nmFrom) : undefined;
+    if (!alias) return src;
+    return { ...src, nm: alias.nm, i18n: borrowNameI18n(src.i18n, alias.i18n) };
   }).filter((s): s is SiteStyleEntry => !!s);
+}
+
+type StyleI18n = SiteStyleEntry['i18n'];
+
+/** Păstrează `ds`/`heat` ale stilului, dar ia `nm` de la stilul împrumutat. */
+function borrowNameI18n(own: StyleI18n, borrowed: StyleI18n): StyleI18n {
+  if (!own && !borrowed) return undefined;
+  const locales = new Set([...Object.keys(own ?? {}), ...Object.keys(borrowed ?? {})]);
+  const out: NonNullable<StyleI18n> = {};
+  for (const loc of locales) {
+    const mine = own?.[loc] ?? {};
+    const nm = borrowed?.[loc]?.nm;
+    out[loc] = nm ? { ...mine, nm } : mine;
+  }
+  return out;
 }
