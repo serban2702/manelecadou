@@ -1101,7 +1101,7 @@
       "navHome": "DOMOV",
       "navStudio": "NAREDI PESEM",
       "navListen": "POSLUŠAJ",
-      "navTop": "TOP IZVAJALCEV",
+      "navTop": "TOP PESMI",
       "navHistory": "ZGODOVINA",
       "navMine": "MOJE PESMI",
       "menuOpen": "Odpri meni",
@@ -1132,9 +1132,9 @@
       "stretchAlmost": "Še malo — ne zapiraj strani.",
       "waitOnLyrics": "Skladamo zvok na tvoje besedilo.",
       "waitRemaining": "Še {time}",
-      "waitLabelAlmost": "manj kot 1 min · skoraj gotovo",
+      "waitLabelAlmost": "manj kot 1 min · skoraj pripravljeno",
       "waitLabelEta": "preostali čas · ocena 6 min",
-      "waitTitleAlmost": "Skoraj gotovo",
+      "waitTitleAlmost": "Skoraj pripravljeno",
       "waitTitleLyrics": "Besedilo je pripravljeno",
       "waitTitleMaking": "Skladamo pesem",
       "playTitleMany": "Poslušaj različice",
@@ -1218,7 +1218,7 @@
       "leadPaid": "Predelavo lahko naročiš za {price}. Dodamo ti novo različico — trenutne pesmi ostanejo.",
       "canceled": "Plačilo za predelavo ni bilo zaključeno. Lahko poskusiš znova.",
       "label": "Kaj ti ne ustreza",
-      "placeholder": "npr. želim ženski glas, izpusti »vse najboljše«, bolj žalostno…",
+      "placeholder": "npr. želim ženski glas, izpusti „vse najboljše\", bolj žalostno…",
       "counter": "{len}/{max}",
       "errShort": "Povej bolj konkretno, kaj naj spremenimo.",
       "errStart": "Predelave nismo mogli zagnati.",
@@ -1238,7 +1238,7 @@
       "emptyCta": "Naredi prvo pesem",
       "statusPay": "Nedokončano plačilo",
       "statusReady": "Pripravljeno",
-      "statusWorking": "Se sklada",
+      "statusWorking": "Nastaja",
       "statusView": "Poglej darilo",
       "actionResume": "Nadaljuj plačilo",
       "actionListen": "Poslušaj",
@@ -1250,10 +1250,10 @@
     "listen": {
       "kicker": "Pravi primeri",
       "title": "Poslušaj pesmi, ki smo jih ustvarili",
-      "lead": "Celi primeri, z imeni in zgodbami — da veš, kaj dobiš.",
+      "lead": "Celotni primeri, z imeni in zgodbami — da veš, kaj dobiš.",
       "all": "Vse",
       "loading": "Nalagamo primere…",
-      "empty": "Še ni nobenega primera. Naredi prvo pesem ti.",
+      "empty": "Še ni nobenega primera. Naredi ti prvo pesem.",
       "emptyCta": "Naredi pesem!",
       "ctaLike": "Naredi pesem, kot so te",
       "dedicFrom": "od {from}",
@@ -1315,7 +1315,7 @@
         },
         "jale": {
           "username": "noc.na.obvoznici",
-          "caption": "Poslušal sem jo v avtu in moral sem ustaviti. Helena … nekdo te ni pozabil.",
+          "caption": "Poslušal sem jo v avtu in moral sem ustaviti. Helena… nekdo te ni pozabil.",
           "song": "Žalostna · Za Heleno"
         },
         "oriental": {
@@ -1330,7 +1330,7 @@
         },
         "birt": {
           "username": "fantje.iz.gostilne",
-          "caption": "Simonu smo jo zavrteli kar pri šanku. Gostilna je počila. 😂🍺",
+          "caption": "Simonu smo jo zavrteli kar pri šanku. Cela gostilna se je postavila na glavo. 😂🍺",
           "song": "Za kozarec · Za Simona"
         },
         "modern": {
@@ -1376,7 +1376,7 @@
         "role": "Kranj"
       },
       "geta": {
-        "quote": "Zvečer sem jo zavrtela možu v kuhinji. Cel minut ni rekel niti besede. Potem me je prijel za roko in jo vrtel na repeat do jutra.",
+        "quote": "Zvečer sem jo zavrtela možu v kuhinji. Celo minuto ni rekel niti besede. Potem me je prijel za roko in jo vrtel na repeat do jutra.",
         "name": "Marija D.",
         "role": "Ljubljana"
       },
@@ -1429,7 +1429,7 @@
         },
         "mama": {
           "label": "Pogrešam mamo",
-          "msg": "Mama, pogrešam te. Tvojo kosilo, tvojo besedo, mir, ki je bil v hiši. Objokujem te in te imam rad."
+          "msg": "Mama, pogrešam te. Tvojo hrano, tvojo besedo, mir, ki je bil v hiši. Objokujem te in te imam rad."
         },
         "inimaFranta": {
           "label": "Zlomljeno srce",
@@ -1541,7 +1541,7 @@
         },
         "copil": {
           "label": "Za mojega otroka",
-          "msg": "Vse najboljše. Kot da sem te včeraj nosila v naročju. Mami in ati sva ponosna nate — rasti lepo in zdravo."
+          "msg": "Vse najboljše. Kot da sva te včeraj nosila v naročju. Mami in ati sva ponosna nate — rasti lepo in zdravo."
         },
         "strainatate": {
           "label": "Za tistega, ki je v tujini",
@@ -1630,7 +1630,7 @@
       "midPillDeal": "{price} · 1+1 BREZPLAČNO",
       "midPillRemake": "Ena BREZPLAČNA predelava, če ti ni všeč",
       "reactionKicker": "Darilo, ki se ne pozabi",
-      "reactionTitle": "Predstavljaj si njegovo reakcijo…",
+      "reactionTitle": "Predstavljaj si to reakcijo…",
       "reactionText": "Personalizirana pesem za tvojega brata, za tvoje dekle ali za šefa na zabavi. Darilo, ki ga nihče ne pozabi.",
       "reactionCta": "Ustvari presenečenje",
       "testiKicker": "Kaj pravijo uporabniki",
