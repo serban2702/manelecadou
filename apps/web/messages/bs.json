@@ -1092,5 +1092,694 @@
     "dedicationTo": "za {to}",
     "dedicationFrom": "od {from}",
     "play": "Pusti"
+  },
+  "cadou": {
+    "shell": {
+      "ticker1": "💯 ZADOVOLJSTVO ZAGARANTOVANO — Pravimo je ponovo besplatno ako ti se ne svidi!",
+      "ticker2": "🔥 1+1 GRATIS — Druga pjesma na poklon!",
+      "ticker3": "⚡ Gotova za nekoliko minuta — Stiže na email!",
+      "navHome": "POČETNA",
+      "navStudio": "NAPRAVI PJESMU",
+      "navListen": "SLUŠAJ",
+      "navTop": "TOP IZVOĐAČA",
+      "navHistory": "HISTORIJA",
+      "navMine": "MOJE PJESME",
+      "menuOpen": "Otvori meni",
+      "menuClose": "Zatvori meni",
+      "payments": "{name} · plaćanja preko Stripe-a",
+      "terms": "Uslovi",
+      "privacy": "Privatnost",
+      "cookies": "Kolačići",
+      "contact": "Kontakt",
+      "faq": "FAQ",
+      "stickyCta": "Napravi pjesmu",
+      "stickyMeta": "{price} · 1+1"
+    },
+    "song": {
+      "loading": "Učitavamo poklon…",
+      "back": "← Moje pjesme",
+      "errForbidden": "Pjesma je dostupna samo onome ko ju je naručio.",
+      "errLoad": "Nismo mogli učitati pjesmu.",
+      "confirmingPayment": "Potvrđujemo plaćanje…",
+      "awaitingPay": "Plaćanje nije završeno. Vrati se i zaključi narudžbu da pokrenemo pjesmu.",
+      "resumePayment": "Nastavi plaćanje",
+      "workingLyrics": "Pišemo tekst…",
+      "workingRhyme": "Provjeravamo rimu…",
+      "workingMusic": "Komponujemo muziku…",
+      "workingVoice": "Doštimavamo glas…",
+      "stretchMix": "Doštimavamo glas i miks…",
+      "stretchPolish": "Poliramo zadnje detalje…",
+      "stretchAlmost": "Još malo — nemoj zatvarati stranicu.",
+      "waitOnLyrics": "Komponujemo muziku na tvoj tekst.",
+      "waitRemaining": "Ostalo ti je još {time}",
+      "waitLabelAlmost": "manje od 1 min · skoro gotovo",
+      "waitLabelEta": "preostalo vrijeme · procjena 6 min",
+      "waitTitleAlmost": "Skoro gotovo",
+      "waitTitleLyrics": "Tekst je gotov",
+      "waitTitleMaking": "Komponujemo pjesmu",
+      "playTitleMany": "Poslušaj verzije",
+      "playTitleOne": "Poslušaj pjesmu",
+      "forName": "Za {name}",
+      "fromName": "od {from}",
+      "personalized": "Personalizovana pjesma",
+      "trackMain": "Pjesma",
+      "trackBonus": "Verzija 2",
+      "pendingTitle": "Komponujemo novu verziju…",
+      "pendingSub": "Pjesme iznad ostaju. Traje nekoliko minuta.",
+      "lyricsTitle": "Tekst",
+      "orderTitle": "Detalji narudžbe",
+      "orderStyle": "Stil",
+      "orderOccasion": "Prilika",
+      "orderVoice": "Glas",
+      "orderFor": "Za",
+      "orderFrom": "Od",
+      "orderPackage": "Paket",
+      "orderStory": "Priča",
+      "orderCustomLyrics": "Vlastiti tekst",
+      "orderNoDedication": "bez posvete",
+      "voiceFemale": "Ženski",
+      "voiceMale": "Muški"
+    },
+    "video": {
+      "section": {
+        "title": "Spot",
+        "leadMany": "Po jedan vertikalni spot za svaku verziju pjesme ({count}). Spreman za TikTok.",
+        "leadOne": "Vertikalni spot na pjesmu, spreman za TikTok.",
+        "loaderTitle": "Montiramo spot",
+        "loaderSub": "Tvoje slike na melodiju. Traje nekoliko minuta.",
+        "shareTitle": "{label} — {site}",
+        "shareTiktokText": "Spot moje pjesme — spreman za TikTok",
+        "shareTiktokBusy": "Priprema se…",
+        "shareTiktok": "Objavi na TikTok",
+        "shareSendBusy": "Šalje se…",
+        "shareSend": "Pošalji spot",
+        "download": "Preuzmi",
+        "failed": "Nismo mogli montirati spot. Pokušaj ponovo sa svojim slikama.",
+        "ctaLead": "Ubaci slike i montiramo ih na svaku verziju pjesme.",
+        "ctaMake": "Napravi spot",
+        "ctaAnother": "Napravi još jedan spot"
+      },
+      "page": {
+        "loading": "Učitavanje…",
+        "back": "← Nazad na pjesmu",
+        "errForbidden": "Spot može napraviti samo onaj ko je naručio pjesmu.",
+        "errLoad": "Nismo mogli učitati pjesmu.",
+        "errOnlyImages": "Biraj samo slike (JPG, PNG, WEBP).",
+        "errMaxImages": "Najviše {max} slika.",
+        "errTooBig": "„{name}\" prelazi {max}MB.",
+        "errNoImages": "Dodaj barem jednu sliku.",
+        "errStart": "Nismo mogli pokrenuti spotove. Pokušaj ponovo.",
+        "kicker": "Spot",
+        "titleFor": "Slike za {name}",
+        "metaMany": "Montira se {count} spotova — po jedan za svaku verziju.",
+        "metaOne": "Montira se jedan vertikalni spot na pjesmu.",
+        "notReadyOwner": "Spot je dostupan nakon što pjesma bude gotova.",
+        "notReadyOther": "Spot može napraviti samo onaj ko je naručio pjesmu.",
+        "seeSong": "Pogledaj pjesmu",
+        "dropSelectedOne": "1 slika odabrana — pritisni da promijeniš",
+        "dropSelectedMany": "{count} slika odabrano — pritisni da promijeniš",
+        "dropOver": "Pusti slike ovdje",
+        "dropIdle": "Ubaci slike",
+        "dropHint": "max {max} · do {mb}MB · JPG / PNG / WEBP",
+        "thumbAlt": "Slika {index}",
+        "submitting": "Šaljemo…",
+        "submitMany": "Napravi {count} spotova",
+        "submitOne": "Napravi spot"
+      }
+    },
+    "remake": {
+      "title": "Preradi pjesmu",
+      "usedOne": "Iskoristio si besplatnu preradu.",
+      "usedMany": "Iskoristio si svih {quota} besplatnih prerada.",
+      "leftOne": "Ostala ti je još jedna besplatna prerada.",
+      "leftMany": "Ostalo ti je još {remaining} besplatnih prerada.",
+      "busyLead": "Pravimo novu verziju po onome što si nam rekao. Postojeće pjesme ostaju. Traje nekoliko minuta.",
+      "leadFree": "Nešto ti ne štima? Napiši šta želiš promijeniti. Dodajemo ti novu verziju — postojeće pjesme ostaju.",
+      "leadPaid": "Možeš je preraditi za {price}. Dodajemo ti novu verziju — postojeće pjesme ostaju.",
+      "canceled": "Plaćanje prerade nije završeno. Možeš pokušati ponovo.",
+      "label": "Šta ti ne štima",
+      "placeholder": "npr. hoću ženski glas, izbaci „sretan rođendan\", nek bude tužnija…",
+      "counter": "{len}/{max}",
+      "errShort": "Reci nam konkretnije šta želiš promijeniti.",
+      "errStart": "Nismo mogli pokrenuti preradu.",
+      "busyFree": "Pokrećemo preradu…",
+      "busyPaid": "Otvara se plaćanje…",
+      "ctaFree": "Preradi pjesmu",
+      "ctaPaid": "Preradi pjesmu · {price}"
+    },
+    "mine": {
+      "kicker": "Tvoja biblioteka",
+      "title": "Moje pjesme",
+      "lead": "Svi pokloni koje si napravio. Otvori bilo koji da ga poslušaš.",
+      "ctaMore": "Napravi još jednu pjesmu",
+      "loading": "Učitavamo tvoje pjesme…",
+      "error": "Nismo mogli učitati listu. Pokušaj ponovo.",
+      "emptyText": "Još nisi napravio nijednu pjesmu.",
+      "emptyCta": "Napravi prvu pjesmu",
+      "statusPay": "Nezavršeno plaćanje",
+      "statusReady": "Gotovo",
+      "statusWorking": "Komponuje se",
+      "statusView": "Pogledaj poklon",
+      "actionResume": "Nastavi plaćanje",
+      "actionListen": "Slušaj",
+      "actionLyrics": "Pogledaj tekst",
+      "cardFor": "Za {name}",
+      "cardFrom": "Od {from}",
+      "cardGo": "{action} →"
+    },
+    "listen": {
+      "kicker": "Pravi demo snimci",
+      "title": "Poslušaj pjesme koje smo napravili",
+      "lead": "Kompletni primjeri, sa imenima i pričama — da znaš šta dobivaš.",
+      "all": "Sve",
+      "loading": "Učitavamo demo snimke…",
+      "empty": "Još nema nijednog demo snimka. Napravi ti prvu pjesmu.",
+      "emptyCta": "Napravi pjesmu!",
+      "ctaLike": "Napravi pjesmu kao ove",
+      "dedicFrom": "od {from}",
+      "dedicTo": "za {to}",
+      "showLyrics": "Pogledaj tekst",
+      "hideLyrics": "Sakrij tekst"
+    },
+    "follow": {
+      "title": "Sljedeća pjesma jeftinije",
+      "badge": "−40%",
+      "done": "Hvala na praćenju. Imaš 40% popusta na sljedeću pjesmu.",
+      "doneCode": "Tvoj kod: <b>{code}</b>.",
+      "doneAuto": "Primjenjujemo ga automatski pri plaćanju.",
+      "lead": "Zaprati nas na Facebooku i TikToku i dobivaš 40% popusta na sljedeću pjesmu.",
+      "leadOne": "Zaprati nas na {network} i dobivaš 40% popusta na sljedeću pjesmu.",
+      "facebook": "Facebook",
+      "tiktok": "TikTok",
+      "facebookDone": "Facebook · zapraćen",
+      "facebookCta": "Zaprati na Facebooku",
+      "tiktokDone": "TikTok · zapraćen",
+      "tiktokCta": "Zaprati na TikToku"
+    },
+    "player": {
+      "play": "Pusti",
+      "pause": "Pauza",
+      "seek": "Pozicija",
+      "volume": "Jačina zvuka",
+      "unmute": "Uključi zvuk",
+      "mute": "Isključi zvuk",
+      "download": "Preuzmi",
+      "downloadAria": "Preuzmi pjesmu",
+      "fileBase": "pjesma"
+    },
+    "upsell": {
+      "basicTitle": "Hoćeš i kolaž sa slikama?",
+      "basicBody": "Nadogradi na Plus: duža pjesma + kolaž sa najviše 4 slike na refrenu.",
+      "plusTitle": "Kolaž kroz cijelu pjesmu",
+      "plusBody": "Nadogradi na Premium: kolaž sa 15 slika kroz cijelu pjesmu, čestitka i premium stranica.",
+      "error": "Nismo mogli otvoriti nadogradnju.",
+      "decline": "Ne, hvala",
+      "busy": "Otvara se…",
+      "cta": "Nadogradi →"
+    },
+    "reactions": {
+      "kicker": "Snimljene reakcije",
+      "title": "Pravi ljudi, prave pjesme",
+      "lead": "Ovako izgleda iznenađenje — sa TikToka i Instagrama, sa pjesmama koje smo mi napravili.",
+      "aria": "Reakcije",
+      "clips": {
+        "iubire": {
+          "username": "amila.m",
+          "caption": "Amar mi ju je pustio na zvučniku. Zaplakala sam odmah na prvu. Volim te 😭❤️ #manelecadou #ljubavna",
+          "song": "Ljubavna · Za Amilu"
+        },
+        "pahar": {
+          "username": "kenan.za.stolom",
+          "caption": "Brat Mirza mi je priredio iznenađenje za rođendan. Nisam mogao izdržati. Sretan rođendan meni 🥂",
+          "song": "Klasična za čašu · Za Kenana"
+        },
+        "jale": {
+          "username": "noc.na.magistrali",
+          "caption": "Slušao sam je u autu i morao sam stati sa strane. Elma… neko te nije zaboravio.",
+          "song": "Sevdalinka tuge · Za Elmu"
+        },
+        "oriental": {
+          "username": "amra.doma",
+          "caption": "Damir mi ju je pustio u kuhinji, pored lonca sa čorbom. Plakala sam od sreće.",
+          "song": "Orijentalna · Za Amru"
+        },
+        "opulenta": {
+          "username": "senad.lav",
+          "caption": "Pustili su mi je za stolom. Ostao sam bez riječi. Eto tako se pravi pjesma 👑 #raskosna",
+          "song": "Raskošna · Za Senada Lava"
+        },
+        "birt": {
+          "username": "raja.iz.kafane",
+          "caption": "Pustili smo je Suvadu za šankom. Raspala se kafana. 😂🍺",
+          "song": "Za čašu · Za Suvada"
+        },
+        "modern": {
+          "username": "ekipa.od.adnana",
+          "caption": "Iznenađenje za Adnana. Auto, pjesma, sve. Sretan rođendan brate 🔥",
+          "song": "Moderna · Za Adnana"
+        },
+        "nunta": {
+          "username": "kumovi.od.nedzada",
+          "caption": "Zapjevali smo je Nedžadu na svadbi. Kum je zaplakao. To je poklon koji se ne zaboravlja.",
+          "song": "Sa trubom · Za Nedžada"
+        }
+      }
+    },
+    "style": {
+      "playSample": "Poslušaj primjer {name}",
+      "stopSample": "Zaustavi primjer {name}",
+      "cta": "Napravi pjesmu!"
+    },
+    "tracks": {
+      "variant1": "Verzija 1",
+      "variant2": "Verzija 2",
+      "clip": "Spot"
+    },
+    "from": {
+      "label": "Od",
+      "you": "tebe"
+    },
+    "testimonials": {
+      "costel": {
+        "quote": "Pustio sam je šefu za stolom. Nastala je tišina. Vidio sam kako briše oči i okreće glavu da ga momci ne vide.",
+        "name": "Kenan B.",
+        "role": "Zenica"
+      },
+      "andreea": {
+        "quote": "Na svadbi je svekar čuo svoje ime u pjesmi i zagrlio me. Plakao je. Rekao mi je da nikad nije dobio poklon koji ga je ovako pogodio.",
+        "name": "Amila M.",
+        "role": "Tuzla"
+      },
+      "vasile": {
+        "quote": "Kum je ustao od stola usred pjesme. Ruka mu je drhtala na čaši. Poslije me stegao i rekao samo toliko: hvala ti, sine.",
+        "name": "Vahid P.",
+        "role": "Sarajevo"
+      },
+      "geta": {
+        "quote": "Pustila sam je mužu navečer, u kuhinji. Cijelu minutu nije rekao ni riječi. Onda me uzeo za ruku i vrtio je ukrug do jutra.",
+        "name": "Đenana D.",
+        "role": "Banja Luka"
+      },
+      "robert": {
+        "quote": "Majka je zaplakala već na prvoj strofi. Snimio sam je. TikTok je odradio 200K, ali taj trenutak nema pregleda — on je samo njen.",
+        "name": "Rijad T.",
+        "role": "Mostar"
+      },
+      "maria": {
+        "quote": "Napravila sam je bratu, poslije godinu dana bez ijedne riječi. Kad je čuo tekst, došao je kod mene. Pomirili smo se bez razgovora.",
+        "name": "Merima I.",
+        "role": "Bihać"
+      }
+    },
+    "stories": {
+      "iubire": {
+        "iubit": {
+          "label": "Za mog dragog",
+          "msg": "Ti si mi sve. Hvala ti za svaku žrtvu koju si podnio za našu porodicu. Prošli smo zajedno kroz teške dane, ali niko i ništa nije pobijedilo našu ljubav."
+        },
+        "iubita": {
+          "label": "Za moju dragu",
+          "msg": "Ti si moje svjetlo. Sagradio sam ti kuću i život, i volim te više nego jučer, a manje nego sutra. Ne mijenjam te ni za koga."
+        },
+        "sot": {
+          "label": "Za mog muža",
+          "msg": "Ti si najbolji muž i najbolji otac. Odabrala sam da budem uz tebe i u dobru i u zlu, godinama, i sve što imam — imam sa tobom."
+        },
+        "sotie": {
+          "label": "Za moju ženu",
+          "msg": "Ti držiš i kuću i djecu. Ti si moj život. Sve što sam uradio, uradio sam za nas — volim te i hvala ti."
+        },
+        "ziIubire": {
+          "label": "Sretan rođendan, ljubavi moja",
+          "msg": "Sretan rođendan! Ti si najdragocjenije što imam u životu. Hvala ti na ljubavi koju pokazuješ svaki dan i na svemu čega se odričeš zbog mene."
+        },
+        "copil": {
+          "label": "Za moje dijete",
+          "msg": "Volim te svom dušom i ponosan sam na tebe. Ti si moje čudo. Znaj da sam uz tebe, uvijek i svugdje."
+        }
+      },
+      "romantica": {
+        "plecat": {
+          "label": "Za nekog ko nas je napustio",
+          "msg": "Nismo te zaboravili. I danas te oplakujemo, i djeca i unučad. Fališ mi svaki dan i čuvam te u srcu."
+        },
+        "tata": {
+          "label": "Fali mi babo",
+          "msg": "Babo, ostavio si nam veliku prazninu. Bio si najbolji čovjek za nas i za unučad. Oplakujem te i volim te, gdje god da si."
+        },
+        "mama": {
+          "label": "Fali mi majka",
+          "msg": "Majko, fališ mi. Fali mi tvoje jelo, tvoja riječ, onaj mir u kući. Oplakujem te i volim te."
+        },
+        "inimaFranta": {
+          "label": "Slomljeno srce",
+          "msg": "Zaboljelo je kad si otišla. Nisam stigao reći sve što mi je bilo na duši. Volim te i danas, iako više nisi uz mene."
+        },
+        "departe": {
+          "label": "Daleko od kuće",
+          "msg": "Daleko sam, na radu vani, i falite mi. Kidam se za našu porodicu i vraćam se. Čekajte me kod kuće."
+        },
+        "neuitat": {
+          "label": "Nisam te zaboravio",
+          "msg": "Nisam te zaboravio. Fališ mi svake noći. Srce mi se svaki put tebi vrati."
+        }
+      },
+      "clasic": {
+        "frate": {
+          "label": "Sretan rođendan, brate",
+          "msg": "Sretan rođendan, brate. Da si mi na nogama, da sjedimo za stolom do zore, sa čašom u zraku i lijepom riječju. Volim te, brate."
+        },
+        "prieten": {
+          "label": "Za prijatelja",
+          "msg": "Ti si najbolji prijatelj. Na tebe se oslanjam. Sretan rođendan — da se smijemo i dižemo čašu zajedno, kao i uvijek."
+        },
+        "tata": {
+          "label": "Za babu",
+          "msg": "Sretan rođendan, babo. Od djece i od zetova: zdravlje, mir i sofra kao nekad. Bez tebe ne bi bilo ni nas."
+        },
+        "sotieZi": {
+          "label": "Za ženu, za rođendan",
+          "msg": "Danas je sve o tebi. Sretan rođendan, zdravlje i sreća. Bila si uz nas u svemu — muž i djeca ti hvale iz dna duše."
+        },
+        "nas": {
+          "label": "Za kuma / kumčeta",
+          "msg": "Da si mi živ i zdrav. Da se nalazimo za sofrom i da ne zaboravimo odakle smo krenuli. Ti si naš, kume, i poštujemo te."
+        },
+        "familie": {
+          "label": "Za porodicu",
+          "msg": "Da smo zdravi, da se skupimo za sofrom i zaboravimo brige. Volim vas sve — kuća je puna kad ste vi tu."
+        }
+      },
+      "opulenta": {
+        "sef": {
+          "label": "Za mog šefa",
+          "msg": "Poštujem te. Tvoja riječ teško pada i bez tebe se ništa ne bi micalo. Hvala ti što si me držao uz sebe i što si glavni za stolom."
+        },
+        "nas": {
+          "label": "Za kuma / kumčeta",
+          "msg": "Da imaš sreće i pošten novac. Ne zaboravi ko ti je stajao uz rame. Ti si naš kum i držimo te u srcu."
+        },
+        "frate": {
+          "label": "Za mog brata",
+          "msg": "Ti si najbolji brat na svijetu. Bio si uz mene i u dobru i u zlu. Volim te, brate, i zaslužuješ sve najbolje."
+        },
+        "ziSefu": {
+          "label": "Sretan rođendan, šefe",
+          "msg": "Sretan rođendan, šefe. Ti si glavni za stolom, najveći frajer u našoj raji. Da ti sve ide punom parom."
+        },
+        "reusit": {
+          "label": "Za onog ko je uspio",
+          "msg": "Krenuo si od nule, a sad sjediš za stolom sa parama na vidjelu. Zaslužuješ sve što imaš. Ponosan sam na tebe."
+        },
+        "tata": {
+          "label": "Za babu, domaćina kuće",
+          "msg": "Babo, radio si od jutra do mraka da mi ne osjetimo teret. Volimo te beskrajno. Ti si domaćin naše kuće."
+        }
+      },
+      "trompeta": {
+        "nunta": {
+          "label": "Za svadbu",
+          "msg": "Danas je vaša svadba. Želim vam mnogo godina zajedno, djecu i unučad. Ustajte, sala je večeras vaša."
+        },
+        "prieten": {
+          "label": "Za prijatelja",
+          "msg": "Sretan rođendan, prijatelju. Otkad te znam, ti si čovjek na kojeg se može osloniti. Kažem ti to iz duše, od srca."
+        },
+        "aniversare": {
+          "label": "Godišnjica braka",
+          "msg": "Prošli smo zajedno i kroz dobro i kroz zlo. Ostajem uz tebe do duboke starosti — voljeni od djece i od unučadi."
+        },
+        "baiat": {
+          "label": "Za našeg sina",
+          "msg": "Sretan rođendan, sine naš. Idi za svojim snovima hrabro. Ti si čudo ove kuće i naš ponos."
+        },
+        "nas": {
+          "label": "Za kuma",
+          "msg": "Ti si čovjek od riječi. Svadba je prava svadba tek kad si ti za stolom. Poštujemo te i hvala ti što si naš."
+        },
+        "familie": {
+          "label": "Za porodicu za sofrom",
+          "msg": "Danas smo svi na okupu. Nek odjekne sala, nek bude veselja i zdravlja. Volim vas — sofra je naša."
+        }
+      },
+      "oriental": {
+        "sotie": {
+          "label": "Za moju ženu",
+          "msg": "Ti si kraljica kuće. Sa tobom je u kući mir. Volim te, ti si sve što imam, i u dobru i u zlu."
+        },
+        "sot": {
+          "label": "Za mog muža",
+          "msg": "Ti si moj divan muž, babo naše djece. Volim te beskrajno. Ti si cijeli naš život."
+        },
+        "ziFamilie": {
+          "label": "Sretan rođendan, u krugu porodice",
+          "msg": "Sretan rođendan, zdravlje i sreća. Da ponovo proživimo lijepe trenutke zajedno — ti, ja, djeca, cijela kuća."
+        },
+        "iubireDeparte": {
+          "label": "Ljubav na daljinu",
+          "msg": "Ljubavi moja, fališ mi. Hvala Bogu što smo zajedno. Volim te ogromno, gdje god da smo."
+        },
+        "copil": {
+          "label": "Za moje dijete",
+          "msg": "Sretan rođendan. Kao da sam te jučer nosila u naručju. Mama i babo su ponosni na tebe — rasti lijep i zdrav."
+        },
+        "strainatate": {
+          "label": "Za one koji su vani",
+          "msg": "Daleko si, ali srce ti je kod kuće. Nek ti ide auto, kuća i porodica. Čekamo te sa postavljenom sofrom."
+        }
+      }
+    },
+    "home": {
+      "heroKicker": "Napravi svoju pjesmu ispod!",
+      "heroTitle": "Napravi svoju pjesmu za 2 minute!",
+      "heroLead": "Izaberi stil, dodaj detalje i mi pravimo jedinstvenu pjesmu samo za tebe — gotova za nekoliko minuta.",
+      "heroDeal": "1+1 GRATIS",
+      "heroRemake": "Jedna <b>BESPLATNA</b> prerada ako ti se ne svidi",
+      "heroCta": "Napravi pjesmu!",
+      "heroSocial": "🔥 {count} pjesama napravljeno danas",
+      "statSongs": "Generisanih pjesama",
+      "statSongsValue": "100.000+",
+      "statRating": "Ocjena korisnika",
+      "statRatingValue": "4,9/5",
+      "statTime": "Vrijeme izrade",
+      "statTimeValue": "2–5 min",
+      "statUsers": "Aktivnih korisnika",
+      "statUsersValue": "2.000+",
+      "recentLabel": "Nedavno napravljene:",
+      "recentChip": "▶ {name} · {style}",
+      "recent": [
+        {
+          "name": "Amar",
+          "style": "Sevdalinka tuge"
+        },
+        {
+          "name": "Amila",
+          "style": "Ljubavna"
+        },
+        {
+          "name": "Senad",
+          "style": "Raskošna"
+        },
+        {
+          "name": "Elma",
+          "style": "Klasična za čašu"
+        },
+        {
+          "name": "Adnan",
+          "style": "Sa trubom"
+        },
+        {
+          "name": "Merima",
+          "style": "Orijentalna"
+        },
+        {
+          "name": "Faruk",
+          "style": "Za čašu"
+        },
+        {
+          "name": "Amra",
+          "style": "Tallava"
+        },
+        {
+          "name": "Kenan",
+          "style": "Kuček"
+        },
+        {
+          "name": "Sabina",
+          "style": "Trap-pjesma"
+        }
+      ],
+      "stylesKicker": "Dostupni stilovi",
+      "stylesTitle": "Izaberi svoj stil",
+      "stylesLead": "Svaki stil ima svoju dušu. Izaberi onaj koji priča tvoju priču.",
+      "howKicker": "Kako funkcioniše",
+      "howTitle": "Kako ide izrada pjesme?",
+      "howLead": "U samo 4 jednostavna koraka imaš svoju personalizovanu pjesmu",
+      "step1Title": "Popuni detalje",
+      "step1Text": "Izaberi stil i naslov",
+      "step2Title": "Mi pišemo tekst",
+      "step2Text": "Sastavljamo tekst po tvom ukusu",
+      "step3Title": "Pravimo muziku",
+      "step3Text": "Komponujemo savršenu melodiju",
+      "step4Title": "Dobivaš pjesmu",
+      "step4Text": "Preuzmi je i podijeli",
+      "howHint": "*ili nam ti daš svoj tekst",
+      "midTitle": "Spreman da napraviš svoju pjesmu?",
+      "midLead": "Kreni sada — treba ti svega nekoliko klikova!",
+      "midCta": "Napravi pjesmu sada",
+      "midPillDeal": "{price} · 1+1 GRATIS",
+      "midPillRemake": "Jedna BESPLATNA prerada ako ti se ne svidi",
+      "reactionKicker": "Poklon koji se ne zaboravlja",
+      "reactionTitle": "Zamisli reakciju…",
+      "reactionText": "Personalizovana pjesma za tvog brata, tvoju djevojku ili šefa na žurci. Poklon koji niko ne zaboravlja.",
+      "reactionCta": "Napravi iznenađenje",
+      "testiKicker": "Šta kažu korisnici",
+      "testiTitle": "Prave reakcije",
+      "testiLead": "Hiljade ljudi koji su dobili svoju savršenu pjesmu.",
+      "testiQuote": "„{text}\"",
+      "testiWho": "{name} · {role}",
+      "pricingKicker": "Cijene",
+      "pricingTitle": "Jednostavne cijene, bez iznenađenja",
+      "pricingLead": "Jedno plaćanje. Bez pretplate, bez skrivenih troškova.",
+      "pricingNote": "🔒 Stripe zaštićeno · ⚡ Isporuka odmah · ✅ Garancija 30 dana",
+      "faqKicker": "Česta pitanja",
+      "faqTitle": "Brzi odgovori",
+      "faq1Q": "Šta je {name}?",
+      "faq1A": "Generator personalizovanih pjesama sa AI. Izabereš stil, ispričaš priču i dobivaš jedinstvenu pjesmu sa imenom osobe kojoj je poklanjaš — spremnu za slušanje i za poklon.",
+      "faq2Q": "Koliko traje izrada?",
+      "faq2A": "Obično 2–5 minuta. Pjesmu ti šaljemo na email čim bude gotova.",
+      "faq3Q": "Šta ako mi se ne svidi?",
+      "faq3A": "Imaš jednu BESPLATNU preradu ako ti se ne svidi. Pravimo je ponovo dok ne budeš zadovoljan.",
+      "faq4Q": "Mogu li ja napisati tekst?",
+      "faq4A": "Možeš. Na koraku Extra označiš „Hoću sam napisati tekst\" i koristimo ga doslovno.",
+      "faqAll": "Pogledaj sva pitanja i odgovore →"
+    },
+    "wizard": {
+      "stepStyle": "Stil",
+      "stepDetails": "Detalji",
+      "stepExtra": "Extra",
+      "stepPay": "Plaćanje",
+      "title": "Napravi svoju pjesmu",
+      "lead": "Izaberi stil, dodaj detalje i mi pravimo muziku.",
+      "offerBadge": "🎁 1+1 GRATIS",
+      "offerBadgeDiscount": "🎁 1+1 GRATIS · {pct}% POPUSTA",
+      "offerTrust": "★ 4,9/5 iz preko 10.000 recenzija · ♪ 100.000+ napravljenih pjesama",
+      "styleKicker": "Izaberi muzički stil",
+      "errStyle": "Izaberi muzički stil da nastaviš.",
+      "storyLabel": "Izaberi priču",
+      "msgLabel": "Šta želiš da spomenemo u pjesmi",
+      "msgPlaceholder": "O čemu želiš da bude tvoja pjesma?",
+      "errMsg": "Napiši u polje iznad o čemu želiš da bude pjesma.",
+      "fromLabel": "Od koga",
+      "fromPlaceholder": "Npr.: Amar, porodica…",
+      "errFrom": "Popuni polje „Od koga\".",
+      "toLabel": "Za koga",
+      "toPlaceholder": "Npr.: Adnan, Amila…",
+      "errTo": "Popuni polje „Za koga\".",
+      "noDedication": "Ne posvećujem je nikome — hoću samo pjesmu",
+      "occasionLabel": "Prilika (opciono)",
+      "voiceLabel": "Glas",
+      "voiceRecommended": "Preporučeno",
+      "errVoice": "Izaberi glas: muški ili ženski.",
+      "packageLabel": "Paket",
+      "customLyricsCheck": "Hoću sam napisati tekst",
+      "customLyricsPlaceholder": "Napiši svoj tekst…",
+      "errCustomLyrics": "Napiši svoj tekst u polje iznad.",
+      "emailLabel": "Tvoj email *",
+      "emailPlaceholder": "ti@email.ba",
+      "emailHint": "Javljamo ti kad pjesma bude gotova. Bez spama.",
+      "errEmail": "Unesi važeći email da ti pošaljemo pjesmu.",
+      "privacy": "Slažem se sa politikom privatnosti i da primam emailove o narudžbi.",
+      "errPrivacy": "Moraš označiti polje iznad.",
+      "payTitleSelf": "<em>Tvoja</em> pjesma",
+      "payTitleFor": "Pjesma za <em>{name}</em>",
+      "recapStyle": "Stil",
+      "recapFrom": "Od",
+      "recapTo": "Za",
+      "recapOccasion": "Prilika",
+      "recapPackage": "Paket",
+      "recapVoice": "Glas",
+      "recapEmail": "Email",
+      "recapNoDedication": "bez posvete",
+      "recapEdit": "Izmijeni",
+      "promoLabel": "Promo kod",
+      "promoPlaceholder": "PROMO",
+      "promoApply": "Primijeni",
+      "promoApplied": "Kod <b>{code}</b> primijenjen",
+      "promoExpired": "Kod je istekao.",
+      "promoNotYetValid": "Kod još nije aktivan.",
+      "promoUsedUp": "Kod je potpuno iskorišten.",
+      "promoWrongEmail": "Kod je ograničen na drugi email.",
+      "promoEmpty": "Unesi promo kod.",
+      "promoUnknown": "Ne prepoznajemo ovaj kod. Provjeri ga i pokušaj ponovo.",
+      "promoCheckFailed": "Nismo mogli provjeriti kod. Pokušaj ponovo.",
+      "afterPayRemakeOne": "Nakon plaćanja pravimo pjesmu, a ako želiš neku izmjenu, imaš pravo na jednu besplatnu preradu.",
+      "afterPayRemakeMany": "Nakon plaćanja pravimo pjesmu, a ako želiš neku izmjenu, imaš pravo na {count} besplatne prerade.",
+      "afterPayCollage": "Kolaž sa slikama radi se nakon što pjesma bude gotova.",
+      "afterPayCard": "Personalizovana čestitka radi se nakon što pjesma bude gotova.",
+      "afterPaySocial": "Objava na Facebooku i TikToku, sa posvetom, radi se nakon što pjesma bude gotova.",
+      "back": "Nazad",
+      "next": "Dalje",
+      "payBusy": "Otvara se plaćanje…",
+      "pay": "Plati {price}",
+      "errPaymentCanceled": "Plaćanje nije prošlo. Narudžba je sačuvana — možeš pokušati ponovo.",
+      "errPaymentsUnavailable": "Plaćanja su privremeno nedostupna. Pokušaj za nekoliko minuta.",
+      "errSessionExpired": "Sesija je istekla. Pokušaj plaćanje ponovo.",
+      "errCheckout": "Nismo mogli otvoriti plaćanje. Provjeri email i pokušaj ponovo."
+    },
+    "packs": {
+      "recommended": "Preporučeno",
+      "cta": "Izaberi {name}"
+    },
+    "legacy": {
+      "clips": {
+        "title": "🎬 Spotovi (refren)",
+        "titleFold": "Spotovi na refren",
+        "leadOne": "Kratki spot na refren, iz tvog paketa.",
+        "leadMany": "Svih {count} kratkih spotova na refren, iz tvog paketa.",
+        "download": "Preuzmi",
+        "pending": "⏳ Spot se montira… (pojavljuje se automatski za nekoliko minuta)",
+        "pendingTitle": "Montiramo spot",
+        "pendingSub": "Pojavljuje se automatski za nekoliko minuta."
+      },
+      "social": {
+        "title": "📸 Tvoja slika za dijeljenje",
+        "titleFold": "Slika za dijeljenje",
+        "lead": "Izaberi sliku koja se pojavljuje kad podijeliš pjesmu na TikToku, Facebooku ili Instagramu.",
+        "leadGuest": "Slika koja se pojavljuje kad se pjesma podijeli na TikToku, Facebooku ili Instagramu.",
+        "alt": "Varijanta slike za dijeljenje",
+        "yours": "Tvoja",
+        "upload": "⬆ Ubaci svoju sliku",
+        "uploadShort": "Ubaci svoju sliku",
+        "uploading": "Učitava se…",
+        "download": "⬇ Preuzmi sliku",
+        "downloadShort": "Preuzmi sliku",
+        "errSelect": "Nismo mogli sačuvati izbor. Pokušaj ponovo.",
+        "errUpload": "Učitavanje nije uspjelo."
+      },
+      "unlock": {
+        "title": "🔒 Privatni sadržaj",
+        "titleFold": "Privatni sadržaj",
+        "lead": "Unesi lozinku da vidiš slike i kolaže.",
+        "placeholder": "Lozinka",
+        "checking": "Provjeravam…",
+        "submit": "Otključaj",
+        "wrong": "Pogrešna lozinka. Pokušaj ponovo."
+      },
+      "pin": {
+        "title": "🔒 Lozinka za privatne slike",
+        "titleFold": "Lozinka za privatne slike",
+        "lead": "Ko ima link i lozinku može vidjeti tvoje slike i kolaže.",
+        "active": "Lozinka je aktivna.",
+        "currentLabel": "Trenutna lozinka (možeš je podijeliti)",
+        "placeholderNew": "Nova lozinka",
+        "placeholderSet": "Postavi lozinku",
+        "save": "Sačuvaj",
+        "saving": "Čuvam…",
+        "saved": "✓ Sačuvano",
+        "clear": "Obriši lozinku",
+        "errSave": "Nismo mogli sačuvati lozinku."
+      }
+    }
   }
 }

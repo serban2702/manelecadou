@@ -1092,5 +1092,694 @@
     "dedicationTo": "{to} için",
     "dedicationFrom": "{from} tarafından",
     "play": "Çal"
+  },
+  "cadou": {
+    "shell": {
+      "ticker1": "💯 MEMNUNİYET GARANTİSİ — Beğenmezsen ücretsiz yeniden yapıyoruz!",
+      "ticker2": "🔥 1+1 BEDAVA — İkinci şarkı hediye!",
+      "ticker3": "⚡ Birkaç dakikada hazır — E-postaya teslim!",
+      "navHome": "ANA SAYFA",
+      "navStudio": "ŞARKI YAP",
+      "navListen": "DİNLE",
+      "navTop": "EN İYİLER",
+      "navHistory": "GEÇMİŞ",
+      "navMine": "ŞARKILARIM",
+      "menuOpen": "Menüyü aç",
+      "menuClose": "Menüyü kapat",
+      "payments": "{name} · ödemeler Stripe ile",
+      "terms": "Şartlar",
+      "privacy": "Gizlilik",
+      "cookies": "Çerezler",
+      "contact": "İletişim",
+      "faq": "SSS",
+      "stickyCta": "Şarkı yap",
+      "stickyMeta": "{price} · 1+1"
+    },
+    "song": {
+      "loading": "Hediyeni yüklüyoruz…",
+      "back": "← Şarkılarım",
+      "errForbidden": "Şarkı yalnızca siparişi veren kişiye açık.",
+      "errLoad": "Şarkıyı yükleyemedik.",
+      "confirmingPayment": "Ödemeyi onaylıyoruz…",
+      "awaitingPay": "Ödeme tamamlanmadı. Şarkıyı başlatmamız için geri dön ve siparişi kapat.",
+      "resumePayment": "Ödemeye devam et",
+      "workingLyrics": "Sözleri yazıyoruz…",
+      "workingRhyme": "Kafiyeyi kontrol ediyoruz…",
+      "workingMusic": "Müziği besteliyoruz…",
+      "workingVoice": "Sesi ayarlıyoruz…",
+      "stretchMix": "Sesi ve miksi ayarlıyoruz…",
+      "stretchPolish": "Son detayları cilalıyoruz…",
+      "stretchAlmost": "Birazcık kaldı — sayfayı kapatma.",
+      "waitOnLyrics": "Senin sözlerinin üstüne müziği besteliyoruz.",
+      "waitRemaining": "{time} kaldı",
+      "waitLabelAlmost": "1 dakikadan az · neredeyse hazır",
+      "waitLabelEta": "kalan süre · tahmini 6 dk",
+      "waitTitleAlmost": "Neredeyse hazır",
+      "waitTitleLyrics": "Sözler hazır",
+      "waitTitleMaking": "Şarkını besteliyoruz",
+      "playTitleMany": "Versiyonları dinle",
+      "playTitleOne": "Şarkıyı dinle",
+      "forName": "{name} için",
+      "fromName": "{from} adına",
+      "personalized": "Kişiye özel şarkı",
+      "trackMain": "Şarkı",
+      "trackBonus": "Versiyon 2",
+      "pendingTitle": "Yeni versiyonu besteliyoruz…",
+      "pendingSub": "Yukarıdaki parçalar duruyor. Birkaç dakika sürer.",
+      "lyricsTitle": "Sözler",
+      "orderTitle": "Sipariş detayları",
+      "orderStyle": "Stil",
+      "orderOccasion": "Vesile",
+      "orderVoice": "Ses",
+      "orderFor": "Kime",
+      "orderFrom": "Kimden",
+      "orderPackage": "Paket",
+      "orderStory": "Hikâye",
+      "orderCustomLyrics": "Kendi sözlerin",
+      "orderNoDedication": "ithafsız",
+      "voiceFemale": "Kadın",
+      "voiceMale": "Erkek"
+    },
+    "video": {
+      "section": {
+        "title": "Klip",
+        "leadMany": "Şarkının her versiyonu için ({count}) birer dikey klip. TikTok'a hazır.",
+        "leadOne": "Şarkının üstüne dikey klip, TikTok'a hazır.",
+        "loaderTitle": "Klibi kurguluyoruz",
+        "loaderSub": "Fotoğrafların şarkının üstünde. Birkaç dakika.",
+        "shareTitle": "{label} — {site}",
+        "shareTiktokText": "Şarkımın klibi — TikTok'a hazır",
+        "shareTiktokBusy": "Hazırlanıyor…",
+        "shareTiktok": "TikTok'ta paylaş",
+        "shareSendBusy": "Gönderiliyor…",
+        "shareSend": "Klibi gönder",
+        "download": "İndir",
+        "failed": "Klibi kurgulayamadık. Fotoğraflarınla tekrar dene.",
+        "ctaLead": "Fotoğraflarını yükle, şarkının her versiyonuna kurgulayalım.",
+        "ctaMake": "Klibi yap",
+        "ctaAnother": "Başka bir klip yap"
+      },
+      "page": {
+        "loading": "Yükleniyor…",
+        "back": "← Şarkıya dön",
+        "errForbidden": "Klibi yalnızca şarkıyı sipariş eden kişi yapabilir.",
+        "errLoad": "Şarkıyı yükleyemedik.",
+        "errOnlyImages": "Sadece görsel seç (JPG, PNG, WEBP).",
+        "errMaxImages": "En fazla {max} görsel.",
+        "errTooBig": "“{name}” {max}MB sınırını aşıyor.",
+        "errNoImages": "En az bir görsel ekle.",
+        "errStart": "Klipleri başlatamadık. Tekrar dene.",
+        "kicker": "Klip",
+        "titleFor": "{name} için fotoğraflar",
+        "metaMany": "{count} klip kurgulanıyor — her versiyona bir tane.",
+        "metaOne": "Şarkının üstüne dikey bir klip kurgulanıyor.",
+        "notReadyOwner": "Klip, şarkı hazır olduktan sonra açılıyor.",
+        "notReadyOther": "Klibi yalnızca şarkıyı sipariş eden kişi yapabilir.",
+        "seeSong": "Şarkıyı gör",
+        "dropSelectedOne": "1 fotoğraf seçildi — değiştirmek için bas",
+        "dropSelectedMany": "{count} fotoğraf seçildi — değiştirmek için bas",
+        "dropOver": "Fotoğrafları buraya bırak",
+        "dropIdle": "Fotoğrafları yükle",
+        "dropHint": "en fazla {max} · {mb}MB'a kadar · JPG / PNG / WEBP",
+        "thumbAlt": "Fotoğraf {index}",
+        "submitting": "Gönderiliyor…",
+        "submitMany": "{count} klip oluştur",
+        "submitOne": "Klibi oluştur"
+      }
+    },
+    "remake": {
+      "title": "Şarkıyı yeniden yap",
+      "usedOne": "Ücretsiz yeniden yapım hakkını kullandın.",
+      "usedMany": "{quota} ücretsiz yeniden yapım hakkının hepsini kullandın.",
+      "leftOne": "Bir ücretsiz yeniden yapım hakkın kaldı.",
+      "leftMany": "{remaining} ücretsiz yeniden yapım hakkın kaldı.",
+      "busyLead": "Bize söylediğine göre yeni bir versiyon hazırlıyoruz. Mevcut parçalar duruyor. Birkaç dakika sürer.",
+      "leadFree": "Bir şey mi beğenmedin? Neyin değişmesini istediğini yaz. Sana yeni bir versiyon ekleriz — mevcut parçalar duruyor.",
+      "leadPaid": "{price} karşılığında yeniden yapabilirsin. Sana yeni bir versiyon ekleriz — mevcut parçalar duruyor.",
+      "canceled": "Yeniden yapım ödemesi tamamlanmadı. Tekrar deneyebilirsin.",
+      "label": "Neyi beğenmedin",
+      "placeholder": "örn. kadın sesi olsun, “iyi ki doğdun” kısmını çıkar, daha hüzünlü olsun…",
+      "counter": "{len}/{max}",
+      "errShort": "Neyi değiştirmek istediğini biraz daha net yaz.",
+      "errStart": "Yeniden yapımı başlatamadık.",
+      "busyFree": "Yeniden yapımı başlatıyoruz…",
+      "busyPaid": "Ödeme açılıyor…",
+      "ctaFree": "Şarkıyı yeniden yap",
+      "ctaPaid": "Şarkıyı yeniden yap · {price}"
+    },
+    "mine": {
+      "kicker": "Kütüphanen",
+      "title": "Şarkılarım",
+      "lead": "Yaptırdığın bütün hediyeler. Dinlemek için birine tıkla.",
+      "ctaMore": "Bir şarkı daha yap",
+      "loading": "Şarkıların yükleniyor…",
+      "error": "Listeyi yükleyemedik. Tekrar dene.",
+      "emptyText": "Henüz hiç şarkı yapmadın.",
+      "emptyCta": "İlk şarkını yap",
+      "statusPay": "Ödeme tamamlanmadı",
+      "statusReady": "Hazır",
+      "statusWorking": "Besteleniyor",
+      "statusView": "Hediyeyi gör",
+      "actionResume": "Ödemeye devam et",
+      "actionListen": "Dinle",
+      "actionLyrics": "Sözleri gör",
+      "cardFor": "{name} için",
+      "cardFrom": "{from} adına",
+      "cardGo": "{action} →"
+    },
+    "listen": {
+      "kicker": "Gerçek demolar",
+      "title": "Bizim ürettiğimiz şarkıları dinle",
+      "lead": "İsimli ve hikâyeli tam örnekler — ne alacağını bil diye.",
+      "all": "Tümü",
+      "loading": "Demolar yükleniyor…",
+      "empty": "Henüz demo yok. İlk şarkıyı sen yap.",
+      "emptyCta": "Şarkı yap!",
+      "ctaLike": "Sen de böyle bir şarkı yap",
+      "dedicFrom": "{from} adına",
+      "dedicTo": "{to} için",
+      "showLyrics": "Sözleri göster",
+      "hideLyrics": "Sözleri gizle"
+    },
+    "follow": {
+      "title": "Sonraki şarkı daha ucuz",
+      "badge": "−%40",
+      "done": "Takip için teşekkürler. Sonraki şarkında %40 indirimin var.",
+      "doneCode": "Kodun: <b>{code}</b>.",
+      "doneAuto": "Ödemede otomatik uyguluyoruz.",
+      "lead": "Facebook ve TikTok'ta takip et, sonraki şarkında %40 indirim kazan.",
+      "leadOne": "{network} üzerinde takip et, sonraki şarkında %40 indirim kazan.",
+      "facebook": "Facebook",
+      "tiktok": "TikTok",
+      "facebookDone": "Facebook · takip ediliyor",
+      "facebookCta": "Facebook'ta takip et",
+      "tiktokDone": "TikTok · takip ediliyor",
+      "tiktokCta": "TikTok'ta takip et"
+    },
+    "player": {
+      "play": "Çal",
+      "pause": "Duraklat",
+      "seek": "Konum",
+      "volume": "Ses seviyesi",
+      "unmute": "Sesi aç",
+      "mute": "Sesi kapat",
+      "download": "İndir",
+      "downloadAria": "Şarkıyı indir",
+      "fileBase": "sarki"
+    },
+    "upsell": {
+      "basicTitle": "Fotoğraflı kolaj da ister misin?",
+      "basicBody": "Plus'a geç: daha uzun şarkı + nakarata en fazla 4 fotoğraflı kolaj.",
+      "plusTitle": "Şarkının tamamında kolaj",
+      "plusBody": "Premium'a geç: şarkının tamamında 15 fotoğraflı kolaj, tebrik kartı ve premium sayfa.",
+      "error": "Yükseltmeyi açamadık.",
+      "decline": "Hayır, teşekkürler",
+      "busy": "Açılıyor…",
+      "cta": "Yükselt →"
+    },
+    "reactions": {
+      "kicker": "Kayda alınmış tepkiler",
+      "title": "Gerçek insanlar, gerçek şarkılar",
+      "lead": "Sürpriz işte böyle görünüyor — TikTok ve Instagram'dan, bizim ürettiğimiz şarkılarla.",
+      "aria": "Tepkiler",
+      "clips": {
+        "iubire": {
+          "username": "elif.m",
+          "caption": "Emre hoparlöre koydu. İlk saniyede ağlamaya başladım. Seni seviyorum 😭❤️ #hediyesarki #askicin",
+          "song": "Aşk şarkısı · Elif için"
+        },
+        "pahar": {
+          "username": "kadir.masada",
+          "caption": "Abim Murat doğum günümde sürpriz yaptı. Dayanamadım. İyi ki doğmuşum 🥂",
+          "song": "Klasik kadeh şarkısı · Kadir için"
+        },
+        "jale": {
+          "username": "gece.cevreyolu",
+          "caption": "Arabada dinledim, kenara çekmek zorunda kaldım. Ayşe… biri seni unutmamış.",
+          "song": "Hüzünlü · Ayşe için"
+        },
+        "oriental": {
+          "username": "selin.evde",
+          "caption": "Kerem mutfakta, çorba tenceresinin başında açtı. Mutluluktan ağladım.",
+          "song": "Oryantal · Selin için"
+        },
+        "opulenta": {
+          "username": "baran.aslan",
+          "caption": "Masada ona açtım. Dili tutuldu. Şarkı böyle yapılır 👑 #ihtisam",
+          "song": "İhtişam · Baran Aslan için"
+        },
+        "birt": {
+          "username": "meyhanedeki.kankalar",
+          "caption": "Serkan'a tezgâhın başında açtık. Masa dağıldı. 😂🍺",
+          "song": "Kadeh şarkısı · Serkan için"
+        },
+        "modern": {
+          "username": "alperin.tayfasi",
+          "caption": "Alper'e sürpriz. Araba, şarkı, hepsi tamam. İyi ki doğdun kanka 🔥",
+          "song": "Modern · Alper için"
+        },
+        "nunta": {
+          "username": "necminin.sagdiclari",
+          "caption": "Necmi'ye düğünde çaldık. Sağdıç ağladı. Unutulmayan hediye bu işte.",
+          "song": "Trompetli · Necmi için"
+        }
+      }
+    },
+    "style": {
+      "playSample": "{name} örneğini dinle",
+      "stopSample": "{name} örneğini durdur",
+      "cta": "Şarkı yap!"
+    },
+    "tracks": {
+      "variant1": "Versiyon 1",
+      "variant2": "Versiyon 2",
+      "clip": "Klip"
+    },
+    "from": {
+      "label": "Kimden",
+      "you": "sen"
+    },
+    "testimonials": {
+      "costel": {
+        "quote": "Patrona masada açtım. Ortalık sessizleşti. Gözünü sildiğini, çocuklar görmesin diye başını çevirdiğini gördüm.",
+        "name": "Kadir B.",
+        "role": "Bursa"
+      },
+      "andreea": {
+        "quote": "Düğünde kayınpederim şarkıda kendi adını duyunca beni kucakladı. Ağlıyordu. Böyle vuran bir hediye hiç almadım dedi.",
+        "name": "Elif M.",
+        "role": "Denizli"
+      },
+      "vasile": {
+        "quote": "Sağdıcımız şarkı çalarken masadan kalktı. Bardağı tutan eli titriyordu. Sonra bana sarıldı ve sadece şunu dedi: sağ ol oğlum.",
+        "name": "Volkan P.",
+        "role": "Konya"
+      },
+      "geta": {
+        "quote": "Akşam mutfakta eşime açtım. Tam bir dakika tek kelime etmedi. Sonra elimi tuttu ve şarkıyı sabaha kadar tekrar tekrar dinledi.",
+        "name": "Gülten D.",
+        "role": "İstanbul"
+      },
+      "robert": {
+        "quote": "Annem ilk kıtada ağladı. Kaydettim. TikTok'ta 200 bin izlendi ama o an izlenmeyle ölçülmez — o an anneme ait.",
+        "name": "Burak T.",
+        "role": "İzmir"
+      },
+      "maria": {
+        "quote": "Bir yıldır konuşmadığımız abime yaptırdım. Sözleri duyunca kalkıp yanıma geldi. Tek kelime etmeden barıştık.",
+        "name": "Merve K.",
+        "role": "Adana"
+      }
+    },
+    "stories": {
+      "iubire": {
+        "iubit": {
+          "label": "Erkek arkadaşım için",
+          "msg": "Sen benim her şeyimsin. Ailemiz için yaptığın bütün fedakârlıklar için sana teşekkür ederim. Hayatın zorluklarından birlikte geçtik ama ne kimse ne de hiçbir şey aşkımızı yenebildi."
+        },
+        "iubita": {
+          "label": "Kız arkadaşım için",
+          "msg": "Sen benim ışığımsın. Sana bir yuva ve bir hayat kurdum; seni dünden çok, yarından az seviyorum. Seni kimseye değişmem."
+        },
+        "sot": {
+          "label": "Kocam için",
+          "msg": "Sen dünyanın en iyi kocası ve en iyi babasısın. Yıllardır iyi günde de kötü günde de yanında olmayı seçtim; neyim varsa seninle var."
+        },
+        "sotie": {
+          "label": "Karım için",
+          "msg": "Bu evi de çocukları da sen ayakta tutuyorsun. Sen benim hayatımsın. Ne yaptıysam bizim için yaptım — seni seviyorum ve sana minnettarım."
+        },
+        "ziIubire": {
+          "label": "İyi ki doğdun aşkım",
+          "msg": "İyi ki doğdun! Hayatımdaki en kıymetli şey sensin. Her gün gösterdiğin sevgi ve benim için yaptığın bütün fedakârlıklar için teşekkür ederim."
+        },
+        "copil": {
+          "label": "Evladım için",
+          "msg": "Seni bütün kalbimle seviyorum ve seninle gurur duyuyorum. Sen benim mucizemsin. Bil ki her zaman, her yerde yanındayım."
+        }
+      },
+      "romantica": {
+        "plecat": {
+          "label": "Aramızdan ayrılan biri için",
+          "msg": "Seni unutmadık. Çocukların da torunların da hâlâ arkandan ağlıyor. Her gün seni özlüyorum ve seni kalbimin başköşesinde tutuyorum."
+        },
+        "tata": {
+          "label": "Babamın hasreti",
+          "msg": "Baba, bizi büyük bir hasretle bıraktın. Bizim için de torunların için de dünyanın en iyi insanıydın. Neredeysen, arkandan ağlıyorum ve seni seviyorum."
+        },
+        "mama": {
+          "label": "Annemin hasreti",
+          "msg": "Anne, seni çok özledim. Yemeğini, sesini, evdeki o huzuru özledim. Arkandan ağlıyorum ve seni seviyorum."
+        },
+        "inimaFranta": {
+          "label": "Kırık kalp",
+          "msg": "Gittiğinde canımı çok yaktın. İçimde ne varsa söylemeye fırsatım olmadı. Yanımda olmasan da seni hâlâ seviyorum."
+        },
+        "departe": {
+          "label": "Gurbetten",
+          "msg": "Gurbetteyim, çok uzaktayım ve sizi özledim. Ailemiz için didiniyorum ve döneceğim. Beni evde bekleyin."
+        },
+        "neuitat": {
+          "label": "Seni unutmadım",
+          "msg": "Seni unutmadım. Her gece seni özlüyorum. Kalbim dönüp dolaşıp yine sana geliyor."
+        }
+      },
+      "clasic": {
+        "frate": {
+          "label": "İyi ki doğdun kardeşim",
+          "msg": "İyi ki doğdun kardeşim. Ayakta kal, sabaha kadar sofrada oturalım; kadeh havada, muhabbet tatlı olsun. Seni seviyorum kardeşim."
+        },
+        "prieten": {
+          "label": "Bir dost için",
+          "msg": "Sen dostların en iyisisin. Güvendiğim adamsın. İyi ki doğdun — her zamanki gibi birlikte gülelim, birlikte kadeh kaldıralım."
+        },
+        "tata": {
+          "label": "Babam için",
+          "msg": "İyi ki doğdun babacığım. Çocuklarından ve damatlarından sana: sağlık, huzur ve eski günlerdeki gibi dolu bir sofra. Sen olmasan biz olmazdık."
+        },
+        "sotieZi": {
+          "label": "Doğum gününde eşim için",
+          "msg": "Bugün her şey senin için. İyi ki doğdun; sağlık ve mutluluk seninle olsun. Hep yanımızdaydın; kocan ve çocukların sana yürekten teşekkür ediyor."
+        },
+        "nas": {
+          "label": "Sağdıcım / kirvem için",
+          "msg": "Sağ ol, var ol. Sofralarda buluşalım ve nereden geldiğimizi unutmayalım. Sen bizdensin sağdıcım, sana saygımız sonsuz."
+        },
+        "familie": {
+          "label": "Ailem için",
+          "msg": "Sağlığımız yerinde olsun, sofrada toplanalım ve dertleri unutalım. Hepinizi seviyorum — siz varken bu ev dolu."
+        }
+      },
+      "opulenta": {
+        "sef": {
+          "label": "Patronum için",
+          "msg": "Sana saygım büyük. Sözün geçer, sen olmasan hiçbir çark dönmez. Beni hep yanında tuttuğun ve sofranın adamı olduğun için teşekkür ederim."
+        },
+        "nas": {
+          "label": "Sağdıcım / kirvem için",
+          "msg": "Bahtın açık, kazancın helal olsun. Yanında kimlerin durduğunu sakın unutma. Sen bizim sağdıcımızsın, kalbimizde yerin ayrı."
+        },
+        "frate": {
+          "label": "Kardeşim için",
+          "msg": "Dünyanın en iyi kardeşisin. İyi günde de kötü günde de yanımdaydın. Seni seviyorum kardeşim, en iyisini hak ediyorsun."
+        },
+        "ziSefu": {
+          "label": "İyi ki doğdun patron",
+          "msg": "İyi ki doğdun patron. Sofranın adamısın, muhitin en havalısı sensin. İşin de bahtın da hep açık olsun."
+        },
+        "reusit": {
+          "label": "Sıfırdan yükselen için",
+          "msg": "Sıfırdan başladın, şimdi parayı masaya koyup oturuyorsun. Neyin varsa hakkın. Seninle gurur duyuyorum."
+        },
+        "tata": {
+          "label": "Evin direği babam için",
+          "msg": "Baba, biz zorluğu hissetmeyelim diye sabahtan gece yarısına kadar çalıştın. Seni sonsuz seviyoruz. Bu evin direği sensin."
+        }
+      },
+      "trompeta": {
+        "nunta": {
+          "label": "Düğünde",
+          "msg": "Bugün sizin düğününüz. Bir yastıkta kocayın, çocuklarınız ve torunlarınız olsun. Kalkın ortaya, bu meydan sizin."
+        },
+        "prieten": {
+          "label": "Bir dost için",
+          "msg": "İyi ki doğdun dostum. Seni tanıdığım günden beri güvenilecek adamsın. Bunu sana yürekten, sevgiyle söylüyorum."
+        },
+        "aniversare": {
+          "label": "Evlilik yıl dönümü",
+          "msg": "İyi günü de kötü günü de birlikte gördük. Saçlarımız ağarana kadar yanındayım — çocuklarımızın ve torunlarımızın sevgisiyle."
+        },
+        "baiat": {
+          "label": "Oğlumuz için",
+          "msg": "İyi ki doğdun oğlumuz. Hayallerinin peşinden cesaretle git. Sen bu evin mucizesi, bizim gururumuzsun."
+        },
+        "nas": {
+          "label": "Sağdıç için",
+          "msg": "Sen sözünün eri adamsın. Sen sofradayken düğün başka düğün oluyor. Sana saygımız büyük, bizden olduğun için sağ ol."
+        },
+        "familie": {
+          "label": "Sofradaki aile için",
+          "msg": "Bugün hepimiz bir aradayız. Salon inlesin, keyif de sağlık da bol olsun. Sizi seviyorum — bu meydan bizim."
+        }
+      },
+      "oriental": {
+        "sotie": {
+          "label": "Karım için",
+          "msg": "Sen bu evin sultanısın. Sen varken sofrada huzur var. Seni seviyorum; iyi günde de kötü günde de her şeyim sensin."
+        },
+        "sot": {
+          "label": "Kocam için",
+          "msg": "Sen benim harika kocam, çocuklarımın babasısın. Seni sonsuz seviyorum. Bütün hayatımız sensin."
+        },
+        "ziFamilie": {
+          "label": "Ailece iyi ki doğdun",
+          "msg": "İyi ki doğdun; sağlık ve mutluluk seninle olsun. Güzel anları birlikte yeniden yaşayalım — sen, ben, çocuklar, bütün ev."
+        },
+        "iubireDeparte": {
+          "label": "Uzaktaki aşk",
+          "msg": "Aşkım, seni çok özledim. Birlikte olduğumuz için Allah'a şükrediyorum. Nerede olursak olalım seni delice seviyorum."
+        },
+        "copil": {
+          "label": "Evladım için",
+          "msg": "İyi ki doğdun. Daha dün kucağımdaydın sanki. Annen de baban da seninle gurur duyuyor — güzel ve sağlıklı büyü."
+        },
+        "strainatate": {
+          "label": "Gurbetteki için",
+          "msg": "Uzaktasın ama kalbin memlekette. Araban, evin, ailen hep yolunda olsun. Sofra kurulu, seni bekliyoruz."
+        }
+      }
+    },
+    "home": {
+      "heroKicker": "Şarkını hemen aşağıda yap!",
+      "heroTitle": "Kendi şarkını 2 dakikada yaptır!",
+      "heroLead": "Stili seç, detayları ekle; biz sana özel bir şarkı üretelim — birkaç dakikada hazır.",
+      "heroDeal": "1+1 BEDAVA",
+      "heroRemake": "Beğenmezsen bir kez <b>ÜCRETSİZ</b> yeniden yapım",
+      "heroCta": "Şarkı yap!",
+      "heroSocial": "🔥 Bugün {count} şarkı üretildi",
+      "statSongs": "Üretilen şarkı",
+      "statSongsValue": "100.000+",
+      "statRating": "Kullanıcı puanı",
+      "statRatingValue": "4,9/5",
+      "statTime": "Üretim süresi",
+      "statTimeValue": "2–5 dk",
+      "statUsers": "Aktif kullanıcı",
+      "statUsersValue": "2.000+",
+      "recentLabel": "Az önce üretilenler:",
+      "recentChip": "▶ {name} · {style}",
+      "recent": [
+        {
+          "name": "Emre",
+          "style": "Hüzünlü"
+        },
+        {
+          "name": "Elif",
+          "style": "Aşk"
+        },
+        {
+          "name": "Baran",
+          "style": "İhtişam"
+        },
+        {
+          "name": "Zeynep",
+          "style": "Klasik kadeh şarkısı"
+        },
+        {
+          "name": "Kaan",
+          "style": "Trompetli"
+        },
+        {
+          "name": "Selin",
+          "style": "Oryantal"
+        },
+        {
+          "name": "Serkan",
+          "style": "Kadeh şarkısı"
+        },
+        {
+          "name": "Derya",
+          "style": "Tallava"
+        },
+        {
+          "name": "Mert",
+          "style": "Kuçek"
+        },
+        {
+          "name": "Buse",
+          "style": "Trap-arabesk"
+        }
+      ],
+      "stylesKicker": "Mevcut stiller",
+      "stylesTitle": "Stilini seç",
+      "stylesLead": "Her stilin ayrı bir ruhu var. Hikâyeni en iyi anlatanı seç.",
+      "howKicker": "Nasıl çalışır",
+      "howTitle": "Üretim nasıl işliyor?",
+      "howLead": "4 basit adımda kendi kişiye özel şarkın hazır",
+      "step1Title": "Detayları doldur",
+      "step1Text": "Stili ve başlığı seç",
+      "step2Title": "Sözleri biz yazıyoruz",
+      "step2Text": "Zevkine göre söz besteliyoruz",
+      "step3Title": "Müziği yapıyoruz",
+      "step3Text": "Kusursuz melodiyi besteliyoruz",
+      "step4Title": "Şarkını alıyorsun",
+      "step4Text": "İndir ve paylaş",
+      "howHint": "*ya da sözleri sen verirsin",
+      "midTitle": "Şarkını yapmaya hazır mısın?",
+      "midLead": "Birkaç tıkla üretimi hemen başlat!",
+      "midCta": "Şarkıyı şimdi üret",
+      "midPillDeal": "{price} · 1+1 BEDAVA",
+      "midPillRemake": "Beğenmezsen bir kez ÜCRETSİZ yeniden yapım",
+      "reactionKicker": "Unutulmayan hediye",
+      "reactionTitle": "Tepkisini bir düşün…",
+      "reactionText": "Kardeşin, sevgilin ya da partideki patronun için kişiye özel bir şarkı. Kimsenin unutmadığı hediye.",
+      "reactionCta": "Sürprizi hazırla",
+      "testiKicker": "Kullanıcılar ne diyor",
+      "testiTitle": "Gerçek tepkiler",
+      "testiLead": "Aradığı şarkıya kavuşan binlerce kişi.",
+      "testiQuote": "“{text}”",
+      "testiWho": "{name} · {role}",
+      "pricingKicker": "Fiyatlar",
+      "pricingTitle": "Basit fiyat, sürpriz yok",
+      "pricingLead": "Tek seferlik ödeme. Abonelik yok, gizli ücret yok.",
+      "pricingNote": "🔒 Stripe güvenli · ⚡ Anında teslim · ✅ 30 gün garanti",
+      "faqKicker": "Sık sorulan sorular",
+      "faqTitle": "Hızlı cevaplar",
+      "faq1Q": "{name} nedir?",
+      "faq1A": "Kişiye özel AI arabesk/fantezi şarkı üreticisi. Stili seçiyorsun, hikâyeni anlatıyorsun ve içinde sevdiğinin adı geçen, dinlemeye ve hediye etmeye hazır eşsiz bir şarkı alıyorsun.",
+      "faq2Q": "Üretim ne kadar sürüyor?",
+      "faq2A": "Genelde 2–5 dakika. Hazır olur olmaz şarkıyı e-postana gönderiyoruz.",
+      "faq3Q": "Beğenmezsem ne oluyor?",
+      "faq3A": "Beğenmezsen bir ÜCRETSİZ yeniden yapım hakkın var. Sen memnun kalana kadar yeniden üretiyoruz.",
+      "faq4Q": "Sözleri ben yazabilir miyim?",
+      "faq4A": "Evet. Ekstra adımında “Sözleri kendim yazmak istiyorum” kutusunu işaretle; sözlerini birebir kullanırız.",
+      "faqAll": "Bütün soru ve cevapları gör →"
+    },
+    "wizard": {
+      "stepStyle": "Stil",
+      "stepDetails": "Detaylar",
+      "stepExtra": "Ekstra",
+      "stepPay": "Ödeme",
+      "title": "Şarkını oluştur",
+      "lead": "Stili seç, detayları ekle; müziği biz yapalım.",
+      "offerBadge": "🎁 1+1 BEDAVA",
+      "offerBadgeDiscount": "🎁 1+1 BEDAVA · %{pct} İNDİRİM",
+      "offerTrust": "★ 10.000'den fazla yorumla 4,9/5 · ♪ 100.000+ şarkı üretildi",
+      "styleKicker": "Müzik stilini seç",
+      "errStyle": "Devam etmek için bir müzik stili seç.",
+      "storyLabel": "Bir hikâye seç",
+      "msgLabel": "Şarkıda neden bahsedelim",
+      "msgPlaceholder": "Şarkın ne hakkında olsun?",
+      "errMsg": "Şarkının ne hakkında olacağını yukarıdaki kutuya yaz.",
+      "fromLabel": "Kimden",
+      "fromPlaceholder": "Örn.: Emre, ailen…",
+      "errFrom": "“Kimden” alanını doldur.",
+      "toLabel": "Kime",
+      "toPlaceholder": "Örn.: Kaan, Elif…",
+      "errTo": "“Kime” alanını doldur.",
+      "noDedication": "Kimseye ithaf etmiyorum — sadece şarkıyı istiyorum",
+      "occasionLabel": "Vesile (isteğe bağlı)",
+      "voiceLabel": "Ses",
+      "voiceRecommended": "Önerilen",
+      "errVoice": "Sesi seç: erkek mi, kadın mı.",
+      "packageLabel": "Paket",
+      "customLyricsCheck": "Sözleri kendim yazmak istiyorum",
+      "customLyricsPlaceholder": "Sözlerini buraya yaz…",
+      "errCustomLyrics": "Sözlerini yukarıdaki kutuya yaz.",
+      "emailLabel": "E-posta adresin *",
+      "emailPlaceholder": "ornek@eposta.com",
+      "emailHint": "Şarkı hazır olunca haber veriyoruz. Spam yok.",
+      "errEmail": "Şarkını gönderebilmemiz için geçerli bir e-posta gir.",
+      "privacy": "Gizlilik politikasını kabul ediyor, siparişimle ilgili e-posta almayı onaylıyorum.",
+      "errPrivacy": "Yukarıdaki kutuyu işaretlemen gerekiyor.",
+      "payTitleSelf": "<em>Senin</em> şarkın",
+      "payTitleFor": "<em>{name}</em> için şarkı",
+      "recapStyle": "Tarz",
+      "recapFrom": "Kimden",
+      "recapTo": "Kime",
+      "recapOccasion": "Vesile",
+      "recapPackage": "Paket",
+      "recapVoice": "Ses",
+      "recapEmail": "E-posta",
+      "recapNoDedication": "ithafsız",
+      "recapEdit": "Değiştir",
+      "promoLabel": "İndirim kodu",
+      "promoPlaceholder": "PROMO",
+      "promoApply": "Uygula",
+      "promoApplied": "<b>{code}</b> kodu uygulandı",
+      "promoExpired": "Kodun süresi dolmuş.",
+      "promoNotYetValid": "Kod henüz aktif değil.",
+      "promoUsedUp": "Kod artık kullanılamıyor.",
+      "promoWrongEmail": "Kod yalnızca başka bir e-posta için geçerli.",
+      "promoEmpty": "Bir indirim kodu gir.",
+      "promoUnknown": "Bu kodu tanımıyoruz. Kontrol edip tekrar dene.",
+      "promoCheckFailed": "Kodu doğrulayamadık. Tekrar dene.",
+      "afterPayRemakeOne": "Ödemeden sonra şarkıyı üretiyoruz; bir değişiklik isterseniz bir ücretsiz yeniden yapım hakkınız var.",
+      "afterPayRemakeMany": "Ödemeden sonra şarkıyı üretiyoruz; bir değişiklik isterseniz {count} ücretsiz yeniden yapım hakkınız var.",
+      "afterPayCollage": "Fotoğraflı kolaj, şarkı üretildikten sonra hazırlanır.",
+      "afterPayCard": "Kişiye özel tebrik kartı, şarkı üretildikten sonra hazırlanır.",
+      "afterPaySocial": "İthaflı Facebook ve TikTok paylaşımı, şarkı hazır olduktan sonra yapılır.",
+      "back": "Geri",
+      "next": "Devam",
+      "payBusy": "Ödeme açılıyor…",
+      "pay": "{price} öde",
+      "errPaymentCanceled": "Ödeme gerçekleşmedi. Siparişin kayıtlı — tekrar deneyebilirsin.",
+      "errPaymentsUnavailable": "Ödemeler geçici olarak kullanılamıyor. Birkaç dakika sonra dene.",
+      "errSessionExpired": "Oturumun sona erdi. Ödemeyi tekrar başlat.",
+      "errCheckout": "Ödemeyi açamadık. E-postanı kontrol edip tekrar dene."
+    },
+    "packs": {
+      "recommended": "Önerilen",
+      "cta": "{name} paketini seç"
+    },
+    "legacy": {
+      "clips": {
+        "title": "🎬 Klipler (nakarat)",
+        "titleFold": "Nakarat üstüne klipler",
+        "leadOne": "Paketindeki nakarat üstüne kısa klip.",
+        "leadMany": "Paketindeki nakarat üstüne {count} kısa klip.",
+        "download": "İndir",
+        "pending": "⏳ Klip kurgulanıyor… (birkaç dakika içinde otomatik görünür)",
+        "pendingTitle": "Klibi kurguluyoruz",
+        "pendingSub": "Birkaç dakika içinde otomatik görünür."
+      },
+      "social": {
+        "title": "📸 Paylaşım görselin",
+        "titleFold": "Paylaşım görseli",
+        "lead": "Şarkıyı TikTok, Facebook veya Instagram'da paylaştığında görünecek görseli seç.",
+        "leadGuest": "Şarkı TikTok, Facebook veya Instagram'da paylaşıldığında görünen görsel.",
+        "alt": "Paylaşım görseli seçeneği",
+        "yours": "Seninki",
+        "upload": "⬆ Kendi görselini yükle",
+        "uploadShort": "Kendi görselini yükle",
+        "uploading": "Yükleniyor…",
+        "download": "⬇ Görseli indir",
+        "downloadShort": "Görseli indir",
+        "errSelect": "Seçimi kaydedemedik. Tekrar dene.",
+        "errUpload": "Yükleme başarısız oldu."
+      },
+      "unlock": {
+        "title": "🔒 Özel içerik",
+        "titleFold": "Özel içerik",
+        "lead": "Fotoğrafları ve kolajları görmek için şifreyi gir.",
+        "placeholder": "Şifre",
+        "checking": "Kontrol ediliyor…",
+        "submit": "Kilidi aç",
+        "wrong": "Şifre yanlış. Tekrar dene."
+      },
+      "pin": {
+        "title": "🔒 Özel fotoğraflar için şifre",
+        "titleFold": "Özel fotoğraflar için şifre",
+        "lead": "Linke ve şifreye sahip olan herkes senin özel fotoğraflarını ve kolajlarını görebilir.",
+        "active": "Şifre aktif.",
+        "currentLabel": "Mevcut şifre (paylaşabilirsin)",
+        "placeholderNew": "Yeni şifre",
+        "placeholderSet": "Bir şifre belirle",
+        "save": "Kaydet",
+        "saving": "Kaydediliyor…",
+        "saved": "✓ Kaydedildi",
+        "clear": "Şifreyi sil",
+        "errSave": "Şifreyi kaydedemedik."
+      }
+    }
   }
 }
