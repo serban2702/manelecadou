@@ -9,6 +9,28 @@ import { CadouFold } from './Fold';
 
 const MAX = 1000;
 
+/**
+ * Backend-ul întoarce mesaje de eroare scrise ÎN ROMÂNĂ. Afișate ca atare, un
+ * client bulgar/grec primea text românesc. Le mapăm pe chei i18n după conținut,
+ * cu un mesaj generic tradus ca ultimă soluție.
+ */
+function remakeErrorKey(e: unknown): string {
+  if (!(e instanceof ApiError)) return 'errStart';
+  const msg = typeof e.body === 'string'
+    ? e.body
+    : ((e.body as { message?: string | string[] })?.message ?? e.message);
+  const text = Array.isArray(msg) ? msg.join(' ') : String(msg ?? '');
+  if (/deja\s+în\s+lucru/i.test(text)) return 'errRemakeBusy';
+  if (/gratuit\w*\s+s-?au\s+terminat/i.test(text)) return 'errFreeUsedUp';
+  if (/refaceri\s+gratuite/i.test(text)) return 'errFreeFirst';
+  if (/nu\s+e\s+gata/i.test(text)) return 'errNotReady';
+  if (/plătește\s+comanda/i.test(text)) return 'errNotPaid';
+  if (/minim\s*8|mai\s+concret/i.test(text)) return 'errShort';
+  if (/maxim\s*1000/i.test(text)) return 'errTooLong';
+  if (e.status === 401 || e.status === 403) return 'errNotPaid';
+  return 'errStart';
+}
+
 export function CadouRemakeCard({
   generationId,
   remaining = 0,
@@ -67,7 +89,7 @@ export function CadouRemakeCard({
         window.location.href = r.url;
       }
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : t('errStart'));
+      setErr(t(remakeErrorKey(e)));
     } finally {
       setBusy(false);
     }

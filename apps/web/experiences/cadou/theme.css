@@ -832,6 +832,15 @@ button.cadou-pack { cursor: pointer; }
   background: var(--cadou-gold); color: #1a1a1a; border-color: var(--cadou-gold);
 }
 .cadou-stepper .on { color: var(--cadou-ink); font-weight: 700; }
+/* „Începe o manea nouă" — scapă de comanda veche restaurată din snapshot. */
+.cadou-wizard-fresh {
+  display: block; margin: 4px auto 0;
+  background: transparent; border: 0; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 700;
+  color: var(--cadou-gold-deep); text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 6px 10px; min-height: 34px;
+}
 .cadou-err {
   color: #b42318;
   font-size: 15px;
@@ -1123,6 +1132,54 @@ button.cadou-pack { cursor: pointer; }
   border-radius: 18px;
 }
 .cadou-song-status p { margin: 0 0 12px; color: var(--cadou-ink); font-size: 15px; line-height: 1.45; }
+
+/* Generare picată — cardul care ÎNLOCUIEȘTE contorul fals „aproape gata". */
+.cadou-song-failed {
+  margin-top: 18px; padding: 18px 16px;
+  background: #fff;
+  border: 1px solid rgba(180, 35, 24, 0.3);
+  border-radius: 20px;
+  text-align: center;
+}
+.cadou-song-failed-ico { display: block; font-size: 30px; line-height: 1; }
+.cadou-song-failed strong {
+  display: block; margin-top: 8px;
+  font-size: 18px; font-weight: 800; color: var(--cadou-ink);
+  letter-spacing: -0.02em;
+}
+.cadou-song-failed p {
+  margin: 8px 0 14px;
+  color: var(--cadou-muted); font-size: 14.5px; line-height: 1.5;
+}
+.cadou-song-failed .cadou-cta { width: 100%; max-width: 300px; min-height: 48px; }
+.cadou-song-failed-mail {
+  display: block; margin-top: 10px;
+  font-size: 13px; font-weight: 700; color: var(--cadou-gold-deep);
+}
+
+/* Share pe piesa livrată — cadoul trebuie să poată pleca spre cineva. */
+.cadou-share-lead {
+  margin: 0 0 12px;
+  color: var(--cadou-muted); font-size: 14px; line-height: 1.45;
+}
+.cadou-share .cadou-cta { width: 100%; min-height: 46px; margin-bottom: 10px; }
+.cadou-share-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px;
+}
+.cadou-share-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 44px; padding: 10px 12px; border-radius: 999px;
+  background: #fff; color: var(--cadou-ink);
+  border: 1px solid var(--cadou-line);
+  font: inherit; font-size: 13.5px; font-weight: 700;
+  text-decoration: none; cursor: pointer; text-align: center;
+}
+.cadou-share-btn.is-wa { background: #25d366; border-color: #25d366; color: #fff; }
+.cadou-share-btn.is-fb { background: #1877f2; border-color: #1877f2; color: #fff; }
+.cadou-share-hint {
+  margin: 10px 0 0;
+  font-size: 12.5px; line-height: 1.45; color: var(--cadou-muted);
+}
 
 .cadou-wait {
   margin-top: 18px; padding: 18px 16px 16px;
@@ -1495,6 +1552,7 @@ button.cadou-pack { cursor: pointer; }
 .cadou-mine-chip.is-ok { background: #eef8f0; color: #2d6a3a; }
 .cadou-mine-chip.is-wait { background: #fff4d6; color: #8a7014; }
 .cadou-mine-chip.is-pay { background: #fff0e4; color: #9a4b12; }
+.cadou-mine-chip.is-bad { background: #fdeaea; color: #9c2b2b; }
 .cadou-mine-body .meta { margin-top: 4px; font-size: 13px; color: var(--cadou-muted); }
 .cadou-mine-body .from { margin-top: 2px; font-size: 13px; font-weight: 700; color: var(--cadou-gold-deep); }
 .cadou-mine-body .when { margin-top: 4px; font-size: 12px; color: #9a9080; }

@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type React
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { api, ApiError, ensureGuestSession, type GenerationDto } from '@/lib/api';
+import { track } from '@/lib/tracking';
 import { useSession } from '@/lib/providers';
 import { useSite } from '@/lib/site-context';
 import { formatPrice } from '@/lib/site-shared';
@@ -15,6 +16,7 @@ import { CadouShell } from './Shell';
 import { CadouPackGrid } from './PackCard';
 import { CadouStyleCard, useCadouStylePreview } from './StyleCard';
 import {
+  clearCadouWizard,
   EMPTY_CADOU,
   readCadouWizard,
   saveCadouWizard,
@@ -195,6 +197,29 @@ function WizardInner() {
       setStep(Number.isFinite(fromUrlStep) && fromUrlStep >= 1 && !canceled ? Math.min(3, fromUrlStep - 1) : s);
       if (canceled) setError(t('errPaymentCanceled'));
       hydrated.current = true;
+      // Snapshotul poate aparține unei comenzi DEJA plătite (clientul revine
+      // peste zile pentru a doua manea). Atunci e gunoi: l-ar pune direct în
+      // pasul 4 cu datele vechi, iar „Plătește" l-ar trimite la
+      // /m/<id-vechi>?already=1 — fără să înțeleagă nimic. Verificăm în fundal
+      // și pornim curat.
+      if (snap.generationId && !canceled) {
+        const staleId = snap.generationId;
+        void (async () => {
+          try {
+            const old = await api.getGeneration(staleId);
+            if (!old?.paidUnlocked) return;
+          } catch {
+            return;
+          }
+          clearCadouWizard();
+          setData((d) => ({ ...EMPTY_CADOU, email: d.email }));
+          setGenerationId(null);
+          setPromo(null);
+          setPromoDraft('');
+          setPromoError(null);
+          setStep(0);
+        })();
+      }
       return;
     }
     if (fromUrlStyle) setData((d) => ({ ...d, style: fromUrlStyle }));
@@ -207,17 +232,30 @@ function WizardInner() {
     setData((d) => (d.email ? d : { ...d, email: session.email || '' }));
   }, [session.email, data.email]);
 
+  // URL-ul depinde DOAR de pas + stil, deci se schimbă rar. Ținut separat de
+  // snapshot: înainte, fiecare tastă în textarea chema `replaceState`, iar
+  // WebKit plafonează la ~100 apeluri / 30s (plus jank pe telefoane slabe).
+  useEffect(() => {
+    if (!hydrated.current || typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('step', String(step + 1));
+    if (data.style) url.searchParams.set('style', data.style);
+    else url.searchParams.delete('style');
+    url.searchParams.delete('paymentCanceled');
+    url.searchParams.delete('genId');
+    const next = `${url.pathname}?${url.searchParams.toString()}`;
+    if (next === `${window.location.pathname}${window.location.search}`) return;
+    window.history.replaceState({}, '', next);
+  }, [step, data.style]);
+
+  // Snapshotul (JSON.stringify + scriere sincronă în localStorage) — debounce
+  // ca tastarea să nu-l rescrie la fiecare caracter.
   useEffect(() => {
     if (!hydrated.current) return;
-    saveCadouWizard({ step, data, generationId, at: Date.now() });
-    if (typeof window !== 'undefined') {
-      const url = new URL(window.location.href);
-      url.searchParams.set('step', String(step + 1));
-      if (data.style) url.searchParams.set('style', data.style);
-      url.searchParams.delete('paymentCanceled');
-      url.searchParams.delete('genId');
-      window.history.replaceState({}, '', `${url.pathname}?${url.searchParams.toString()}`);
-    }
+    const timer = setTimeout(() => {
+      saveCadouWizard({ step, data, generationId, at: Date.now() });
+    }, 500);
+    return () => clearTimeout(timer);
   }, [step, data, generationId]);
 
   // Prețul AFIȘAT e prețul TAXAT: pachetul rezolvat din configul de site trece
@@ -275,14 +313,40 @@ function WizardInner() {
     if (!stepValid(step)) {
       setNudge(true);
       setErrPulse((n) => n + 1);
-      const bad = document.querySelector('.cadou-input.err, .cadou-area.err, .cadou-check.err, .cadou-err');
-      if (bad) bad.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // `setNudge` e batched de React 18: clasele `.err` nu există încă la
+      // momentul ăsta. Fără rAF, `querySelector` nu găsea nimic și primul tap
+      // pe „Continuă" nu derula nicăieri — pe pasul 2 eroarea e la ~400px
+      // deasupra ecranului, deci userul credea că butonul e mort.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const bad = document.querySelector('.cadou-input.err, .cadou-area.err, .cadou-check.err, .cadou-err');
+          bad?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+      });
       return;
     }
     setNudge(false);
     setStep((s) => Math.min(3, s + 1));
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  /** „Începe o manea nouă" — aruncă snapshotul și repornește de la pasul 1.
+   *  Fără el, clientul care a plătit deja rămâne blocat pe comanda veche. */
+  const startFresh = () => {
+    clearCadouWizard();
+    setData({ ...EMPTY_CADOU, email: session.email || '' });
+    setGenerationId(null);
+    setPromo(null);
+    setPromoDraft('');
+    setPromoError(null);
+    setError(null);
+    setNudge(false);
+    setStep(0);
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Are ceva de aruncat? (comandă în curs / date completate)
+  const hasDraft = !!generationId || step > 0 || !!data.style || !!data.msg.trim() || !!data.name.trim();
 
   const promoFailText = (reason?: string): string => {
     if (reason === 'expired') return t('promoExpired');
@@ -367,6 +431,13 @@ function WizardInner() {
       if (!session.email) {
         await api.setGuestEmail(candidate);
         await session.refresh();
+        try {
+          track('CompleteRegistration', {
+            email: candidate,
+            content_name: 'guest_email_provided',
+            custom_data: { source: 'generator_payfirst' },
+          });
+        } catch { /* silent */ }
       }
       const payload = {
         style: data.style,
@@ -378,6 +449,17 @@ function WizardInner() {
         customLyrics: data.useCustomLyrics ? data.customLyrics : undefined,
         packageTier: data.packageTier,
       };
+      // Valoarea raportată pixelurilor = prețul pachetului ALES (același din
+      // care se calculează și suma taxată), nu prețul legacy din admin.
+      track('InitiateCheckout', {
+        content_id: generationId ?? 'pay-first',
+        content_name: 'Manea Cadou',
+        content_type: 'product',
+        value: currentPrice / 100,
+        currency: site.currency,
+        // event_id stabil pe generație — dacă userul apasă de 2x, Meta dedup-uiește.
+        event_id: generationId ? `init-${generationId}` : undefined,
+      });
       let url: string;
       let paidGenId = generationId;
       if (generationId) {
@@ -467,6 +549,11 @@ function WizardInner() {
               </button>
             ))}
           </div>
+          {hasDraft && (
+            <button type="button" className="cadou-wizard-fresh" onClick={startFresh}>
+              {t('startFresh')}
+            </button>
+          )}
         </div>
 
         <div className="cadou-panel cadou-wizard-body">

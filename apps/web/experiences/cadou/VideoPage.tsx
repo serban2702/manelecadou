@@ -14,6 +14,15 @@ const DEFAULT_MAX_IMAGES = 15;
 const MAX_MB = 10;
 const MAX_BYTES = MAX_MB * 1024 * 1024;
 
+/** Textul brut al erorii de API (mesajul Nest, uneori array). */
+function apiErrorText(e: unknown): string {
+  if (!(e instanceof ApiError)) return '';
+  const msg = typeof e.body === 'string'
+    ? e.body
+    : ((e.body as { message?: string | string[] })?.message ?? e.message);
+  return Array.isArray(msg) ? msg.join(' ') : String(msg ?? '');
+}
+
 export default function CadouVideoPage() {
   return (
     <CadouShell>
@@ -96,6 +105,22 @@ function CadouVideoInner() {
     setPreviews(picked.map((f) => URL.createObjectURL(f)));
   };
 
+  /**
+   * Backend-ul întoarce mesaje scrise ÎN ROMÂNĂ („Pachetul tău permite maxim 4
+   * poze în colaj"). Afișate ca atare, ajungeau în română pe site-urile
+   * bulgar/grec. Le traducem după conținut, cu un generic tradus ca ultimă
+   * soluție.
+   */
+  const collageErrorText = (e: unknown): string => {
+    const raw = apiErrorText(e);
+    if (/pachetele|nu\s+include|doar\s+pentru\s+pachet/i.test(raw)) return t('notInPackage');
+    if (/permite\s+maxim/i.test(raw)) return t('errMaxImages', { max: maxImages });
+    if (/lipsesc\s+imaginile/i.test(raw)) return t('errNoImages');
+    if (/variantă\s+de\s+melodie|melodia\s+nu\s+este/i.test(raw)) return t('errNoTrack');
+    if (e instanceof ApiError && (e.status === 401 || e.status === 403)) return t('errForbidden');
+    return t('errStart');
+  };
+
   const submit = async () => {
     if (!id || !g) return;
     if (files.length === 0) {
@@ -108,7 +133,7 @@ function CadouVideoInner() {
       await api.createCollageBatch(id, files.slice(0, maxImages), '9x16');
       router.replace(`/m/${id}#cadou-video`);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t('errStart'));
+      setError(collageErrorText(e));
       setSubmitting(false);
     }
   };

@@ -409,7 +409,7 @@ export function ChatWidget() {
           value: (mm.payload.amount ?? 0) / 100,
           currency: mm.payload.currency ?? 'RON',
           content_id: mm.payload.generationId ?? pid,
-          content_name: mm.payload.description ?? 'Manea personalizată',
+          content_name: mm.payload.description ?? t('songGeneric'),
           content_type: 'product',
           event_id: `addpay-${pid}`, // match server-side eventId
         });
@@ -705,10 +705,10 @@ export function ChatWidget() {
                             }}
                           >
                             <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#10b981' }}>
-                              ✓ Plătit
+                              {t('paid')}
                             </div>
                             <div style={{ fontSize: 13, fontWeight: 600, margin: '2px 0' }}>
-                              {p.description ?? 'Manea personalizată'}
+                              {p.description ?? t('songGeneric')}
                             </div>
                             <div style={{ fontSize: 18, fontWeight: 900, color: '#34d399' }}>
                               {((p.amount ?? 0) / 100).toFixed(2)} {p.currency ?? 'RON'}
@@ -750,7 +750,7 @@ export function ChatWidget() {
                                 value: (p.amount ?? 0) / 100,
                                 currency: p.currency ?? 'RON',
                                 content_id: p.paymentId ?? p.generationId ?? undefined,
-                                content_name: p.description ?? 'Manea personalizată',
+                                content_name: p.description ?? t('songGeneric'),
                                 content_type: 'product',
                                 event_id: p.paymentId ? `init-${p.paymentId}` : undefined,
                               });
@@ -771,7 +771,7 @@ export function ChatWidget() {
                             💳 Plată sigură
                           </div>
                           <div style={{ fontSize: 13, fontWeight: 600, margin: '2px 0' }}>
-                            {p.description ?? 'Manea personalizată'}
+                            {p.description ?? t('songGeneric')}
                           </div>
                           <div style={{ fontSize: 18, fontWeight: 900, color: '#ffe28a' }}>
                             {((p.amount ?? 0) / 100).toFixed(2)} {p.currency ?? 'RON'}
@@ -805,7 +805,7 @@ export function ChatWidget() {
                       }}
                     >
                       <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
-                        🎵 Mostră de {String(mm.payload.sampleLabel ?? 'stil')}
+                        {t('sampleOf', { label: String(mm.payload.sampleLabel ?? t('sampleFallback')) })}
                       </div>
                       <audio
                         controls
@@ -841,10 +841,10 @@ export function ChatWidget() {
                           }}
                         >
                           <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)' }}>
-                            {p.pending ? '🎶 Pagina manelei (în lucru)' : p.unlocked ? '✓ Manea deblocată' : '🎵 Maneaua ta'}
+                            {p.pending ? t('songPending') : p.unlocked ? t('songUnlocked') : t('songYours')}
                           </div>
                           <div style={{ fontSize: 14, fontWeight: 700, margin: '4px 0 8px' }}>
-                            {p.recipientName ? `Pentru ${p.recipientName}` : 'Maneaua personalizată'}
+                            {p.recipientName ? t('songFor', { name: p.recipientName }) : t('songGeneric')}
                           </div>
                           <div
                             style={{
@@ -857,7 +857,7 @@ export function ChatWidget() {
                               textAlign: 'center',
                             }}
                           >
-                            {p.pending ? 'Deschide pagina →' : 'Ascultă maneaua →'}
+                            {p.pending ? t('openPage') : t('listen')}
                           </div>
                         </a>
                       );
@@ -883,7 +883,7 @@ export function ChatWidget() {
                     <span>
                       {new Date(m.createdAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
                       {(mm as { editedAt?: string | null }).editedAt && (
-                        <span style={{ marginLeft: 4, opacity: 0.7, fontStyle: 'italic' }}>(editat)</span>
+                        <span style={{ marginLeft: 4, opacity: 0.7, fontStyle: 'italic' }}>{t('edited')}</span>
                       )}
                     </span>
                     {isMine && (
@@ -914,7 +914,7 @@ export function ChatWidget() {
                   <span className="chat-typing-dot" />
                   <span className="chat-typing-dot" />
                 </span>
-                <span>Operatorul scrie...</span>
+                <span>{t('typing')}</span>
               </div>
             )}
           </div>

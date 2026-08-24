@@ -150,7 +150,7 @@
     },
     "verdictLabel": "Presuda",
     "share": "📤 Podeli rezultat",
-    "shareText": "Ja sam {label} {emoji} ({pct}/100) na testu frajerstva sa manelecadou.ro 🎤",
+    "shareText": "Ja sam {label} {emoji} ({pct}/100) na testu frajerstva sa {site} 🎤",
     "shareCopied": "Rezultat kopiran! Zalepi na WhatsApp / TikTok.",
     "ctaMake": "🎤 Napravi pesmu za {label}",
     "verdicts": {
@@ -645,7 +645,19 @@
     "greeting": "Hej! Piši nam bilo šta — pitanje, problem, ideja.",
     "emailHint": "Savet: ostavi mejl na stranici generatora da ti odgovorimo i na mejl.",
     "adminLabel": "Admin",
-    "placeholder": "Napiši poruku..."
+    "placeholder": "Napiši poruku...",
+    "paid": "✓ Plaćeno",
+    "songGeneric": "Lična pesma",
+    "sampleOf": "🎵 Uzorak: {label}",
+    "sampleFallback": "stil",
+    "songPending": "🎶 Stranica pesme (u izradi)",
+    "songUnlocked": "✓ Pesma je otključana",
+    "songYours": "🎵 Tvoja pesma",
+    "songFor": "Za {name}",
+    "openPage": "Otvori stranicu →",
+    "listen": "Poslušaj pesmu →",
+    "edited": "(izmenjeno)",
+    "typing": "Operater piše..."
   },
   "topPage": {
     "flag": "Top Srbija",
@@ -1154,7 +1166,21 @@
       "orderCustomLyrics": "Sopstveni tekst",
       "orderNoDedication": "bez posvete",
       "voiceFemale": "Ženski",
-      "voiceMale": "Muški"
+      "voiceMale": "Muški",
+      "failedTitle": "Nešto nije prošlo kako treba s tvojom pesmom",
+      "failedRetrying": "Naišli smo na problem i automatski pokušavamo ponovo. Ako se ne pojavi za nekoliko minuta, piši nam — tvoja porudžbina je sačuvana.",
+      "failedStalled": "Nismo uspeli da je pokrenemo automatski. Piši nam i rešićemo je — tvoja porudžbina je sačuvana.",
+      "failedChat": "Piši nam na četu",
+      "shareTitle": "Pošalji poklon",
+      "shareLead": "Pošalji pesmu onome za koga si je napravio ili je pokaži prijateljima.",
+      "shareNative": "Pošalji nekome",
+      "shareNativeDone": "Poslato ✓",
+      "shareWhatsapp": "WhatsApp",
+      "shareFacebook": "Facebook",
+      "shareCopy": "Kopiraj link",
+      "shareCopied": "Kopirano ✓",
+      "shareText": "🎵 Poslušaj pesmu za {name}",
+      "shareHintInstagram": "Za Instagram: kopiraj link i nalepi ga u story ili u bio."
     },
     "video": {
       "section": {
@@ -1201,7 +1227,8 @@
         "thumbAlt": "Slika {index}",
         "submitting": "Šaljemo…",
         "submitMany": "Napravi {count} spotova",
-        "submitOne": "Napravi spot"
+        "submitOne": "Napravi spot",
+        "errNoTrack": "Još nemamo pesmu na koju bismo montirali spot."
       }
     },
     "remake": {
@@ -1222,7 +1249,13 @@
       "busyFree": "Pokrećemo prepravku…",
       "busyPaid": "Otvara se plaćanje…",
       "ctaFree": "Prepravi pesmu",
-      "ctaPaid": "Prepravi pesmu · {price}"
+      "ctaPaid": "Prepravi pesmu · {price}",
+      "errRemakeBusy": "Jedna prepravka je već u toku. Sačekaj da se završi.",
+      "errFreeUsedUp": "Besplatne prepravke su potrošene. Možeš da naručiš jednu uz doplatu.",
+      "errFreeFirst": "Još imaš besplatnih prepravki. Prvo njih iskoristi.",
+      "errNotReady": "Pesma još nije gotova.",
+      "errNotPaid": "Plati porudžbinu pre nego što je prepraviš.",
+      "errTooLong": "Najviše 1000 karaktera."
     },
     "mine": {
       "kicker": "Tvoja biblioteka",
@@ -1242,7 +1275,9 @@
       "actionLyrics": "Vidi tekst",
       "cardFor": "Za {name}",
       "cardFrom": "Od {from}",
-      "cardGo": "{action} →"
+      "cardGo": "{action} →",
+      "statusFailed": "Nije uspelo",
+      "actionHelp": "Vidi šta se desilo"
     },
     "listen": {
       "kicker": "Pravi demo snimci",
@@ -1726,7 +1761,8 @@
       "errPaymentCanceled": "Plaćanje nije uspelo. Porudžbina je sačuvana — možeš da pokušaš ponovo.",
       "errPaymentsUnavailable": "Plaćanja su trenutno nedostupna. Pokušaj za nekoliko minuta.",
       "errSessionExpired": "Sesija je istekla. Pokušaj plaćanje ponovo.",
-      "errCheckout": "Nismo mogli da otvorimo plaćanje. Proveri mejl i pokušaj ponovo."
+      "errCheckout": "Nismo mogli da otvorimo plaćanje. Proveri mejl i pokušaj ponovo.",
+      "startFresh": "Započni novu pesmu"
     },
     "packs": {
       "recommended": "Preporučeno",

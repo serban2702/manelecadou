@@ -1,12 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { api, ApiError, resolveMediaUrl, type GenerationDto } from '@/lib/api';
+import { track } from '@/lib/tracking';
+import { track as trackEvent } from '@/lib/tracker';
 import { prettifyLyrics } from '@/lib/lyrics-display';
 import { getPagePath } from '@/lib/page-slugs';
+import { siteSupportEmail, siteUrl } from '@/lib/site-shared';
 import { useSite } from '@/lib/site-context';
 import { ChorusClipsSection, chorusClipUrls } from '@/components/ChorusClipsSection';
 import { SocialImagesSection } from '@/components/SocialImagesSection';
@@ -20,6 +23,7 @@ import { CadouFollowCard } from './FollowCard';
 import { CadouFold } from './Fold';
 import { cadouStyleArt } from './style-art';
 import { useCadouFromName } from './from-name';
+import { clearCadouWizard, readCadouWizard } from './wizard-storage';
 import { useExperienceCatalog } from '../use-experience-catalog';
 import { usePackage } from '@/experiences/use-packages';
 
@@ -32,6 +36,19 @@ const LINEAR_SEC = 5 * 60;
 const RING = 2 * Math.PI * 46;
 
 const NO_VALUE = '—';
+
+/** Câte cicluri de polling mai insistăm pe o generare picată (3s fiecare) până
+ *  să recunoaștem că nu se mai repară singură. ~2 minute: destul cât să prindem
+ *  un auto-retry reușit, dar nu un cronometru fals la nesfârșit. */
+const FAILED_POLL_MAX = 40;
+
+/** Câte încercări facem ca plata să apară `paid` după redirectul de la Stripe
+ *  (webhook-ul poate întârzia câteva secunde). Identic cu interfața clasică. */
+const PAY_CONFIRM_TRIES = 10;
+/** Câte runde de confirmare (10 încercări fiecare) înainte să renunțăm. */
+const PAY_CONFIRM_ROUNDS = 3;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function fmtRemain(sec: number): string {
   const s = Math.max(0, Math.round(sec));
@@ -52,7 +69,9 @@ function waitEta(elapsedSec: number): { remainSec: number; progress: number; str
   return { remainSec, progress: Math.min(0.97, progress), stretch: true };
 }
 
-type Playable = { id: string; label: string; audioUrl: string };
+/** `variant` = `main` / `bonus` / `variation`, exact eticheta pe care o pune și
+ *  `ManeaPlayer` pe interfața clasică în `song_play` / `song_download`. */
+type Playable = { id: string; label: string; audioUrl: string; variant: string };
 
 function CadouWaitCard({
   cover,
@@ -151,6 +170,149 @@ function CadouLyrics({ text }: { text: string }) {
   );
 }
 
+/**
+ * Generarea a picat și nu există audio. Nu-i mai arătăm cronometrul „aproape
+ * gata" (minte), ci ce s-a întâmplat + drumul spre noi. Chatul e deja montat în
+ * `CadouShell`, așa că butonul apasă lansatorul lui; dacă lipsește, cade pe
+ * emailul de suport.
+ */
+function CadouFailedCard({ stalled }: { stalled: boolean }) {
+  const t = useTranslations('cadou.song');
+  const site = useSite();
+  const support = siteSupportEmail(site);
+
+  const openSupport = () => {
+    const launcher = document.querySelector<HTMLButtonElement>('.chat-launcher');
+    if (launcher) {
+      launcher.click();
+      return;
+    }
+    window.location.href = `mailto:${support}`;
+  };
+
+  return (
+    <div className="cadou-song-card cadou-song-failed" role="alert">
+      <span className="cadou-song-failed-ico" aria-hidden>⚠️</span>
+      <strong>{t('failedTitle')}</strong>
+      <p>{stalled ? t('failedStalled') : t('failedRetrying')}</p>
+      <button type="button" className="cadou-cta" onClick={openSupport}>{t('failedChat')}</button>
+      <a className="cadou-song-failed-mail" href={`mailto:${support}`}>{support}</a>
+    </div>
+  );
+}
+
+/**
+ * Share pe piesa livrată — produsul e un CADOU, clientul trebuie să-l poată
+ * trimite cuiva fără să treacă prin colaj. Fiecare canal raportează
+ * `song_share` (panoul Engagement din admin), cu aceleași nume de canal ca pe
+ * interfața clasică.
+ */
+function CadouShareCard({
+  generationId,
+  name,
+  imageUrl,
+  defaultOpen,
+}: {
+  generationId: string;
+  name: string;
+  /** Poza de share (dacă există) — o atașăm la share-ul nativ. */
+  imageUrl?: string | null;
+  defaultOpen: boolean;
+}) {
+  const t = useTranslations('cadou.song');
+  const site = useSite();
+  const [copied, setCopied] = useState(false);
+  const [shared, setShared] = useState(false);
+  // `navigator.share` se verifică DUPĂ mount — pe server nu există, iar un
+  // markup diferit ar rupe hidratarea.
+  const [hasNative, setHasNative] = useState(false);
+  useEffect(() => {
+    setHasNative(typeof navigator !== 'undefined' && typeof navigator.share === 'function');
+  }, []);
+
+  // Linkul canonic al site-ului CURENT (nu `window.location.href`, care poate
+  // căra `?paymentId=…` din redirectul Stripe).
+  const url = `${siteUrl(site)}/m/${generationId}`;
+  const text = t('shareText', { name });
+
+  const trackShare = (channel: string) =>
+    trackEvent({ type: 'song_share', props: { generationId, channel } });
+
+  const buildFile = async (): Promise<File | null> => {
+    if (!imageUrl || typeof fetch === 'undefined') return null;
+    try {
+      const res = await fetch(imageUrl);
+      const blob = await res.blob();
+      const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+      return new File([blob], `manea-${generationId}.${ext}`, { type: blob.type });
+    } catch {
+      return null;
+    }
+  };
+
+  const nativeShare = async () => {
+    const payload: ShareData = { title: site.name, text, url };
+    const file = await buildFile();
+    if (file && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+      (payload as ShareData & { files: File[] }).files = [file];
+    }
+    try {
+      await navigator.share(payload);
+      trackShare('native');
+      setShared(true);
+      setTimeout(() => setShared(false), 2000);
+    } catch {
+      /* anulat de user */
+    }
+  };
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(`${text} ${url}`);
+      trackShare('copy_link');
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard blocat */
+    }
+  };
+
+  return (
+    <CadouFold title={t('shareTitle')} className="cadou-share" defaultOpen={defaultOpen}>
+      <p className="cadou-share-lead">{t('shareLead')}</p>
+      {hasNative && (
+        <button type="button" className="cadou-cta" onClick={() => void nativeShare()}>
+          {shared ? t('shareNativeDone') : t('shareNative')}
+        </button>
+      )}
+      <div className="cadou-share-grid">
+        <a
+          className="cadou-share-btn is-wa"
+          href={`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => trackShare('whatsapp')}
+        >
+          {t('shareWhatsapp')}
+        </a>
+        <a
+          className="cadou-share-btn is-fb"
+          href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => trackShare('facebook')}
+        >
+          {t('shareFacebook')}
+        </a>
+        <button type="button" className="cadou-share-btn" onClick={() => void copyLink()}>
+          {copied ? t('shareCopied') : t('shareCopy')}
+        </button>
+      </div>
+      <p className="cadou-share-hint">{t('shareHintInstagram')}</p>
+    </CadouFold>
+  );
+}
+
 function CadouOrderCard({ generation }: { generation: GenerationDto }) {
   const t = useTranslations('cadou.song');
   const fromName = useCadouFromName();
@@ -226,54 +388,154 @@ function CadouSongInner() {
   const [error, setError] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
   const [upsellOpen, setUpsellOpen] = useState(false);
+  // Câte cicluri de polling am ars pe o generare picată. Vezi `FAILED_POLL_MAX`.
+  const [failedPolls, setFailedPolls] = useState(0);
+  // A câta rundă de confirmare a plății rulează. Vezi `PAY_CONFIRM_ROUNDS`.
+  const [payRound, setPayRound] = useState(0);
+  const viewTracked = useRef(false);
+  const purchaseTracked = useRef(false);
+  // `paymentId`-ul pentru care rulează deja confirmarea (evită o a doua rundă
+  // pornită de re-render).
+  const confirmingFor = useRef<string | null>(null);
   // Parola de privacy peste conținutul vechi privat (poza încărcată de owner +
   // colaje). Owner-ul nu are nevoie de ea; vizitatorul o introduce o dată.
   const { password, unlock } = useUnlockPassword(id);
 
-  const refresh = useCallback(async () => {
-    if (!id) return;
+  const refresh = useCallback(async (): Promise<GenerationDto | null> => {
+    if (!id) return null;
     try {
       const fresh = await api.getGeneration(id, password ?? undefined);
       setG(fresh);
       setError(null);
+      return fresh;
     } catch (e) {
       setError(
         e instanceof ApiError && (e.status === 401 || e.status === 403)
           ? t('errForbidden')
           : t('errLoad'),
       );
+      return null;
     }
   }, [id, password, t]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  const failedNoAudio = !!g && g.status === 'failed' && !g.audioUrl;
+  const failedStalled = failedPolls >= FAILED_POLL_MAX;
+
+  // Ieșirea din starea „picată" (auto-retry reușit) resetează contorul.
+  useEffect(() => {
+    if (!failedNoAudio) setFailedPolls(0);
+  }, [failedNoAudio]);
+
   useEffect(() => {
     if (!g) return;
-    const waitingAudio = g.status === 'failed' && !g.audioUrl;
     const enriching = g.status === 'succeeded' && g.deliverablesReady === false;
     const remaking = (g.workingVariants?.length ?? 0) > 0;
     const remakePaid = search.get('remakePaid') === '1';
-    if (!IN_PROGRESS.has(g.status) && !waitingAudio && !enriching && !remaking && !remakePaid) return;
-    const timer = setInterval(() => void refresh(), 3000);
+    const stillFailing = g.status === 'failed' && !g.audioUrl;
+    if (!IN_PROGRESS.has(g.status) && !stillFailing && !enriching && !remaking && !remakePaid) return;
+    // O generare picată definitiv nu se repară dând refresh la infinit: după
+    // `FAILED_POLL_MAX` cicluri oprim polling-ul și îi spunem clientului.
+    if (stillFailing && failedStalled) return;
+    const timer = setInterval(() => {
+      if (stillFailing) setFailedPolls((n) => n + 1);
+      void refresh();
+    }, 3000);
     return () => clearInterval(timer);
-  }, [g?.status, g?.audioUrl, g?.deliverablesReady, g?.workingVariants?.length, refresh, search]);
+  }, [g?.status, g?.audioUrl, g?.deliverablesReady, g?.workingVariants?.length, failedStalled, refresh, search]);
 
+  // ViewContent — identic cu interfața clasică (`app/m/[id]/view.tsx`).
+  useEffect(() => {
+    if (!g || viewTracked.current) return;
+    viewTracked.current = true;
+    track('ViewContent', {
+      content_id: g.id,
+      content_name: `Manea pentru ${g.recipientName}`,
+      content_type: 'product',
+      value: site.basePriceCents / 100,
+      currency: site.currency,
+    });
+  }, [g, site.basePriceCents, site.currency]);
+
+  // ── Confirmarea plății după Stripe ──────────────────────────────────────
+  // Webhook-ul poate întârzia câteva secunde. Întâi AȘTEPTĂM ca plata să devină
+  // `paid` (până la 10 încercări), abia apoi deblocăm. Cât timp plata nu e
+  // confirmată, `paymentId` RĂMÂNE în URL: un refresh reia confirmarea în loc
+  // să-i arate „Reia plata" unui om care tocmai a plătit.
   useEffect(() => {
     const paymentId = search.get('paymentId');
-    if (!id || !paymentId || search.get('success') !== '1' || unlocking) return;
+    if (!id || !paymentId || search.get('success') !== '1') return;
+    if (confirmingFor.current === paymentId) return;
+    confirmingFor.current = paymentId;
+    let alive = true;
     setUnlocking(true);
     (async () => {
+      let paid: { amount: number; currency: string; amountRonCents?: number | null } | null = null;
+      for (let i = 0; i < PAY_CONFIRM_TRIES && alive; i++) {
+        try {
+          const p = await api.getPayment(paymentId);
+          if (p?.status === 'paid') {
+            paid = { amount: p.amount, currency: p.currency, amountRonCents: p.amountRonCents ?? null };
+            break;
+          }
+        } catch {
+          /* plata nu e încă vizibilă — reîncercăm */
+        }
+        await sleep(1000);
+      }
+      if (!alive) return;
+      let unlocked = false;
       try {
         await api.unlockGeneration(id, paymentId);
-        await refresh();
+        unlocked = true;
       } catch {
-        /* already paid / free checkout */
-      } finally {
-        setUnlocking(false);
+        /* plata încă neconfirmată server-side / checkout gratuit */
+      }
+      const fresh = await refresh();
+      if (!alive) return;
+      if (paid && !purchaseTracked.current) {
+        purchaseTracked.current = true;
+        // Raportăm în RON (curs BNR, calculat server-side) ca valoarea din
+        // browser să fie identică cu cea trimisă server-side pe același
+        // event_id → dedup corect. Fallback pe valuta nativă dacă lipsește.
+        const ronCents = paid.amountRonCents ?? null;
+        track('Purchase', {
+          content_id: id,
+          content_name: 'Manea Cadou',
+          content_type: 'product',
+          value: ronCents != null ? ronCents / 100 : paid.amount / 100,
+          currency: ronCents != null ? 'RON' : paid.currency,
+          // event_id MATCH cu server-side webhook (`pay-${paymentId}`).
+          event_id: `pay-${paymentId}`,
+        });
+      }
+      setUnlocking(false);
+      const confirmed = unlocked || !!paid || fresh?.paidUnlocked === true;
+      if (confirmed) {
         window.history.replaceState({}, '', `/m/${id}`);
+        return;
+      }
+      // Nici după ~10s plata nu e confirmată: NU ștergem `paymentId` din URL
+      // (un refresh ar arăta „Reia plata" unui om care tocmai a plătit) și mai
+      // încercăm câteva runde.
+      confirmingFor.current = null;
+      if (payRound + 1 < PAY_CONFIRM_ROUNDS) {
+        setTimeout(() => { if (alive) setPayRound((r) => r + 1); }, 5000);
       }
     })();
-  }, [search, id, unlocking, refresh]);
+    return () => { alive = false; };
+  }, [search, id, refresh, payRound]);
+
+  // Snapshotul wizardului trebuie să dispară după plată. Altfel următoarea
+  // vizită pe /studio îl repune pe client în pasul 4 cu datele comenzii DEJA
+  // plătite, iar la „Plătește" garda anti-dublă-plată îl trimite înapoi aici —
+  // fix pe upsell-ul „a doua manea".
+  useEffect(() => {
+    if (!g?.isOwner || g.paidUnlocked !== true) return;
+    const snap = readCadouWizard();
+    if (snap?.generationId === g.id) clearCadouWizard();
+  }, [g?.id, g?.isOwner, g?.paidUnlocked]);
 
   const titleName = fromName.displayRecipient(g?.recipientName);
   const from = g ? fromName.senderOf(g) : null;
@@ -292,11 +554,12 @@ function CadouSongInner() {
           id: v.kind === 'bonus' ? `${g.id}-bonus` : v.kind === 'variation' ? v.id : `${g.id}-main`,
           label: v.label,
           audioUrl: v.audioUrl,
+          variant: v.kind,
         }));
     }
     return [
-      ...(g.audioUrl ? [{ id: `${g.id}-main`, label: trackMain, audioUrl: g.audioUrl }] : []),
-      ...(g.bonusAudioUrl ? [{ id: `${g.id}-bonus`, label: trackBonus, audioUrl: g.bonusAudioUrl }] : []),
+      ...(g.audioUrl ? [{ id: `${g.id}-main`, label: trackMain, audioUrl: g.audioUrl, variant: 'main' }] : []),
+      ...(g.bonusAudioUrl ? [{ id: `${g.id}-bonus`, label: trackBonus, audioUrl: g.bonusAudioUrl, variant: 'bonus' }] : []),
     ];
   }, [g, trackMain, trackBonus]);
 
@@ -313,10 +576,15 @@ function CadouSongInner() {
   const paid = !!g && (g.type === 'full' || g.paidUnlocked);
   const justPaid = search.get('success') === '1' || !!search.get('paymentId');
   const awaitingPay = g?.status === 'pending' && !g.paidUnlocked && !justPaid;
-  const making = !!g && !awaitingPay && (IN_PROGRESS.has(g.status) || (g.status === 'failed' && !g.audioUrl));
+  const making = !!g && !awaitingPay && IN_PROGRESS.has(g.status);
+  // Picată fără audio: NU mai intră pe cardul de așteptare (contorul fals), ci
+  // pe cardul de eroare cu drum spre suport.
+  const showFailed = failedNoAudio && !awaitingPay;
   const ready = tracks.length > 0;
   const remaking = (g?.workingVariants?.length ?? 0) > 0;
   const showPlay = ready;
+  // Cadoul trebuie să poată fi trimis — nu doar din secțiunea de colaj.
+  const showShare = ready;
   const showVideo = ready && paid;
   const showRemake = ready && paid && !!g?.isOwner;
   const showFollow = ready && paid && !!g?.isOwner;
@@ -350,7 +618,9 @@ function CadouSongInner() {
                 ? 'video'
                 : showClips
                   ? 'clips'
-                  : 'play';
+                  : showShare
+                    ? 'share'
+                    : 'play';
 
   return (
     <>
@@ -386,6 +656,8 @@ function CadouSongInner() {
                 </div>
               )}
 
+              {showFailed && <CadouFailedCard stalled={failedStalled} />}
+
               {/* Manea privată (livrabil vechi): vizitatorul cere parola de la
                   cel care a comandat-o ca să vadă poza încărcată + colajele. */}
               {locked && (
@@ -409,7 +681,11 @@ function CadouSongInner() {
                     </div>
                     {tracks.map((v) => (
                       <div key={v.id} className="cadou-song-track">
-                        <CadouDemoPlayer audioUrl={v.audioUrl} label={tracks.length > 1 ? v.label : undefined} />
+                        <CadouDemoPlayer
+                          audioUrl={v.audioUrl}
+                          label={tracks.length > 1 ? v.label : undefined}
+                          trackContext={{ generationId: g.id, variant: v.variant }}
+                        />
                       </div>
                     ))}
                     {g.workingVariants?.map((v) => (
@@ -420,6 +696,15 @@ function CadouSongInner() {
                       </div>
                     ))}
                   </CadouFold>
+                )}
+
+                {showShare && (
+                  <CadouShareCard
+                    generationId={g.id}
+                    name={titleName}
+                    imageUrl={resolveMediaUrl(g.socialImageUploaded ?? g.socialImageSelected ?? g.coverUrl)}
+                    defaultOpen={last !== 'share'}
+                  />
                 )}
 
                 {/* Clipurile pe refren — livrabil vechi (premium), separat de

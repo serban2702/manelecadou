@@ -33,20 +33,26 @@ export function InstagramPhone({
   autoPlayMuted = false,
   muted = true,
   onBindVideo,
+  onUnmute,
 }: {
   clip: PhoneClip;
   time: string;
+  /** INTENȚIA de redare. Ce se vede vine din evenimentele reale ale `<video>`. */
   playing: boolean;
   onToggle: (video: HTMLVideoElement) => void;
   autoPlayMuted?: boolean;
   muted?: boolean;
   onBindVideo?: (el: HTMLVideoElement | null) => void;
+  /** Setat doar când redarea a pornit MUTĂ — arătăm butonul de unmute. */
+  onUnmute?: () => void;
 }) {
   const tPlayer = useTranslations('cadou.player');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [liked, setLiked] = useState(false);
   const [following, setFollowing] = useState(false);
   const [burst, setBurst] = useState(0);
+  // Starea REALĂ a videoului (vezi comentariul din TikTokPhone).
+  const [live, setLive] = useState(false);
   const cover = clip.posterUrl || clip.avatarUrl || clip.videoUrl;
   const avatar = clip.avatarUrl || cover;
 
@@ -74,6 +80,10 @@ export function InstagramPhone({
         loop
         playsInline
         preload={autoPlayMuted ? 'auto' : 'metadata'}
+        onPlay={() => setLive(true)}
+        onPlaying={() => setLive(true)}
+        onPause={() => setLive(false)}
+        onEnded={() => setLive(false)}
       />
       <div className="tt-fade-top" />
       <div className="ig-fade-bot" />
@@ -81,16 +91,22 @@ export function InstagramPhone({
       <button
         type="button"
         className="phone-tap"
-        aria-label={playing ? tPlayer('pause') : tPlayer('play')}
+        aria-label={live ? tPlayer('pause') : tPlayer('play')}
         onClick={() => {
           const v = videoRef.current;
           if (v) onToggle(v);
         }}
       />
-      {!playing ? (
+      {!live ? (
         <div className="center-play" aria-hidden>
           <IconPlay width={64} height={64} style={{ marginLeft: 8 }} />
         </div>
+      ) : null}
+      {/* Rulează, dar mut (iOS a refuzat sunetul) — al doilea gest îl pornește. */}
+      {live && onUnmute ? (
+        <button type="button" className="phone-unmute" onClick={onUnmute}>
+          🔇 {tPlayer('unmute')}
+        </button>
       ) : null}
 
       {burst > 0 ? (

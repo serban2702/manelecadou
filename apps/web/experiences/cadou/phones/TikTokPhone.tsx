@@ -36,9 +36,12 @@ export function TikTokPhone({
   autoPlayMuted = false,
   muted = true,
   onBindVideo,
+  onUnmute,
 }: {
   clip: PhoneClip;
   time: string;
+  /** INTENȚIA de redare (ce cere părintele). Ce se vede pe ecran (disc care se
+   *  rotește, overlay-ul de play) vine din evenimentele reale ale `<video>`. */
   playing: boolean;
   progress: number;
   onToggle: (video: HTMLVideoElement) => void;
@@ -47,6 +50,8 @@ export function TikTokPhone({
   /** Keep the <video> muted (soundtrack on a separate <audio>, or autoplay). */
   muted?: boolean;
   onBindVideo?: (el: HTMLVideoElement | null) => void;
+  /** Setat doar când redarea a pornit MUTĂ — arătăm butonul de unmute. */
+  onUnmute?: () => void;
 }) {
   const tPlayer = useTranslations('cadou.player');
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -54,6 +59,10 @@ export function TikTokPhone({
   const [saved, setSaved] = useState(false);
   const [burst, setBurst] = useState(0);
   const [vidProgress, setVidProgress] = useState(0);
+  // Starea REALĂ a elementului video. iOS în Low Power Mode refuză `play()`
+  // fără să arunce vizibil în toate cazurile — dacă am lua `playing` de bun,
+  // discul s-ar roti peste un ecran înghețat.
+  const [live, setLive] = useState(false);
   const cover = clip.posterUrl || clip.avatarUrl || clip.videoUrl;
   const avatar = clip.avatarUrl || cover;
   const bar = autoPlayMuted ? vidProgress : progress;
@@ -93,6 +102,10 @@ export function TikTokPhone({
         loop
         playsInline
         preload={autoPlayMuted ? 'auto' : 'metadata'}
+        onPlay={() => setLive(true)}
+        onPlaying={() => setLive(true)}
+        onPause={() => setLive(false)}
+        onEnded={() => setLive(false)}
       />
       <div className="tt-fade-top" />
       <div className="tt-fade-bot" />
@@ -100,16 +113,22 @@ export function TikTokPhone({
       <button
         type="button"
         className="phone-tap"
-        aria-label={playing ? tPlayer('pause') : tPlayer('play')}
+        aria-label={live ? tPlayer('pause') : tPlayer('play')}
         onClick={() => {
           const v = videoRef.current;
           if (v) onToggle(v);
         }}
       />
-      {!playing ? (
+      {!live ? (
         <div className="center-play" aria-hidden>
           <IconPlay width={64} height={64} style={{ marginLeft: 8 }} />
         </div>
+      ) : null}
+      {/* Rulează, dar mut (iOS a refuzat sunetul) — al doilea gest îl pornește. */}
+      {live && onUnmute ? (
+        <button type="button" className="phone-unmute" onClick={onUnmute}>
+          🔇 {tPlayer('unmute')}
+        </button>
       ) : null}
 
       {burst > 0 ? (
@@ -152,7 +171,7 @@ export function TikTokPhone({
           <IconShare width={32} height={32} />
         </RailBtn>
         <div className="tt-disc-wrap">
-          <div className={`tt-disc${playing ? ' disc-spin' : ''}`}>
+          <div className={`tt-disc${live ? ' disc-spin' : ''}`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={cover} alt="" />
           </div>
@@ -175,7 +194,7 @@ export function TikTokPhone({
         <div className="tt-song">
           <IconMusic width={14} height={14} />
           <div className="tt-song-track">
-            <div className={`caption-ticker${playing ? '' : ' pause-anim'}`}>
+            <div className={`caption-ticker${live ? '' : ' pause-anim'}`}>
               <span>{clip.song}</span>
               <span>{clip.song}</span>
             </div>

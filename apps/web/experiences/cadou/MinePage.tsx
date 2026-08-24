@@ -25,15 +25,21 @@ function fmtDate(iso: string, locale: string): string {
   }
 }
 
-type ToneKind = 'ok' | 'wait' | 'pay';
+type ToneKind = 'ok' | 'wait' | 'pay' | 'bad';
+type ToneKey = 'statusPay' | 'statusReady' | 'statusWorking' | 'statusFailed' | 'statusView';
 
-function toneOf(g: GenerationDto): { key: 'statusPay' | 'statusReady' | 'statusWorking' | 'statusView'; kind: ToneKind } {
+/** O comandă picată e picată: „se lucrează" pentru totdeauna e o minciună pe
+ *  care clientul o plătește cu așteptarea. */
+function failedNoAudio(g: GenerationDto): boolean {
+  return g.status === 'failed' && !g.audioUrl;
+}
+
+function toneOf(g: GenerationDto): { key: ToneKey; kind: ToneKind } {
   const awaitingPay = g.status === 'pending' && !g.paidUnlocked;
   if (awaitingPay) return { key: 'statusPay', kind: 'pay' };
   if (g.status === 'succeeded' && g.audioUrl) return { key: 'statusReady', kind: 'ok' };
-  if (IN_PROGRESS.has(g.status) || (g.status === 'failed' && !g.audioUrl)) {
-    return { key: 'statusWorking', kind: 'wait' };
-  }
+  if (failedNoAudio(g)) return { key: 'statusFailed', kind: 'bad' };
+  if (IN_PROGRESS.has(g.status)) return { key: 'statusWorking', kind: 'wait' };
   return { key: 'statusView', kind: 'ok' };
 }
 
@@ -46,7 +52,14 @@ export default function CadouMinePage() {
     queryFn: api.listGenerations,
     refetchInterval: (q) => {
       const items = q.state.data;
-      const busy = items?.some((g) => !g.audioUrl && !(g.status === 'pending' && !g.paidUnlocked));
+      // Nu mai reîmprospătăm la infinit pentru comenzile picate — acolo
+      // polling-ul (cu plafon) se face pe pagina piesei, unde clientul vede și
+      // ce s-a întâmplat.
+      const busy = items?.some(
+        (g) => !g.audioUrl
+          && !failedNoAudio(g)
+          && !(g.status === 'pending' && !g.paidUnlocked),
+      );
       return busy ? 5000 : false;
     },
   });
@@ -97,9 +110,11 @@ function CadouMineCard({ g }: { g: GenerationDto }) {
   const tone = toneOf(g);
   const action = tone.kind === 'pay'
     ? t('actionResume')
-    : g.audioUrl
-      ? t('actionListen')
-      : t('actionLyrics');
+    : tone.kind === 'bad'
+      ? t('actionHelp')
+      : g.audioUrl
+        ? t('actionListen')
+        : t('actionLyrics');
   const href = tone.kind === 'pay'
     ? `${studio}?paymentCanceled=1&genId=${g.id}`
     : `/m/${g.id}`;

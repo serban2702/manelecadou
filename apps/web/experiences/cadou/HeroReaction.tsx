@@ -7,7 +7,7 @@ import { type CadouReactionClip } from './reactions';
 import { useCadouReactionClips } from './use-reaction-clips';
 import { InstagramPhone } from './phones/InstagramPhone';
 import { PhoneStage } from './phones/PhoneFrame';
-import { startPhoneMedia } from './phones/play-reaction';
+import { startPhoneMedia, unmutePhoneMedia } from './phones/play-reaction';
 import { TikTokPhone } from './phones/TikTokPhone';
 import type { PhoneClip } from './phones/types';
 
@@ -55,11 +55,14 @@ function HeroPhone({
   const [sounding, setSounding] = useState(false);
   const [tapped, setTapped] = useState(false);
   const [silenced, setSilenced] = useState(false);
+  // Clientul a cerut sunet, dar browserul a pornit clipul MUT (iOS Low Power,
+  // browser in-app). Fără butonul ăsta rămâne cu imagine fără sunet.
+  const [needsUnmute, setNeedsUnmute] = useState(false);
   const src = clip.audioUrl ? (resolveMediaUrl(clip.audioUrl) ?? clip.audioUrl) : '';
   const start = clip.previewStartSec ?? 0;
   const phone = toPhone(clip);
   const videoPlaying = !silenced && (videoOn || tapped || sounding);
-  const videoMuted = sounding || !tapped;
+  const videoMuted = sounding || !tapped || needsUnmute;
 
   const bindVideo = (el: HTMLVideoElement | null) => {
     videoElRef.current = el;
@@ -71,6 +74,7 @@ function HeroPhone({
     setSounding(false);
     setTapped(false);
     setSilenced(true);
+    setNeedsUnmute(false);
   };
 
   const stopSound = () => {
@@ -116,14 +120,29 @@ function HeroPhone({
     setSilenced(false);
     stopRef.current = makeStop();
     setTapped(true);
-    const mode = await startPhoneMedia({
+    const res = await startPhoneMedia({
       video,
       audio: audioRef.current,
       audioUrl: clip.audioUrl,
       startSec: start,
       stop: stopRef.current,
     });
-    setSounding(mode === 'soundtrack');
+    setSounding(res.mode === 'soundtrack');
+    setNeedsUnmute(res.needsUnmute);
+    if (!res.playing) stopSound();
+  };
+
+  const unmute = async () => {
+    const video = videoElRef.current;
+    if (!video) return;
+    const res = await unmutePhoneMedia({
+      video,
+      audio: audioRef.current,
+      audioUrl: clip.audioUrl,
+      startSec: start,
+    });
+    setSounding(res.mode === 'soundtrack');
+    setNeedsUnmute(res.needsUnmute);
   };
 
   return (
@@ -147,6 +166,7 @@ function HeroPhone({
             autoPlayMuted
             onBindVideo={bindVideo}
             onToggle={(v) => void toggleSound(v)}
+            onUnmute={needsUnmute ? () => void unmute() : undefined}
           />
         ) : (
           <TikTokPhone
@@ -158,6 +178,7 @@ function HeroPhone({
             autoPlayMuted
             onBindVideo={bindVideo}
             onToggle={(v) => void toggleSound(v)}
+            onUnmute={needsUnmute ? () => void unmute() : undefined}
           />
         )}
       </PhoneStage>

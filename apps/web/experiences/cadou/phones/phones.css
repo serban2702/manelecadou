@@ -172,6 +172,35 @@
 .center-play.is-ghost:hover,
 .center-play.is-ghost:active { background: transparent; transform: translate(-50%, -50%); }
 
+/* Clipul rulează, dar MUT (iOS Low Power / browser in-app a refuzat sunetul).
+   Stă peste `.phone-tap` ca al doilea gest să pornească sunetul, nu să pună
+   pauză. */
+.phone-unmute {
+  position: absolute;
+  top: 96px;
+  left: 50%;
+  z-index: 22;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 86%;
+  padding: 7px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.62);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
+}
+.phone-unmute:active { transform: translateX(-50%) scale(0.96); }
+
 .heart-burst {
   pointer-events: none;
   position: absolute;

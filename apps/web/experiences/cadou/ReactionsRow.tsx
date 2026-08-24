@@ -8,7 +8,7 @@ import { type CadouReactionClip } from './reactions';
 import { useCadouReactionClips } from './use-reaction-clips';
 import { InstagramPhone } from './phones/InstagramPhone';
 import { PhoneStage } from './phones/PhoneFrame';
-import { startPhoneMedia } from './phones/play-reaction';
+import { startPhoneMedia, unmutePhoneMedia } from './phones/play-reaction';
 import { TikTokPhone } from './phones/TikTokPhone';
 import type { PhoneClip } from './phones/types';
 
@@ -36,6 +36,8 @@ function PhoneCard({ clip }: { clip: CadouReactionClip }) {
   const stopRef = useRef<(() => void) | null>(null);
   const [playing, setPlaying] = useState(false);
   const [videoMuted, setVideoMuted] = useState(true);
+  // Redarea a pornit, dar MUTĂ (iOS a refuzat sunetul) — arătăm unmute.
+  const [needsUnmute, setNeedsUnmute] = useState(false);
   const [cur, setCur] = useState(0);
   const [dur, setDur] = useState(0);
   const [time, setTime] = useState('21:14');
@@ -64,6 +66,7 @@ function PhoneCard({ clip }: { clip: CadouReactionClip }) {
     try { videoElRef.current?.pause(); } catch { /* ignore */ }
     setPlaying(false);
     setVideoMuted(true);
+    setNeedsUnmute(false);
   };
 
   const stop = () => {
@@ -83,15 +86,31 @@ function PhoneCard({ clip }: { clip: CadouReactionClip }) {
       return;
     }
     stopRef.current = makeStop();
-    const mode = await startPhoneMedia({
+    const res = await startPhoneMedia({
       video,
       audio: audioRef.current,
       audioUrl: clip.audioUrl,
       startSec: start,
       stop: stopRef.current,
     });
-    setVideoMuted(mode === 'soundtrack');
-    setPlaying(true);
+    setVideoMuted(res.videoMuted);
+    setNeedsUnmute(res.needsUnmute);
+    // Nu declarăm „se redă" decât dacă browserul chiar a pornit clipul.
+    setPlaying(res.playing);
+    if (!res.playing) stop();
+  };
+
+  const unmute = async () => {
+    const video = videoElRef.current;
+    if (!video) return;
+    const res = await unmutePhoneMedia({
+      video,
+      audio: audioRef.current,
+      audioUrl: clip.audioUrl,
+      startSec: start,
+    });
+    setVideoMuted(res.videoMuted);
+    setNeedsUnmute(res.needsUnmute);
   };
 
   const progress = dur > 0 ? Math.min(1, cur / dur) : 0.08;
@@ -115,6 +134,7 @@ function PhoneCard({ clip }: { clip: CadouReactionClip }) {
             muted={videoMuted}
             onBindVideo={bindVideo}
             onToggle={(v) => void toggle(v)}
+            onUnmute={needsUnmute ? () => void unmute() : undefined}
           />
         ) : (
           <TikTokPhone
@@ -125,6 +145,7 @@ function PhoneCard({ clip }: { clip: CadouReactionClip }) {
             muted={videoMuted}
             onBindVideo={bindVideo}
             onToggle={(v) => void toggle(v)}
+            onUnmute={needsUnmute ? () => void unmute() : undefined}
           />
         )}
       </PhoneStage>

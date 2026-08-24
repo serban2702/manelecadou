@@ -149,7 +149,7 @@
     },
     "verdictLabel": "Verdict",
     "share": "📤 Share rezultat",
-    "shareText": "Sunt {label} {emoji} ({pct}/100) la testul de șmecherie de pe manelecadou.ro 🎤",
+    "shareText": "Sunt {label} {emoji} ({pct}/100) la testul de șmecherie de pe {site} 🎤",
     "shareCopied": "Rezultat copiat! Lipește-l pe WhatsApp / TikTok.",
     "ctaMake": "🎤 Fă-ți maneaua de {label}",
     "verdicts": {
@@ -643,7 +643,19 @@
     "greeting": "Salut! Scrie-ne orice — întrebare, problemă, idee.",
     "emailHint": "Tip: lasă-ți email-ul pe pagina de generator ca să-ți răspundem și pe email.",
     "adminLabel": "Admin",
-    "placeholder": "Scrie un mesaj..."
+    "placeholder": "Scrie un mesaj...",
+    "paid": "✓ Plătit",
+    "songGeneric": "Manea personalizată",
+    "sampleOf": "🎵 Mostră de {label}",
+    "sampleFallback": "stil",
+    "songPending": "🎶 Pagina manelei (în lucru)",
+    "songUnlocked": "✓ Manea deblocată",
+    "songYours": "🎵 Maneaua ta",
+    "songFor": "Pentru {name}",
+    "openPage": "Deschide pagina →",
+    "listen": "Ascultă maneaua →",
+    "edited": "(editat)",
+    "typing": "Operatorul scrie..."
   },
   "topPage": {
     "flag": "Top România",
@@ -1152,7 +1164,21 @@
       "orderCustomLyrics": "Versuri proprii",
       "orderNoDedication": "fără dedicație",
       "voiceFemale": "Feminină",
-      "voiceMale": "Bărbătească"
+      "voiceMale": "Bărbătească",
+      "failedTitle": "Ceva n-a mers la maneaua ta",
+      "failedRetrying": "Am dat de o problemă și încercăm automat din nou. Dacă nu apare în câteva minute, scrie-ne — comanda ta e salvată.",
+      "failedStalled": "Nu am reușit s-o pornim automat. Scrie-ne și o rezolvăm noi — comanda ta e salvată.",
+      "failedChat": "Scrie-ne pe chat",
+      "shareTitle": "Trimite cadoul",
+      "shareLead": "Trimite maneaua celui pentru care ai făcut-o sau arat-o prietenilor.",
+      "shareNative": "Trimite cuiva",
+      "shareNativeDone": "Trimis ✓",
+      "shareWhatsapp": "WhatsApp",
+      "shareFacebook": "Facebook",
+      "shareCopy": "Copiază linkul",
+      "shareCopied": "Copiat ✓",
+      "shareText": "🎵 Ascultă maneaua pentru {name}",
+      "shareHintInstagram": "Pentru Instagram: copiază linkul și lipește-l în story sau în bio."
     },
     "video": {
       "section": {
@@ -1199,7 +1225,8 @@
         "thumbAlt": "Poză {index}",
         "submitting": "Trimitem…",
         "submitMany": "Creează {count} videoclipuri",
-        "submitOne": "Creează videoclipul"
+        "submitOne": "Creează videoclipul",
+        "errNoTrack": "Nu avem încă o melodie pe care să montăm clipul."
       }
     },
     "remake": {
@@ -1220,7 +1247,13 @@
       "busyFree": "Pornim refacerea…",
       "busyPaid": "Se deschide plata…",
       "ctaFree": "Refă maneaua",
-      "ctaPaid": "Refă maneaua · {price}"
+      "ctaPaid": "Refă maneaua · {price}",
+      "errRemakeBusy": "O refacere e deja în lucru. Așteaptă să se termine.",
+      "errFreeUsedUp": "Refacerile gratuite s-au terminat. Poți cere una contra cost.",
+      "errFreeFirst": "Mai ai refaceri gratuite. Folosește-le întâi.",
+      "errNotReady": "Maneaua încă nu e gata.",
+      "errNotPaid": "Plătește comanda înainte de a o reface.",
+      "errTooLong": "Maxim 1000 de caractere."
     },
     "mine": {
       "kicker": "Biblioteca ta",
@@ -1240,7 +1273,9 @@
       "actionLyrics": "Vezi versurile",
       "cardFor": "Pentru {name}",
       "cardFrom": "De la {from}",
-      "cardGo": "{action} →"
+      "cardGo": "{action} →",
+      "statusFailed": "Nu a ieșit",
+      "actionHelp": "Vezi ce s-a întâmplat"
     },
     "listen": {
       "kicker": "Demo-uri reale",
@@ -1724,7 +1759,8 @@
       "errPaymentCanceled": "Plata nu a putut fi efectuată. Comanda e salvată — poți încerca din nou.",
       "errPaymentsUnavailable": "Plățile sunt temporar indisponibile. Încearcă în câteva minute.",
       "errSessionExpired": "Sesiunea a expirat. Reîncearcă plata.",
-      "errCheckout": "Nu am putut deschide plata. Verifică emailul și încearcă din nou."
+      "errCheckout": "Nu am putut deschide plata. Verifică emailul și încearcă din nou.",
+      "startFresh": "Începe o manea nouă"
     },
     "packs": {
       "recommended": "Recomandat",

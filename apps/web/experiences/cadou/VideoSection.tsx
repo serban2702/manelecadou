@@ -5,6 +5,7 @@ import { downloadUrl } from '@/lib/download';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { api, resolveMediaUrl, type CollageDto, type GenerationDto } from '@/lib/api';
+import { track as trackEvent } from '@/lib/tracker';
 import { claimPlayback, releasePlayback } from '@/lib/audio-registry';
 import { useSite } from '@/lib/site-context';
 import { cadouClipLabel, cadouClipTracks, useCadouTrackLabels } from './video-tracks';
@@ -14,10 +15,13 @@ function CadouClipPlayer({
   src,
   poster,
   label,
+  generationId,
 }: {
   src: string;
   poster?: string | null;
   label: string;
+  /** Pentru `image_download` (panoul Engagement din admin). */
+  generationId: string;
 }) {
   const site = useSite();
   const t = useTranslations('cadou.video.section');
@@ -112,7 +116,12 @@ function CadouClipPlayer({
         >
           {busyShare === 'send' ? t('shareSendBusy') : t('shareSend')}
         </button>
-        <a className="cadou-clip-btn" href={src} download>
+        <a
+          className="cadou-clip-btn"
+          href={src}
+          download
+          onClick={() => trackEvent({ type: 'image_download', props: { generationId, kind: 'video' } })}
+        >
           {t('download')}
         </a>
       </div>
@@ -224,6 +233,7 @@ export function CadouVideoSection({
               src={resolveMediaUrl(c.videoUrl!)!}
               poster={poster}
               label={cadouClipLabel(c.track, tracks, trackLabels)}
+              generationId={g.id}
             />
           ))}
         </div>

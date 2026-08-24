@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { downloadUrl } from '@/lib/download';
 import { useTranslations } from 'next-intl';
 import { resolveMediaUrl } from '@/lib/api';
+import { track as trackEvent } from '@/lib/tracker';
 import { claimPlayback, releasePlayback } from '@/lib/audio-registry';
 
 const VOL_KEY = 'mc_cadou_vol';
@@ -97,16 +98,26 @@ export function CadouDemoPlayer({
   audioUrl,
   startSec = 0,
   label,
+  trackContext,
 }: {
   audioUrl: string;
   startSec?: number;
   label?: string;
+  /** Setat doar pe piesa livrată (pagina /m/[id]) — alimentează panoul de
+   *  Engagement din admin cu `song_play` / `song_download`, exact ca
+   *  `ManeaPlayer` pe interfața clasică. Demo-urile de pe home n-au context. */
+  trackContext?: { generationId: string; variant: string };
 }) {
   const t = useTranslations('cadou.player');
   const src = resolveMediaUrl(audioUrl) ?? audioUrl;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const stopRef = useRef<(() => void) | null>(null);
   const lastVol = useRef(0.85);
+  // Un singur `song_play` per piesă ascultată (ca la ManeaPlayer) — altfel
+  // fiecare pauză/reluare ar umfla cifra.
+  const ctxRef = useRef(trackContext);
+  ctxRef.current = trackContext;
+  const playTracked = useRef(false);
   const [playing, setPlaying] = useState(false);
   const [cur, setCur] = useState(0);
   const [dur, setDur] = useState(0);
@@ -140,6 +151,7 @@ export function CadouDemoPlayer({
     setPlaying(false);
     setCur(0);
     setDur(0);
+    playTracked.current = false;
     const a = audioRef.current;
     if (!a) return;
     a.pause();
@@ -226,7 +238,14 @@ export function CadouDemoPlayer({
           if (stopRef.current) releasePlayback(stopRef.current);
         }}
         onPause={() => setPlaying(false)}
-        onPlay={() => setPlaying(true)}
+        onPlay={() => {
+          setPlaying(true);
+          const ctx = ctxRef.current;
+          if (ctx && !playTracked.current) {
+            playTracked.current = true;
+            trackEvent({ type: 'song_play', props: { generationId: ctx.generationId, variant: ctx.variant } });
+          }
+        }}
       />
       <div className="cadou-demo-row">
         <button
@@ -296,6 +315,10 @@ export function CadouDemoPlayer({
           href={downloadUrl(src, fileName(t('fileBase'), label))}
           download={fileName(t('fileBase'), label)}
           aria-label={t('downloadAria')}
+          onClick={() => {
+            const ctx = ctxRef.current;
+            if (ctx) trackEvent({ type: 'song_download', props: { generationId: ctx.generationId, variant: ctx.variant } });
+          }}
         >
           <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
             <path d="M12 4v10.2M8.2 10.8 12 14.6l3.8-3.8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />

@@ -503,7 +503,15 @@ export function Smecher() {
   const questions = (t.raw('questions') as Array<{ q: string; opts: string[] }>) ?? [];
 
   function shareResult() {
-    const text = t('shareText', { label: verdictLabel, emoji: verdictEmoji, pct });
+    // Domeniul vine din `site`, NU din traducere: cheia avea „manelecadou.ro"
+    // scris în text în toate cele 8 limbi, deci un client bulgar/grec trimitea
+    // prietenilor domeniul altui site.
+    const text = t('shareText', {
+      label: verdictLabel,
+      emoji: verdictEmoji,
+      pct,
+      site: site.domain,
+    });
     if (typeof navigator !== 'undefined' && navigator.share) {
       navigator.share({ title: t('title'), text, url });
     } else {

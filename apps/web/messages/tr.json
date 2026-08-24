@@ -150,7 +150,7 @@
     },
     "verdictLabel": "Karar",
     "share": "📤 Sonucu paylaş",
-    "shareText": "manelecadou.ro kabadayılık testinde {label} {emoji} ({pct}/100) çıktım 🎤",
+    "shareText": "{site} kabadayılık testinde {label} {emoji} ({pct}/100) çıktım 🎤",
     "shareCopied": "Sonuç kopyalandı! WhatsApp / TikTok'a yapıştır.",
     "ctaMake": "🎤 {label} için şarkı yap",
     "verdicts": {
@@ -645,7 +645,19 @@
     "greeting": "Selam! Bize her şeyi yaz — soru, sorun, fikir.",
     "emailHint": "İpucu: e-postanı generator sayfasında bırak ki sana e-postayla da cevap verelim.",
     "adminLabel": "Yönetici",
-    "placeholder": "Bir mesaj yaz..."
+    "placeholder": "Bir mesaj yaz...",
+    "paid": "✓ Ödendi",
+    "songGeneric": "Kişiye özel şarkı",
+    "sampleOf": "🎵 {label} örneği",
+    "sampleFallback": "stil",
+    "songPending": "🎶 Şarkı sayfası (hazırlanıyor)",
+    "songUnlocked": "✓ Şarkı açıldı",
+    "songYours": "🎵 Şarkın",
+    "songFor": "{name} için",
+    "openPage": "Sayfayı aç →",
+    "listen": "Şarkıyı dinle →",
+    "edited": "(düzenlendi)",
+    "typing": "Operatör yazıyor..."
   },
   "topPage": {
     "flag": "Top Türkiye",
@@ -1154,7 +1166,21 @@
       "orderCustomLyrics": "Kendi sözlerin",
       "orderNoDedication": "ithafsız",
       "voiceFemale": "Kadın",
-      "voiceMale": "Erkek"
+      "voiceMale": "Erkek",
+      "failedTitle": "Şarkında bir şeyler ters gitti",
+      "failedRetrying": "Bir sorunla karşılaştık ve otomatik olarak tekrar deniyoruz. Birkaç dakika içinde gelmezse bize yaz — siparişin kayıtlı.",
+      "failedStalled": "Otomatik olarak başlatamadık. Bize yaz, biz halledelim — siparişin kayıtlı.",
+      "failedChat": "Bize sohbetten yaz",
+      "shareTitle": "Hediyeyi gönder",
+      "shareLead": "Şarkıyı kimin için yaptıysan ona gönder ya da arkadaşlarına göster.",
+      "shareNative": "Birine gönder",
+      "shareNativeDone": "Gönderildi ✓",
+      "shareWhatsapp": "WhatsApp",
+      "shareFacebook": "Facebook",
+      "shareCopy": "Bağlantıyı kopyala",
+      "shareCopied": "Kopyalandı ✓",
+      "shareText": "🎵 {name} için yapılan şarkıyı dinle",
+      "shareHintInstagram": "Instagram için: bağlantıyı kopyala ve story'ne ya da biyografine yapıştır."
     },
     "video": {
       "section": {
@@ -1201,7 +1227,8 @@
         "thumbAlt": "Fotoğraf {index}",
         "submitting": "Gönderiliyor…",
         "submitMany": "{count} klip oluştur",
-        "submitOne": "Klibi oluştur"
+        "submitOne": "Klibi oluştur",
+        "errNoTrack": "Klibi üzerine kuracağımız bir şarkı henüz yok."
       }
     },
     "remake": {
@@ -1222,7 +1249,13 @@
       "busyFree": "Yeniden yapımı başlatıyoruz…",
       "busyPaid": "Ödeme açılıyor…",
       "ctaFree": "Şarkıyı yeniden yap",
-      "ctaPaid": "Şarkıyı yeniden yap · {price}"
+      "ctaPaid": "Şarkıyı yeniden yap · {price}",
+      "errRemakeBusy": "Şu anda bir yeniden yapım sürüyor. Bitmesini bekle.",
+      "errFreeUsedUp": "Ücretsiz yeniden yapım hakkın bitti. Ücretli olarak isteyebilirsin.",
+      "errFreeFirst": "Hâlâ ücretsiz yeniden yapım hakkın var. Önce onu kullan.",
+      "errNotReady": "Şarkı henüz hazır değil.",
+      "errNotPaid": "Yeniden yapmadan önce siparişin ödemesini tamamla.",
+      "errTooLong": "En fazla 1000 karakter."
     },
     "mine": {
       "kicker": "Kütüphanen",
@@ -1242,7 +1275,9 @@
       "actionLyrics": "Sözleri gör",
       "cardFor": "{name} için",
       "cardFrom": "{from} adına",
-      "cardGo": "{action} →"
+      "cardGo": "{action} →",
+      "statusFailed": "Olmadı",
+      "actionHelp": "Ne olduğuna bak"
     },
     "listen": {
       "kicker": "Gerçek demolar",
@@ -1726,7 +1761,8 @@
       "errPaymentCanceled": "Ödeme gerçekleşmedi. Siparişin kayıtlı — tekrar deneyebilirsin.",
       "errPaymentsUnavailable": "Ödemeler geçici olarak kullanılamıyor. Birkaç dakika sonra dene.",
       "errSessionExpired": "Oturumun sona erdi. Ödemeyi tekrar başlat.",
-      "errCheckout": "Ödemeyi açamadık. E-postanı kontrol edip tekrar dene."
+      "errCheckout": "Ödemeyi açamadık. E-postanı kontrol edip tekrar dene.",
+      "startFresh": "Yeni bir şarkı başlat"
     },
     "packs": {
       "recommended": "Önerilen",
