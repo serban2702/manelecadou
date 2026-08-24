@@ -209,6 +209,44 @@ export function PackagesEditor({
                   }}
                 />
               </Field>
+              {tier !== 'premium' && (
+                <Field
+                  label="Propunere de upgrade (opțional)"
+                  description="Se arată o singură dată pe pagina melodiei, după livrare, cui a cumpărat pachetul ăsta. Gol = text generat automat din pachetul următor."
+                >
+                  <div className="grid gap-2">
+                    <Input
+                      value={p.upsell?.title ?? ''}
+                      placeholder="Vrei și colajul cu pozele voastre?"
+                      onChange={(e) =>
+                        patch(tier, 'upsell', upsellPatch(p.upsell, { title: e.target.value }, tier))
+                      }
+                    />
+                    <Textarea
+                      rows={3}
+                      value={p.upsell?.body ?? ''}
+                      placeholder="Treci pe Premium și primești colajul pe toată melodia, plus felicitarea."
+                      onChange={(e) =>
+                        patch(tier, 'upsell', upsellPatch(p.upsell, { body: e.target.value }, tier))
+                      }
+                    />
+                    <select
+                      className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                      value={p.upsell?.targetTier ?? (tier === 'basic' ? 'plus' : 'premium')}
+                      onChange={(e) =>
+                        patch(
+                          tier,
+                          'upsell',
+                          upsellPatch(p.upsell, { targetTier: e.target.value as 'plus' | 'premium' }, tier),
+                        )
+                      }
+                    >
+                      <option value="plus">propune Plus</option>
+                      <option value="premium">propune Premium</option>
+                    </select>
+                  </div>
+                </Field>
+              )}
             </CardContent>
           </Card>
         );
@@ -237,4 +275,26 @@ function Flag({
       <Switch checked={checked} onCheckedChange={onChange} className="mt-0.5 shrink-0" />
     </label>
   );
+}
+
+/**
+ * Construiește obiectul `upsell` dintr-o modificare parțială.
+ *
+ * Câmpul exista în contract și era consumat de interfață, dar nu avea niciun
+ * control în admin — deci singura cale să-l setezi era editarea manuală a
+ * jsonb-ului din baza de date. Titlul și textul goale înseamnă „neconfigurat":
+ * întoarcem `null`, iar interfața cade pe textul generat din pachetul următor.
+ */
+function upsellPatch(
+  current: { title?: string; body?: string; targetTier?: 'plus' | 'premium' } | null | undefined,
+  change: Partial<{ title: string; body: string; targetTier: 'plus' | 'premium' }>,
+  tier: PackageTier,
+): { title: string; body: string; targetTier: 'plus' | 'premium' } | null {
+  const next = {
+    title: change.title ?? current?.title ?? '',
+    body: change.body ?? current?.body ?? '',
+    targetTier: change.targetTier ?? current?.targetTier ?? (tier === 'basic' ? 'plus' : 'premium'),
+  };
+  if (!next.title.trim() && !next.body.trim()) return null;
+  return next;
 }
