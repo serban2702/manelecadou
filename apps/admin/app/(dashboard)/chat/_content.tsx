@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PACKAGE_LABELS } from '@/lib/package-label';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import {
@@ -78,7 +79,7 @@ const PACKAGE_OPTIONS: { tier: PackageTier; label: string; defaultCents: number;
 ];
 
 const PACKAGE_DEFAULT_CENTS: Record<PackageTier, number> = { basic: 2999, plus: 4999, premium: 6999 };
-const PACKAGE_LABELS: Record<PackageTier, string> = { basic: 'Standard', plus: 'Plus', premium: 'Premium' };
+
 
 function packagePriceCents(site: unknown, tier: PackageTier): number {
   const overrides = (site as { packagePricesCents?: Partial<Record<PackageTier, number>> } | null | undefined)

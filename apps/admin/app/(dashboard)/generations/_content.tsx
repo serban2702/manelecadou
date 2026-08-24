@@ -1,6 +1,7 @@
 'use client';
 
 import { useAsync } from "@/lib/hooks/use-async";
+import { packageLabel } from '@/lib/package-label';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import { CreditCard, Eye, ExternalLink, Music2, RefreshCw, Trash2, Unlock, Upload } from 'lucide-react';
@@ -70,13 +71,6 @@ function payMoneyRon(pay: { amount: number; currency: string; amountRonCents?: n
   return `${(pay.amountRonCents / 100).toFixed(2)} lei`;
 }
 
-/** Mapează pachetul la etichetă prietenoasă cu preț. Legacy/necunoscut → valoarea brută. */
-function packageLabel(t: string | null | undefined): string {
-  if (t === 'basic') return 'Bază (29,99)';
-  if (t === 'plus') return 'Plus (49,99)';
-  if (t === 'premium') return 'Premium (69,99)';
-  return t ?? '';
-}
 
 export default function GenerationsPage() {
   const { toast } = useToast();

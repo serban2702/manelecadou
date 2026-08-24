@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { packageLabel } from '@/lib/package-label';
 import { useAsync, useAsyncCallback } from '@/lib/hooks/use-async';
 import { AdminApi, type OrderDetail, type AdminVariation, type AdminCollage } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
@@ -61,13 +62,6 @@ function voiceLabel(v: string | null | undefined): string {
   return v ?? '';
 }
 
-/** Mapează pachetul la etichetă prietenoasă cu preț. Legacy/necunoscut → valoarea brută. */
-function packageLabel(t: string | null | undefined): string {
-  if (t === 'basic') return 'Bază (29,99)';
-  if (t === 'plus') return 'Plus (49,99)';
-  if (t === 'premium') return 'Premium (69,99)';
-  return t ?? '';
-}
 
 export function OrderDetailModal({ id, onClose }: { id: string; onClose: () => void }) {
   const { data, loading, refetch } = useAsync(() => AdminApi.orderDetail(id), [id]);

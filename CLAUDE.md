@@ -1121,6 +1121,11 @@ Bucketul activ apare în loguri la boot: `storage=r2 bucket=… (config=db, boot
 Scriptul de sync cere `R2_CONFIRM_BUCKET` egal cu `R2_BUCKET` la orice rulare
 reală, exact ca să nu urci în bucketul greșit.
 
+Calea de cod S3 e acoperită de `src/storage/storage-s3.spec.ts` — rulează pe un
+MinIO local (R2 e S3-compatibil) și verifică scriere, citire, listare, **Range**
+și ștergere. Se sare singur fără `S3_TEST_ENDPOINT`, deci nu leagă `npm test` de
+Docker. Dacă atingi `StorageService`, rulează-l cu MinIO pornit.
+
 ### 19.4 Scripturi de operare (`apps/api/scripts/`)
 
 | Script | Când |

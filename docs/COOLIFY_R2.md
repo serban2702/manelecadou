@@ -69,7 +69,7 @@ tău pentru că o greșeală în acel câmp scoate site-uri de pe internet.
 
 ---
 
-### Ce e deja verificat
+## 2.1 Ce e deja verificat
 
 Routerul a fost rulat pe bune (imaginea din `deploy/router/`, cu upstream-uri
 false care spun cine sunt), iar matricea de rutare iese corect:
@@ -88,6 +88,16 @@ iar `X-Forwarded-Proto: https` se propagă corect.
 
 Build-ul complet al stack-ului (`docker compose -f docker-compose.coolify.yml
 build`) trece — api, web, admin și router.
+
+**Driverul R2 e verificat pe un S3 real.** Nu avem credențiale R2, dar R2 e
+S3-compatibil, iar `apps/api/src/storage/storage-s3.spec.ts` rulează întreg
+contractul pe un MinIO local: scriere, citire, listare, **Range** (de el depind
+seek-ul din player și redarea pe iOS Safari) și ștergere. Testul se sare singur
+când nu găsește un S3, deci nu leagă rularea normală de Docker; comanda de
+pornire e în capul fișierului.
+
+Comenzile de backup din §3.6 sunt și ele rulate, nu doar scrise: dump → tabel
+șters → restore → date întoarse.
 
 ---
 
@@ -243,7 +253,7 @@ docker compose -f docker-compose.coolify.yml exec api node scripts/sync-uploads-
 
 ---
 
-## 3.5 Varianta cu risc mai mic: două mutări separate
+### 3.5 Varianta cu risc mai mic: două mutări separate
 
 Nu ești obligat să faci totul într-o singură fereastră. Codul e scris ca să
 funcționeze **neschimbat pe stack-ul actual de pe Ionos**:
@@ -287,6 +297,9 @@ Scrie în volumul `pg_backups`, adăugat în compose exact pentru asta.
 ```bash
 gunzip -c /backups/<FIȘIER>.sql.gz | psql -U "$POSTGRES_USER" "$POSTGRES_DB"
 ```
+
+Ambele comenzi sunt verificate pe un `postgres:16-alpine` curat (24 aug 2026):
+dump → tabel șters → restore → date întoarse. Nu le-am lăsat nescrise pe hârtie.
 
 **Alternativa mai bună, dacă vrei backup-uri în afara serverului**: scoate
 `postgres` din compose și fă-l resursă **Postgres gestionată de Coolify**. Atunci

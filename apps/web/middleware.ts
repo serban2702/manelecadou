@@ -32,6 +32,35 @@ function extractClientIp(req: NextRequest): string | null {
   return (req as unknown as { ip?: string }).ip ?? null;
 }
 
+/**
+ * Ce întoarcem când `/api/public/site` nu răspunde.
+ *
+ * Regula: preferăm intrarea EXPIRATĂ din cache, dacă există. O hopă de API nu
+ * schimbă limba unui site. Fără asta, un 502 de o secundă (tipic în fereastra
+ * unui deploy) fixa `locale: 'ro'` în cache pentru 15 secunde, iar vizitatorii
+ * greci și bulgari primeau rescrieri de slug în română.
+ *
+ * `hidden: false` e intenționat: dacă nu știm, lăsăm site-ul vizibil.
+ */
+function fallbackFlags(host: string, stale?: CacheEntry): CacheEntry {
+  const entry: CacheEntry = stale
+    ? { ...stale, expiresAt: Date.now() + FAILURE_TTL_MS }
+    : {
+        hidden: false,
+        ipWhitelist: [],
+        locale: 'ro',
+        experienceConfig: null,
+        expiresAt: Date.now() + FAILURE_TTL_MS,
+      };
+  // Îl punem în cache, altfel am lovi API-ul căzut la fiecare request. Dar cu
+  // TTL scurt, ca să ne întoarcem la datele adevărate imediat ce își revine.
+  cache.set(host, entry);
+  return entry;
+}
+
+/** Cât ținem un răspuns de rezervă: scurt, ca să reîncercăm repede după hopă. */
+const FAILURE_TTL_MS = 2_000;
+
 async function fetchSiteFlags(host: string, clientIp: string | null): Promise<CacheEntry> {
   const cached = cache.get(host);
   if (cached && cached.expiresAt > Date.now()) return cached;
@@ -43,11 +72,7 @@ async function fetchSiteFlags(host: string, clientIp: string | null): Promise<Ca
       headers,
       cache: 'no-store',
     });
-    if (!res.ok) {
-      const entry = { hidden: false, ipWhitelist: [], locale: 'ro', experienceConfig: null, expiresAt: Date.now() + TTL_MS };
-      cache.set(host, entry);
-      return entry;
-    }
+    if (!res.ok) return fallbackFlags(host, cached);
     const site = await res.json();
     const entry: CacheEntry = {
       hidden: Boolean(site?.hiddenMode),
@@ -59,7 +84,7 @@ async function fetchSiteFlags(host: string, clientIp: string | null): Promise<Ca
     cache.set(host, entry);
     return entry;
   } catch {
-    return { hidden: false, ipWhitelist: [], locale: 'ro', experienceConfig: null, expiresAt: Date.now() + TTL_MS };
+    return fallbackFlags(host, cached);
   }
 }
 
