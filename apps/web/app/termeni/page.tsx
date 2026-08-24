@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 import { SiteShell } from '@/components/SiteShell';
-import { getSiteConfig, formatPrice } from '@/lib/site-config';
+import { getFromPriceCents, getSiteConfig, formatPrice } from '@/lib/site-config';
 
 export async function generateMetadata(): Promise<Metadata> {
   const site = await getSiteConfig();
@@ -14,7 +14,12 @@ export default async function TermeniPage() {
   const t = await getTranslations('legal.terms');
   const company = site.companyInfo ?? {};
   const legalName = company.legalName || site.name;
-  const fullPrice = formatPrice(site, site.basePriceCents);
+  // Prețurile reale sunt pe pachete (editabile din admin). În termeni afișăm
+  // pragul „de la", nu `basePriceCents` — care e câmpul legacy și diverge.
+  const fromCents = await getFromPriceCents();
+  const fromPrice = fromCents !== null ? formatPrice(site, fromCents) : null;
+  const tipPct = String(site.tipSurchargePercent ?? 5);
+  const tipCap = formatPrice(site, site.tipSurchargeCapCents ?? 5000);
   const businessEmail = `business@${site.domain}`;
   const regSuffix = (company.regCom || company.cui)
     ? t('sec1.regSuffix', { regCom: company.regCom || '—', cui: company.cui || '—' })
@@ -46,8 +51,10 @@ export default async function TermeniPage() {
         <h2>{t('sec3.h')}</h2>
         <ul>
           <li>{t('sec3.b1')}</li>
-          <li>{t.rich('sec3.b2', { b: (chunks) => <b>{chunks}</b>, fullPrice })}</li>
-          <li>{t('sec3.b3')}</li>
+          {fromPrice !== null && (
+            <li>{t.rich('sec3.b2', { b: (chunks) => <b>{chunks}</b>, fromPrice })}</li>
+          )}
+          <li>{t('sec3.b3', { pct: tipPct, cap: tipCap })}</li>
           <li>{t('sec3.b4')}</li>
         </ul>
 

@@ -5,6 +5,10 @@ import { Repository } from 'typeorm';
 import { GuestSession } from './guest-session.entity';
 import { IdentityService } from '../identity/identity.service';
 import { PromoService } from '../promo/promo.service';
+import { SitesService } from '../sites/sites.service';
+import { nextSongDiscountPercent, resolveSitePackage } from '../experiences/package-resolve';
+import { normalizeTier } from '../payments/packages';
+import type { PackageSnapshot } from '../experiences/types';
 
 @Injectable()
 export class GuestSessionsService {
@@ -107,6 +111,8 @@ export class GuestSessionsService {
           siteId: g.siteId ?? siteId,
           guestId: g.id,
           email: g.email,
+          // Cât i-am promis clientului la pachetul lui, nu o cifră fixă în cod.
+          percent: await this.nextSongDiscountFor(g.id, g.siteId ?? siteId),
         });
         meta.followPromoCode = promo.code;
       } catch {
@@ -117,6 +123,40 @@ export class GuestSessionsService {
     g.meta = meta;
     await this.repo.save(g);
     return this.followState(g);
+  }
+
+  /**
+   * Procentul de reducere „la manea următoare" pentru acest guest: cel înghețat în
+   * `packageSnapshot` pe ultima lui comandă (ce i s-a promis când a plătit), altfel
+   * pachetul rezolvat azi, altfel valoarea implicită. Best-effort — orice eroare cade
+   * pe default, reducerea nu are voie să blocheze follow-ul.
+   */
+  private async nextSongDiscountFor(guestId: string, siteId: string | null): Promise<number> {
+    try {
+      const rows: Array<{
+        packageSnapshot: PackageSnapshot | null;
+        packageTier: string | null;
+        experienceSlug: string | null;
+      }> = await this.repo.manager.query(
+        `SELECT "packageSnapshot", "packageTier", "experienceSlug"
+           FROM generations
+          WHERE "ownerGuestId" = $1 AND "paidUnlocked" = true
+          ORDER BY "createdAt" DESC
+          LIMIT 1`,
+        [guestId],
+      );
+      const gen = rows?.[0];
+      if (!gen) return nextSongDiscountPercent(null, null);
+      const site = siteId
+        ? await this.moduleRef.get(SitesService, { strict: false }).findById(siteId).catch(() => null)
+        : null;
+      return nextSongDiscountPercent(
+        gen.packageSnapshot,
+        resolveSitePackage(site, normalizeTier(gen.packageTier), gen.experienceSlug),
+      );
+    } catch {
+      return nextSongDiscountPercent(null, null);
+    }
   }
 }
 

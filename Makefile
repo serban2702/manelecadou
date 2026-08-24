@@ -75,7 +75,7 @@ restart:
 # resursă, `git push` e tot ce trebuie — target-urile de mai jos sunt pentru
 # când vrei să forțezi din terminal.
 #
-#   COOLIFY_URL=https://coolify.exemplu.ro
+#   COOLIFY_URL=https://coolify.freevox.ro
 #   COOLIFY_TOKEN=...            (Coolify → Keys & Tokens → API tokens)
 #   COOLIFY_RESOURCE_UUID=...    (din URL-ul resursei)
 

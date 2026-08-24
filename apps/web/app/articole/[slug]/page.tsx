@@ -4,7 +4,8 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { SiteShell } from '@/components/SiteShell';
-import { getSiteConfig, siteUrl } from '@/lib/site-config';
+import { getFromPriceCents, getSiteConfig, siteUrl } from '@/lib/site-config';
+import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
 import { apiInternalUrl } from '@/lib/api-internal';
 
@@ -49,7 +50,11 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const [page, site] = await Promise.all([fetchPage(slug), getSiteConfig()]);
+  const [page, site, fromCents] = await Promise.all([
+    fetchPage(slug),
+    getSiteConfig(),
+    getFromPriceCents(),
+  ]);
   if (!page) {
     const t = await getTranslations('articlesPage');
     return { title: t('notFound') };
@@ -91,7 +96,11 @@ export default async function ArticolePage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const [page, site] = await Promise.all([fetchPage(slug), getSiteConfig()]);
+  const [page, site, fromCents] = await Promise.all([
+    fetchPage(slug),
+    getSiteConfig(),
+    getFromPriceCents(),
+  ]);
   if (!page) notFound();
 
   // Canonical URL = localizedSlug (varianta tradusă). Dacă vizitatorul a venit
@@ -101,7 +110,9 @@ export default async function ArticolePage({
     redirect(`${getPagePath(site.locale, 'articole')}/${page.localizedSlug}`);
   }
   const t = await getTranslations('articlesPage');
-  const priceText = `${(site.basePriceCents / 100).toFixed(2)} ${site.currency}`;
+  // Prețul „de la" din cel mai ieftin pachet ACTIV (nu `basePriceCents`, care
+  // e legacy și arată altă cifră decât grila de tarife).
+  const priceText = fromCents !== null ? formatPrice(site, fromCents) : null;
 
   const baseUrl = siteUrl(site);
   const articlesPathDetail = getPagePath(site.locale, 'articole');
@@ -187,7 +198,7 @@ export default async function ArticolePage({
             {t('articleCtaSub')}
           </p>
           <Link href={getPagePath(site.locale, 'studio')} className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
-            {t('articleCtaButton', { price: priceText })}
+            {priceText !== null ? t('articleCtaButton', { price: priceText }) : t('articleCtaButtonPlain')}
           </Link>
         </div>
 

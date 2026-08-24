@@ -13,6 +13,11 @@
  *   R2_SKIP_EXISTING=0   re-urcă tot (default: sare peste ce are deja aceeași mărime)
  *   R2_CONCURRENCY=12    fișiere în paralel
  *   R2_DRY_RUN=1         doar raportează, nu urcă
+ *   R2_CONFIRM_BUCKET=   OBLIGATORIU la o rulare reală: trebuie să fie exact
+ *                        R2_BUCKET. Avem două bucketuri (producție și dev) și
+ *                        o rulare greșită înseamnă ori 7,5 GB urcați degeaba în
+ *                        bucketul de dev, ori fișiere de test amestecate peste
+ *                        producție. `R2_DRY_RUN=1` nu cere confirmarea.
  *
  * Idempotent: îl poți rula de câte ori vrei. Rulează-l a doua oară imediat
  * înainte de cutover ca să prindă fișierele apărute între timp.
@@ -47,6 +52,22 @@ if (!endpoint || !process.env.R2_ACCESS_KEY_ID || !process.env.R2_SECRET_ACCESS_
   console.error('Lipsesc R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET');
   process.exit(1);
 }
+
+// Confirmare explicită a bucketului: cu două bucketuri (producție / dev), un
+// export uitat în shell e tot ce trebuie ca să urci în cel greșit.
+if (!dryRun && (process.env.R2_CONFIRM_BUCKET || '') !== bucket) {
+  console.error(
+    `Refuz să urc fără confirmare.\n` +
+      `  R2_BUCKET         = ${bucket}\n` +
+      `  R2_ENDPOINT       = ${endpoint}\n` +
+      `  R2_CONFIRM_BUCKET = ${process.env.R2_CONFIRM_BUCKET || '(nesetat)'}\n` +
+      `Verifică bucketul de mai sus și repetă comanda cu R2_CONFIRM_BUCKET=${bucket}\n` +
+      `(sau rulează cu R2_DRY_RUN=1, care nu cere confirmare).`,
+  );
+  process.exit(1);
+}
+
+console.log(`bucket=${bucket} endpoint=${endpoint} root=${root}${dryRun ? ' (dry-run)' : ''}`);
 
 const MIME = {
   '.mp3': 'audio/mpeg',

@@ -4,6 +4,67 @@
  * efectiv al configului în server components, vezi `site-config.ts`.
  */
 
+/** Nivelurile de pachet. Contract cu `apps/api/src/modules/payments/packages.ts`. */
+export type PackageTier = 'basic' | 'plus' | 'premium';
+
+export interface SiteUpsellConfig {
+  title: string;
+  body: string;
+  targetTier: 'plus' | 'premium';
+}
+
+/**
+ * Un pachet REZOLVAT, exact așa cum îl livrează API-ul în
+ * `/api/public/site` → `experienceConfig.items[<interfață>].packages[<tier>]`.
+ *
+ * Oglindă 1:1 a lui `ResolvedExperiencePackage` din
+ * `apps/api/src/modules/experiences/types.ts`. Web-ul și API-ul sunt aplicații
+ * separate (fiecare cu `package.json`-ul ei), deci tipul nu se poate importa —
+ * dacă se schimbă contractul acolo, se schimbă și aici.
+ *
+ * Toate câmpurile sunt deja MERGE-uite de API în ordinea:
+ * default din cod ← preț per-site ← default pe interfață ← override din admin.
+ * Nu mai există nimic de „completat" în web: ce e aici e ce vede clientul și ce
+ * taxează Stripe.
+ */
+export interface SitePackage {
+  tier: PackageTier;
+  /** false = pachetul e ascuns din vitrină pe interfața asta. */
+  enabled: boolean;
+  /** Numele afișat (editabil din admin, per interfață). */
+  label: string;
+  priceCents: number;
+  /** Preț „tăiat" (marketing). null = fără reducere afișată. */
+  compareAtCents: number | null;
+  /** false = pachet fără generare de piesă (livrabile secundare). */
+  generation: boolean;
+  /** @deprecated mereu false pe comenzile noi. */
+  video: boolean;
+  /** @deprecated mereu false pe comenzile noi. */
+  socialImage: boolean;
+  /** @deprecated mereu 0. */
+  socialImageCount?: number;
+  instrumental: boolean;
+  premiumPage: boolean;
+  durationSec: number;
+  /** Refaceri gratuite incluse. */
+  remakes?: number;
+  collage?: boolean;
+  collagePhotoLimit?: number;
+  /** true = colaj pe tot track-ul; false = doar refrenul. */
+  collageFullTrack?: boolean;
+  greetingCard?: boolean;
+  /** Clip de urare AI (Veo) — setare; generarea nu e pornită încă. */
+  greetingClip?: boolean;
+  socialPost?: boolean;
+  nextSongDiscountPercent?: number;
+  /** Bullets „ce conține", editabile din admin per interfață. */
+  features: string[];
+  /** Copy de livrare (editabil din admin). */
+  deliveryLabel: string;
+  upsell: SiteUpsellConfig | null;
+}
+
 export interface SiteConfig {
   id: string;
   slug: string;
@@ -11,8 +72,14 @@ export interface SiteConfig {
   name: string;
   locale: string;
   currency: string;
+  /**
+   * @deprecated Preț LEGACY (modelul vechi base + dedicație + premium), editat
+   * în alt ecran din admin decât pachetele. NU-l folosi la afișare: pe un site
+   * cu pachete configurate arată altă cifră decât cardul Standard. Prețul de
+   * vitrină se ia din pachetele rezolvate (vezi `lib/packages.ts`).
+   */
   basePriceCents: number;
-  /** Prețul „standard" tăiat în vitrine (anchor pentru reducere). 0 = nu se afișează. */
+  /** @deprecated anchor legacy pentru `basePriceCents`. Vezi `SitePackage.compareAtCents`. */
   standardPriceCents?: number;
   /** Suprataxă Manea Premium (cents). Default 2000. */
   premiumExtraCents?: number;
@@ -21,6 +88,15 @@ export interface SiteConfig {
   /** Procent de suprataxă din dedicație (0–100). Default 5. */
   tipSurchargePercent?: number;
   giftPriceCents: number;
+  /**
+   * Override-urile BRUTE de preț per tenant. API-ul le-a aplicat deja peste
+   * pachetele din `experienceConfig` — sunt aici doar pentru completitudinea
+   * contractului. Pentru afișare folosește pachetul rezolvat, nu astea (ele nu
+   * știu de override-urile pe interfață).
+   */
+  packagePricesCents?: Partial<Record<PackageTier, number>> | null;
+  /** Idem, pentru prețurile „tăiate". Deja pliate în `SitePackage.compareAtCents`. */
+  packageCompareAtCents?: Partial<Record<PackageTier, number>> | null;
   brand: {
     primaryColor?: string;
     accentColor?: string;
@@ -93,16 +169,8 @@ export interface SiteConfig {
     items: Record<string, {
       enabled: boolean;
       utmRules: Array<{ source?: string; campaign?: string; content?: string }>;
-      packages: Record<string, {
-        video: boolean;
-        socialImage: boolean;
-        greetingClip?: boolean;
-        instrumental: boolean;
-        premiumPage: boolean;
-        durationSec: number;
-        features: string[];
-        upsell: { title: string; body: string; targetTier: 'plus' | 'premium' } | null;
-      }>;
+      /** Cheile sunt `PackageTier`; le tipăm larg fiindcă vin dintr-un JSON. */
+      packages: Partial<Record<PackageTier, SitePackage>>;
       catalog?: {
         styles?: Array<SiteStyleEntry & { artUrl?: string; sampleUrl?: string; sampleStartSec?: number }>;
         occasions?: SiteOccasionEntry[];

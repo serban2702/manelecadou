@@ -5,7 +5,7 @@
 # același lucru. Scriptul e pentru cazurile în care vrei să forțezi deploy-ul
 # din terminal sau dintr-un pipeline.
 #
-#   COOLIFY_URL=https://coolify.exemplu.ro \
+#   COOLIFY_URL=https://coolify.freevox.ro \
 #   COOLIFY_TOKEN=... \
 #   COOLIFY_RESOURCE_UUID=... \
 #   ./deploy/coolify-deploy.sh
@@ -18,7 +18,7 @@
 # eroare, în loc să raporteze un succes fals.
 set -euo pipefail
 
-: "${COOLIFY_URL:?Setează COOLIFY_URL (ex. https://coolify.exemplu.ro)}"
+: "${COOLIFY_URL:?Setează COOLIFY_URL (ex. https://coolify.freevox.ro)}"
 : "${COOLIFY_TOKEN:?Setează COOLIFY_TOKEN}"
 : "${COOLIFY_RESOURCE_UUID:?Setează COOLIFY_RESOURCE_UUID}"
 

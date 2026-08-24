@@ -14,11 +14,15 @@ import { useSite } from '@/lib/site-context';
 import { getLegalPath } from '@/lib/legal-slugs';
 import { getPagePath } from '@/lib/page-slugs';
 import { useExperienceCatalog } from '@/experiences/use-experience-catalog';
+import { usePackages } from '@/experiences/use-packages';
 
 export function Hero({ onGen, onListen }: { onGen: () => void; onListen: () => void }) {
   const t = useTranslations('hero');
   const tc = useTranslations('common');
   const site = useSite();
+  // „de la X" = cel mai mic preț dintre pachetele ACTIVE, aceeași sursă ca
+  // vitrina de tarife. `basePriceCents` (legacy) arăta altă cifră decât cardul.
+  const { fromCents } = usePackages();
   return (
     <section className="hero">
       <div className="hero-flag">{t('flag')}</div>
@@ -27,7 +31,11 @@ export function Hero({ onGen, onListen }: { onGen: () => void; onListen: () => v
       </h1>
       <p className="sub">{t('sub')}</p>
       <div className="hero-actions">
-        <button className="btn btn-gold btn-lg" onClick={onGen}>{tc('ctaMakeManea', { price: formatPrice(site, site.basePriceCents) })}</button>
+        <button className="btn btn-gold btn-lg" onClick={onGen}>
+          {fromCents !== null
+            ? tc('ctaMakeManea', { price: formatPrice(site, fromCents) })
+            : tc('ctaMakeManeaPlain')}
+        </button>
         <button className="btn btn-ghost" onClick={onListen}><Ic.Play s={14} /> {tc('ctaListen')}</button>
       </div>
       <div className="hero-trust">
@@ -43,10 +51,30 @@ export function PriceStrip() {
   const t = useTranslations('price');
   const site = useSite();
 
-  // Folosim prețul real din site config (editabil din admin per site),
-  // nu cele hardcoded din messages JSON.
-  const standardCents = site.standardPriceCents ?? 0;
-  const baseCents = site.basePriceCents;
+  // Prețul afișat e al celui mai ieftin pachet ACTIV de pe interfața curentă —
+  // exact ce vede clientul în grila de tarife și ce taxează Stripe. Câmpurile
+  // legacy `basePriceCents` / `standardPriceCents` se editează în alt ecran din
+  // admin și divergeau de carduri.
+  const { items, loaded } = usePackages();
+  const cheapest = items.reduce<(typeof items)[number] | null>(
+    (best, p) => (p.priceCents > 0 && (!best || p.priceCents < best.priceCents) ? p : best),
+    null,
+  );
+
+  if (!loaded || !cheapest) {
+    return (
+      <div className="price-strip" aria-hidden>
+        <span className="badge">{t('badge')}</span>
+        <div className="left">
+          <div className="skel-line" style={{ width: 120, height: 26 }} />
+        </div>
+      </div>
+    );
+  }
+
+  const baseCents = cheapest.priceCents;
+  const standardCents =
+    cheapest.compareAtCents && cheapest.compareAtCents > baseCents ? cheapest.compareAtCents : 0;
   const showStrike = standardCents > baseCents;
 
   const baseValue = baseCents / 100;
@@ -54,9 +82,8 @@ export function PriceStrip() {
   const baseFrac = Math.round((baseValue - baseInt) * 100)
     .toString()
     .padStart(2, '0');
-  const standardFormatted = (standardCents / 100).toFixed(2).replace('.', ',');
   // Reducerea calculată din prețuri reale, nu hardcodată per locale — altfel
-  // se afișează „-23%" chiar și când prețul standard a fost schimbat din admin.
+  // se afișează „-23%" chiar și când prețul a fost schimbat din admin.
   const discountPct = showStrike
     ? Math.round(((standardCents - baseCents) / standardCents) * 100)
     : 0;
@@ -66,9 +93,7 @@ export function PriceStrip() {
       <span className="badge">{t('badge')}</span>
       <div className="left">
         {showStrike && (
-          <div className="strike">
-            {standardFormatted} {site.currency}
-          </div>
+          <div className="strike">{formatPrice(site, standardCents)}</div>
         )}
         <div className="now gold-text">
           {baseInt}
@@ -77,7 +102,7 @@ export function PriceStrip() {
         </div>
       </div>
       <div className="right">
-        <div className="save">{discountPct > 0 ? `-${discountPct}%` : t('save')}</div>
+        {discountPct > 0 && <div className="save">{`-${discountPct}%`}</div>}
         <div style={{ fontSize: 10, color: 'rgba(255,245,220,0.5)', marginTop: 4 }}>{t('newAccount')}</div>
       </div>
     </div>

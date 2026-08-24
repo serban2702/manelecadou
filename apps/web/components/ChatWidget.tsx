@@ -951,7 +951,10 @@ export function ChatWidget() {
                 borderRadius: 8,
                 color: 'var(--cream)',
                 fontFamily: 'inherit',
-                fontSize: 13,
+                // 16px, nu 13: sub 16px iOS dă zoom automat la focus, panoul de
+                // chat iese din ecran și layoutul rămâne stricat — exact acolo
+                // unde clientul cere ajutor.
+                fontSize: 16,
                 outline: 'none',
                 maxHeight: 120,
               }}

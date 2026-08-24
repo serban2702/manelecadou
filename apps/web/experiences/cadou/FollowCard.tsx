@@ -8,6 +8,14 @@ import { CadouFold } from './Fold';
 
 const PROMO_KEY = 'mc_follow_promo';
 
+/**
+ * Reducerea codului emis la follow pe social. NU vine din admin: e hardcodată în
+ * `PromoService.issueSocialFollowDiscount` (`discountValue: 40`) și nu e expusă
+ * în niciun endpoint public. O ținem aici, într-un singur loc, ca traducerile să
+ * nu conțină cifra — dacă se schimbă în API, se schimbă și aici.
+ */
+const FOLLOW_DISCOUNT_PERCENT = 40;
+
 function readPromo(): string | null {
   try {
     return window.localStorage.getItem(PROMO_KEY);
@@ -86,21 +94,22 @@ export function CadouFollowCard({ defaultOpen = true }: { defaultOpen?: boolean 
   if (!fbUrl && !ttUrl) return null;
 
   const done = (fb || !fbUrl) && (tt || !ttUrl);
+  const pct = String(FOLLOW_DISCOUNT_PERCENT);
   const lead = fbUrl && ttUrl
-    ? t('lead')
-    : t('leadOne', { network: fbUrl ? t('facebook') : t('tiktok') });
+    ? t('lead', { pct })
+    : t('leadOne', { network: fbUrl ? t('facebook') : t('tiktok'), pct });
 
   return (
     <CadouFold
       title={t('title')}
       className="cadou-follow"
       defaultOpen={defaultOpen}
-      badge={<span className="cadou-follow-badge">{t('badge')}</span>}
+      badge={<span className="cadou-follow-badge">{t('badge', { pct })}</span>}
     >
       {done ? (
         <>
           <p className="cadou-follow-lead">
-            {t('done')}
+            {t('done', { pct })}
             {code ? <> {t.rich('doneCode', { code, b: (chunks) => <b>{chunks}</b> })}</> : null}
             {' '}{t('doneAuto')}
           </p>

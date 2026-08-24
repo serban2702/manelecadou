@@ -13,8 +13,10 @@ import { Repository } from 'typeorm';
 import Stripe from 'stripe';
 
 import { Payment } from './payment.entity';
-import { PREMIUM_EXTRA_CENTS, packageTotalCents } from './pricing';
-import { normalizeTier, packageCompareAtCents, packagePriceCents, PackageTier } from './packages';
+import { PREMIUM_EXTRA_CENTS } from './pricing';
+import { normalizeTier, PackageTier } from './packages';
+import { resolveSitePackage } from '../experiences/package-resolve';
+import type { ResolvedExperiencePackage } from '../experiences/types';
 import { PromoService } from '../promo/promo.service';
 import { GiftCodesService } from '../gift-codes/gift-codes.service';
 import { GiftTier, TIER_PRICES_RON } from '../gift-codes/gift-code.entity';
@@ -45,7 +47,7 @@ interface CheckoutInput {
   premium?: boolean;
   /**
    * Tier-ul pachetului (model nou). Când e setat, totalul = prețul pachetului
-   * (`packageTotalCents`, cu override per-site) și se IGNORĂ tip/premium.
+   * (`resolvedPackage`, cu override per-site și per-interfață) și se IGNORĂ tip/premium.
    */
   packageTier?: PackageTier;
   promoCode?: string;
@@ -229,9 +231,33 @@ export class PaymentsService {
     );
   }
 
-  /** Totalul pentru un pachet, cu override per-site (cents). */
-  private sitePackageTotal(site: Site, tier: PackageTier): number {
-    return packageTotalCents(tier, site.packagePricesCents ?? null);
+  /**
+   * Pachetul EFECTIV (preț, preț tăiat, livrabile, `enabled`) pentru un site + tier +
+   * interfață. SINGURUL loc din serviciu care are voie să calculeze un preț de pachet:
+   * `quote`, `createCheckoutSession` și `createUpgradeCheckoutSession` trec toate pe
+   * aici, ca prețul AFIȘAT și cel TAXAT să nu mai poată diverge.
+   *
+   * Bug reparat: checkout-ul folosea doar `site.packagePricesCents` și IGNORA
+   * override-ul de pe interfață (`experienceConfig.items[slug].packages[tier]`) —
+   * adminul schimba prețul pentru „cadou", site-ul îl afișa corect, iar Stripe taxa
+   * prețul vechi.
+   */
+  private resolvedPackage(
+    site: Site,
+    tier: PackageTier,
+    experienceSlug?: string | null,
+  ): ResolvedExperiencePackage {
+    return resolveSitePackage(site, normalizeTier(tier), experienceSlug ?? null);
+  }
+
+  /** Refuză un pachet scos din vitrină (`enabled: false`) — nu poate fi cumpărat nici
+   *  printr-un link vechi, nici din chat. */
+  private assertPackagePurchasable(pkg: ResolvedExperiencePackage): void {
+    if (pkg.enabled === false) {
+      throw new BadRequestException(
+        `Pachetul ${pkg.label} nu mai este disponibil pentru cumpărare pe acest site.`,
+      );
+    }
   }
 
   /** Returnează prețul calculat (nu apelează Stripe). Suportă AMBELE modele:
@@ -240,24 +266,15 @@ export class PaymentsService {
   quote(site: Site, input: { tipAmount?: number; premium?: boolean; packageTier?: PackageTier; experienceSlug?: string | null }) {
     if (input.packageTier) {
       const tier = normalizeTier(input.packageTier);
-      const slug = input.experienceSlug || site.experienceConfig?.defaultSlug || 'classic';
-      const adminPkg = site.experienceConfig?.items?.[slug]?.packages?.[tier] ?? null;
-      const total =
-        adminPkg && typeof adminPkg.priceCents === 'number' && adminPkg.priceCents > 0
-          ? Math.round(adminPkg.priceCents)
-          : this.sitePackageTotal(site, tier);
-      const compareFromPkg =
-        adminPkg && typeof adminPkg.compareAtCents === 'number' && adminPkg.compareAtCents > total
-          ? Math.round(adminPkg.compareAtCents)
-          : null;
-      const compareAtCents =
-        compareFromPkg ??
-        packageCompareAtCents(
-          tier,
-          site.packageCompareAtCents ?? null,
-          site.packagePricesCents ?? null,
-        );
-      return { packageTier: tier, total, currency: site.currency, compareAtCents };
+      const pkg = this.resolvedPackage(site, tier, input.experienceSlug);
+      return {
+        packageTier: tier,
+        total: pkg.priceCents,
+        currency: site.currency,
+        compareAtCents: pkg.compareAtCents,
+        // Vitrina trebuie să știe dacă pachetul mai e cumpărabil — checkout-ul îl refuză.
+        enabled: pkg.enabled,
+      };
     }
     const tip = input.tipAmount ?? 0;
     const premium = !!input.premium;
@@ -386,13 +403,21 @@ export class PaymentsService {
         (await this.generations.resolveOwnerEmail(input.generationId)) ?? undefined;
     }
 
+    // Model PACHETE: pachetul EFECTIV pe interfața comenzii (aceeași sursă ca `quote`).
+    // Îl rezolvăm chiar și când adminul suprascrie suma, ca să putem refuza un pachet
+    // scos din vitrină indiferent pe unde vine cererea.
+    const pkg = input.packageTier
+      ? this.resolvedPackage(site, normalizeTier(input.packageTier), input.experienceSlug)
+      : null;
+    if (pkg) this.assertPackagePurchasable(pkg);
+
     // Admin chat poate suprascrie suma calculată cu un custom. Min 50 cents = limita Stripe.
     const hasOverride = typeof input.overrideAmount === 'number' && input.overrideAmount > 0;
     const baseTotal = hasOverride
       ? Math.max(50, Math.round(input.overrideAmount!))
-      : input.packageTier
+      : pkg
         ? // Model PACHETE: total = prețul pachetului (ignorăm tip/premium).
-          this.sitePackageTotal(site, normalizeTier(input.packageTier))
+          pkg.priceCents
         : this.siteTotal(site, input.tipAmount ?? 0, !!input.premium);
     const effectiveCurrency = (input.overrideCurrency ?? site.currency).toUpperCase();
     let promoCodeId: string | undefined;
@@ -677,8 +702,15 @@ export class PaymentsService {
       })
       .getRawOne<{ sum: string }>()
       .catch(() => ({ sum: '0' }));
-    const paidCents = Number(alreadyPaid?.sum ?? 0) || packagePriceCents(current, input.site.packagePricesCents);
-    const targetCents = packagePriceCents(target, input.site.packagePricesCents);
+    // Aceeași interfață pentru AMBELE tier-uri: diferența de plată se calculează pe
+    // prețurile efective ale interfeței comenzii, nu pe prețurile de listă ale site-ului.
+    const upgradeSlug = input.experienceSlug ?? gen.experienceSlug;
+    const targetPkg = this.resolvedPackage(input.site, target, upgradeSlug);
+    this.assertPackagePurchasable(targetPkg);
+    const paidCents =
+      Number(alreadyPaid?.sum ?? 0) ||
+      this.resolvedPackage(input.site, current, upgradeSlug).priceCents;
+    const targetCents = targetPkg.priceCents;
     const diff = Math.max(0, targetCents - paidCents);
     if (diff === 0) {
       await this.generations.applyPaidUpgrade(gen.id, target, input.experienceSlug ?? gen.experienceSlug);

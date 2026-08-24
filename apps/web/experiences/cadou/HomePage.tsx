@@ -11,7 +11,8 @@ import { CadouShell } from './Shell';
 import { useCadouTestimonials } from './testimonials';
 import { CadouHeroReaction } from './HeroReaction';
 import { CadouReactionsRow } from './ReactionsRow';
-import { CadouPackGrid, useCadouPackageQuotes } from './PackCard';
+import { CadouPackGrid } from './PackCard';
+import { usePackages } from '@/experiences/use-packages';
 import { CadouStyleCard, useCadouStylePreview } from './StyleCard';
 import { useExperienceCatalog } from '../use-experience-catalog';
 
@@ -52,10 +53,18 @@ export default function CadouHomePage() {
           stars: Math.max(0, Math.min(5, item.stars ?? 5)),
         };
       }));
-  // Prețurile vin din quote-ul API (per-site), NU din constantele de cod: hero-ul
-  // și grila de tarife împart același cache, deci nu pot arăta cifre diferite.
-  const quotes = useCadouPackageQuotes();
-  const basic = quotes.byTier.basic.total;
+  // Prețul „de la" și livrabilele din hero vin din pachetele rezolvate din
+  // configul de site — aceeași sursă ca grila de tarife de mai jos, deci hero-ul
+  // și cardurile nu pot diverge. `null` = nu le știm încă (config vechi / API
+  // picat la SSR) ⇒ nu afișăm cifre inventate.
+  const { items: packs, fromCents } = usePackages();
+  // Pachetul „de la" — cel mai ieftin activ. Refacerile promise în hero/FAQ sunt
+  // ale LUI, ca să nu promitem un beneficiu de la un pachet mai scump.
+  const entryPack = packs.reduce<(typeof packs)[number] | null>(
+    (best, p) => (p.priceCents > 0 && (!best || p.priceCents < best.priceCents) ? p : best),
+    null,
+  );
+  const entryRemakes = entryPack?.remakes ?? 0;
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   // Contorul depinde de ORA locală: pe server se calculează în UTC, în browser în
   // fusul vizitatorului — randat direct, cele două valori diferă și hidratarea
@@ -75,7 +84,14 @@ export default function CadouHomePage() {
   const faqs = [
     { q: t('faq1Q', { name: site.name }), a: t('faq1A') },
     { q: t('faq2Q'), a: t('faq2A') },
-    { q: t('faq3Q'), a: t('faq3A') },
+    {
+      q: t('faq3Q'),
+      a: entryRemakes === 0
+        ? t('faq3ANone')
+        : entryRemakes === 1
+          ? t('faq3AOne')
+          : t('faq3AMany', { count: String(entryRemakes) }),
+    },
     { q: t('faq4Q'), a: t('faq4A') },
   ];
 
@@ -95,13 +111,22 @@ export default function CadouHomePage() {
             <p>{t('heroLead')}</p>
             <div className="cadou-hero-deal">
               <div className="cadou-hero-price">
-                <b>{formatPrice(site, basic)}</b>
+                {fromCents !== null && <b>{formatPrice(site, fromCents)}</b>}
                 <em>{t('heroDeal')}</em>
               </div>
-              <div className="cadou-hero-remake">
-                <span className="cadou-hero-remake-mark" aria-hidden>✓</span>
-                <span>{t.rich('heroRemake', { b: (chunks) => <strong>{chunks}</strong> })}</span>
-              </div>
+              {entryRemakes > 0 && (
+                <div className="cadou-hero-remake">
+                  <span className="cadou-hero-remake-mark" aria-hidden>✓</span>
+                  <span>
+                    {entryRemakes === 1
+                      ? t.rich('heroRemakeOne', { b: (chunks) => <strong>{chunks}</strong> })
+                      : t.rich('heroRemakeMany', {
+                          b: (chunks) => <strong>{chunks}</strong>,
+                          count: String(entryRemakes),
+                        })}
+                  </span>
+                </div>
+              )}
             </div>
             <Link href={studio} className="cadou-cta">{t('heroCta')}</Link>
             {todayCount !== null && (
@@ -172,8 +197,16 @@ export default function CadouHomePage() {
             <p>{t('midLead')}</p>
             <Link href={studio} className="cadou-cta">{t('midCta')}</Link>
             <div className="cadou-pills" style={{ justifyContent: 'center' }}>
-              <span className="cadou-pill dark">{t('midPillDeal', { price: formatPrice(site, basic) })}</span>
-              <span className="cadou-pill dark">{t('midPillRemake')}</span>
+              {fromCents !== null && (
+                <span className="cadou-pill dark">{t('midPillDeal', { price: formatPrice(site, fromCents) })}</span>
+              )}
+              {entryRemakes > 0 && (
+                <span className="cadou-pill dark">
+                  {entryRemakes === 1
+                    ? t('midPillRemakeOne')
+                    : t('midPillRemakeMany', { count: String(entryRemakes) })}
+                </span>
+              )}
             </div>
           </div>
         </section>
@@ -210,7 +243,7 @@ export default function CadouHomePage() {
           <div className="cadou-kicker">{t('pricingKicker')}</div>
           <h2>{t('pricingTitle')}</h2>
           <p className="lead">{t('pricingLead')}</p>
-          <CadouPackGrid ctaHref={studio} quotes={quotes} />
+          <CadouPackGrid ctaHref={studio} />
           <p className="cadou-hint" style={{ textAlign: 'center', marginTop: 16 }}>
             {t('pricingNote')}
           </p>

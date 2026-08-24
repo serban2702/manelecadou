@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { downloadUrl } from '@/lib/download';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { api, resolveMediaUrl, type CollageDto, type GenerationDto } from '@/lib/api';
@@ -61,7 +62,7 @@ function CadouClipPlayer({
       }
       if (kind === 'tiktok') {
         const a = document.createElement('a');
-        a.href = src;
+        a.href = downloadUrl(src, 'manea.mp4');
         a.download = 'manea.mp4';
         a.click();
         window.open('https://www.tiktok.com/tiktokstudio/upload', '_blank', 'noopener,noreferrer');

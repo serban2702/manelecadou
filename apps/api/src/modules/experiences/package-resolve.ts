@@ -11,7 +11,9 @@ import type {
   ExperienceUpsellConfig,
   PackageSnapshot,
   ResolvedExperiencePackage,
+  SiteExperienceConfig,
 } from './types';
+import { DEFAULT_EXPERIENCE_SLUG } from './catalog';
 
 /** Per-experience code defaults. Both start as global flags so admin can A/B without a deploy. */
 export const EXPERIENCE_PACKAGE_DEFAULTS: Record<string, Partial<Record<PackageTier, ExperiencePackageOverride>>> = {
@@ -211,6 +213,85 @@ export function publicExperiencePackages(
   sitePricing?: SitePackagePricing | null,
 ): Record<PackageTier, ResolvedExperiencePackage> {
   return resolveExperiencePackages(experienceSlug, adminPackages, sitePricing);
+}
+
+/**
+ * Minimul dintr-un `Site` de care are nevoie rezolvarea unui pachet. Tipat structural
+ * ca să poată fi apelat cu un Site real, cu un site parțial (cache) sau cu un obiect
+ * de test — fără să tragă entitatea TypeORM în funcțiile pure.
+ */
+export interface SitePackageSource {
+  packagePricesCents?: Partial<Record<PackageTier, number>> | null;
+  packageCompareAtCents?: Partial<Record<PackageTier, number>> | null;
+  experienceConfig?: SiteExperienceConfig | null;
+}
+
+/**
+ * Interfața (experience) efectivă pentru o cerere: cea cerută explicit → default-ul
+ * site-ului → `classic`. REGULĂ UNICĂ — orice loc care calculează un preț trebuie să
+ * folosească exact acest slug, altfel afișatul și taxatul pot diverge.
+ */
+export function effectiveExperienceSlug(
+  site: SitePackageSource | null | undefined,
+  experienceSlug?: string | null,
+): string {
+  return experienceSlug || site?.experienceConfig?.defaultSlug || DEFAULT_EXPERIENCE_SLUG;
+}
+
+/**
+ * SURSA UNICĂ DE ADEVĂR pentru pachetul efectiv al unui site (preț, preț tăiat,
+ * livrabile, `enabled`). Tot ce cotează sau taxează un pachet — `quote`, checkout,
+ * upgrade, chat, Irina — trece pe aici, ca prețul AFIȘAT și cel TAXAT să nu mai poată
+ * diverge (bug: override-ul pe interfață era ignorat la `createCheckoutSession`).
+ */
+export function resolveSitePackage(
+  site: SitePackageSource | null | undefined,
+  tier: PackageTier,
+  experienceSlug?: string | null,
+): ResolvedExperiencePackage {
+  const slug = effectiveExperienceSlug(site, experienceSlug);
+  const adminOverride = site?.experienceConfig?.items?.[slug]?.packages?.[tier] ?? null;
+  return resolvePackageDef(tier, slug, adminOverride, sitePricingOf(site));
+}
+
+/** Toate cele 3 pachete efective ale unui site pe o interfață. */
+export function resolveSitePackages(
+  site: SitePackageSource | null | undefined,
+  experienceSlug?: string | null,
+): Record<PackageTier, ResolvedExperiencePackage> {
+  return {
+    basic: resolveSitePackage(site, 'basic', experienceSlug),
+    plus: resolveSitePackage(site, 'plus', experienceSlug),
+    premium: resolveSitePackage(site, 'premium', experienceSlug),
+  };
+}
+
+/**
+ * Valoarea istorică a reducerii „la manea următoare", păstrată ca ultimă plasă:
+ * pachetul Standard nu promite nicio reducere (0), dar emailul de fidelizare a
+ * oferit dintotdeauna 40% oricui. Sursa se schimbă, valoarea implicită NU.
+ */
+export const DEFAULT_NEXT_SONG_DISCOUNT_PERCENT = 40;
+
+/**
+ * Procentul de reducere la următoarea manea, în ordinea corectă a surselor:
+ *   1. `packageSnapshot` — ce i s-a promis clientului CÂND A PLĂTIT (înghețat);
+ *   2. pachetul rezolvat azi (comenzi vechi, fără procent în snapshot);
+ *   3. 40% — valoarea implicită istorică.
+ */
+export function nextSongDiscountPercent(
+  snapshot?: Pick<PackageSnapshot, 'nextSongDiscountPercent'> | null,
+  resolved?: Pick<ResolvedExperiencePackage, 'nextSongDiscountPercent'> | null,
+): number {
+  const fromSnapshot = snapshot?.nextSongDiscountPercent;
+  if (typeof fromSnapshot === 'number' && Number.isFinite(fromSnapshot) && fromSnapshot > 0) {
+    return Math.round(fromSnapshot);
+  }
+  const fromPackage = resolved?.nextSongDiscountPercent;
+  if (typeof fromPackage === 'number' && Number.isFinite(fromPackage) && fromPackage > 0) {
+    return Math.round(fromPackage);
+  }
+  return DEFAULT_NEXT_SONG_DISCOUNT_PERCENT;
 }
 
 /** Prețul EFECTIV al unui tier pe o interfață (vezi precedența din `resolvePackageDef`). */

@@ -1,8 +1,6 @@
 {
   "common": {
     "currency": "₺",
-    "priceMain": "499",
-    "priceMainStrike": "599",
     "ctaMakeManea": "🎤 Şarkı yap — {price}",
     "ctaMakeManeaShort": "Şarkı yap",
     "ctaListen": "Örnekleri dinle",
@@ -15,9 +13,11 @@
     "send": "Gönder",
     "share": "Paylaş",
     "copy": "Kopyala",
-    "copied": "Kopyalandı!"
+    "copied": "Kopyalandı!",
+    "ctaMakeManeaPlain": "🎤 Şarkı yap"
   },
-  "urgency": "SINIRLI TEKLİF — Yeni hesapla ilk şarkı: <b>499 ₺</b> (599 yerine)",
+  "urgency": "SINIRLI TEKLİF — şarkı <s>{compareAt}</s> <b>{price}</b>",
+  "urgencyPlain": "SINIRLI TEKLİF — şarkı <b>{price}</b>",
   "nav": {
     "asculta": "Dinle",
     "studio": "Şarkı yap",
@@ -43,7 +43,6 @@
   },
   "price": {
     "badge": "⚡ Sadece bugün",
-    "save": "-17%",
     "newAccount": "yeni hesap"
   },
   "quickListen": {
@@ -475,13 +474,12 @@
       "customBtn": "Özel",
       "customPlaceholder": "örn. 1500",
       "customSurcharge": "Ek ücret: +{amount} TL (%5, üst sınır 50 TL).",
-      "premiumTitle": "Premium Şarkı",
-      "premiumRecommended": "ÖNERİLEN",
-      "premiumDesc": "🎤 4× üstün ses kalitesi · 🔥 Profesyonel master ile işlenmiş ses · ⚡ Profesyonel miks",
       "baseLine": "Temel şarkı (3 min × 2)",
-      "premiumLine": "👑 Premium yükseltme",
       "tipSurchargeLine": "İthaf ek ücreti ({amount} TL × %5, üst sınır 50)",
-      "totalUnlock": "Kilidi açma toplam"
+      "totalUnlock": "Kilidi açma toplam",
+      "recommended": "ÖNERİLEN",
+      "discountBadge": "−%{pct} İNDİRİM",
+      "offerEnds": "İndirimli fiyat şu sürede bitiyor"
     },
     "step5Demo": {
       "title": "5. Ücretsiz demo (30s)",
@@ -496,7 +494,7 @@
     },
     "step5PayFirst": {
       "title": "5. Şarkıyı üretmek için öde",
-      "sub": "Şarkın (3 min × 2 versiyon) ödeme onaylandığı ANDA üretilir. Sonucu e-postaya gönderir ve ~3 dakika sonra burada da görebilirsin.",
+      "sub": "Şarkın ({minutes} dk × 2 versiyon) ödeme onaylandığı ANDA üretilir. Sonucu e-postaya göndeririz, hazır olur olmaz burada da görürsün.",
       "emailLabel": "📧 E-posta adresin (zorunlu)",
       "emailSentTo": "✓ Şarkıyı şu adrese gönderiyoruz:",
       "completeLine": "Tam şarkı (3 min × 2)",
@@ -618,11 +616,6 @@
       "paymentCanceled": "Ödeme iptal edildi. Verileriniz kaydedildi — hazır olduğunuzda tekrar deneyin."
     }
   },
-  "giftMini": {
-    "title": "Kod al, birine ver",
-    "body": "Sen ödüyorsun. O, SMS / e-posta ile kod alıyor ve şarkısını kendi ayarlıyor.",
-    "cta": "Hediye kodu al — 499 ₺"
-  },
   "metadata": {
     "title": "Manele Cadou — Onun ismiyle 90 saniyede şarkı",
     "description": "Kişiselleştirilmiş arabesk/manele üreticisi. Stil, vesile, ses seç — e-postaya 2 versiyon. 1+1 BEDAVA, tek ödeme.",
@@ -725,8 +718,8 @@
       "sec3": {
         "h": "3. Fiyatlar ve ödemeler",
         "b1": "Ödeme üretimden önce yapılır; şarkı, ödeme onaylandıktan sonra oluşturulur.",
-        "b2": "Tam manele: <b>{fullPrice}</b> (KDV dahil).",
-        "b3": "İthaf ek ücreti: sözlerde geçen tutarın %10'u, üst sınır 150 TL (yalnızca TL için).",
+        "b2": "Kişiye özel şarkı: <b>{fromPrice}</b> fiyatından başlar (KDV dahil), seçilen pakete göre değişir.",
+        "b3": "İthaf ek ücreti: sözlerde geçen tutarın %{pct} kadarı, üst sınır {cap}.",
         "b4": "Ödemeler Stripe üzerinden işlenir — kart bilgilerini saklamıyoruz."
       },
       "sec4": {
@@ -1010,7 +1003,8 @@
     "paymentIncompleteSub": "Siparişin kaydedildi. Şarkını hazırlayıp e-posta ile göndermemiz için ödemeyi tekrar başlat.",
     "retryPaymentCta": "Ödemeyi tekrar başlat",
     "retryPaymentCtaPrice": "Ödemeyi tekrar başlat — {amount}",
-    "promoApplied": "{code} koduyla −%{percent} indirim otomatik uygulandı"
+    "promoApplied": "{code} koduyla −%{percent} indirim otomatik uygulandı",
+    "collageDropHint": "en fazla {count} görsel · her biri {mb}MB'a kadar · JPG / PNG / WEBP"
   },
   "cursorHint": {
     "default": "Buraya bas"
@@ -1044,7 +1038,9 @@
       "sarbatori": "⛪ Özel günler",
       "aniversari": "🎂 Yıl dönümleri",
       "nume": "🔤 İsimli şarkılar"
-    }
+    },
+    "ctaMakePlain": "🎤 Kendi şarkını yap",
+    "articleCtaButtonPlain": "🎤 Şimdi başla"
   },
   "checkoutCancelPage": {
     "title": "Ödeme iptal edildi",
@@ -1195,6 +1191,7 @@
         "metaOne": "Şarkının üstüne dikey bir klip kurgulanıyor.",
         "notReadyOwner": "Klip, şarkı hazır olduktan sonra açılıyor.",
         "notReadyOther": "Klibi yalnızca şarkıyı sipariş eden kişi yapabilir.",
+        "notInPackage": "Paketin, fotoğraflardan klip oluşturmayı içermiyor.",
         "seeSong": "Şarkıyı gör",
         "dropSelectedOne": "1 fotoğraf seçildi — değiştirmek için bas",
         "dropSelectedMany": "{count} fotoğraf seçildi — değiştirmek için bas",
@@ -1263,12 +1260,12 @@
     },
     "follow": {
       "title": "Sonraki şarkı daha ucuz",
-      "badge": "−%40",
-      "done": "Takip için teşekkürler. Sonraki şarkında %40 indirimin var.",
+      "badge": "−%{pct}",
+      "done": "Takip için teşekkürler. Sonraki şarkında %{pct} indirimin var.",
       "doneCode": "Kodun: <b>{code}</b>.",
       "doneAuto": "Ödemede otomatik uyguluyoruz.",
-      "lead": "Facebook ve TikTok'ta takip et, sonraki şarkında %40 indirim kazan.",
-      "leadOne": "{network} üzerinde takip et, sonraki şarkında %40 indirim kazan.",
+      "lead": "Facebook ve TikTok'ta takip et, sonraki şarkında %{pct} indirim kazan.",
+      "leadOne": "{network} üzerinde takip et, sonraki şarkında %{pct} indirim kazan.",
       "facebook": "Facebook",
       "tiktok": "TikTok",
       "facebookDone": "Facebook · takip ediliyor",
@@ -1288,14 +1285,13 @@
       "fileBase": "sarki"
     },
     "upsell": {
-      "basicTitle": "Fotoğraflı kolaj da ister misin?",
-      "basicBody": "Plus'a geç: daha uzun şarkı + nakarata en fazla 4 fotoğraflı kolaj.",
-      "plusTitle": "Şarkının tamamında kolaj",
-      "plusBody": "Premium'a geç: şarkının tamamında 15 fotoğraflı kolaj, tebrik kartı ve premium sayfa.",
       "error": "Yükseltmeyi açamadık.",
       "decline": "Hayır, teşekkürler",
       "busy": "Açılıyor…",
-      "cta": "Yükselt →"
+      "cta": "Yükselt →",
+      "title": "{name} paketine geçmek ister misin?",
+      "bodyChorus": "{name} ile nakarata en fazla {photos} fotoğraflı kolaj ve daha uzun bir şarkı alırsın.",
+      "bodyFullTrack": "{name} ile şarkının tamamında en fazla {photos} fotoğraflı kolaj, tebrik kartı ve premium sayfa alırsın."
     },
     "reactions": {
       "kicker": "Kayda alınmış tepkiler",
@@ -1554,7 +1550,6 @@
       "heroTitle": "Kendi şarkını 2 dakikada yaptır!",
       "heroLead": "Stili seç, detayları ekle; biz sana özel bir şarkı üretelim — birkaç dakikada hazır.",
       "heroDeal": "1+1 BEDAVA",
-      "heroRemake": "Beğenmezsen bir kez <b>ÜCRETSİZ</b> yeniden yapım",
       "heroCta": "Şarkı yap!",
       "heroSocial": "🔥 Bugün {count} şarkı üretildi",
       "statSongs": "Üretilen şarkı",
@@ -1628,7 +1623,6 @@
       "midLead": "Birkaç tıkla üretimi hemen başlat!",
       "midCta": "Şarkıyı şimdi üret",
       "midPillDeal": "{price} · 1+1 BEDAVA",
-      "midPillRemake": "Beğenmezsen bir kez ÜCRETSİZ yeniden yapım",
       "reactionKicker": "Unutulmayan hediye",
       "reactionTitle": "Tepkisini bir düşün…",
       "reactionText": "Kardeşin, sevgilin ya da partideki patronun için kişiye özel bir şarkı. Kimsenin unutmadığı hediye.",
@@ -1649,10 +1643,16 @@
       "faq2Q": "Üretim ne kadar sürüyor?",
       "faq2A": "Genelde 2–5 dakika. Hazır olur olmaz şarkıyı e-postana gönderiyoruz.",
       "faq3Q": "Beğenmezsem ne oluyor?",
-      "faq3A": "Beğenmezsen bir ÜCRETSİZ yeniden yapım hakkın var. Sen memnun kalana kadar yeniden üretiyoruz.",
       "faq4Q": "Sözleri ben yazabilir miyim?",
       "faq4A": "Evet. Ekstra adımında “Sözleri kendim yazmak istiyorum” kutusunu işaretle; sözlerini birebir kullanırız.",
-      "faqAll": "Bütün soru ve cevapları gör →"
+      "faqAll": "Bütün soru ve cevapları gör →",
+      "heroRemakeOne": "Beğenmezsen bir kez <b>ÜCRETSİZ</b> yeniden yapım",
+      "heroRemakeMany": "Beğenmezsen <b>{count} kez ÜCRETSİZ</b> yeniden yapım",
+      "midPillRemakeOne": "Beğenmezsen bir kez ÜCRETSİZ yeniden yapım",
+      "midPillRemakeMany": "Beğenmezsen {count} kez ÜCRETSİZ yeniden yapım",
+      "faq3AOne": "Beğenmezsen bir ÜCRETSİZ yeniden yapım hakkın var. Sen memnun kalana kadar yeniden üretiyoruz.",
+      "faq3AMany": "Beğenmezsen {count} ÜCRETSİZ yeniden yapım hakkın var. Sen memnun kalana kadar yeniden üretiyoruz.",
+      "faq3ANone": "Neyi beğenmediğini bize yaz, birlikte bir çözüm buluruz."
     },
     "wizard": {
       "stepStyle": "Stil",
@@ -1715,7 +1715,8 @@
       "promoCheckFailed": "Kodu doğrulayamadık. Tekrar dene.",
       "afterPayRemakeOne": "Ödemeden sonra şarkıyı üretiyoruz; bir değişiklik isterseniz bir ücretsiz yeniden yapım hakkınız var.",
       "afterPayRemakeMany": "Ödemeden sonra şarkıyı üretiyoruz; bir değişiklik isterseniz {count} ücretsiz yeniden yapım hakkınız var.",
-      "afterPayCollage": "Fotoğraflı kolaj, şarkı üretildikten sonra hazırlanır.",
+      "afterPayCollage": "En fazla {photos} fotoğraflı kolaj (nakarat üzerine) şarkı üretildikten sonra hazırlanır.",
+      "afterPayCollageFull": "En fazla {photos} fotoğraflı kolaj, şarkının tamamı üzerine, şarkı üretildikten sonra hazırlanır.",
       "afterPayCard": "Kişiye özel tebrik kartı, şarkı üretildikten sonra hazırlanır.",
       "afterPaySocial": "İthaflı Facebook ve TikTok paylaşımı, şarkı hazır olduktan sonra yapılır.",
       "back": "Geri",

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere, IsNull } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { PromoCode, PromoRedemption } from './promo-code.entity';
+import { DEFAULT_NEXT_SONG_DISCOUNT_PERCENT } from '../experiences/package-resolve';
 
 export interface ValidationResult {
   ok: boolean;
@@ -99,21 +100,33 @@ export class PromoService {
     });
   }
 
-  /** 40% one-shot după follow TikTok + Facebook pe pagina manelei. Idempotent pe guest. */
+  /**
+   * Reducere one-shot la manea următoare după follow TikTok + Facebook pe pagina manelei.
+   * Idempotent pe guest.
+   *
+   * Procentul NU mai e hardcodat aici: îl decide apelantul din `nextSongDiscountPercent`
+   * (snapshotul comenzii → pachetul rezolvat → 40%), ca reducerea promisă clientului și
+   * cea emisă efectiv să fie același număr. Fără `percent` rămâne valoarea istorică.
+   */
   async issueSocialFollowDiscount(input: {
     siteId: string | null;
     guestId: string;
     email?: string | null;
+    percent?: number;
   }): Promise<PromoCode> {
     const note = `social_follow guest:${input.guestId}`;
     const existing = await this.codes.findOne({
       where: { note, source: 'social_follow' },
     });
     if (existing) return existing;
+    const percent =
+      typeof input.percent === 'number' && Number.isFinite(input.percent) && input.percent > 0
+        ? Math.round(input.percent)
+        : DEFAULT_NEXT_SONG_DISCOUNT_PERCENT;
     return this.create({
       siteId: input.siteId,
       discountType: 'percent',
-      discountValue: 40,
+      discountValue: percent,
       maxUses: 1,
       restrictedToEmail: null,
       note,

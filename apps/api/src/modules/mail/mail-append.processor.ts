@@ -1,7 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
-import { promises as fs } from 'node:fs';
 
 import { MailService } from './mail.service';
 import { ImapService } from './imap.service';
@@ -12,6 +11,8 @@ import {
   discardMime,
   pruneOutbox,
 } from '../../mailer/mail-append.queue';
+import { readMailFile } from '../../mailer/mail-storage';
+import { StorageService } from '../../storage/storage.service';
 
 /** Vechimea peste care un .eml rămas în outbox e considerat gunoi. */
 const OUTBOX_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -31,6 +32,7 @@ export class MailAppendProcessor extends WorkerHost {
   constructor(
     private readonly mail: MailService,
     private readonly imap: ImapService,
+    private readonly storage: StorageService,
   ) {
     super();
   }
@@ -41,13 +43,15 @@ export class MailAppendProcessor extends WorkerHost {
     if (!acc) {
       // Site fără căsuță IMAP conectată (ex. un tenant nou) — nu e o eroare.
       this.logger.debug(`no mailbox for ${data.fromAddr}; skipping sent-copy`);
-      await discardMime(data.mimePath);
+      await discardMime(this.storage, data.mimePath);
       return;
     }
 
     let raw: Buffer;
     try {
-      raw = await fs.readFile(data.mimePath);
+      // `mimePath` e cheia de storage (formatul nou) sau calea absolută veche —
+      // helper-ul le acceptă pe amândouă și caută disc → uploads → R2.
+      raw = await readMailFile(this.storage, data.mimePath);
     } catch (e) {
       // Fișierul a dispărut (prune sau job reluat după ștergere) — nu are rost retry.
       this.logger.warn(`mime missing for ${data.messageId}: ${(e as Error).message}`);
@@ -57,7 +61,7 @@ export class MailAppendProcessor extends WorkerHost {
     const folderPath = await this.resolveSentFolder(acc);
     if (!folderPath) {
       this.logger.warn(`no Sent folder for ${acc.email}; skipping sent-copy`);
-      await discardMime(data.mimePath);
+      await discardMime(this.storage, data.mimePath);
       return;
     }
 
@@ -66,14 +70,14 @@ export class MailAppendProcessor extends WorkerHost {
       this.logger.log(
         `${appended ? 'sent-copy' : 'sent-copy (already there)'} ${acc.email} → ${folderPath} to=${data.to} id=${data.messageId}`,
       );
-      await discardMime(data.mimePath);
-      void pruneOutbox(OUTBOX_MAX_AGE_MS);
+      await discardMime(this.storage, data.mimePath);
+      void pruneOutbox(this.storage, OUTBOX_MAX_AGE_MS);
     } catch (e) {
       const msg = (e as Error).message;
       // Ultima încercare: nu mai ține fișierul ocupat degeaba.
       if (job.attemptsMade + 1 >= (job.opts.attempts ?? 1)) {
         this.logger.warn(`sent-copy gave up for ${data.messageId}: ${msg}`);
-        await discardMime(data.mimePath);
+        await discardMime(this.storage, data.mimePath);
         return;
       }
       throw e;

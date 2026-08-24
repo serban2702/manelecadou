@@ -4,8 +4,21 @@ import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import type { MailAttachmentInput } from '../../mailer/mail.types';
+import { StorageService } from '../../storage/storage.service';
+import {
+  LEGACY_MAIL_ATTACH_DIR,
+  mailKey,
+  safeMailName,
+  sanitizeMailMime,
+} from '../../mailer/mail-storage';
 
-const STAGING_DIR = path.join(process.env.MAIL_ATTACH_DIR ?? '/tmp/manelecadou-mail-attach', 'staging');
+/** Prefixul de storage: `mail-attach/staging/<id>/...` (disc + R2). */
+const STAGING_PREFIX = 'staging';
+/** Directorul vechi, doar pentru fișierele rămase în lucru peste deploy. */
+const LEGACY_STAGING_DIR = path.join(LEGACY_MAIL_ATTACH_DIR, 'staging');
+/** Numele fișierului cu metadate. Vechiul `.meta.json` e citit în continuare. */
+const META_NAME = 'meta.json';
+const LEGACY_META_NAME = '.meta.json';
 
 /** Limita per fișier. Mailgun refuză mailurile peste ~25MB, deci n-are rost mai mult. */
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -21,16 +34,25 @@ export interface StagedAttachment {
   size: number;
 }
 
+interface StagedMeta {
+  filename: string;
+  mime: string;
+  size: number;
+}
+
 /**
  * Ține fișierele atașate în timp ce adminul compune un mail, până la trimitere.
  *
- * Fișierele stau pe disc (volumul `api_mail_attach`), nu în DB sau memorie: un
+ * Fișierele trec prin `StorageService` (disc + R2), nu prin DB sau memorie: un
  * mail poate avea zeci de MB, iar compunerea poate dura minute. Un `id` opac
- * (uuid) e tot ce circulă prin API.
+ * (uuid) e tot ce circulă prin API. Cu R2 activ, compunerea supraviețuiește și
+ * dacă mailul pleacă de pe alt container decât cel care a primit upload-ul.
  */
 @Injectable()
 export class OutboxAttachmentsService {
   private readonly logger = new Logger('OutboxAttachmentsService');
+
+  constructor(private readonly storage: StorageService) {}
 
   async save(file: { buffer: Buffer; originalName: string; mime: string }): Promise<StagedAttachment> {
     if (!file.buffer?.length) throw new BadRequestException('Fișier gol');
@@ -38,16 +60,16 @@ export class OutboxAttachmentsService {
       throw new BadRequestException(`Fișierul depășește ${Math.round(MAX_ATTACHMENT_BYTES / 1024 / 1024)}MB`);
     }
     const id = randomUUID();
-    const dir = path.join(STAGING_DIR, id);
-    await fs.mkdir(dir, { recursive: true });
-    const filename = safeName(file.originalName);
-    await fs.writeFile(path.join(dir, filename), file.buffer);
-    await fs.writeFile(
-      path.join(dir, '.meta.json'),
-      JSON.stringify({ filename: file.originalName, mime: file.mime, size: file.buffer.length }),
+    const meta: StagedMeta = { filename: file.originalName, mime: file.mime, size: file.buffer.length };
+    // MIME-ul vine din upload (control admin, dar tot input) — sanitizat înainte de bucket.
+    await this.storage.saveBuffer(this.fileKey(id, meta.filename), file.buffer, sanitizeMailMime(file.mime));
+    await this.storage.saveBuffer(
+      this.metaKey(id),
+      Buffer.from(JSON.stringify(meta)),
+      'application/json',
     );
     void this.prune();
-    return { id, filename: file.originalName, mime: file.mime, size: file.buffer.length };
+    return { id, ...meta };
   }
 
   /** Încarcă atașamentele pregătite, în forma cerută de builder-ul de MIME. */
@@ -56,21 +78,15 @@ export class OutboxAttachmentsService {
     let total = 0;
     for (const id of ids) {
       if (!isUuid(id)) throw new BadRequestException('Atașament invalid');
-      const dir = path.join(STAGING_DIR, id);
-      let meta: { filename: string; mime: string; size: number };
-      try {
-        meta = JSON.parse(await fs.readFile(path.join(dir, '.meta.json'), 'utf8'));
-      } catch {
-        throw new BadRequestException('Atașamentul a expirat — încarcă-l din nou');
-      }
-      const content = await fs.readFile(path.join(dir, safeName(meta.filename)));
-      total += content.length;
+      const staged = await this.read(id);
+      if (!staged) throw new BadRequestException('Atașamentul a expirat — încarcă-l din nou');
+      total += staged.content.length;
       if (total > MAX_TOTAL_ATTACHMENT_BYTES) {
         throw new BadRequestException(
           `Atașamentele depășesc ${Math.round(MAX_TOTAL_ATTACHMENT_BYTES / 1024 / 1024)}MB în total`,
         );
       }
-      out.push({ filename: meta.filename, content, contentType: meta.mime });
+      out.push({ filename: staged.meta.filename, content: staged.content, contentType: staged.meta.mime });
     }
     return out;
   }
@@ -78,31 +94,74 @@ export class OutboxAttachmentsService {
   async discard(ids: string[]): Promise<void> {
     for (const id of ids) {
       if (!isUuid(id)) continue;
-      await fs.rm(path.join(STAGING_DIR, id), { recursive: true, force: true }).catch(() => undefined);
+      await this.remove(id);
     }
   }
 
-  /** Șterge fișierele rămase de la compuneri abandonate. */
-  private async prune(): Promise<void> {
+  /** Citește un atașament pregătit: întâi din storage, apoi de pe volumul vechi. */
+  private async read(id: string): Promise<{ meta: StagedMeta; content: Buffer } | null> {
     try {
-      const entries = await fs.readdir(STAGING_DIR);
-      const cutoff = Date.now() - STAGING_MAX_AGE_MS;
+      const meta = JSON.parse((await this.storage.readBuffer(this.metaKey(id))).toString('utf8')) as StagedMeta;
+      const content = await this.storage.readBuffer(this.fileKey(id, meta.filename));
+      return { meta, content };
+    } catch {
+      /* poate e un upload început înainte de mutarea pe storage */
+    }
+    try {
+      const dir = path.join(LEGACY_STAGING_DIR, id);
+      const meta = JSON.parse(await fs.readFile(path.join(dir, LEGACY_META_NAME), 'utf8')) as StagedMeta;
+      const content = await fs.readFile(path.join(dir, safeMailName(meta.filename)));
+      return { meta, content };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Șterge un atașament pregătit din toate locurile (storage + volum vechi). */
+  private async remove(id: string): Promise<void> {
+    for (const key of await this.storage.list(mailKey(STAGING_PREFIX, id)).catch(() => [])) {
+      await this.storage.delete(key).catch(() => undefined);
+    }
+    await fs
+      .rm(path.join(LEGACY_STAGING_DIR, id), { recursive: true, force: true })
+      .catch(() => undefined);
+  }
+
+  /**
+   * Șterge fișierele rămase de la compuneri abandonate.
+   *
+   * Vechimea se citește de pe disc (copia locală scrisă de `saveBuffer`), pentru
+   * că listarea din bucket nu întoarce data. Pe un container pornit din zero, cu
+   * fișierele doar în R2, nu are ce prune-ui — obiectele rămase sunt mici și rare.
+   */
+  private async prune(): Promise<void> {
+    const cutoff = Date.now() - STAGING_MAX_AGE_MS;
+    for (const dir of [this.storage.localAbs(mailKey(STAGING_PREFIX)), LEGACY_STAGING_DIR]) {
+      let entries: string[];
+      try {
+        entries = await fs.readdir(dir);
+      } catch {
+        continue; // directorul nu există (încă)
+      }
       for (const name of entries) {
-        const fp = path.join(STAGING_DIR, name);
-        const st = await fs.stat(fp).catch(() => null);
-        if (st && st.mtimeMs < cutoff) {
-          await fs.rm(fp, { recursive: true, force: true }).catch(() => undefined);
+        const st = await fs.stat(path.join(dir, name)).catch(() => null);
+        if (!st || st.mtimeMs >= cutoff) continue;
+        if (isUuid(name)) {
+          await this.remove(name);
+        } else {
+          await fs.rm(path.join(dir, name), { recursive: true, force: true }).catch(() => undefined);
         }
       }
-    } catch {
-      /* directorul nu există încă */
     }
   }
-}
 
-/** Numele pe disc: fără separatoare de cale sau surprize de encoding. */
-function safeName(name: string): string {
-  return (name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200) || 'file';
+  private fileKey(id: string, filename: string): string {
+    return mailKey(STAGING_PREFIX, id, safeMailName(filename));
+  }
+
+  private metaKey(id: string): string {
+    return mailKey(STAGING_PREFIX, id, META_NAME);
+  }
 }
 
 function isUuid(v: string): boolean {

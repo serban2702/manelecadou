@@ -44,11 +44,24 @@ const argOf = (name, dflt) => {
 };
 const phase = argOf('phase', 'check');
 const dryRun = args.has('--dry-run');
-// Ce facem cu refacerile gratuite ale comenzilor vechi. Codul nou dă cotă pe
-// pachet (Standard 1 / Plus 2 / Premium 3) în loc de 1 global, deci comenzile
-// vechi care și-au consumat refacerea ar primi retroactiv încă 1-2 gratuite.
-//   freeze (default) — rămân la condițiile în care au fost vândute
-//   grant            — primesc cota nouă (costă credite Suno)
+// Ce facem cu refacerile gratuite ale comenzilor vechi.
+//
+// Până acum refacerea gratuită NU era self-service: o dădea operatorul, prin
+// Irina, când greșeala era a noastră. Codul nou pune pe pagina piesei un buton
+// „Refă gratuit" cu cotă pe pachet (Standard 1 / Plus 2 / Premium 3), iar
+// comenzile vechi au `packageSnapshot` NULL, deci cad pe cota implicită a
+// tier-ului. Fără intervenție, TOT istoricul de comenzi plătite capătă brusc
+// refaceri self-service — fiecare o generare Suno plătită.
+//
+// Cifre reale de pe producție (24 aug 2026): 490 comenzi plătite (387 basic,
+// 72 plus, 31 premium), din care doar 23 au folosit vreodată refacerea. Deci
+// `grant` înseamnă ~598 de generări gratuite deblocate dintr-un singur deploy.
+//
+//   freeze (default) — TOATE comenzile de dinainte de deploy rămân la
+//                      condițiile în care au fost vândute (fără refacere
+//                      self-service). Nimeni nu pierde ceva ce i s-a promis.
+//   grant            — comenzile vechi primesc cota nouă pe pachet.
+//                      Gest comercial, cu cost real în credite Suno.
 const legacyRemakes = argOf('legacy-remakes', 'freeze');
 
 if (!['pre', 'post', 'rollout', 'check'].includes(phase)) {
@@ -180,25 +193,32 @@ async function phasePost() {
   // 2. Refaceri gratuite. Vezi comentariul de la --legacy-remakes.
   if ((await tableExists('generations')) && (await columnInfo('generations', 'freeRemakeUsedCount'))) {
     if (legacyRemakes === 'freeze') {
-      // Consumăm cota maximă (3 = Premium) pe comenzile care și-au folosit deja
-      // refacerea gratuită înainte de deploy, ca să rămână la 1 refacere.
+      // Marcăm cota drept consumată (3 = maximul, Premium) pe TOATE comenzile
+      // plătite de dinainte de deploy — nu doar pe cele care folosiseră deja o
+      // refacere. Varianta care filtra pe `freeRemakeUsedAt IS NOT NULL` lăsa
+      // descoperite tocmai comenzile fără refacere folosită, adică marea
+      // majoritate, și nu îngheța nimic în practică.
       const { rows } = await q(
         `SELECT count(*)::int AS n FROM generations
-          WHERE "freeRemakeUsedAt" IS NOT NULL AND COALESCE("freeRemakeUsedCount",0) < 3`,
+          WHERE "paidUnlocked" = true AND COALESCE("freeRemakeUsedCount",0) < 3`,
       );
-      log(`  comenzi vechi cu refacere gratuită consumată: ${rows[0].n}`);
+      log(`  comenzi plătite de dinainte de deploy, de înghețat: ${rows[0].n}`);
       await run(
         'îngheț cota de refaceri pe comenzile de dinainte de deploy',
         `UPDATE generations SET "freeRemakeUsedCount" = 3
-          WHERE "freeRemakeUsedAt" IS NOT NULL AND COALESCE("freeRemakeUsedCount",0) < 3`,
+          WHERE "paidUnlocked" = true AND COALESCE("freeRemakeUsedCount",0) < 3`,
       );
       log(
-        '    (ca să le dai totuși cota nouă: UPDATE generations SET "freeRemakeUsedCount" = 1\n' +
-          '     WHERE "freeRemakeUsedAt" IS NOT NULL;)',
+        '    (ca să le dai totuși cota nouă, pe un interval recent:\n' +
+          '     UPDATE generations SET "freeRemakeUsedCount" = 0\n' +
+          '     WHERE "paidUnlocked" = true AND "freeRemakeUsedAt" IS NULL\n' +
+          '       AND "createdAt" > now() - interval \'30 days\';)',
       );
     } else {
+      // Cine folosise deja o refacere pornește de la 1, ca să nu i se dea a doua
+      // oară aceeași. Restul rămân pe 0 și primesc cota completă a pachetului.
       await run(
-        'aliniez contorul la 1 pe comenzile vechi (primesc cota nouă pe pachet)',
+        'aliniez contorul la 1 pe comenzile care folosiseră deja o refacere',
         `UPDATE generations SET "freeRemakeUsedCount" = 1
           WHERE "freeRemakeUsedAt" IS NOT NULL AND COALESCE("freeRemakeUsedCount",0) = 0`,
       );

@@ -111,8 +111,35 @@ export function normalizeTier(v: unknown): PackageTier {
   return isPackageTier(v) ? v : 'basic';
 }
 
-/** Refacere contra cost după ce s-au epuizat cele gratuite (15 lei). */
+/**
+ * Refacere contra cost după ce s-au epuizat cele gratuite.
+ *
+ * Valoare de rezervă, în RON. NU o folosi direct pentru afișare sau taxare —
+ * folosește `paidRemakeCentsFor(basicPriceCents)`.
+ */
 export const PAID_REMAKE_CENTS = 1500;
+
+/** Cât din prețul pachetului de intrare costă o refacere plătită. */
+const PAID_REMAKE_RATIO = 0.5;
+/** Sub pragul ăsta Stripe refuză plata. */
+const STRIPE_MIN_CENTS = 200;
+
+/**
+ * Prețul unei refaceri plătite, în moneda site-ului.
+ *
+ * Se derivă din pachetul de intrare al tenantului, nu dintr-o constantă:
+ * 1500 „cenți" înseamnă 15 lei în România, dar 15 EURO pe site-ul grecesc,
+ * unde toată melodia costă 7,99 € — adică refacerea ajungea de aproape două ori
+ * mai scumpă decât produsul. Cu raportul de mai jos, România rămâne EXACT la 15
+ * lei (2999 × 0,5 = 1500), iar celelalte piețe primesc o sumă proporțională.
+ */
+export function paidRemakeCentsFor(basicPriceCents?: number | null): number {
+  const base =
+    typeof basicPriceCents === 'number' && Number.isFinite(basicPriceCents) && basicPriceCents > 0
+      ? basicPriceCents
+      : PACKAGES.basic.priceCents;
+  return Math.max(STRIPE_MIN_CENTS, Math.round(base * PAID_REMAKE_RATIO));
+}
 
 export interface PackageFeatureDefaults {
   remakes: number;

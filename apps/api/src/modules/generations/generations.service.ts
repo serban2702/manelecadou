@@ -31,6 +31,7 @@ import {
   freeRemakeQuota,
   freeRemakesUsed,
   type PackageTier,
+  paidRemakeCentsFor,
 } from '../payments/packages';
 import {
   resolvePackageDef,
@@ -330,7 +331,11 @@ export class GenerationsService {
     }));
   }
 
-  remakeStats(g: Generation): {
+  /**
+   * `basicPriceCents` = prețul pachetului de intrare AL SITE-ULUI, ca refacerea
+   * plătită să fie în moneda potrivită. Vezi `paidRemakeCentsFor`.
+   */
+  remakeStats(g: Generation, basicPriceCents?: number | null): {
     freeRemakeUsedAt: Date | null;
     freeRemakeUsedCount: number;
     freeRemakeQuota: number;
@@ -344,7 +349,7 @@ export class GenerationsService {
       freeRemakeUsedCount: used,
       freeRemakeQuota: quota,
       freeRemakeRemaining: Math.max(0, quota - used),
-      paidRemakeCents: 1500,
+      paidRemakeCents: paidRemakeCentsFor(basicPriceCents),
     };
   }
 
@@ -362,7 +367,9 @@ export class GenerationsService {
     const used = freeRemakesUsed(src);
     const quota = freeRemakeQuota(src.packageTier, src.packageSnapshot?.remakes);
     if (used >= quota) {
-      throw new ConflictException('Refacerile gratuite s-au terminat. Poți reface contra 15 lei.');
+      // Fără sumă în text: prețul depinde de site și de monedă, iar mesajul ăsta
+      // ajunge direct în UI. Suma corectă vine din `remakeStats.paidRemakeCents`.
+      throw new ConflictException('Refacerile gratuite s-au terminat. Poți cere o refacere contra cost.');
     }
     const text = this.normalizeRemakeNotes(notes);
     const child = await this.spawnRemake(src, text);
@@ -1553,6 +1560,9 @@ export class GenerationsService {
         currency: payment.currency,
         generationLink: link,
         recipientName: gen.recipientName,
+        // Durata reală a piesei plătite — chitanța nu mai are voie să spună
+        // „3 min" indiferent de pachet.
+        durationSec: gen.durationSec ?? gen.packageSnapshot?.durationSec ?? null,
         locale: site?.locale ?? gen.locale ?? 'ro',
         branding: brandingFromSite(site),
       });

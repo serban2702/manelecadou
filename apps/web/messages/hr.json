@@ -1,8 +1,6 @@
 {
   "common": {
     "currency": "€",
-    "priceMain": "9,99",
-    "priceMainStrike": "12,99",
     "ctaMakeManea": "🎤 Napravi pjesmu — {price}",
     "ctaMakeManeaShort": "Napravi pjesmu",
     "ctaListen": "Slušaj primjere",
@@ -15,9 +13,11 @@
     "send": "Pošalji",
     "share": "Podijeli",
     "copy": "Kopiraj",
-    "copied": "Kopirano!"
+    "copied": "Kopirano!",
+    "ctaMakeManeaPlain": "🎤 Napravi pjesmu"
   },
-  "urgency": "OGRANIČENA PONUDA — Prva pjesma s novim računom: <b>9,99 €</b> (umjesto 12,99)",
+  "urgency": "OGRANIČENA PONUDA — pjesma od <s>{compareAt}</s> <b>{price}</b>",
+  "urgencyPlain": "OGRANIČENA PONUDA — pjesma od <b>{price}</b>",
   "nav": {
     "asculta": "Slušaj",
     "studio": "Napravi pjesmu",
@@ -43,7 +43,6 @@
   },
   "price": {
     "badge": "⚡ Samo danas",
-    "save": "-23%",
     "newAccount": "novi račun"
   },
   "quickListen": {
@@ -475,13 +474,12 @@
       "customBtn": "Po izboru",
       "customPlaceholder": "npr. 1500",
       "customSurcharge": "Doplata: +{amount} € (5%, plafon 50 €).",
-      "premiumTitle": "Premium Pjesma",
-      "premiumRecommended": "PREPORUČENO",
-      "premiumDesc": "🎤 4× bolji audio · 🔥 Glas obrađen profi masterom · ⚡ Profesionalni miks",
       "baseLine": "Osnovna pjesma (3 min × 2)",
-      "premiumLine": "👑 Premium nadogradnja",
       "tipSurchargeLine": "Doplata posveta ({amount} € × 5%, plafon 50)",
-      "totalUnlock": "Ukupno za otključavanje"
+      "totalUnlock": "Ukupno za otključavanje",
+      "recommended": "PREPORUČENO",
+      "discountBadge": "−{pct}% POPUSTA",
+      "offerEnds": "Snižena cijena istječe za"
     },
     "step5Demo": {
       "title": "5. Besplatni demo (30s)",
@@ -496,7 +494,7 @@
     },
     "step5PayFirst": {
       "title": "5. Plati da se generira pjesma",
-      "sub": "Tvoja pjesma (3 min × 2 verzije) generira se U TRENUTKU kad se plaćanje potvrdi. Šaljemo rezultat na email i vidiš ga i ovdje za ~3 minute.",
+      "sub": "Tvoja pjesma ({minutes} min × 2 verzije) generira se U TRENUTKU kad se plaćanje potvrdi. Šaljemo rezultat na email i vidiš ga i ovdje čim bude gotov.",
       "emailLabel": "📧 Tvoj email (obavezno)",
       "emailSentTo": "✓ Šaljemo pjesmu na",
       "completeLine": "Cijela pjesma (3 min × 2)",
@@ -618,11 +616,6 @@
       "paymentCanceled": "Plaćanje je otkazano. Vaši podaci su spremljeni — pokušajte ponovno kada budete spremni."
     }
   },
-  "giftMini": {
-    "title": "Kupuješ kod, daješ ga nekome",
-    "body": "Ti plaćaš. On dobije kod preko SMS / mail-a i sam podesi pjesmu.",
-    "cta": "Kupi poklon kod — 9,99 €"
-  },
   "metadata": {
     "title": "Manele Cadou — Napravi mu pjesmu s imenom u 90 sek",
     "description": "Generator personaliziranih balkanskih pjesama. Biraš stil, prigodu, glas — 2 verzije na mail. 1+1 GRATIS.",
@@ -725,8 +718,8 @@
       "sec3": {
         "h": "3. Cijene i plaćanja",
         "b1": "Plaćanje se vrši prije generiranja; pjesma se izrađuje nakon potvrde plaćanja.",
-        "b2": "Cijela manela: <b>{fullPrice}</b> (PDV uključen).",
-        "b3": "Dodatna naknada za posvetu: 10% od iznosa spomenutog u stihovima, ograničeno na 150 eura (samo za eura).",
+        "b2": "Personalizirana pjesma: od <b>{fromPrice}</b> (PDV uključen), ovisno o odabranom paketu.",
+        "b3": "Dodatna naknada za posvetu: {pct}% od iznosa spomenutog u stihovima, ograničeno na {cap}.",
         "b4": "Plaćanja se obrađuju putem Stripea — ne pohranjujemo podatke o kartici."
       },
       "sec4": {
@@ -1010,7 +1003,8 @@
     "paymentIncompleteSub": "Tvoja narudžba je spremljena. Nastavi plaćanje da napravimo pjesmu i pošaljemo ti je na email.",
     "retryPaymentCta": "Nastavi plaćanje",
     "retryPaymentCtaPrice": "Nastavi plaćanje — {amount}",
-    "promoApplied": "Popust −{percent}% automatski primijenjen s kodom {code}"
+    "promoApplied": "Popust −{percent}% automatski primijenjen s kodom {code}",
+    "collageDropHint": "najviše {count} slika · do {mb}MB po slici · JPG / PNG / WEBP"
   },
   "cursorHint": {
     "default": "Pritisni ovdje"
@@ -1044,7 +1038,9 @@
       "sarbatori": "⛪ Blagdani i imendani",
       "aniversari": "🎂 Obljetnice",
       "nume": "🔤 Pjesme s imenom"
-    }
+    },
+    "ctaMakePlain": "🎤 Napravi svoju pjesmu",
+    "articleCtaButtonPlain": "🎤 Počni sada"
   },
   "checkoutCancelPage": {
     "title": "Plaćanje je otkazano",
@@ -1195,6 +1191,7 @@
         "metaOne": "Montira se jedan okomiti video na pjesmu.",
         "notReadyOwner": "Video je dostupan čim pjesma bude gotova.",
         "notReadyOther": "Video može napraviti samo onaj tko je naručio pjesmu.",
+        "notInPackage": "Tvoj paket ne uključuje video od fotografija.",
         "seeSong": "Pogledaj pjesmu",
         "dropSelectedOne": "1 fotka odabrana — pritisni za promjenu",
         "dropSelectedMany": "Odabrano fotki: {count} — pritisni za promjenu",
@@ -1263,12 +1260,12 @@
     },
     "follow": {
       "title": "Sljedeća pjesma jeftinije",
-      "badge": "−40%",
-      "done": "Hvala na praćenju. Imaš 40% popusta na sljedeću pjesmu.",
+      "badge": "−{pct}%",
+      "done": "Hvala na praćenju. Imaš {pct}% popusta na sljedeću pjesmu.",
       "doneCode": "Tvoj kod: <b>{code}</b>.",
       "doneAuto": "Primjenjujemo ga automatski pri plaćanju.",
-      "lead": "Zaprati nas na Facebooku i TikToku i dobivaš 40% popusta na sljedeću pjesmu.",
-      "leadOne": "Zaprati nas na {network} i dobivaš 40% popusta na sljedeću pjesmu.",
+      "lead": "Zaprati nas na Facebooku i TikToku i dobivaš {pct}% popusta na sljedeću pjesmu.",
+      "leadOne": "Zaprati nas na {network} i dobivaš {pct}% popusta na sljedeću pjesmu.",
       "facebook": "Facebook",
       "tiktok": "TikTok",
       "facebookDone": "Facebook · zapraćeno",
@@ -1288,14 +1285,13 @@
       "fileBase": "pjesma"
     },
     "upsell": {
-      "basicTitle": "Želiš i kolaž s fotkama?",
-      "basicBody": "Nadogradi na Plus: duža pjesma + kolaž s najviše 4 fotke na refrenu.",
-      "plusTitle": "Kolaž kroz cijelu pjesmu",
-      "plusBody": "Nadogradi na Premium: kolaž s 15 fotki kroz cijelu pjesmu, čestitka i premium stranica.",
       "error": "Nismo uspjeli otvoriti nadogradnju.",
       "decline": "Ne, hvala",
       "busy": "Otvara se…",
-      "cta": "Nadogradi →"
+      "cta": "Nadogradi →",
+      "title": "Želiš prijeći na {name}?",
+      "bodyChorus": "Uz {name} dobivaš kolaž s najviše {photos} fotki na refrenu i dužu pjesmu.",
+      "bodyFullTrack": "Uz {name} dobivaš kolaž s najviše {photos} fotki kroz cijelu pjesmu, čestitku i premium stranicu."
     },
     "reactions": {
       "kicker": "Snimljene reakcije",
@@ -1554,7 +1550,6 @@
       "heroTitle": "Napravi svoju pjesmu u 2 minute!",
       "heroLead": "Odaberi stil, dodaj detalje i mi generiramo jedinstvenu pjesmu za tebe — gotova je za par minuta.",
       "heroDeal": "1+1 GRATIS",
-      "heroRemake": "Jedna <b>BESPLATNA</b> prerada ako ti se ne svidi",
       "heroCta": "Napravi pjesmu!",
       "heroSocial": "🔥 {count} pjesama napravljeno danas",
       "statSongs": "Generiranih pjesama",
@@ -1628,7 +1623,6 @@
       "midLead": "Pokreni generiranje u samo par klikova!",
       "midCta": "Generiraj pjesmu odmah",
       "midPillDeal": "{price} · 1+1 GRATIS",
-      "midPillRemake": "Jedna BESPLATNA prerada ako ti se ne svidi",
       "reactionKicker": "Poklon koji se ne zaboravlja",
       "reactionTitle": "Zamisli reakciju…",
       "reactionText": "Personalizirana pjesma za tvog brata, tvoju curu ili šefa na tulumu. Poklon koji nitko ne zaboravlja.",
@@ -1649,10 +1643,16 @@
       "faq2Q": "Koliko traje generiranje?",
       "faq2A": "Obično 2–5 minuta. Pjesmu ti šaljemo na mail čim bude gotova.",
       "faq3Q": "Što ako mi se ne svidi?",
-      "faq3A": "Imaš jednu BESPLATNU preradu ako ti se ne svidi. Radimo novu dok ne budeš zadovoljan.",
       "faq4Q": "Mogu li sam napisati tekst?",
       "faq4A": "Da. Na koraku Extra označiš „Želim napisati vlastiti tekst“ i koristimo ga doslovno.",
-      "faqAll": "Pogledaj sva pitanja i odgovore →"
+      "faqAll": "Pogledaj sva pitanja i odgovore →",
+      "heroRemakeOne": "Jedna <b>BESPLATNA</b> prerada ako ti se ne svidi",
+      "heroRemakeMany": "<b>{count} BESPLATNE prerade</b> ako ti se ne svidi",
+      "midPillRemakeOne": "Jedna BESPLATNA prerada ako ti se ne svidi",
+      "midPillRemakeMany": "{count} BESPLATNE prerade ako ti se ne svidi",
+      "faq3AOne": "Imaš jednu BESPLATNU preradu ako ti se ne svidi. Radimo novu dok ne budeš zadovoljan.",
+      "faq3AMany": "Imaš {count} BESPLATNE prerade ako ti se ne svidi. Radimo novu dok ne budeš zadovoljan.",
+      "faq3ANone": "Napiši nam što ti se ne sviđa i naći ćemo rješenje zajedno."
     },
     "wizard": {
       "stepStyle": "Stil",
@@ -1715,7 +1715,8 @@
       "promoCheckFailed": "Nismo uspjeli provjeriti kod. Pokušaj ponovno.",
       "afterPayRemakeOne": "Nakon plaćanja generiramo pjesmu, a ako želiš neku izmjenu, imaš jednu besplatnu preradu.",
       "afterPayRemakeMany": "Nakon plaćanja generiramo pjesmu, a ako želiš neku izmjenu, imaš {count} besplatnih prerada.",
-      "afterPayCollage": "Kolaž sa slikama radi se nakon što pjesma bude generirana.",
+      "afterPayCollage": "Kolaž s najviše {photos} fotki (na refrenu) radi se nakon što pjesma bude generirana.",
+      "afterPayCollageFull": "Kolaž s najviše {photos} fotki kroz cijelu pjesmu radi se nakon što pjesma bude generirana.",
       "afterPayCard": "Personalizirana čestitka radi se nakon što pjesma bude generirana.",
       "afterPaySocial": "Objava na Facebooku i TikToku, s posvetom, ide nakon što pjesma bude gotova.",
       "back": "Natrag",

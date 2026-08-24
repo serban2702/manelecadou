@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { downloadUrl } from '@/lib/download';
 import { useTranslations } from 'next-intl';
 import { resolveMediaUrl, type GenerationDto } from '@/lib/api';
 import { claimPlayback, releasePlayback } from '@/lib/audio-registry';
@@ -160,7 +161,7 @@ function CadouChorusClip({
         />
       </div>
       <div className="cadou-clip-actions">
-        <a className="cadou-clip-btn" href={src} download>{download}</a>
+        <a className="cadou-clip-btn" href={downloadUrl(src)} download>{download}</a>
       </div>
     </article>
   );

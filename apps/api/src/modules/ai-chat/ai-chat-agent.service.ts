@@ -10,8 +10,9 @@ import { ChatGateway } from '../chat/chat.gateway';
 import { Conversation, WizardData, WizardState } from '../chat/conversation.entity';
 import { ChatMessage, ChatMessagePayload } from '../chat/message.entity';
 import { PaymentsService } from '../payments/payments.service';
-import { normalizeTier, packageLabel, packageDef, PACKAGE_FEATURES, currencyWord, chatPackageUpsellRo, packageCompareAtCents, type PackageTier } from '../payments/packages';
-import { packageTotalCents } from '../payments/pricing';
+import { normalizeTier, packageLabel, packageDef, PACKAGE_FEATURES, currencyWord, chatPackageUpsellRo, type PackageTier } from '../payments/packages';
+import { effectiveExperienceSlug, resolveSitePackage, resolveSitePackages } from '../experiences/package-resolve';
+import type { ResolvedExperiencePackage } from '../experiences/types';
 import { GenerationsService } from '../generations/generations.service';
 import { Generation } from '../generations/generation.entity';
 import { GuestSessionsService } from '../guest-sessions/guest-sessions.service';
@@ -589,6 +590,81 @@ export class AIChatAgentService {
     private readonly moduleRef: ModuleRef,
   ) {}
 
+  // ============== Prețuri (sursă unică, aceeași ca la checkout) ==============
+  //
+  // Irina nu are voie să coteze alt preț decât cel pe care îl taxează Stripe. Toate
+  // prețurile din chat trec prin `resolveSitePackage`, adică prin ACEEAȘI precedență ca
+  // `PaymentsService.quote` / `createCheckoutSession`:
+  //   override pe interfață → preț per-site → preț de listă din cod.
+  // Înainte, chat-ul citea direct `site.packagePricesCents` și ignora override-ul de
+  // interfață: adminul schimba prețul pentru „cadou", site-ul îl afișa nou, iar Irina
+  // (și cardul de plată din chat) rămâneau pe cel vechi.
+  //
+  // Slug-ul interfeței: conversația nu are coloană proprie, deci îl luăm de pe generarea
+  // în lucru când există, altfel cădem pe `defaultSlug`-ul site-ului (exact regula din
+  // `quote`, iar `createCheckoutSession` — apelat din chat fără slug — folosește
+  // aceeași valoare, deci cele două coincid).
+
+  /** Pachetul EFECTIV pe interfața conversației (preț, preț tăiat, `enabled`). */
+  private convPackage(
+    site: Awaited<ReturnType<SitesService['findById']>> | null,
+    tier: PackageTier,
+    experienceSlug?: string | null,
+  ): ResolvedExperiencePackage {
+    return resolveSitePackage(site, normalizeTier(tier), experienceSlug ?? null);
+  }
+
+  /** Prețul EFECTIV al unui pachet, în cents. */
+  private convPackageCents(
+    site: Awaited<ReturnType<SitesService['findById']>> | null,
+    tier: PackageTier,
+    experienceSlug?: string | null,
+  ): number {
+    return this.convPackage(site, tier, experienceSlug).priceCents;
+  }
+
+  /** Harta prețurilor efective pe tier — pentru helperele care primesc un map de
+   *  prețuri per tier (ex. `chatPackageUpsellRo`, textul de upsell din prompt). */
+  private convPriceMap(
+    site: Awaited<ReturnType<SitesService['findById']>> | null,
+    experienceSlug?: string | null,
+  ): Record<PackageTier, number> {
+    const pkgs = resolveSitePackages(site, experienceSlug ?? null);
+    return { basic: pkgs.basic.priceCents, plus: pkgs.plus.priceCents, premium: pkgs.premium.priceCents };
+  }
+
+  /** Harta prețurilor „tăiate" efective — doar acolo unde există (marketing). */
+  private convCompareMap(
+    site: Awaited<ReturnType<SitesService['findById']>> | null,
+    experienceSlug?: string | null,
+  ): Partial<Record<PackageTier, number>> {
+    const pkgs = resolveSitePackages(site, experienceSlug ?? null);
+    const out: Partial<Record<PackageTier, number>> = {};
+    for (const tier of ['basic', 'plus', 'premium'] as PackageTier[]) {
+      const c = pkgs[tier].compareAtCents;
+      if (typeof c === 'number' && c > 0) out[tier] = c;
+    }
+    return out;
+  }
+
+  /**
+   * Interfața pe care s-a făcut comanda din conversație. Sursa de adevăr e generarea
+   * (are coloana `experienceSlug`); fără generare, `null` → cade pe default-ul site-ului.
+   */
+  private async convExperienceSlug(conv: Conversation): Promise<string | null> {
+    const genId = conv.wizardState?.generationId;
+    if (!genId) return null;
+    try {
+      const rows: Array<{ experienceSlug: string | null }> = await this.conv.manager.query(
+        `SELECT "experienceSlug" FROM generations WHERE id = $1 LIMIT 1`,
+        [genId],
+      );
+      return rows?.[0]?.experienceSlug || null;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Delay „uman" înainte de a trimite un mesaj în mod auto — 2-6 secunde,
    * scalat cu lungimea textului (un om tastează, nu răspunde instant).
@@ -1062,7 +1138,9 @@ export class AIChatAgentService {
 
     const site = conv.siteId ? await this.sites.findById(conv.siteId) : null;
     const memoryFacts = await this.loadActiveMemory(conv.siteId);
-    let sysPrompt = await this.buildSystemPrompt(site, memoryFacts);
+    // Interfața comenzii — prețurile din prompt trebuie să fie EXACT cele de la checkout.
+    const convSlug = await this.convExperienceSlug(conv);
+    let sysPrompt = await this.buildSystemPrompt(site, memoryFacts, convSlug);
 
     // ── STARE CURENTĂ (server-side) — elimină iterații irosite pe wizard_get_state
     // și o categorie întreagă de halucinații (AI nu mai ghicește ce s-a colectat).
@@ -1692,23 +1770,30 @@ Mostre audio pentru play_sample → stiluri: [${ctx.styleSampleIds.join(', ') ||
     };
   }
 
-  private async buildSystemPrompt(site: Awaited<ReturnType<SitesService['findById']>>, memory: AiMemory[]): Promise<string> {
+  private async buildSystemPrompt(
+    site: Awaited<ReturnType<SitesService['findById']>>,
+    memory: AiMemory[],
+    experienceSlug?: string | null,
+  ): Promise<string> {
     const override = (await this.settings.get('AI_CHAT_SYSTEM_PROMPT')).trim();
     if (override) return this.appendMemoryAndContacts(override, memory, site);
 
     const brand = site?.name ?? 'Manele Cadou';
     const locale = site?.locale ?? 'ro';
-    const overrides = site?.packagePricesCents ?? null;
-    const compareOverrides = site?.packageCompareAtCents ?? null;
-    const basicCents = packageTotalCents('basic', overrides);
-    const plusCents = packageTotalCents('plus', overrides);
-    const premiumCents = packageTotalCents('premium', overrides);
+    // Prețurile EFECTIVE pe interfața comenzii — aceleași cifre pe care le taxează
+    // Stripe. Nu citi `site.packagePricesCents` direct aici: ar sări peste override-ul
+    // de interfață și Irina ar cota alt preț decât cel de pe site.
+    const overrides = this.convPriceMap(site, experienceSlug);
+    const compareOverrides = this.convCompareMap(site, experienceSlug);
+    const basicCents = overrides.basic;
+    const plusCents = overrides.plus;
+    const premiumCents = overrides.premium;
     const cur = site?.currency ?? 'RON';
     const price = `${(basicCents / 100).toFixed(2)} ${cur}`;
     const plusPrice = `${(plusCents / 100).toFixed(2)} ${cur}`;
     const premiumPrice = `${(premiumCents / 100).toFixed(2)} ${cur}`;
     // Preț „tăiat" Plus (marketing) — dacă e setat, Irina îl prezintă ca reducere limitată.
-    const plusCompareCents = packageCompareAtCents('plus', compareOverrides, overrides);
+    const plusCompareCents = compareOverrides.plus ?? null;
     const plusOldPrice = plusCompareCents ? `${(plusCompareCents / 100).toFixed(2)} ${cur}` : null;
     const packageUpsell = chatPackageUpsellRo(overrides, { compareAt: compareOverrides, currency: cur });
     // Durata REALĂ a piesei per pachet, derivată din PACKAGES.durationSec (nu hardcodată).
@@ -3579,11 +3664,13 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     let upgradePrices = '';
     try {
       const site = conv.siteId ? await this.sites.findById(conv.siteId).catch(() => null) : null;
-      const overrides = site?.packagePricesCents ?? null;
+      // Interfața comenzii, nu default-ul site-ului: upgrade-ul se taxează pe prețurile ei.
+      const slug = (generation as { experienceSlug?: string | null }).experienceSlug ?? null;
+      const prices = this.convPriceMap(site, slug);
       const cur = currencyWord(site?.currency ?? null);
       upgradePrices =
-        ` Prețuri: Plus ${(packageTotalCents('plus', overrides) / 100).toFixed(2)} ${cur}, ` +
-        `Premium ${(packageTotalCents('premium', overrides) / 100).toFixed(2)} ${cur}.`;
+        ` Prețuri: Plus ${(prices.plus / 100).toFixed(2)} ${cur}, ` +
+        `Premium ${(prices.premium / 100).toFixed(2)} ${cur}.`;
     } catch {
       /* fără prețuri e ok — regula rămâne validă */
     }
@@ -4135,15 +4222,18 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     conversationId: string,
     site: Awaited<ReturnType<SitesService['findById']>>,
     storedTier: PackageTier,
+    experienceSlug?: string | null,
   ): Promise<PackageTier | null> {
     const rank: Record<PackageTier, number> = { basic: 0, plus: 1, premium: 2 };
     const upgradeOnly = (t: PackageTier | null): PackageTier | null =>
       t && rank[t] > rank[storedTier] ? t : null;
-    const overrides = site?.packagePricesCents ?? null;
+    // Prețurile EFECTIVE — clientul repetă cifra pe care i-a arătat-o pitch-ul, iar
+    // pitch-ul e construit tot din prețurile interfeței.
+    const prices = this.convPriceMap(site, experienceSlug);
     const priceByTier: Array<[PackageTier, number]> = [
-      ['basic', packageTotalCents('basic', overrides)],
-      ['plus', packageTotalCents('plus', overrides)],
-      ['premium', packageTotalCents('premium', overrides)],
+      ['basic', prices.basic],
+      ['plus', prices.plus],
+      ['premium', prices.premium],
     ];
 
     const recent = await this.msg.find({
@@ -4435,6 +4525,10 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     if (!conv.siteId) return { error: 'no siteId' };
     const site = await this.sites.findById(conv.siteId);
     if (!site) return { error: 'site not found' };
+    // Interfața comenzii — toate prețurile de mai jos (dedup link, cardul de plată) și
+    // snapshotul de livrabile trebuie să cadă pe ACEEAȘI interfață ca checkout-ul.
+    // Generarea în lucru are slug-ul; la prima comandă cădem pe default-ul site-ului.
+    const orderSlug = effectiveExperienceSlug(site, await this.convExperienceSlug(conv));
 
     // GUARD anti-mismatch pachet (BUG observat 2026-06-19 conv b8eb3a45): userul a ales
     // „Varianta 2" → Irina a confirmat „Ai ales pachetul Plus la 49.99 lei" dar NU a salvat
@@ -4467,7 +4561,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       // doar confirmarea noastră — dar numai dintre mesajele de DUPĂ prezentarea pachetelor,
       // unde un preț sau un nume de pachet chiar înseamnă o alegere.
       if (!confirmedTier) {
-        confirmedTier = await this.detectUserTierChoice(conv.id, site, storedTier);
+        confirmedTier = await this.detectUserTierChoice(conv.id, site, storedTier, orderSlug);
       }
       if (confirmedTier && confirmedTier !== storedTier) {
         this.logger.warn(
@@ -4577,7 +4671,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     // Dedup 30 min: dacă deja există un link identic (aceeași sumă) trimis în ultimele
     // minute, refolosește-l în loc să creăm un Generation + checkout + card noi.
     const reuseTier = normalizeTier(state.data.packageTier);
-    const reuseAmount = packageTotalCents(reuseTier, site.packagePricesCents ?? null);
+    const reuseAmount = this.convPackageCents(site, reuseTier, orderSlug);
     const reusable = await this.findReusablePaymentLink(conv.id, reuseAmount, site.currency.toUpperCase());
     if (reusable) {
       const rp = reusable.payload as ChatMessagePayload | undefined;
@@ -4645,6 +4739,10 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
           userId: conv.userId,
           guestId: conv.guestId,
           siteId: conv.siteId,
+          // Aceeași interfață pe care se calculează și prețul de mai jos: fără ea
+          // snapshotul de livrabile s-ar rezolva pe „classic" iar plata pe interfața
+          // reală a site-ului — clientul ar plăti un pachet și ar primi altul.
+          experienceSlug: orderSlug,
         },
       );
 
@@ -4676,6 +4774,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         guestId: conv.guestId,
         generationId: generation.id,
         packageTier: tier,
+        experienceSlug: orderSlug,
         email: conv.email ?? undefined,
         promoCode: activePromoCode ?? undefined,
         site,
@@ -4701,7 +4800,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         .execute();
 
       // 4. Trimite payment_link în chat (vizibil user + admin)
-      const amount = packageTotalCents(tier, site.packagePricesCents ?? null);
+      const amount = this.convPackageCents(site, tier, orderSlug);
       const currency = site.currency.toUpperCase();
       const tierLabel = packageLabel(tier);
       const description = `${songWord(state.data.styleHint, state.data.style, state.data.occasion, state.data.message)} pentru ${state.data.recipientName} — pachet ${tierLabel}`;
@@ -6512,11 +6611,13 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       if (!site) return { sent: false, status: 'SITE_NOT_FOUND' };
       const tier = normalizeTier(args.packageTier);
       const description = String(args.description ?? 'Manea personalizată');
+      // Interfața comenzii — prețul din card trebuie să fie cel taxat de checkout.
+      const linkSlug = effectiveExperienceSlug(site, await this.convExperienceSlug(ctx.conv));
 
       // Dedup 30 min: dacă există deja un link identic (sumă+valută), refolosește-l.
       const expectedAmount = typeof args.amount === 'number'
         ? args.amount
-        : packageTotalCents(tier, site.packagePricesCents ?? null);
+        : this.convPackageCents(site, tier, linkSlug);
       const expectedCurrency = (typeof args.currency === 'string' ? args.currency : site.currency).toUpperCase();
       const reusable = await this.findReusablePaymentLink(ctx.conv.id, expectedAmount, expectedCurrency);
       if (reusable) {
@@ -6533,6 +6634,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
         userId: ctx.conv.userId,
         guestId: ctx.conv.guestId,
         packageTier: tier,
+        experienceSlug: linkSlug,
         email: ctx.conv.email ?? undefined,
         site,
         ipAddress: ctx.conv.lastIp ?? undefined,
@@ -6540,7 +6642,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
 
       const amount = typeof args.amount === 'number'
         ? args.amount
-        : packageTotalCents(tier, site.packagePricesCents ?? null);
+        : this.convPackageCents(site, tier, linkSlug);
       const currency = (typeof args.currency === 'string' ? args.currency : site.currency).toUpperCase();
 
       const payload: ChatMessagePayload = {
@@ -7134,7 +7236,12 @@ ${transcript}`;
 
     // Prețul de intrare anunțat = pachetul basic (29.99). Irina face upsell-ul de
     // pachet (standard vs premium) abia în ultimul pas, înainte de link (ETAPA 5.5).
-    const basePrice = packageTotalCents('basic', site.packagePricesCents ?? null);
+    // Prețul EFECTIV pe interfața comenzii — altfel cotăm o cifră și taxăm alta.
+    const basePrice = this.convPackageCents(
+      site,
+      'basic',
+      await this.convExperienceSlug(ctx.conv),
+    );
     const currency = site.currency.toUpperCase();
 
     // Verifică cod câștigat la roata norocului pentru acest user/guest
@@ -7359,7 +7466,7 @@ ${transcript}`;
 
     const site = await this.sites.findById(ctx.conv.siteId);
     if (!site) return { error: 'site_not_found' };
-    const baseCents = packageTotalCents('basic', site.packagePricesCents ?? null);
+    const baseCents = this.convPackageCents(site, 'basic', await this.convExperienceSlug(ctx.conv));
     const finalCents = Math.round(baseCents * (100 - pct) / 100);
     const cur = site.currency.toLowerCase() === 'ron' ? 'lei' : site.currency.toUpperCase();
     const finalFmt = `${(finalCents / 100).toFixed(2)} ${cur}`;
@@ -7469,7 +7576,7 @@ ${transcript}`;
     // Valid — leagă-l de comandă (se aplică automat la finalize / resend).
     await this.setAppliedPromoCode(ctx.conv.id, usable.code);
     const site = await this.sites.findById(ctx.conv.siteId);
-    const baseCents = packageTotalCents('basic', site?.packagePricesCents ?? null);
+    const baseCents = this.convPackageCents(site, 'basic', await this.convExperienceSlug(ctx.conv));
     const pctOff = usable.discountType === 'percent'
       ? usable.discountValue
       : Math.round((usable.discountValue / baseCents) * 100);
@@ -8170,7 +8277,10 @@ ${transcript}`;
       .getOne();
 
     const tier = normalizeTier(state.data.packageTier);
-    const amount = packageTotalCents(tier, site.packagePricesCents ?? null);
+    // Interfața comenzii (de pe generarea existentă) — retrimiterea trebuie să arate
+    // și să taxeze exact același preț ca linkul inițial.
+    const resendSlug = effectiveExperienceSlug(site, await this.convExperienceSlug(conv));
+    const amount = this.convPackageCents(site, tier, resendSlug);
     const currency = site.currency.toUpperCase();
     const description = `${songWord(state.data.styleHint, state.data.style, state.data.occasion, state.data.message)} pentru ${state.data.recipientName ?? 'tine'} — pachet ${packageLabel(tier)}`;
 
@@ -8199,6 +8309,7 @@ ${transcript}`;
         guestId: conv.guestId,
         generationId: state.generationId,
         packageTier: tier,
+        experienceSlug: resendSlug,
         email: conv.email ?? undefined,
         promoCode: activePromoCode ?? undefined,
         site,

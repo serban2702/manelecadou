@@ -1,7 +1,9 @@
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { cache } from 'react';
 import type { SiteConfig } from './site-shared';
 import { apiInternalUrl } from './api-internal';
+import { resolveExperienceSlug } from '@/experiences/assign';
+import { fromPriceCents } from './packages';
 
 // Re-export tipurile + helperii puri ca să rămână import path-ul vechi funcțional
 export { formatPrice, siteUrl, siteSupportEmail, type SiteConfig } from './site-shared';
@@ -57,4 +59,28 @@ export const getSiteConfig = cache(async (): Promise<SiteConfig> => {
   } catch {
     return fallback;
   }
+});
+
+/**
+ * Interfața (`classic` / `cadou`) rezolvată pentru request-ul curent, în server
+ * components. Aceeași logică ca în `app/layout.tsx`: header-ul pus de
+ * middleware, apoi cookie-ul (retrecut prin gardă), apoi default-ul din admin.
+ */
+export const getExperienceSlug = cache(async (): Promise<string> => {
+  const site = await getSiteConfig();
+  const [h, c] = await Promise.all([headers(), cookies()]);
+  return resolveExperienceSlug({
+    uiParam: h.get('x-mc-experience'),
+    cookieSlug: c.get('mc_ui')?.value ?? null,
+    config: site.experienceConfig ?? null,
+  }).slug;
+});
+
+/**
+ * Prețul „de la X" pentru request-ul curent. `null` = nu-l știm (site vechi
+ * fără pachete / API indisponibil) ⇒ ascunde cifra, nu inventa una.
+ */
+export const getFromPriceCents = cache(async (): Promise<number | null> => {
+  const [site, slug] = await Promise.all([getSiteConfig(), getExperienceSlug()]);
+  return fromPriceCents(site, slug);
 });

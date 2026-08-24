@@ -8,12 +8,18 @@ import {
 } from '../payments/packages';
 import type { ExperiencePackageOverride } from './types';
 import {
+  DEFAULT_NEXT_SONG_DISCOUNT_PERCENT,
   effectiveCompareAtCents,
+  effectiveExperienceSlug,
   effectivePackagePriceCents,
+  nextSongDiscountPercent,
   resolveExperiencePackages,
   resolvePackageDef,
+  resolveSitePackage,
+  resolveSitePackages,
   snapshotFromDef,
   snapshotForTier,
+  type SitePackageSource,
 } from './package-resolve';
 
 describe('resolvePackageDef', () => {
@@ -187,4 +193,88 @@ describe('paritate cu PaymentsService.quote', () => {
       );
     });
   }
+});
+
+describe('resolveSitePackage — sursă unică site + interfață', () => {
+  const site: SitePackageSource = {
+    packagePricesCents: { basic: 2999, plus: 4999, premium: 9999 },
+    packageCompareAtCents: { plus: 7999 },
+    experienceConfig: {
+      defaultSlug: 'cadou',
+      items: {
+        cadou: {
+          enabled: true,
+          utmRules: [],
+          packages: {
+            premium: { priceCents: 12999 },
+            basic: { enabled: false },
+          },
+        },
+      },
+    },
+  };
+
+  it('slug explicit → override-ul interfeței bate prețul per-site', () => {
+    assert.equal(resolveSitePackage(site, 'premium', 'cadou').priceCents, 12999);
+  });
+
+  it('slug lipsă → cade pe defaultSlug-ul site-ului (nu pe classic)', () => {
+    assert.equal(resolveSitePackage(site, 'premium').priceCents, 12999);
+    assert.equal(effectiveExperienceSlug(site, null), 'cadou');
+  });
+
+  it('altă interfață → prețul per-site, fără override', () => {
+    assert.equal(resolveSitePackage(site, 'premium', 'classic').priceCents, 9999);
+  });
+
+  it('fără site → prețul de listă din cod', () => {
+    assert.equal(resolveSitePackage(null, 'plus').priceCents, PACKAGES.plus.priceCents);
+    assert.equal(effectiveExperienceSlug(null, null), 'classic');
+  });
+
+  it('`enabled: false` se propagă (checkout-ul refuză pachetul)', () => {
+    assert.equal(resolveSitePackage(site, 'basic', 'cadou').enabled, false);
+    assert.equal(resolveSitePackage(site, 'basic', 'classic').enabled, true);
+    assert.equal(resolveSitePackage(site, 'plus', 'cadou').enabled, true);
+  });
+
+  it('toate cele 3 pachete se rezolvă pe aceeași interfață', () => {
+    const pkgs = resolveSitePackages(site, 'cadou');
+    assert.equal(pkgs.basic.priceCents, 2999);
+    assert.equal(pkgs.plus.priceCents, 4999);
+    assert.equal(pkgs.premium.priceCents, 12999);
+    assert.equal(pkgs.plus.compareAtCents, 7999);
+  });
+});
+
+describe('nextSongDiscountPercent', () => {
+  it('snapshotul comenzii are prioritate (ce i s-a promis la plată)', () => {
+    assert.equal(nextSongDiscountPercent({ nextSongDiscountPercent: 25 }, { nextSongDiscountPercent: 40 }), 25);
+  });
+
+  it('fără snapshot, cade pe pachetul rezolvat azi', () => {
+    assert.equal(nextSongDiscountPercent(null, { nextSongDiscountPercent: 30 }), 30);
+    assert.equal(nextSongDiscountPercent({}, { nextSongDiscountPercent: 30 }), 30);
+  });
+
+  it('0 nu e o promisiune (Standard) — rămâne valoarea implicită de 40%', () => {
+    assert.equal(nextSongDiscountPercent({ nextSongDiscountPercent: 0 }, { nextSongDiscountPercent: 0 }), 40);
+    assert.equal(nextSongDiscountPercent(null, null), DEFAULT_NEXT_SONG_DISCOUNT_PERCENT);
+  });
+
+  it('citește procentul configurat în admin pentru pachetul comenzii', () => {
+    const site: SitePackageSource = {
+      experienceConfig: {
+        defaultSlug: 'cadou',
+        items: {
+          cadou: {
+            enabled: true,
+            utmRules: [],
+            packages: { premium: { nextSongDiscountPercent: 50 } },
+          },
+        },
+      },
+    };
+    assert.equal(nextSongDiscountPercent(null, resolveSitePackage(site, 'premium', 'cadou')), 50);
+  });
 });

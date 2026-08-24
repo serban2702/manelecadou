@@ -472,6 +472,24 @@ button.cadou-pack { cursor: pointer; }
 .cadou-pack.is-featured .cadou-pack-ship { color: var(--cadou-gold); }
 .cadou-pack.is-featured .cadou-pack-list { color: rgba(255,245,220,0.78); }
 .cadou-pack.is-on { box-shadow: 0 0 0 3px var(--cadou-gold), 0 12px 28px rgba(201,162,39,0.22); }
+/* Schelet cât timp pachetele nu au ajuns din config — mai bine un placeholder
+   decât un preț din cod care poate fi greșit pe tenantul curent. */
+.cadou-pack.is-skel { gap: 10px; min-height: 260px; }
+.cadou-skel-line {
+  height: 14px; border-radius: 7px;
+  background: linear-gradient(90deg, rgba(26,26,26,0.06), rgba(26,26,26,0.12), rgba(26,26,26,0.06));
+  background-size: 200% 100%;
+  animation: cadou-skel 1.4s ease-in-out infinite;
+}
+.cadou-skel-line.sm { width: 40%; height: 11px; }
+.cadou-skel-line.lg { width: 65%; height: 28px; border-radius: 10px; margin-bottom: 8px; }
+@keyframes cadou-skel {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cadou-skel-line { animation: none; }
+}
 .cadou-faq { max-width: 640px; margin: 24px auto 0; display: flex; flex-direction: column; gap: 8px; }
 .cadou-faq-item {
   display: flex; flex-direction: column; gap: 8px; text-align: left;
@@ -781,7 +799,15 @@ button.cadou-pack { cursor: pointer; }
   cursor: pointer;
   flex: 0 0 auto;
 }
-.cadou-ghost { background: transparent; color: var(--cadou-muted); border: 0; cursor: pointer; font: inherit; }
+/* `min-height`/`padding` nu sunt cosmetice: `.cadou-ghost` sunt cele 7 linkuri
+   „Modifică" din recapitulare, stivuite la 10px unul de altul chiar pe ecranul
+   de dinaintea plății. Fără ele ținta de atins iese ~19px și clientul care vrea
+   să corecteze numele destinatarului nimerește alt rând. */
+.cadou-ghost {
+  background: transparent; color: var(--cadou-muted); border: 0; cursor: pointer; font: inherit;
+  min-height: 44px; padding: 0 10px;
+  display: inline-flex; align-items: center;
+}
 .cadou-stepper {
   position: relative;
   display: flex; justify-content: center; gap: 28px; margin: 12px 0 8px;
@@ -1635,7 +1661,13 @@ button.cadou-pack { cursor: pointer; }
   .cadou-song { border-radius: 20px; }
   .cadou-song h1 { font-size: 26px; }
   .cadou-demo-play { width: 48px; height: 48px; }
-  .cadou-demo-vol { padding-left: 60px; }
+  /* Pe 360px lățime, `padding-left: 60px` + mute (36px) + slider (min 40px) +
+     butonul de download (~100px) depășesc spațiul rămas, iar `.cadou-wrap` are
+     `overflow-x: hidden` — deci „Descarcă" era TĂIAT, nu scrolabil. Lăsăm rândul
+     să se rupă și dăm butonului rândul lui. */
+  .cadou-demo-vol { padding-left: 0; flex-wrap: wrap; row-gap: 10px; }
+  .cadou-demo-vol input[type='range'] { min-width: 90px; }
+  .cadou-demo-vol > :last-child { flex: 1 0 100%; }
   .cadou-song-lyrics { padding: 14px; }
   .cadou-song-lyrics p { font-size: 15px; }
   .cadou-clips {
@@ -1696,6 +1728,15 @@ button.cadou-pack { cursor: pointer; }
   }
   .cadou-root:has(.cadou-sticky) .chat-panel {
     bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* Pe /studio nu se randează bara sticky, deci regulile de mai sus nu se
+     aplică și launcher-ul de chat rămâne la `bottom: 18px; right: 12px`, exact
+     peste colțul butonului de plată (`.cadou-wizard-nav .cadou-cta` e
+     `flex: 1`, deci ajunge sub el). Un tap în dreapta deschidea chatul în loc
+     să plătească. Rezervăm o bandă sub navigație, ca bula să stea peste gol. */
+  .cadou-wizard-nav {
+    margin-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
   }
 
   .cadou-footer {

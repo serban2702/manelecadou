@@ -2,6 +2,9 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
+import type { StorageService } from '../storage/storage.service';
+import { LEGACY_MAIL_ATTACH_DIR, deleteMailFile, mailKey } from './mail-storage';
+
 /**
  * Coadă pentru copierea în `Sent` (IMAP APPEND) a fiecărui mail trimis.
  *
@@ -17,59 +20,68 @@ export interface MailAppendJob {
   siteId: string | null;
   /** Adresa reală de expeditor — cheia principală după care găsim căsuța. */
   fromAddr: string;
-  /** Calea fișierului .eml de pe disc (MIME-ul brut trimis). */
+  /**
+   * Cheia de storage a fișierului .eml (MIME-ul brut trimis), relativă la uploads:
+   * `mail-attach/outbox/<uuid>.eml`. Joburile puse la coadă înainte de mutarea pe
+   * R2 au aici o cale absolută pe volumul vechi — citirea le acceptă pe amândouă.
+   */
   mimePath: string;
   messageId: string;
   subject: string;
   to: string;
 }
 
-const OUTBOX_DIR = path.join(process.env.MAIL_ATTACH_DIR ?? '/tmp/manelecadou-mail-attach', 'outbox');
+/** Prefixul din storage. Vechiul director rămâne doar pentru joburile în zbor. */
+const OUTBOX_PREFIX = 'outbox';
+const LEGACY_OUTBOX_DIR = path.join(LEGACY_MAIL_ATTACH_DIR, OUTBOX_PREFIX);
 
 /**
- * Persistă MIME-ul pe disc și întoarce calea. Nu trecem octeții prin Redis:
- * un mail cu atașamente poate avea zeci de MB, iar payload-urile mari degradează
- * întreaga coadă. Volumul e deja montat persistent în prod (`api_mail_attach`).
+ * Persistă MIME-ul prin `StorageService` (disc + R2) și întoarce cheia. Nu trecem
+ * octeții prin Redis: un mail cu atașamente poate avea zeci de MB, iar
+ * payload-urile mari degradează întreaga coadă. Cu R2 activ, copia în `Sent`
+ * merge și dacă jobul e luat de alt container decât cel care a trimis mailul.
  */
-export async function stashMime(raw: Buffer): Promise<string> {
-  await fs.mkdir(OUTBOX_DIR, { recursive: true });
-  const fp = path.join(OUTBOX_DIR, `${randomUUID()}.eml`);
-  await fs.writeFile(fp, raw);
-  return fp;
+export async function stashMime(storage: StorageService, raw: Buffer): Promise<string> {
+  const key = mailKey(OUTBOX_PREFIX, `${randomUUID()}.eml`);
+  await storage.saveBuffer(key, raw, 'message/rfc822');
+  return key;
 }
 
 /** Șterge un MIME din outbox. Best-effort — un fișier rămas nu strică nimic. */
-export async function discardMime(mimePath: string): Promise<void> {
-  try {
-    await fs.unlink(mimePath);
-  } catch {
-    /* deja șters sau inexistent */
-  }
+export async function discardMime(storage: StorageService, mimePath: string): Promise<void> {
+  await deleteMailFile(storage, mimePath);
 }
 
 /**
  * Curăță fișierele .eml mai vechi decât `maxAgeMs` — plasă pentru joburile care
- * au eșuat definitiv și nu și-au mai șters fișierul.
+ * au eșuat definitiv și nu și-au mai șters fișierul. Vechimea se citește de pe
+ * disc (copia locală scrisă de `saveBuffer`); ștergerea merge și în bucket.
  */
-export async function pruneOutbox(maxAgeMs: number): Promise<number> {
-  let removed = 0;
-  let entries: string[];
-  try {
-    entries = await fs.readdir(OUTBOX_DIR);
-  } catch {
-    return 0;
-  }
+export async function pruneOutbox(storage: StorageService, maxAgeMs: number): Promise<number> {
   const cutoff = Date.now() - maxAgeMs;
-  for (const name of entries) {
-    const fp = path.join(OUTBOX_DIR, name);
+  let removed = 0;
+  const dirs: Array<{ abs: string; key: ((name: string) => string) | null }> = [
+    { abs: storage.localAbs(mailKey(OUTBOX_PREFIX)), key: (n) => mailKey(OUTBOX_PREFIX, n) },
+    { abs: LEGACY_OUTBOX_DIR, key: null },
+  ];
+  for (const dir of dirs) {
+    let entries: string[];
     try {
-      const st = await fs.stat(fp);
-      if (st.mtimeMs < cutoff) {
-        await fs.unlink(fp);
-        removed++;
-      }
+      entries = await fs.readdir(dir.abs);
     } catch {
-      /* ignore */
+      continue; // directorul nu există (încă)
+    }
+    for (const name of entries) {
+      const fp = path.join(dir.abs, name);
+      try {
+        const st = await fs.stat(fp);
+        if (st.mtimeMs >= cutoff) continue;
+        if (dir.key) await storage.delete(dir.key(name));
+        else await fs.unlink(fp);
+        removed++;
+      } catch {
+        /* ignore */
+      }
     }
   }
   return removed;

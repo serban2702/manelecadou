@@ -68,6 +68,10 @@ const schema = z.object({
   META_CAPI_TOKEN: z.string().optional().default(''),
 
   STORAGE_DRIVER: z.enum(['disk', 'r2']).optional().default('disk'),
+  // De unde se citește configul R2. `auto` = env în afara producției, setările
+  // din admin în producție. Ține dev-ul pe bucketul lui chiar dacă baza e un
+  // dump de producție cu cheile reale în `app_settings`. Vezi StorageService.
+  STORAGE_CONFIG_SOURCE: z.enum(['auto', 'db', 'env']).optional().default('auto'),
   UPLOADS_DIR: z.string().optional().default(''),
   R2_ACCOUNT_ID: z.string().optional().default(''),
   R2_ACCESS_KEY_ID: z.string().optional().default(''),

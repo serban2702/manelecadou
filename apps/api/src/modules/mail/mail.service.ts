@@ -11,8 +11,8 @@ import { MailAttachment } from './entities/mail-attachment.entity';
 import { MailDraft } from './entities/mail-draft.entity';
 import { ImapService } from './imap.service';
 import { encryptSecret, decryptSecret, maskSecret } from '../../common/crypto.util';
-
-const ATTACH_DIR = process.env.MAIL_ATTACH_DIR ?? '/tmp/manelecadou-mail-attach';
+import { StorageService } from '../../storage/storage.service';
+import { LEGACY_MAIL_ATTACH_DIR, deleteMailFile, mailKey, readMailFile } from '../../mailer/mail-storage';
 
 export interface MailAccountInput {
   label: string;
@@ -51,6 +51,7 @@ export class MailService {
     @InjectRepository(MailAttachment) public readonly attachments: Repository<MailAttachment>,
     @InjectRepository(MailDraft) public readonly drafts: Repository<MailDraft>,
     private readonly imap: ImapService,
+    private readonly storage: StorageService,
   ) {}
 
   /**
@@ -110,9 +111,10 @@ export class MailService {
   }
 
   /**
-   * Citește de pe disc atașamentele unui mesaj, în forma cerută la trimitere
-   * (folosit la forward). Fișierele lipsă sunt sărite: un mesaj arhivat își
-   * pierde atașamentele, iar forward-ul trebuie să meargă oricum.
+   * Citește atașamentele unui mesaj, în forma cerută la trimitere (folosit la
+   * forward). Sursa poate fi volumul vechi, uploads local sau R2 — rezolvarea e
+   * în `readMailFile`. Fișierele lipsă sunt sărite: un mesaj arhivat își pierde
+   * atașamentele, iar forward-ul trebuie să meargă oricum.
    */
   async loadAttachmentsForSend(
     messageId: string,
@@ -123,7 +125,7 @@ export class MailService {
       try {
         out.push({
           filename: r.filename,
-          content: await fs.readFile(r.storagePath),
+          content: await readMailFile(this.storage, r.storagePath),
           contentType: r.mime,
           cid: r.contentId ?? undefined,
         });
@@ -196,7 +198,7 @@ export class MailService {
     const msgIds = msgs.map((m) => m.id);
     if (msgIds.length) {
       // Șterge fișierele de pe disc înainte să pierzi referințele DB.
-      for (const mid of msgIds) await this.removeAttachmentDir(mid);
+      for (const mid of msgIds) await this.removeAttachmentFiles(mid);
       await this.attachments.delete({ messageId: In(msgIds) });
       await this.messages.delete({ id: In(msgIds) });
     }
@@ -211,10 +213,10 @@ export class MailService {
   async purgeAttachments(messageId: string): Promise<number> {
     const atts = await this.attachments.find({ where: { messageId } });
     if (!atts.length) {
-      await this.removeAttachmentDir(messageId); // cleanup pentru orfane
+      await this.removeAttachmentFiles(messageId); // cleanup pentru orfane
       return 0;
     }
-    await this.removeAttachmentDir(messageId);
+    await this.removeAttachmentFiles(messageId);
     await this.attachments.delete({ messageId });
     const msg = await this.messages.findOne({ where: { id: messageId } });
     if (msg) {
@@ -323,19 +325,31 @@ export class MailService {
         this.logger.warn(`IMAP delete failed for ${messageId}: ${(e as Error).message}`);
       }
     }
-    await this.removeAttachmentDir(messageId);
+    await this.removeAttachmentFiles(messageId);
     await this.attachments.delete({ messageId });
     await this.messages.delete({ id: messageId });
     return { trashed: false };
   }
 
-  /** Șterge silențios directorul de atașamente al unui mesaj. */
-  private async removeAttachmentDir(messageId: string): Promise<void> {
-    const dir = path.join(ATTACH_DIR, messageId);
+  /**
+   * Șterge silențios fișierele atașate unui mesaj — din storage (disc + R2) și
+   * de pe volumul vechi, pentru rândurile de dinainte de migrare.
+   */
+  private async removeAttachmentFiles(messageId: string): Promise<void> {
     try {
-      await fs.rm(dir, { recursive: true, force: true });
+      const rows = await this.attachments.find({ where: { messageId } });
+      for (const r of rows) await deleteMailFile(this.storage, r.storagePath);
+      if (!rows.length) {
+        // Fără rânduri în DB: măturăm „folderul" după orfani (scriere întreruptă
+        // la sync). Doar în cazul ăsta — pe R2 fiecare listare e un request, iar
+        // ștergerea unui cont întreg ar face mii degeaba.
+        for (const key of await this.storage.list(mailKey(messageId)).catch(() => [])) {
+          await this.storage.delete(key).catch(() => undefined);
+        }
+      }
+      await fs.rm(path.join(LEGACY_MAIL_ATTACH_DIR, messageId), { recursive: true, force: true });
     } catch (e) {
-      this.logger.warn(`removeAttachmentDir failed for ${messageId}: ${(e as Error).message}`);
+      this.logger.warn(`removeAttachmentFiles failed for ${messageId}: ${(e as Error).message}`);
     }
   }
 

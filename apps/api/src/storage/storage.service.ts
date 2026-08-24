@@ -50,6 +50,19 @@ const STORAGE_KEYS = [
 type StorageKey = (typeof STORAGE_KEYS)[number];
 type StorageConfig = Record<StorageKey, string>;
 
+/**
+ * De unde se ia configul de storage: `db` (setările din admin, cu env ca
+ * rezervă), `env` (DOAR env — baza e ignorată) sau `auto`.
+ *
+ * `auto` (implicit) = `env` în afara producției, `db` în producție. Regula
+ * există pentru un scenariu foarte concret: pe dev lucrăm cu un dump al bazei
+ * de producție, iar dump-ul aduce cu el cheile R2 de PRODUCȚIE din `app_settings`.
+ * Cu citire DB-first, un dev care șterge o generare ar chema `storage.delete`
+ * pe bucketul real și ar arunca melodia unui client care a plătit-o. Cu `auto`,
+ * dev-ul rămâne pe bucketul din propriul `.env` orice ar scrie în baza copiată.
+ */
+type StorageConfigSource = 'db' | 'env' | 'auto';
+
 /** Cât așteptăm baza pentru configul de storage înainte să cădem pe env. Boot-ul
  *  API-ului nu are voie să atârne de un SELECT care nu mai răspunde. */
 const SETTINGS_READ_TIMEOUT_MS = 5_000;
@@ -128,8 +141,20 @@ export class StorageService implements OnModuleInit {
     return out;
   }
 
+  /** Modul de citire cerut prin env, rezolvat din `auto`. */
+  private configSource(): 'db' | 'env' {
+    const raw = (this.config.get<string>('STORAGE_CONFIG_SOURCE') ?? 'auto').trim().toLowerCase();
+    const mode: StorageConfigSource = raw === 'db' || raw === 'env' ? raw : 'auto';
+    if (mode !== 'auto') return mode;
+    return (this.config.get<string>('NODE_ENV') ?? '').trim() === 'production' ? 'db' : 'env';
+  }
+
   /** DB-first prin SettingsService; pe orice hopă (DB indisponibil, serviciu lipsă) → env. */
   private async resolveConfig(): Promise<{ cfg: StorageConfig; source: 'db' | 'env' }> {
+    if (this.configSource() === 'env') {
+      // Nu atingem deloc baza: vezi comentariul de la `StorageConfigSource`.
+      return { cfg: this.readEnvConfig(), source: 'env' };
+    }
     const settings = this.settingsService();
     if (!settings) {
       this.logger.warn('SettingsService indisponibil — configul de storage se citește din env.');
@@ -187,7 +212,9 @@ export class StorageService implements OnModuleInit {
 
     if (cfg.STORAGE_DRIVER.trim().toLowerCase() !== 'r2') {
       this.useDisk();
-      this.logger.log(`storage=disk root=${this.localRoot} (config=${source}, ${reason})`);
+      this.logger.log(
+        `storage=disk root=${this.localRoot} (config=${source}${this.sourceHint(source)}, ${reason})`,
+      );
       return;
     }
 
@@ -212,8 +239,11 @@ export class StorageService implements OnModuleInit {
       credentials: { accessKeyId: key, secretAccessKey: secret },
     });
     this.driver = 'r2';
+    // Bucketul e scris explicit ca să se vadă din prima în loguri PE CARE bucket
+    // scrie instanța asta — e singura verificare rapidă că dev-ul nu s-a legat
+    // din greșeală la bucketul de producție.
     this.logger.log(
-      `storage=r2 bucket=${this.bucket} public=${this.publicBase || '(proxy /uploads)'} (config=${source}, ${reason})`,
+      `storage=r2 bucket=${this.bucket} public=${this.publicBase || '(proxy /uploads)'} (config=${source}${this.sourceHint(source)}, ${reason})`,
     );
     if (!this.publicBase) {
       // Fără domeniu public, /uploads streamează prin API. Merge, dar fără
@@ -223,6 +253,15 @@ export class StorageService implements OnModuleInit {
           'Pune un custom domain pe bucket (ex. files.<domeniu>) în producție.',
       );
     }
+  }
+
+  /** Explică în log de ce s-a ignorat baza — altfel „am pus cheile în admin și nu le ia". */
+  private sourceHint(source: 'db' | 'env'): string {
+    if (source !== 'env') return '';
+    const raw = (this.config.get<string>('STORAGE_CONFIG_SOURCE') ?? 'auto').trim().toLowerCase();
+    if (raw === 'env') return ' — STORAGE_CONFIG_SOURCE=env, setările din admin sunt ignorate';
+    if (raw === 'db') return '';
+    return ' — STORAGE_CONFIG_SOURCE=auto și NODE_ENV≠production, setările din admin sunt ignorate';
   }
 
   /** Așteaptă (re)inițializarea în curs, ca o operație să nu prindă configul vechi. */
@@ -400,12 +439,30 @@ export class StorageService implements OnModuleInit {
           contentRange: out.ContentRange,
         };
       } catch {
-        return null;
+        // În timpul migrării, un fișier poate exista doar pe disc. Un 404 aici
+        // ar însemna un livrabil plătit devenit indisponibil.
+        return this.localObjectStream(key);
       }
     }
+    return this.localObjectStream(key);
+  }
+
+  /**
+   * Citire de pe disc pentru `getObjectStream`.
+   *
+   * `createReadStream` NU aruncă sincron pentru un fișier lipsă — emite un
+   * `error` mai târziu. Fără `stat`-ul de aici am fi întors un stream aparent
+   * valid, apelantul ar fi trimis deja headerele, iar răspunsul ar fi rămas
+   * atârnat în loc de 404. `stat` ne dă și lungimea, utilă la descărcări.
+   */
+  private async localObjectStream(
+    key: string,
+  ): Promise<{ stream: Readable; mime: string; contentLength?: number } | null> {
+    const abs = this.localAbs(key);
     try {
-      const abs = this.localAbs(key);
-      return { stream: createReadStream(abs), mime: this.guessMime(key) };
+      const st = await stat(abs);
+      if (!st.isFile()) return null;
+      return { stream: createReadStream(abs), mime: this.guessMime(key), contentLength: st.size };
     } catch {
       return null;
     }

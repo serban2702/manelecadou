@@ -25,7 +25,9 @@ type Dict = {
   generationReady: {
     subject: (name: string) => string;
     titleDemo: string;
-    titleFull: string;
+    /** Durata reală a piesei livrate (mm:ss). Variază pe pachet și pe setările
+     *  din admin, deci NU are voie să fie scrisă în text. */
+    titleFull: (duration: string) => string;
     forRecipient: (name: string) => string;
     listenButton: string;
     download: string;
@@ -48,7 +50,7 @@ type Dict = {
     intro: (name: string) => string;
     rowTotal: string;
     rowSong: string;
-    songValue: string;
+    songValue: (duration: string) => string;
     listenButton: string;
     invoiceNote: string;
     text: (amount: string, currency: string, link: string) => string;
@@ -105,12 +107,12 @@ const RO: Dict = {
   generationReady: {
     subject: (name) => `🎤 Maneaua ta pentru ${name} e gata!`,
     titleDemo: 'Maneaua ta demo (30s) e gata!',
-    titleFull: 'Maneaua ta completă (3 min) e gata!',
+    titleFull: (d) => `Maneaua ta completă (${d}) e gata!`,
     forRecipient: (name) => `Pentru <b>${name}</b> · 2 versiuni audio`,
     listenButton: '🎧 Ascultă maneaua',
     download: 'Sau download direct: {link}',
-    promoTitle: '🎁 Oferta 1+1 GRATIS',
-    promoBody: 'Demo-ul are 30s. Pentru manea completă (3 min × 2 versiuni) — {link}. Plată unică, fără abonament.',
+    promoTitle: '🎁 Deblochează maneaua completă',
+    promoBody: 'Demo-ul are 30s. Pentru maneaua completă, în 2 versiuni — {link}. Plată unică, fără abonament.',
     promoLink: 'deblochează aici',
     aiNote: 'Vocea e fictivă, parodică, fără legătură cu artiști reali.',
     text: (kind, name, link) => `Maneaua ta ${kind} pentru ${name} e gata: ${link}`,
@@ -129,7 +131,7 @@ const RO: Dict = {
     intro: (name) => `Mulțumim! Manea completă pentru <b>${name}</b> e deblocată.`,
     rowTotal: 'Total plătit',
     rowSong: 'Manea',
-    songValue: '3 min × 2 versiuni',
+    songValue: (d) => `${d} × 2 versiuni`,
     listenButton: '🎧 Ascultă maneaua completă',
     invoiceNote: 'Factura fiscală o vei primi separat în următoarele 24h.',
     text: (amount, currency, link) => `Plata ${amount} ${currency} confirmată. Maneaua: ${link}`,
@@ -188,12 +190,12 @@ const BG: Dict = {
   generationReady: {
     subject: (name) => `🎤 Манелето ти за ${name} е готово!`,
     titleDemo: 'Твоето демо (30 сек) е готово!',
-    titleFull: 'Твоето пълно манеле (3 мин) е готово!',
+    titleFull: (d) => `Твоето пълно манеле (${d}) е готово!`,
     forRecipient: (name) => `За <b>${name}</b> · 2 аудио версии`,
     listenButton: '🎧 Чуй манелето',
     download: 'Или директно сваляне: {link}',
-    promoTitle: '🎁 Оферта 1+1 БЕЗПЛАТНО',
-    promoBody: 'Демото е 30 сек. За пълно манеле (3 мин × 2 версии) — {link}. Еднократно плащане, без абонамент.',
+    promoTitle: '🎁 Отключи пълната песен',
+    promoBody: 'Демото е 30 сек. За пълната песен, в 2 версии — {link}. Еднократно плащане, без абонамент.',
     promoLink: 'отключи тук',
     aiNote: 'Гласът е измислен, пародиен, без връзка с реални артисти.',
     text: (kind, name, link) => `Твоето ${kind} манеле за ${name} е готово: ${link}`,
@@ -212,7 +214,7 @@ const BG: Dict = {
     intro: (name) => `Благодарим! Пълното манеле за <b>${name}</b> е отключено.`,
     rowTotal: 'Платена сума',
     rowSong: 'Манеле',
-    songValue: '3 мин × 2 версии',
+    songValue: (d) => `${d} × 2 версии`,
     listenButton: '🎧 Чуй пълното манеле',
     invoiceNote: 'Данъчната фактура ще получиш отделно в следващите 24 часа.',
     text: (amount, currency, link) => `Плащане ${amount} ${currency} потвърдено. Манеле: ${link}`,
@@ -253,12 +255,12 @@ const TR: Dict = {
   generationReady: {
     subject: (name) => `🎤 ${name} için şarkın hazır!`,
     titleDemo: 'Demo şarkın (30 sn) hazır!',
-    titleFull: 'Tam şarkın (3 dk) hazır!',
+    titleFull: (d) => `Tam şarkın (${d}) hazır!`,
     forRecipient: (name) => `<b>${name}</b> için · 2 ses versiyonu`,
     listenButton: '🎧 Şarkıyı dinle',
     download: 'Ya da doğrudan indir: {link}',
-    promoTitle: '🎁 1+1 BEDAVA',
-    promoBody: 'Demo 30 sn. Tam şarkı (3 dk × 2 versiyon) için — {link}. Tek seferlik ödeme.',
+    promoTitle: '🎁 Tam şarkının kilidini aç',
+    promoBody: 'Demo 30 sn. 2 versiyonlu tam şarkı için — {link}. Tek seferlik ödeme.',
     promoLink: 'buradan aç',
     aiNote: 'Ses kurgusal, parodi, gerçek sanatçılarla ilgisi yok.',
     text: (kind, name, link) => `${name} için ${kind} şarkın hazır: ${link}`,
@@ -277,7 +279,7 @@ const TR: Dict = {
     intro: (name) => `Teşekkürler! <b>${name}</b> için tam şarkı açıldı.`,
     rowTotal: 'Ödenen toplam',
     rowSong: 'Şarkı',
-    songValue: '3 dk × 2 versiyon',
+    songValue: (d) => `${d} × 2 versiyon`,
     listenButton: '🎧 Tam şarkıyı dinle',
     invoiceNote: 'Fatura 24 saat içinde ayrı bir e-postayla gelir.',
     text: (amount, currency, link) => `${amount} ${currency} ödemesi onaylandı. Şarkı: ${link}`,
@@ -318,12 +320,12 @@ const EL: Dict = {
   generationReady: {
     subject: (name) => `🎤 Το τραγούδι για ${name} είναι έτοιμο!`,
     titleDemo: 'Το demo τραγούδι σου (30 δευτ.) είναι έτοιμο!',
-    titleFull: 'Το πλήρες τραγούδι σου (3 λεπτά) είναι έτοιμο!',
+    titleFull: (d) => `Το πλήρες τραγούδι σου (${d}) είναι έτοιμο!`,
     forRecipient: (name) => `Για τον/την <b>${name}</b> · 2 εκδόσεις ήχου`,
     listenButton: '🎧 Άκου το τραγούδι',
     download: 'Ή κατέβασε άμεσα: {link}',
-    promoTitle: '🎁 1+1 ΔΩΡΕΑΝ',
-    promoBody: 'Το demo είναι 30 δευτ. Για πλήρες τραγούδι (3 λεπτά × 2 εκδόσεις) — {link}. Εφάπαξ πληρωμή.',
+    promoTitle: '🎁 Ξεκλείδωσε το πλήρες τραγούδι',
+    promoBody: 'Το demo είναι 30 δευτ. Για το πλήρες τραγούδι, σε 2 εκδόσεις — {link}. Εφάπαξ πληρωμή.',
     promoLink: 'ξεκλείδωσε εδώ',
     aiNote: 'Η φωνή είναι φανταστική, παρωδική, χωρίς σχέση με πραγματικούς καλλιτέχνες.',
     text: (kind, name, link) => `Το ${kind} τραγούδι σου για ${name} είναι έτοιμο: ${link}`,
@@ -342,7 +344,7 @@ const EL: Dict = {
     intro: (name) => `Ευχαριστούμε! Το πλήρες τραγούδι για τον/την <b>${name}</b> ξεκλείδωσε.`,
     rowTotal: 'Σύνολο',
     rowSong: 'Τραγούδι',
-    songValue: '3 λεπτά × 2 εκδόσεις',
+    songValue: (d) => `${d} × 2 εκδόσεις`,
     listenButton: '🎧 Άκου το πλήρες τραγούδι',
     invoiceNote: 'Το τιμολόγιο θα έρθει χωριστά μέσα σε 24 ώρες.',
     text: (amount, currency, link) => `Πληρωμή ${amount} ${currency} επιβεβαιώθηκε. Τραγούδι: ${link}`,
@@ -383,12 +385,12 @@ const SR: Dict = {
   generationReady: {
     subject: (name) => `🎤 Pesma za ${name} je gotova!`,
     titleDemo: 'Tvoj demo (30 sek) je gotov!',
-    titleFull: 'Tvoja puna pesma (3 min) je gotova!',
+    titleFull: (d) => `Tvoja puna pesma (${d}) je gotova!`,
     forRecipient: (name) => `Za <b>${name}</b> · 2 verzije`,
     listenButton: '🎧 Slušaj pesmu',
     download: 'Ili direktan download: {link}',
-    promoTitle: '🎁 1+1 GRATIS',
-    promoBody: 'Demo je 30 sek. Za punu pesmu (3 min × 2 verzije) — {link}. Jednokratno plaćanje.',
+    promoTitle: '🎁 Otključaj punu pesmu',
+    promoBody: 'Demo je 30 sek. Za punu pesmu, u 2 verzije — {link}. Jednokratno plaćanje.',
     promoLink: 'otključaj ovde',
     aiNote: 'Glas je izmišljen, parodijski, bez veze sa stvarnim izvođačima.',
     text: (kind, name, link) => `Tvoja ${kind} pesma za ${name} je gotova: ${link}`,
@@ -407,7 +409,7 @@ const SR: Dict = {
     intro: (name) => `Hvala! Puna pesma za <b>${name}</b> je otključana.`,
     rowTotal: 'Ukupno plaćeno',
     rowSong: 'Pesma',
-    songValue: '3 min × 2 verzije',
+    songValue: (d) => `${d} × 2 verzije`,
     listenButton: '🎧 Slušaj punu pesmu',
     invoiceNote: 'Račun stiže odvojeno u narednih 24h.',
     text: (amount, currency, link) => `Plaćanje ${amount} ${currency} potvrđeno. Pesma: ${link}`,

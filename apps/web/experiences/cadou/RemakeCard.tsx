@@ -5,7 +5,6 @@ import { useTranslations } from 'next-intl';
 import { api, ApiError } from '@/lib/api';
 import { formatPrice } from '@/lib/site-shared';
 import { useSite } from '@/lib/site-context';
-import { PAID_REMAKE_CENTS } from '@/lib/packages';
 import { CadouFold } from './Fold';
 
 const MAX = 1000;
@@ -14,7 +13,7 @@ export function CadouRemakeCard({
   generationId,
   remaining = 0,
   quota = 1,
-  paidCents = PAID_REMAKE_CENTS,
+  paidCents,
   busy: parentBusy,
   canceled,
   defaultOpen = true,
@@ -23,6 +22,8 @@ export function CadouRemakeCard({
   generationId: string;
   remaining?: number;
   quota?: number;
+  /** Prețul refacerii contra cost, din DTO-ul generării (`paidRemakeCents`).
+   *  Lipsă/0 = nu-l știm ⇒ nu inventăm o cifră, ascundem varianta cu plată. */
   paidCents?: number;
   busy?: boolean;
   canceled?: boolean;
@@ -36,7 +37,11 @@ export function CadouRemakeCard({
   const [busy, setBusy] = useState(false);
   const len = notes.trim().length;
   const freeLeft = remaining > 0;
-  const price = formatPrice(site, paidCents || PAID_REMAKE_CENTS);
+  // Prețul vine din DTO-ul generării. Fără el nu afișăm o cifră de cod (care pe
+  // un site în EUR ar fi în altă monedă decât ce taxează Stripe).
+  const paid = typeof paidCents === 'number' && paidCents > 0 ? paidCents : null;
+  const price = paid !== null ? formatPrice(site, paid) : '';
+  const canPay = freeLeft || paid !== null;
 
   const leftCopy = remaining <= 0
     ? (quota === 1 ? t('usedOne') : t('usedMany', { quota }))
@@ -75,9 +80,11 @@ export function CadouRemakeCard({
       ) : (
         <>
           <p className="cadou-remake-count">{leftCopy}</p>
-          <p className="cadou-remake-lead">
-            {freeLeft ? t('leadFree') : t('leadPaid', { price })}
-          </p>
+          {(freeLeft || paid !== null) && (
+            <p className="cadou-remake-lead">
+              {freeLeft ? t('leadFree') : t('leadPaid', { price })}
+            </p>
+          )}
           {canceled && (
             <p className="cadou-pay-warn" role="status">{t('canceled')}</p>
           )}
@@ -105,7 +112,7 @@ export function CadouRemakeCard({
             type="button"
             className="cadou-cta"
             onClick={() => void submit()}
-            disabled={busy || len < 8}
+            disabled={busy || len < 8 || !canPay}
           >
             {busy
               ? (freeLeft ? t('busyFree') : t('busyPaid'))

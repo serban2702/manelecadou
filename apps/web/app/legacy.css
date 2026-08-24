@@ -81,6 +81,14 @@ input, textarea, select { font-family: inherit; }
   position: sticky; top: 0; z-index: 30;
 }
 .urgency .urgency-text { display: inline-block; animation: blink 1.2s infinite; }
+/* Prețul tăiat din banda de urgență. Stilurile erau inline în traducere (HTML
+   în JSON, randat cu dangerouslySetInnerHTML) — acum textul e ICU curat. */
+.urgency .urgency-strike {
+  color: #ffd0d0;
+  font-weight: 600;
+  text-decoration-color: #ff2d2d;
+  text-decoration-thickness: 2px;
+}
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
 /* ========== Header ========== */

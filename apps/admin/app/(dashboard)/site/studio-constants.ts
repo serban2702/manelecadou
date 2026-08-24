@@ -22,11 +22,17 @@ export const I18N_FIELD_LOCALES = [
 export const PACKAGE_TIERS = ['basic', 'plus', 'premium'] as const;
 export type PackageTier = (typeof PACKAGE_TIERS)[number];
 
-/** Default PACKAGES (cents). Gol pe override = aceste valori. */
+/**
+ * Default PACKAGES (cents). Gol pe override = aceste valori.
+ *
+ * Oglindesc `PACKAGES` din `apps/api/src/modules/payments/packages.ts` — ține-le
+ * sincronizate. (Premium era 6999 aici și 9999 în API: adminul afișa ca
+ * placeholder un preț care nu exista nicăieri.)
+ */
 export const PACKAGE_DEFAULTS: Record<PackageTier, { label: string; priceCents: number; hint: string }> = {
   basic: { label: 'Standard', priceCents: 2999, hint: 'Manea personalizată' },
   plus: { label: 'Plus', priceCents: 4999, hint: 'Colaj foto pe refren' },
-  premium: { label: 'Premium', priceCents: 6999, hint: 'Colaj full + pagină premium' },
+  premium: { label: 'Premium', priceCents: 9999, hint: 'Colaj full + pagină premium' },
 };
 
 /**

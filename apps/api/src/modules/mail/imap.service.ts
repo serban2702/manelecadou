@@ -2,13 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ImapFlow } from 'imapflow';
 import * as nodemailer from 'nodemailer';
 import { simpleParser, ParsedMail, AddressObject } from 'mailparser';
-import { promises as fs } from 'node:fs';
-import * as path from 'node:path';
 
 import { MailAccount } from './entities/mail-account.entity';
 import type { MailFolderRole } from './entities/mail-folder.entity';
 import type { MailAddr, MailDirection } from './entities/mail-message.entity';
 import { decryptSecret } from '../../common/crypto.util';
+import { StorageService } from '../../storage/storage.service';
+import { mailKey, safeMailName, sanitizeMailMime } from '../../mailer/mail-storage';
 
 export interface ImapTestResult {
   imap: { ok: boolean; error?: string };
@@ -55,12 +55,13 @@ export interface ParsedMessage {
   }>;
 }
 
-const ATTACH_DIR = process.env.MAIL_ATTACH_DIR ?? '/tmp/manelecadou-mail-attach';
 const MAX_ATTACH_BYTES = 25 * 1024 * 1024;
 
 @Injectable()
 export class ImapService {
   private readonly logger = new Logger('ImapService');
+
+  constructor(private readonly storage: StorageService) {}
 
   buildClient(acc: MailAccount): ImapFlow {
     return new ImapFlow({
@@ -352,23 +353,30 @@ export class ImapService {
     }
   }
 
-  async writeAttachmentsToDisk(messageId: string, atts: ParsedMessage['attachments']): Promise<Array<{ filename: string; mime: string; size: number; contentId: string | null; inline: boolean; storagePath: string }>> {
+  /**
+   * Salvează atașamentele unui mesaj prin `StorageService` (disc + R2), sub
+   * `mail-attach/<messageId>/<index>-<nume>`. `storagePath` din DB ține de acum
+   * cheia RELATIVĂ — rândurile vechi, cu cale absolută pe volumul `api_mail_attach`,
+   * rămân citibile prin `resolveMailStoragePath`.
+   */
+  async storeAttachments(messageId: string, atts: ParsedMessage['attachments']): Promise<Array<{ filename: string; mime: string; size: number; contentId: string | null; inline: boolean; storagePath: string }>> {
     if (!atts.length) return [];
-    const dir = path.join(ATTACH_DIR, messageId);
-    await fs.mkdir(dir, { recursive: true });
     const out = [] as Array<{ filename: string; mime: string; size: number; contentId: string | null; inline: boolean; storagePath: string }>;
     for (let i = 0; i < atts.length; i++) {
       const a = atts[i];
-      const safe = a.filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200) || `att-${i}`;
-      const fp = path.join(dir, `${i}-${safe}`);
-      await fs.writeFile(fp, a.content);
+      const safe = safeMailName(a.filename) || `att-${i}`;
+      const key = mailKey(messageId, `${i}-${safe}`);
+      // MIME-ul vine din mailul original (control atacator) — îl sanitizăm înainte
+      // să ajungă ContentType în bucket, ca un atașament HTML/SVG să nu poată fi
+      // randat dacă bucket-ul are domeniu public.
+      await this.storage.saveBuffer(key, a.content, sanitizeMailMime(a.mime));
       out.push({
         filename: a.filename,
         mime: a.mime,
         size: a.size,
         contentId: a.contentId,
         inline: a.inline,
-        storagePath: fp,
+        storagePath: key,
       });
     }
     return out;

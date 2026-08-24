@@ -9,9 +9,10 @@ import { useSite } from '@/lib/site-context';
 import { formatPrice } from '@/lib/site-shared';
 import { OCC, VOICES } from '@/lib/seed-data';
 import { useExperienceCatalog } from '../use-experience-catalog';
-import { PACKAGES, type PackageTier } from '@/lib/packages';
+import type { PackageTier } from '@/lib/packages';
+import { usePackages } from '@/experiences/use-packages';
 import { CadouShell } from './Shell';
-import { CadouPackGrid, useCadouPackageQuotes } from './PackCard';
+import { CadouPackGrid } from './PackCard';
 import { CadouStyleCard, useCadouStylePreview } from './StyleCard';
 import {
   EMPTY_CADOU,
@@ -103,7 +104,7 @@ function WizardInner() {
   const [submitting, setSubmitting] = useState(false);
   const [promoDraft, setPromoDraft] = useState('');
   const [promo, setPromo] = useState<{ code: string; discountCents: number } | null>(null);
-  const quotes = useCadouPackageQuotes();
+  const packages = usePackages();
   const restored = useRef(false);
   const hydrated = useRef(false);
   const followPromoTried = useRef(false);
@@ -219,17 +220,38 @@ function WizardInner() {
     }
   }, [step, data, generationId]);
 
-  // Prețul AFIȘAT trebuie să fie prețul TAXAT: quote-ul API ține cont de prețul
-  // per-site (`packagePricesCents`) și de override-urile pe interfață. Constantele
-  // din `@/lib/packages` sunt doar fallback până vine răspunsul.
-  const currentPrice = quotes.byTier[data.packageTier]?.total || site.basePriceCents;
+  // Prețul AFIȘAT e prețul TAXAT: pachetul rezolvat din configul de site trece
+  // prin exact aceeași precedență ca `PaymentsService.quote` (preț per-site +
+  // override pe interfață). Fără pachete în config nu inventăm nicio cifră.
+  const currentPack = packages.byTier[data.packageTier] ?? null;
+  const currentPrice = currentPack?.priceCents ?? 0;
   const afterPromo = Math.max(0, currentPrice - (promo?.discountCents ?? 0));
-  const fromPrice = quotes.byTier.basic.total || site.basePriceCents;
-  // Preț „tăiat" doar dacă e chiar configurat (quote sau `standardPriceCents`).
-  // Fără ancore inventate — un „-50%" fals față de un preț care n-a existat.
-  const compareAt = quotes.byTier.basic.compareAtCents
-    ?? (site.standardPriceCents && site.standardPriceCents > fromPrice ? site.standardPriceCents : 0);
-  const discountPct = compareAt > fromPrice ? Math.round((1 - fromPrice / compareAt) * 100) : 0;
+  // Ancora „de la" = cel mai ieftin pachet ACTIV, nu neapărat `basic`.
+  const cheapest = packages.items.reduce<typeof packages.items[number] | null>(
+    (best, p) => (!best || p.priceCents < best.priceCents ? p : best),
+    null,
+  );
+  const fromPrice = cheapest?.priceCents ?? null;
+  // Preț „tăiat" doar dacă e chiar configurat pe pachet. Fără ancore inventate
+  // — un „-50%" fals față de un preț care n-a existat niciodată.
+  const compareAt =
+    cheapest?.compareAtCents && fromPrice !== null && cheapest.compareAtCents > fromPrice
+      ? cheapest.compareAtCents
+      : 0;
+  const discountPct =
+    fromPrice !== null && compareAt > fromPrice
+      ? Math.round((1 - fromPrice / compareAt) * 100)
+      : 0;
+
+  // Pachetul selectat trebuie să existe în vitrină: dacă proprietarul a oprit
+  // tier-ul implicit din admin, cădem pe primul pachet ACTIV — altfel clientul
+  // ar plăti un pachet pe care nu-l vede nicăieri.
+  useEffect(() => {
+    if (!packages.loaded || packages.items.length === 0) return;
+    if (packages.items.some((p) => p.tier === data.packageTier)) return;
+    upd('packageTier', packages.items[0].tier);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [packages.loaded, packages.items, data.packageTier]);
 
   const stepValid = (s: number): boolean => {
     if (s === 0) return !!data.style;
@@ -272,9 +294,9 @@ function WizardInner() {
   };
 
   useEffect(() => {
-    // Așteptăm quote-ul: `validatePromo` calculează reducerea pe baza prețului
-    // trimis, iar fallback-ul din cod ar da alt discount decât cel real.
-    if (promo || followPromoTried.current || !quotes.loaded || !currentPrice) return;
+    // Așteptăm pachetele: `validatePromo` calculează reducerea pe baza prețului
+    // trimis, iar o cifră din cod ar da alt discount decât cel real.
+    if (promo || followPromoTried.current || !packages.loaded || !currentPrice) return;
     (async () => {
       let code: string | null = null;
       try {
@@ -310,7 +332,7 @@ function WizardInner() {
         followPromoTried.current = true;
       }
     })();
-  }, [promo, quotes.loaded, currentPrice, data.email]);
+  }, [promo, packages.loaded, currentPrice, data.email]);
 
   const applyPromo = async () => {
     const code = promoDraft.trim();
@@ -390,18 +412,23 @@ function WizardInner() {
     }
   };
 
-  const afterPayNotes = (tier: PackageTier): string[] => {
-    const remakes = tier === 'premium' ? 3 : tier === 'plus' ? 2 : 1;
-    const lines = [
-      remakes === 1 ? t('afterPayRemakeOne') : t('afterPayRemakeMany', { count: String(remakes) }),
-    ];
-    if (tier === 'plus' || tier === 'premium') {
-      lines.push(t('afterPayCollage'));
+  /** Ce primește clientul după plată — citit din pachetul rezolvat (admin), nu
+   *  din if-uri pe numele tier-ului. */
+  const afterPayNotes = (): string[] => {
+    if (!currentPack) return [];
+    const remakes = currentPack.remakes ?? 0;
+    const lines: string[] = [];
+    if (remakes === 1) lines.push(t('afterPayRemakeOne'));
+    else if (remakes > 1) lines.push(t('afterPayRemakeMany', { count: String(remakes) }));
+    if (currentPack.collage) {
+      lines.push(
+        currentPack.collageFullTrack
+          ? t('afterPayCollageFull', { photos: String(currentPack.collagePhotoLimit ?? 0) })
+          : t('afterPayCollage', { photos: String(currentPack.collagePhotoLimit ?? 0) }),
+      );
     }
-    if (tier === 'premium') {
-      lines.push(t('afterPayCard'));
-      lines.push(t('afterPaySocial'));
-    }
+    if (currentPack.greetingCard) lines.push(t('afterPayCard'));
+    if (currentPack.socialPost) lines.push(t('afterPaySocial'));
     return lines;
   };
 
@@ -422,7 +449,7 @@ function WizardInner() {
               </div>
               <div className="cadou-offer-price">
                 {compareAt > 0 && <s>{formatPrice(site, compareAt)}</s>}
-                <strong>{formatPrice(site, fromPrice)}</strong>
+                {fromPrice !== null && <strong>{formatPrice(site, fromPrice)}</strong>}
               </div>
               <div className="cadou-offer-trust">{t('offerTrust')}</div>
             </div>
@@ -598,7 +625,6 @@ function WizardInner() {
               <CadouPackGrid
                 selected={data.packageTier}
                 onSelect={(tier) => upd('packageTier', tier)}
-                quotes={quotes}
               />
             </div>
             <label className="cadou-check">
@@ -677,7 +703,7 @@ function WizardInner() {
                 [t('recapFrom'), data.fromName || '—', 1],
                 [t('recapTo'), data.noDedic ? t('recapNoDedication') : data.name, 1],
                 [t('recapOccasion'), occName || '—', 1],
-                [t('recapPackage'), PACKAGES.find((p) => p.tier === data.packageTier)?.nameRO ?? data.packageTier, 2],
+                [t('recapPackage'), currentPack?.label ?? data.packageTier, 2],
                 [t('recapVoice'), voiceName, 2],
                 [t('recapEmail'), data.email, 2],
               ] as const).map(([k, v, jump]) => (
@@ -713,7 +739,7 @@ function WizardInner() {
               )}
             </div>
             <div className="cadou-afterpay">
-              {afterPayNotes(data.packageTier).map((line, i) => (
+              {afterPayNotes().map((line, i) => (
                 <p key={line} className={i === 0 ? 'lead' : undefined}>{line}</p>
               ))}
             </div>
@@ -729,8 +755,16 @@ function WizardInner() {
           {step < 3 ? (
             <button type="button" className="cadou-cta" onClick={next}>{t('next')}</button>
           ) : (
-            <button type="button" className="cadou-cta" onClick={pay} disabled={submitting}>
-              {submitting ? t('payBusy') : t('pay', { price: formatPrice(site, afterPromo) })}
+            <button
+              type="button"
+              className="cadou-cta"
+              onClick={pay}
+              /* Fără pachet rezolvat n-avem preț: butonul ar zice „Plătește 0,00". */
+              disabled={submitting || !currentPack}
+            >
+              {submitting || !currentPack
+                ? t('payBusy')
+                : t('pay', { price: formatPrice(site, afterPromo) })}
             </button>
           )}
         </div>

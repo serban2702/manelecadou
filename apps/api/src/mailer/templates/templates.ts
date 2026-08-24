@@ -209,11 +209,13 @@ export interface GenerationReadyVars {
   /** URL unde poate plasa o comandă nouă (homepage site). */
   orderUrl?: string | null;
   locale?: string;
+  /** Durata reală a piesei livrate (secunde), din generare. */
+  durationSec?: number | null;
   branding?: EmailBranding;
 }
 export function generationReadyTemplate(v: GenerationReadyVars): { subject: string; html: string; text: string } {
   const d = dict(v.locale).generationReady;
-  const title = v.type === 'demo' ? d.titleDemo : d.titleFull;
+  const title = v.type === 'demo' ? d.titleDemo : d.titleFull(songDuration(v.durationSec));
   const brandName = resolveBranding(v.branding).name;
   // Linkuri extra pentru livrabilele pachetelor (afișate doar dacă există).
   const extraLink = (href: string, label: string) =>
@@ -281,12 +283,27 @@ export function generationReadyTemplate(v: GenerationReadyVars): { subject: stri
   };
 }
 
+/**
+ * Durata piesei, mm:ss. Se ia din generare, nu se scrie în traduceri: variază pe
+ * pachet (90s la Standard, 150s la Plus/Premium) și e reconfigurabilă din admin,
+ * deci orice cifră scrisă în text devine o promisiune falsă către un client
+ * care tocmai a plătit. Fallback pe 150s = pachetul cel mai des vândut.
+ */
+function songDuration(sec?: number | null): string {
+  const total = Math.max(1, Math.round(typeof sec === 'number' && Number.isFinite(sec) && sec > 0 ? sec : 150));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 export interface PaymentSuccessVars {
   amountRON: number;
   generationLink: string;
   recipientName: string;
   locale?: string;
   currency?: string;
+  /** Durata reală a piesei plătite (secunde). Lipsă → fallback pe 150s. */
+  durationSec?: number | null;
   branding?: EmailBranding;
 }
 export function paymentSuccessTemplate(v: PaymentSuccessVars): { subject: string; html: string; text: string } {
@@ -306,7 +323,7 @@ export function paymentSuccessTemplate(v: PaymentSuccessVars): { subject: string
           <tr><td style="padding:8px 0;border-bottom:1px solid rgba(241,200,77,0.18);font-size:13px;color:rgba(255,245,220,0.7);">${d.rowTotal}</td>
               <td style="padding:8px 0;border-bottom:1px solid rgba(241,200,77,0.18);font-size:13px;text-align:right;color:${COLORS.goldMid};font-weight:800;">${amount} ${currency}</td></tr>
           <tr><td style="padding:8px 0;font-size:13px;color:rgba(255,245,220,0.7);">${d.rowSong}</td>
-              <td style="padding:8px 0;font-size:13px;text-align:right;color:${COLORS.cream};">${d.songValue}</td></tr>
+              <td style="padding:8px 0;font-size:13px;text-align:right;color:${COLORS.cream};">${d.songValue(songDuration(v.durationSec))}</td></tr>
         </table>
         <div style="text-align:center;margin: 22px 0;">${buttonGold(v.generationLink, d.listenButton)}</div>
         <p style="margin:18px 0 0;font-size:11px;color:rgba(255,245,220,0.45);">${d.invoiceNote}</p>

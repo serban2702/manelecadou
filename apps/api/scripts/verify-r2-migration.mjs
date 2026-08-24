@@ -11,6 +11,7 @@
  *
  * Opțiuni (env):
  *   UPLOADS_DIR=/app/uploads   verifică și discul local (spune ce mai e doar acolo)
+ *   MAIL_ATTACH_DIR=/app/mail-attach   volumul vechi de mail, pentru rândurile nemigrate
  *   VERIFY_CONCURRENCY=16
  *   VERIFY_LIMIT=0             0 = tot; altfel doar primele N referințe (probă rapidă)
  *
@@ -25,6 +26,9 @@ const bucket = process.env.R2_BUCKET || '';
 const account = process.env.R2_ACCOUNT_ID || '';
 const endpoint = process.env.R2_ENDPOINT || (account ? `https://${account}.r2.cloudflarestorage.com` : '');
 const uploadsDir = process.env.UPLOADS_DIR || '';
+/** Volumul vechi de mail. Rândurile nemigrate au aici fișierul, cu cale absolută în DB. */
+const mailDir = (process.env.MAIL_ATTACH_DIR || '/app/mail-attach').replace(/\/+$/, '');
+const MAIL_PREFIX = 'mail-attach';
 const concurrency = Math.max(1, Number(process.env.VERIFY_CONCURRENCY || 16));
 const limit = Number(process.env.VERIFY_LIMIT || 0);
 
@@ -51,9 +55,8 @@ function toKey(raw) {
   const at = v.indexOf('/uploads/');
   if (at >= 0) return v.slice(at + '/uploads/'.length);
   if (/^https?:\/\//.test(v)) return null; // asset extern, nu ne privește
-  // Path absolut care NU e sub /uploads → alt magazin, nu R2. Concret:
-  // `mail_attachments.storagePath` = /app/mail-attach/... , volum separat care
-  // rămâne pe disc și nu se migrează.
+  // Path absolut care NU e sub /uploads → alt magazin. Singurul caz real e
+  // `mail_attachments.storagePath` de dinainte de migrare, tratat separat mai jos.
   if (v.startsWith('/')) return null;
   return v;
 }
@@ -109,10 +112,8 @@ const TEXT_REFS = [
   ['invoices', ['pdfPath']],
   ['chat_messages', ['attachmentUrl']],
   ['site_demos', ['audioUrl', 'coverUrl']],
-  // `mail_attachments.storagePath` lipsește intenționat: atașamentele de email
-  // stau pe volumul `api_mail_attach` (/app/mail-attach), nu în uploads, și nu
-  // se migrează pe R2.
-
+  // `mail_attachments.storagePath` are pas propriu (mai jos): valorile vechi sunt
+  // căi absolute pe volumul `api_mail_attach`, nu chei de uploads.
 ];
 /** Coloane jsonb din care extragem orice string cu /uploads/. */
 const JSON_REFS = [
@@ -122,6 +123,23 @@ const JSON_REFS = [
 
 await client.connect();
 const refs = new Map(); // key -> [sursă]
+/** cheie de mail → fișierul de pe volumul vechi (dacă rândul e încă nemigrat) */
+const mailLegacyAbs = new Map();
+/** chei de mail al căror rând din DB are încă calea absolută veche */
+const mailLegacyRows = new Set();
+
+/** `mail_attachments.storagePath` → cheia din bucket. Aceeași mapare ca `resolveMailStoragePath`. */
+function mailKeyFor(raw) {
+  const v = String(raw ?? '').replace(/\\/g, '/').trim();
+  if (!v) return null;
+  if (!v.startsWith('/')) return v.replace(/^uploads\//, '');
+  if (uploadsDir && v.startsWith(`${uploadsDir}/`)) return v.slice(uploadsDir.length + 1);
+  if (v.startsWith('/uploads/')) return v.slice('/uploads/'.length);
+  for (const root of [mailDir, '/app/mail-attach', '/tmp/manelecadou-mail-attach']) {
+    if (root && v.startsWith(`${root}/`)) return `${MAIL_PREFIX}/${v.slice(root.length + 1)}`;
+  }
+  return null;
+}
 
 try {
   for (const [table, cols] of TEXT_REFS) {
@@ -162,6 +180,25 @@ try {
       }
     }
   }
+  // Atașamentele de email: rândurile noi au cheie relativă, cele vechi calea
+  // absolută de pe volumul `api_mail_attach`. Ambele se verifică în R2, dar cele
+  // vechi se raportează separat — sunt „de migrat", nu „pierdute".
+  if (await tableExists('mail_attachments')) {
+    const { rows } = await client.query(
+      `SELECT "storagePath" FROM mail_attachments WHERE "storagePath" IS NOT NULL`,
+    );
+    for (const row of rows) {
+      const raw = row.storagePath ?? '';
+      const k = mailKeyFor(raw);
+      if (!k) continue;
+      if (!refs.has(k)) refs.set(k, []);
+      refs.get(k).push('mail_attachments.storagePath');
+      if (raw.startsWith('/')) {
+        mailLegacyRows.add(k);
+        mailLegacyAbs.set(k, raw);
+      }
+    }
+  }
 } finally {
   await client.end();
 }
@@ -172,8 +209,21 @@ console.log(`${all.length} fișiere distincte referite din DB → verific în r2
 
 const missing = [];
 const onlyLocal = [];
+/** rânduri de mail cu fișierul încă doar pe volumul vechi — rulează migrarea */
+const mailPending = [];
+/** fișier deja în R2, dar DB-ul ține încă calea veche (codul îl găsește oricum) */
+const mailNeedsRewrite = [];
 let ok = 0;
 let cursor = 0;
+
+/** Toate locurile de pe disc unde poate sta cheia asta. */
+function localPaths(key) {
+  const out = [];
+  if (uploadsDir) out.push(join(uploadsDir, key));
+  const legacy = mailLegacyAbs.get(key);
+  if (legacy) out.push(legacy);
+  return out;
+}
 
 async function worker() {
   for (;;) {
@@ -189,21 +239,25 @@ async function worker() {
     }
     if (inR2) {
       ok += 1;
+      if (mailLegacyRows.has(key)) mailNeedsRewrite.push(key);
     } else {
       let local = false;
-      if (uploadsDir) {
+      for (const p of localPaths(key)) {
         try {
-          local = statSync(join(uploadsDir, key)).isFile();
+          if (statSync(p).isFile()) {
+            local = true;
+            break;
+          }
         } catch {
-          local = false;
+          /* încercăm următorul */
         }
       }
-      if (local) onlyLocal.push(key);
+      if (local && mailLegacyRows.has(key)) mailPending.push(key);
+      else if (local) onlyLocal.push(key);
       else missing.push(key);
     }
-    if ((ok + missing.length + onlyLocal.length) % 500 === 0) {
-      console.log(`… ${ok + missing.length + onlyLocal.length}/${all.length}`);
-    }
+    const done = ok + missing.length + onlyLocal.length + mailPending.length;
+    if (done % 500 === 0) console.log(`… ${done}/${all.length}`);
   }
 }
 
@@ -211,7 +265,14 @@ await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
 console.log(`\nîn R2: ${ok}`);
 console.log(`doar pe disc (rulează sync-uploads-to-r2.mjs): ${onlyLocal.length}`);
+console.log(`atașamente de mail nemigrate (rulează migrate-mail-attachments-to-r2.mjs): ${mailPending.length}`);
 console.log(`nicăieri (referință moartă în DB): ${missing.length}`);
+if (mailNeedsRewrite.length) {
+  console.log(
+    `atașamente de mail în R2, dar cu calea veche în DB: ${mailNeedsRewrite.length} ` +
+      '(descărcarea merge — codul mapează singur calea veche; rulează migrarea ca să curețe)',
+  );
+}
 
 const show = (label, list) => {
   if (!list.length) return;
@@ -220,6 +281,7 @@ const show = (label, list) => {
   if (list.length > 40) console.log(`  … și încă ${list.length - 40}`);
 };
 show('Doar pe disc', onlyLocal);
+show('Mail, doar pe volumul vechi', mailPending);
 show('Lipsă complet', missing);
 
 if (missing.length) {
@@ -229,4 +291,4 @@ if (missing.length) {
       'înainte să tragi concluzia că le-a pierdut sync-ul.',
   );
 }
-process.exit(onlyLocal.length || missing.length ? 1 : 0);
+process.exit(onlyLocal.length || missing.length || mailPending.length ? 1 : 0);

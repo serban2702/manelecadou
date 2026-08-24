@@ -26,7 +26,7 @@ import { ChatBlacklistService } from './chat-blacklist.service';
 import { PaymentsService } from '../payments/payments.service';
 import { PaymentAttributionService } from '../analytics/payment-attribution.service';
 import { normalizeTier, packageLabel, type PackageTier } from '../payments/packages';
-import { packageTotalCents } from '../payments/pricing';
+import { effectiveExperienceSlug, resolveSitePackage } from '../experiences/package-resolve';
 import { SitesService } from '../sites/sites.service';
 import { SettingsService } from '../settings/settings.service';
 import { LyricsService } from '../lyrics/lyrics.module';
@@ -2297,6 +2297,25 @@ export class ChatService implements OnModuleInit {
     return persisted;
   }
 
+  /**
+   * Interfața (experience) pe care s-a făcut comanda din conversație. Conversația nu are
+   * coloană proprie, deci sursa de adevăr e generarea în lucru; fără ea, `null` → apelantul
+   * cade pe `defaultSlug`-ul site-ului (exact regula din `PaymentsService.quote`).
+   */
+  private async conversationExperienceSlug(conv: Conversation): Promise<string | null> {
+    const genId = conv.wizardState?.generationId;
+    if (!genId) return null;
+    try {
+      const rows: Array<{ experienceSlug: string | null }> = await this.conv.manager.query(
+        `SELECT "experienceSlug" FROM generations WHERE id = $1 LIMIT 1`,
+        [genId],
+      );
+      return rows?.[0]?.experienceSlug || null;
+    } catch {
+      return null;
+    }
+  }
+
   /** Admin trimite un link de plată — generează Stripe Checkout pentru ownerul conversației. */
   async sendPaymentLinkAsAdmin(
     conversationId: string,
@@ -2316,6 +2335,11 @@ export class ChatService implements OnModuleInit {
     if (!site) throw new NotFoundException('Site nu există');
 
     const tier = normalizeTier(opts.packageTier);
+    // Prețul EFECTIV al pachetului pe interfața comenzii — aceeași sursă ca la checkout
+    // (`PaymentsService.quote`). Citind direct `site.packagePricesCents` am fi ignorat
+    // override-ul de interfață și cardul din chat ar fi arătat alt preț decât cel taxat.
+    const linkSlug = effectiveExperienceSlug(site, await this.conversationExperienceSlug(conv));
+    const packagePriceCents = resolveSitePackage(site, tier, linkSlug).priceCents;
     const tierLabel = packageLabel(tier);
     const description = opts.description?.trim() || `Manea personalizată — pachet ${tierLabel}`;
     const customAmount = typeof opts.amount === 'number' && opts.amount > 0 ? Math.round(opts.amount) : undefined;
@@ -2325,7 +2349,7 @@ export class ChatService implements OnModuleInit {
     // ultimele 3 minute pe această conversație, refolosește-l în loc să generăm un
     // checkout Stripe + card noi (evită spam de link-uri + sesiuni inutile). 2026-06-04.
     {
-      const reuseAmount = customAmount ?? packageTotalCents(tier, site.packagePricesCents ?? null);
+      const reuseAmount = customAmount ?? packagePriceCents;
       const reuseCurrency = (customCurrency ?? site.currency).toUpperCase();
       const existing = await this.msg
         .createQueryBuilder('m')
@@ -2352,6 +2376,7 @@ export class ChatService implements OnModuleInit {
       userId: conv.userId,
       guestId: conv.guestId,
       packageTier: tier,
+      experienceSlug: linkSlug,
       email: conv.email ?? undefined,
       site,
       overrideAmount: customAmount,
@@ -2363,7 +2388,7 @@ export class ChatService implements OnModuleInit {
     });
 
     // Computăm amount/currency efective pentru payload-ul mesajului (ce vede userul în card)
-    const amount = customAmount ?? packageTotalCents(tier, site.packagePricesCents ?? null);
+    const amount = customAmount ?? packagePriceCents;
     const currency = customCurrency ?? site.currency.toUpperCase();
 
     const msg = this.msg.create({

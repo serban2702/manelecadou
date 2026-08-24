@@ -9,18 +9,17 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEmail, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
-import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
 
 import { AdminGuard } from '../../common/admin.guard';
 import { CurrentSiteId } from '../../common/decorators';
@@ -29,6 +28,8 @@ import { ImapService } from './imap.service';
 import { MailSendService } from './mail-send.service';
 import { MailSyncService, IMAP_SYNC_QUEUE } from './mail-sync.service';
 import { OutboxAttachmentsService, MAX_ATTACHMENT_BYTES } from './outbox-attachments.service';
+import { openMailFile, sanitizeMailMime } from '../../mailer/mail-storage';
+import { StorageService } from '../../storage/storage.service';
 import { KbService } from '../kb/kb.service';
 import { TranslationService } from '../../openai/translation.service';
 
@@ -152,6 +153,7 @@ export class MailController {
     private readonly kb: KbService,
     private readonly translation: TranslationService,
     private readonly outbox: OutboxAttachmentsService,
+    private readonly storage: StorageService,
     @InjectQueue(IMAP_SYNC_QUEUE) private readonly syncQueue: Queue,
   ) {}
 
@@ -627,14 +629,14 @@ export class MailController {
    *  - CSP minim ca să blocheze execuția de script chiar dacă cineva forțează render.
    */
   @Get('attachments/:id')
-  async downloadAttachment(@Param('id') id: string, @Res() res: Response) {
+  async downloadAttachment(@Param('id') id: string, @Req() req: Request, @Res() res: Response) {
     const a = await this.mail.attachments.findOne({ where: { id } });
     if (!a) throw new NotFoundException();
-    try {
-      await stat(a.storagePath);
-    } catch {
-      throw new NotFoundException('Fișier lipsă pe disc');
-    }
+    // `storagePath` poate fi cheia nouă (`mail-attach/...`) sau calea absolută
+    // veche de pe volumul `api_mail_attach`. Helper-ul caută, în ordine: volumul
+    // vechi → copia locală din uploads → R2, cu Range ca în `main.ts`.
+    const file = await openMailFile(this.storage, a.storagePath, req.headers.range);
+    if (!file) throw new NotFoundException('Fișier lipsă');
     const safeMime = sanitizeMimeForDownload(a.mime);
     res.setHeader('Content-Type', safeMime);
     res.setHeader(
@@ -644,7 +646,13 @@ export class MailController {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
     res.setHeader('Cache-Control', 'private, no-store');
-    createReadStream(a.storagePath).pipe(res);
+    res.setHeader('Accept-Ranges', 'bytes');
+    if (file.contentLength != null) res.setHeader('Content-Length', String(file.contentLength));
+    if (file.contentRange) {
+      res.setHeader('Content-Range', file.contentRange);
+      res.status(206);
+    }
+    file.stream.pipe(res);
   }
 
   // ======= SIDEBAR BADGE =======
@@ -666,28 +674,9 @@ function encryptOnce(plain: string): string { return encryptSecret(plain); }
 
 /**
  * Convertește MIME-ul atașamentului într-o variantă sigură de download.
- * Tipurile periculoase (HTML, SVG, scripturi) sunt forțate la `application/octet-stream`
- * ca browser-ul să descarce binar, nu să randeze conținutul.
+ * Implementarea e în `mailer/mail-storage.ts`, ca aceleași reguli să se aplice
+ * și la scriere (ContentType-ul din bucket).
  */
 function sanitizeMimeForDownload(mime: string): string {
-  const m = (mime || '').toLowerCase().trim();
-  const dangerous = [
-    'text/html',
-    'application/xhtml+xml',
-    'image/svg+xml',
-    'text/xml',
-    'application/xml',
-    'application/javascript',
-    'text/javascript',
-    'application/x-javascript',
-    'application/x-shockwave-flash',
-    'application/x-msdownload',
-  ];
-  if (dangerous.includes(m)) return 'application/octet-stream';
-  // Allow bare basic types; everything else default to octet-stream pentru siguranță.
-  if (!m || m === 'application/octet-stream') return 'application/octet-stream';
-  if (/^(image|audio|video)\/(?!svg)[a-z0-9.+-]+$/.test(m)) return m;
-  if (/^application\/(pdf|zip|x-zip-compressed|json|msword|vnd\.openxmlformats|vnd\.ms-)/.test(m)) return m;
-  if (/^text\/(plain|csv)$/.test(m)) return m;
-  return 'application/octet-stream';
+  return sanitizeMailMime(mime);
 }

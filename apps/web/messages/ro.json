@@ -1,8 +1,6 @@
 {
   "common": {
     "currency": "lei",
-    "priceMain": "29,99",
-    "priceMainStrike": "49,99",
     "ctaMakeManea": "🎤 Fă o manea — de la {price}",
     "ctaMakeManeaShort": "Fă o manea",
     "ctaListen": "Ascultă exemple",
@@ -15,9 +13,11 @@
     "send": "Trimite",
     "share": "Distribuie",
     "copy": "Copiază",
-    "copied": "Copiat!"
+    "copied": "Copiat!",
+    "ctaMakeManeaPlain": "🎤 Fă o manea"
   },
-  "urgency": "Oferta limitată - Generare manea la <s style=\"color:#ffd0d0;font-weight:600;text-decoration-color:#ff2d2d;text-decoration-thickness:2px\">59,99 lei</s> <b>29,99 lei</b>",
+  "urgency": "Ofertă limitată — generare manea de la <s>{compareAt}</s> <b>{price}</b>",
+  "urgencyPlain": "Ofertă limitată — generare manea de la <b>{price}</b>",
   "nav": {
     "asculta": "Ascultă",
     "studio": "Fă o manea",
@@ -42,7 +42,6 @@
   },
   "price": {
     "badge": "⚡ Doar azi",
-    "save": "-17%",
     "newAccount": "cont nou"
   },
   "quickListen": {
@@ -473,13 +472,12 @@
       "customBtn": "Custom",
       "customPlaceholder": "ex. 1500",
       "customSurcharge": "Suprataxă: +{amount} lei (5% capped la 50 lei).",
-      "premiumTitle": "Manea Premium",
-      "premiumRecommended": "RECOMANDAT",
-      "premiumDesc": "🎤 Calitate audio 4x superioară · 🔥 Voce procesată cu master profi · ⚡ Mix profi",
       "baseLine": "Manea de bază (3 min × 2)",
-      "premiumLine": "👑 Upgrade Premium",
       "tipSurchargeLine": "Suprataxă dedicație ({amount} lei × 5%, plafon 50)",
-      "totalUnlock": "Total la deblocare"
+      "totalUnlock": "Total la deblocare",
+      "recommended": "RECOMANDAT",
+      "discountBadge": "−{pct}% REDUCERE",
+      "offerEnds": "Prețul redus se termină în"
     },
     "step5Demo": {
       "title": "5. Demo gratuit (30s)",
@@ -494,7 +492,7 @@
     },
     "step5PayFirst": {
       "title": "5. Plătește pentru a genera maneaua",
-      "sub": "Maneaua ta (3 min × 2 versiuni) se generează ÎN MOMENTUL în care plata e confirmată. Trimitem rezultatul pe email și-l vezi și aici după ~3 minute.",
+      "sub": "Maneaua ta ({minutes} min × 2 versiuni) se generează ÎN MOMENTUL în care plata e confirmată. Trimitem rezultatul pe email și-l vezi și aici imediat ce e gata.",
       "emailLabel": "📧 Email-ul tău (obligatoriu)",
       "emailSentTo": "✓ Trimitem maneaua la",
       "completeLine": "Manea completă (3 min × 2)",
@@ -616,11 +614,6 @@
       "paymentCanceled": "Plata a fost anulată. Datele tale sunt salvate — încearcă din nou când ești gata."
     }
   },
-  "giftMini": {
-    "title": "Cumperi cod, îl dai cuiva",
-    "body": "Plătești tu. Primește el un cod prin SMS / email și își configurează maneaua singur.",
-    "cta": "Cumpără cod cadou — 29,99 lei"
-  },
   "metadata": {
     "title": "Manele Cadou — Fă-i o manea cu numele lui în 90 de secunde",
     "description": "Generator de manele personalizate. Alegi stilul, ocazia, vocea — primești 2 versiuni pe email. 1+1 GRATIS, plată unică.",
@@ -723,8 +716,8 @@
       "sec3": {
         "h": "3. Prețuri și plăți",
         "b1": "Plata se face înainte de generare; maneaua se creează după confirmarea plății.",
-        "b2": "Manea completă: <b>{fullPrice}</b> (TVA inclus).",
-        "b3": "Suprataxă dedicație: 10% din suma menționată în versuri, plafonată la 150 lei (doar pentru lei).",
+        "b2": "Manea personalizată: de la <b>{fromPrice}</b> (TVA inclus), în funcție de pachetul ales.",
+        "b3": "Suprataxă dedicație: {pct}% din suma menționată în versuri, plafonată la {cap}.",
         "b4": "Plățile se procesează prin Stripe — nu stocăm datele cardului."
       },
       "sec4": {
@@ -1008,7 +1001,8 @@
     "paymentIncompleteSub": "Comanda ta e salvată. Reia plata ca să-ți compunem maneaua și să ți-o trimitem pe email.",
     "retryPaymentCta": "Reia plata",
     "retryPaymentCtaPrice": "Reia plata — {amount}",
-    "promoApplied": "Reducere −{percent}% aplicată automat cu codul {code}"
+    "promoApplied": "Reducere −{percent}% aplicată automat cu codul {code}",
+    "collageDropHint": "max {count} imagini · până la {mb}MB fiecare · JPG / PNG / WEBP"
   },
   "cursorHint": {
     "default": "Apasă aici"
@@ -1042,7 +1036,9 @@
       "sarbatori": "⛪ Sărbători & onomastici",
       "aniversari": "🎂 Aniversări",
       "nume": "🔤 Manele cu nume"
-    }
+    },
+    "ctaMakePlain": "🎤 Fă propria manea",
+    "articleCtaButtonPlain": "🎤 Începe acum"
   },
   "checkoutCancelPage": {
     "title": "Plata a fost anulată",
@@ -1193,6 +1189,7 @@
         "metaOne": "Se montează un videoclip vertical pe manea.",
         "notReadyOwner": "Videoclipul e disponibil după ce maneaua e gata.",
         "notReadyOther": "Doar cine a comandat maneaua poate face videoclipul.",
+        "notInPackage": "Pachetul tău nu include videoclipul din poze.",
         "seeSong": "Vezi maneaua",
         "dropSelectedOne": "1 poză selectată — apasă să schimbi",
         "dropSelectedMany": "{count} poze selectate — apasă să schimbi",
@@ -1261,12 +1258,12 @@
     },
     "follow": {
       "title": "Următoarea manea mai ieftină",
-      "badge": "−40%",
-      "done": "Mulțumim pentru follow. Ai 40% reducere la următoarea manea.",
+      "badge": "−{pct}%",
+      "done": "Mulțumim pentru follow. Ai {pct}% reducere la următoarea manea.",
       "doneCode": "Codul tău: <b>{code}</b>.",
       "doneAuto": "Îl aplicăm automat la plată.",
-      "lead": "Dă follow pe Facebook și TikTok și primești 40% reducere la următoarea manea.",
-      "leadOne": "Dă follow pe {network} și primești 40% reducere la următoarea manea.",
+      "lead": "Dă follow pe Facebook și TikTok și primești {pct}% reducere la următoarea manea.",
+      "leadOne": "Dă follow pe {network} și primești {pct}% reducere la următoarea manea.",
       "facebook": "Facebook",
       "tiktok": "TikTok",
       "facebookDone": "Facebook · urmărit",
@@ -1286,14 +1283,13 @@
       "fileBase": "manea"
     },
     "upsell": {
-      "basicTitle": "Vrei și colaj cu poze?",
-      "basicBody": "Upgrade la Plus: manea mai lungă + colaj cu maxim 4 poze pe refren.",
-      "plusTitle": "Colaj pe toată piesa",
-      "plusBody": "Upgrade la Premium: colaj cu 15 poze pe toată melodia, felicitare și pagină premium.",
       "error": "Nu am putut deschide upgrade-ul.",
       "decline": "Nu, mulțumesc",
       "busy": "Se deschide…",
-      "cta": "Upgrade →"
+      "cta": "Upgrade →",
+      "title": "Treci la {name}?",
+      "bodyChorus": "Cu {name} primești colaj cu până la {photos} poze pe refren și o manea mai lungă.",
+      "bodyFullTrack": "Cu {name} primești colaj cu până la {photos} poze pe toată melodia, felicitare și pagină premium."
     },
     "reactions": {
       "kicker": "Reacții filmate",
@@ -1552,7 +1548,6 @@
       "heroTitle": "Creează-ți propria manea în 2 minute!",
       "heroLead": "Alege stilul, adaugă detaliile și noi generăm o manea unică pentru tine — gata în câteva minute.",
       "heroDeal": "1+1 GRATIS",
-      "heroRemake": "O refacere <b>GRATUITĂ</b> dacă nu-ți place",
       "heroCta": "Fă o manea!",
       "heroSocial": "🔥 {count} manele create azi",
       "statSongs": "Manele generate",
@@ -1626,7 +1621,6 @@
       "midLead": "Începe acum procesul de generare în doar câteva click-uri!",
       "midCta": "Generează manea acum",
       "midPillDeal": "{price} · 1+1 GRATIS",
-      "midPillRemake": "O refacere GRATUITĂ dacă nu-ți place",
       "reactionKicker": "Cadoul care nu se uită",
       "reactionTitle": "Imaginează-ți reacția…",
       "reactionText": "O manea personalizată pentru fratele tău, prietena ta, sau șeful de la petrecere. Cadoul pe care nu-l uită nimeni.",
@@ -1647,10 +1641,16 @@
       "faq2Q": "Cât durează generarea?",
       "faq2A": "De obicei 2–5 minute. Îți trimitem maneaua pe email imediat ce e gata.",
       "faq3Q": "Ce se întâmplă dacă nu-mi place?",
-      "faq3A": "Ai o refacere GRATUITĂ dacă nu-ți place. Regenerăm până ești mulțumit.",
       "faq4Q": "Pot scrie eu versurile?",
       "faq4A": "Da. La pasul Extra bifezi „Vreau să scriu propriile versuri” și le folosim literal.",
-      "faqAll": "Vezi toate întrebările și răspunsurile →"
+      "faqAll": "Vezi toate întrebările și răspunsurile →",
+      "heroRemakeOne": "O refacere <b>GRATUITĂ</b> dacă nu-ți place",
+      "heroRemakeMany": "<b>{count} refaceri GRATUITE</b> dacă nu-ți place",
+      "midPillRemakeOne": "O refacere GRATUITĂ dacă nu-ți place",
+      "midPillRemakeMany": "{count} refaceri GRATUITE dacă nu-ți place",
+      "faq3AOne": "Ai o refacere GRATUITĂ dacă nu-ți place. Regenerăm până ești mulțumit.",
+      "faq3AMany": "Ai {count} refaceri GRATUITE dacă nu-ți place. Regenerăm până ești mulțumit.",
+      "faq3ANone": "Scrie-ne ce nu-ți convine și găsim o soluție împreună."
     },
     "wizard": {
       "stepStyle": "Stil",
@@ -1713,7 +1713,8 @@
       "promoCheckFailed": "Nu am putut verifica codul. Încearcă din nou.",
       "afterPayRemakeOne": "După plată vom genera maneaua și dacă doriți vreo modificare, beneficiați de o refacere gratuită.",
       "afterPayRemakeMany": "După plată vom genera maneaua și dacă doriți vreo modificare, beneficiați de {count} refaceri gratuite.",
-      "afterPayCollage": "Colajul cu imagini se va face după generarea manelei.",
+      "afterPayCollage": "Colajul cu până la {photos} poze (pe refren) se face după generarea manelei.",
+      "afterPayCollageFull": "Colajul cu până la {photos} poze, pe toată melodia, se face după generarea manelei.",
       "afterPayCard": "Felicitarea personalizată se face după generarea manelei.",
       "afterPaySocial": "Postarea pe Facebook și TikTok, cu dedicație, se face după ce maneaua e gata.",
       "back": "Înapoi",

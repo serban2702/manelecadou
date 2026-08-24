@@ -3,35 +3,69 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
-import { useSite } from '@/lib/site-context';
-import { useExperience } from '@/lib/experience-context';
-import type { PackageTier } from '@/lib/packages';
+import { usePackages } from '@/experiences/use-packages';
+import type { PackageTier, SitePackage } from '@/lib/site-shared';
 
 type Upsell = { title: string; body: string; targetTier: 'plus' | 'premium' };
 
+/** Cheia „am arătat deja upsell-ul pentru generarea asta". */
+function seenKey(generationId: string): string {
+  return `mc_upsell_seen:${generationId}`;
+}
+
+export function upsellAlreadySeen(generationId: string): boolean {
+  try {
+    return window.localStorage.getItem(seenKey(generationId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markUpsellSeen(generationId: string) {
+  try {
+    window.localStorage.setItem(seenKey(generationId), '1');
+  } catch {
+    /* storage blocat */
+  }
+}
+
 /**
- * Upsell-ul propus pentru pachetul curent. Sursa de adevăr e configul din admin
- * (`experienceConfig.items[<interfață>].packages[<tier>].upsell`); dacă site-ul
- * n-are încă entry pentru pachetul ăsta, cădem pe textele default traduse.
- * `upsell: null` setat explicit din admin = fără upsell.
+ * Upsell-ul propus pentru pachetul curent.
+ *
+ * Sursa de adevăr e configul din admin
+ * (`experienceConfig.items[<interfață>].packages[<tier>].upsell`). Dacă acolo e
+ * `null` (implicit), propunem următorul pachet ACTIV mai scump, cu textele
+ * traduse — parametrizate cu date reale din pachetul țintă (nume, număr de poze
+ * la colaj), nu cu cifre îngropate în traduceri.
+ * Fără pachet țintă activ ⇒ fără upsell.
  */
-function useUpsell(currentTier: PackageTier): Upsell | null {
-  const site = useSite();
-  const exp = useExperience();
+function useUpsell(currentTier: PackageTier): { upsell: Upsell | null; target: SitePackage | null } {
   const t = useTranslations('cadou.upsell');
-  const packages = site.experienceConfig?.items?.[exp.slug]?.packages;
-  const configured = packages?.[currentTier];
-  if (configured) {
-    const u = configured.upsell;
-    return u && u.title && u.body ? u : null;
+  const { byTier, items } = usePackages();
+  const current = byTier[currentTier] ?? null;
+
+  const configured = current?.upsell ?? null;
+  const targetFromConfig = configured ? byTier[configured.targetTier] ?? null : null;
+  if (configured && configured.title && configured.body && targetFromConfig?.enabled !== false) {
+    return { upsell: configured, target: targetFromConfig };
   }
-  if (currentTier === 'basic') {
-    return { title: t('basicTitle'), body: t('basicBody'), targetTier: 'plus' };
+  if (configured) return { upsell: null, target: null };
+
+  // Default: primul pachet activ mai scump decât cel curent.
+  const target = items
+    .filter((p) => p.tier !== currentTier && p.priceCents > (current?.priceCents ?? 0))
+    .sort((a, b) => a.priceCents - b.priceCents)[0];
+  if (!target || (target.tier !== 'plus' && target.tier !== 'premium')) {
+    return { upsell: null, target: null };
   }
-  if (currentTier === 'plus') {
-    return { title: t('plusTitle'), body: t('plusBody'), targetTier: 'premium' };
-  }
-  return null;
+  const photos = String(target.collagePhotoLimit ?? 0);
+  const body = target.collageFullTrack
+    ? t('bodyFullTrack', { name: target.label, photos })
+    : t('bodyChorus', { name: target.label, photos });
+  return {
+    upsell: { title: t('title', { name: target.label }), body, targetTier: target.tier },
+    target,
+  };
 }
 
 export function CadouUpsellModal({
@@ -44,10 +78,15 @@ export function CadouUpsellModal({
   onClose: () => void;
 }) {
   const t = useTranslations('cadou.upsell');
-  const upsell = useUpsell(currentTier);
+  const { upsell } = useUpsell(currentTier);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   if (!upsell) return null;
+
+  const close = () => {
+    markUpsellSeen(generationId);
+    onClose();
+  };
 
   const go = async () => {
     setBusy(true);
@@ -57,6 +96,7 @@ export function CadouUpsellModal({
         generationId,
         targetTier: upsell.targetTier,
       });
+      markUpsellSeen(generationId);
       if (r.upgraded) {
         onClose();
         window.location.reload();
@@ -87,8 +127,11 @@ export function CadouUpsellModal({
         <p style={{ color: 'var(--cadou-muted)' }}>{upsell.body}</p>
         {err && <p className="cadou-err">{err}</p>}
         <div className="cadou-row" style={{ marginTop: 16 }}>
-          <button type="button" className="cadou-ghost" onClick={onClose}>{t('decline')}</button>
+          <button type="button" className="cadou-ghost" onClick={close}>{t('decline')}</button>
           <button type="button" className="cadou-cta" onClick={go} disabled={busy}>
+            {/* Fără cifră pe buton: la upgrade Stripe taxează DIFERENȚA față de
+                cât s-a plătit deja (inclusiv promo), pe care clientul o vede pe
+                pagina de checkout. O estimare aici ar putea fi greșită. */}
             {busy ? t('busy') : t('cta')}
           </button>
         </div>

@@ -12,6 +12,7 @@ import type { Site, SiteMailConfig } from '../modules/sites/site.entity';
 import { decryptSecret } from '../common/crypto.util';
 import { OutboundEmailModule } from '../modules/outbound-email/outbound-email.module';
 import { OutboundEmailService } from '../modules/outbound-email/outbound-email.service';
+import { StorageService } from '../storage/storage.service';
 
 export type MailSiteRef = Site | { id?: string; slug?: string; mailConfig?: SiteMailConfig; fromEmail?: string | null; supportEmail?: string | null } | null | undefined;
 
@@ -52,6 +53,8 @@ export class MailerService {
     private readonly mailgun: MailgunMailProvider,
     private readonly settings: SettingsService,
     private readonly outboundLog: OutboundEmailService,
+    // Global (StorageModule) — MIME-ul copiat în `Sent` merge pe disc + R2.
+    private readonly storage: StorageService,
     @InjectQueue(MAIL_APPEND_QUEUE) private readonly appendQueue: Queue,
   ) {}
 
@@ -242,7 +245,7 @@ export class MailerService {
    */
   private async queueSentCopy(mime: BuiltMime, opts: SendMailOptions, siteId: string | null): Promise<void> {
     try {
-      const mimePath = await stashMime(mime.raw);
+      const mimePath = await stashMime(this.storage, mime.raw);
       const job: MailAppendJob = {
         siteId,
         fromAddr: mime.envelopeFrom,

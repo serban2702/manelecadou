@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { SiteShell } from '@/components/SiteShell';
-import { getSiteConfig, siteUrl } from '@/lib/site-config';
+import { getFromPriceCents, getSiteConfig, siteUrl } from '@/lib/site-config';
 import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
 import { apiInternalUrl } from '@/lib/api-internal';
@@ -55,6 +55,8 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function ArticoleHubPage() {
   const data = await fetchPages();
   const site = await getSiteConfig();
+  // „de la X" din pachetul activ cel mai ieftin, nu din `basePriceCents` (legacy).
+  const fromCents = await getFromPriceCents();
   const t = await getTranslations('articlesPage');
   const items = data?.items ?? [];
   const articlesPath = getPagePath(site.locale, 'articole');
@@ -127,7 +129,7 @@ export default async function ArticoleHubPage() {
 
         <div style={{ textAlign: 'center', marginTop: 40, padding: 24, borderTop: '1px solid var(--line)' }}>
           <Link href={getPagePath(site.locale, 'studio')} className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>
-            {t('ctaMake', { price: formatPrice(site, site.basePriceCents) })}
+            {fromCents !== null ? t('ctaMake', { price: formatPrice(site, fromCents) }) : t('ctaMakePlain')}
           </Link>
         </div>
       </main>

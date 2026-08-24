@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { useLocale } from 'next-intl';
 import { OCC, STYLES, VOICES } from '@/lib/seed-data';
 import { useSite } from '@/lib/site-context';
 import type {
@@ -15,8 +16,23 @@ import { resolveCadouOccasions } from './cadou/occasions';
 import { resolveCadouStyles } from './cadou/styles';
 import type { CadouReactionClip } from './cadou/reactions';
 
+/** Aplică numele/descrierea traduse peste intrarea de catalog, păstrând `i18n`. */
+function localize<T extends { nm?: string; ds?: string; tg?: string; i18n?: Record<string, { nm?: string; ds?: string; tg?: string }> | undefined }>(
+  entry: T,
+  locale: string,
+): T {
+  const tr = entry.i18n?.[locale];
+  if (!tr) return entry;
+  const next = { ...entry };
+  if (tr.nm) next.nm = tr.nm;
+  if (tr.ds) next.ds = tr.ds;
+  if (tr.tg) next.tg = tr.tg;
+  return next;
+}
+
 export function useExperienceCatalog() {
   const site = useSite();
+  const locale = useLocale();
   const exp = useExperience();
   const cat = site.experienceConfig?.items?.[exp.slug]?.catalog;
 
@@ -61,11 +77,25 @@ export function useExperienceCatalog() {
     return null;
   }, [cat?.testimonials, site.testimonials]);
 
+  // Numele traduse se aplică AICI, o singură dată, nu în fiecare componentă.
+  // Interfața clasică își făcea singură lookup-ul (`s.i18n?.[locale]?.nm || s.nm`),
+  // cea cadou citea `.nm` brut — deci un tenant care ține numele în română și
+  // traducerea în `i18n.bg` afișa româna pe toată interfața cadou. Cu localizarea
+  // în hook, orice consumator (inclusiv cei care citesc `.nm` direct) primește
+  // limba corectă, iar lookup-ul din UI-ul clasic rămâne valid: `i18n` nu se
+  // șterge, deci `i18n?.[locale]?.nm || nm` întoarce aceeași valoare.
+  const localizedStyles = useMemo(() => styles.map((s) => localize(s, locale)), [styles, locale]);
+  const localizedOccasions = useMemo(
+    () => occasions.map((o) => localize(o, locale)),
+    [occasions, locale],
+  );
+  const localizedVoices = useMemo(() => voices.map((v) => localize(v, locale)), [voices, locale]);
+
   return {
     slug: exp.slug,
-    styles,
-    occasions,
-    voices,
+    styles: localizedStyles,
+    occasions: localizedOccasions,
+    voices: localizedVoices,
     styleSamples,
     demoIds: cat?.demoIds ?? null,
     reactionClips: (cat?.reactionClips ?? []) as CadouReactionClip[],

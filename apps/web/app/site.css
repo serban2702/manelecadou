@@ -308,3 +308,26 @@ body > * { position: relative; z-index: 1; }
   30%, 50%, 70% { transform: translateX(-7px); }
   40%, 60% { transform: translateX(7px); }
 }
+
+/* Schelet pentru grila de pachete cât timp configul de site (deci și prețurile)
+   n-a ajuns la client. Preferăm un placeholder unei cifre din cod, care pe
+   tenantul curent poate fi în altă monedă decât ce taxează Stripe. */
+.skel-line {
+  height: 13px;
+  border-radius: 7px;
+  background: linear-gradient(
+    90deg,
+    rgba(241, 200, 77, 0.06),
+    rgba(241, 200, 77, 0.16),
+    rgba(241, 200, 77, 0.06)
+  );
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skel-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skel-line { animation: none; }
+}

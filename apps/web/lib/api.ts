@@ -223,10 +223,21 @@ export async function ensureGuestSession(): Promise<string> {
     try {
       const me = await request<MeGuest>('/guest-sessions/me');
       if (me.id) return existing;
-    } catch {
-      /* sesiune moartă (DB reset / alt mediu) — recreăm */
+      // Răspuns valid care spune că sesiunea nu mai există (DB resetat, alt
+      // mediu) — abia atunci o aruncăm.
+      clearGuestId();
+    } catch (e) {
+      // O EROARE DE REȚEA NU E O DOVADĂ CĂ SESIUNEA E MOARTĂ.
+      // Varianta veche arunca guest-ul la orice excepție: 502 în fereastra de
+      // deploy, timeout, 429 — și clientul cu o comandă în curs își pierdea
+      // istoricul și conversația de chat exact atunci. Mai rău, `POST
+      // /guest-sessions` e limitat la 3/min pe IP, deci în spatele unui NAT de
+      // operator o parte dintre ei rămâneau fără sesiune deloc.
+      // Aruncăm doar la 401/403/404 — singurele care chiar spun „nu ești tu".
+      const status = e instanceof ApiError ? e.status : 0;
+      if (status !== 401 && status !== 403 && status !== 404) return existing;
+      clearGuestId();
     }
-    clearGuestId();
   }
   const created = await request<{ id: string }>('/guest-sessions', {
     method: 'POST',
@@ -268,6 +279,32 @@ export type GenStatus =
   | 'succeeded'
   | 'failed';
 
+/**
+ * Drepturile efective ale unei comenzi (oglinda lui `GenerationEntitlements`
+ * din API). Sursa e `packageSnapshot`-ul înghețat la plată, nu pachetul de azi.
+ */
+export interface GenerationEntitlements {
+  /** Numele pachetului cumpărat (ex. „Premium"). */
+  label: string;
+  collage: boolean;
+  /** Câte poze acceptă colajul. 0 = fără colaj. */
+  collagePhotoLimit: number;
+  /** true = colaj pe toată melodia; false = doar pe refren. */
+  collageFullTrack: boolean;
+  premiumPage: boolean;
+  greetingCard: boolean;
+  greetingClip: boolean;
+  socialPost: boolean;
+  instrumental: boolean;
+  /** Refaceri gratuite incluse. */
+  remakes: number;
+  durationSec: number;
+  nextSongDiscountPercent: number;
+  /** Livrabile scoase din ofertă, păstrate pentru comenzile vândute cu ele. */
+  chorusClip: boolean;
+  shareImages: boolean;
+}
+
 export interface GenerationDto {
   id: string;
   ownerUserId: string | null;
@@ -297,6 +334,16 @@ export interface GenerationDto {
   completedAt: string | null;
   // ── Pachete (model nou) ──────────────────────────────────────────────────
   packageTier?: PackageTier;
+  /**
+   * Ce livrabile i s-au VÂNDUT comenzii, calculate server-side din
+   * `packageSnapshot` (înghețat la plată), cu fallback pe pachetul tier-ului
+   * pentru comenzile mai vechi decât snapshot-ul.
+   *
+   * OPȚIONAL intenționat: dacă lipsește (API vechi / răspuns parțial), UI-ul NU
+   * ascunde nimic — cade pe comportamentul de dinainte. Un livrabil plătit dar
+   * neafișat e mult mai grav decât o secțiune afișată degeaba.
+   */
+  entitlements?: GenerationEntitlements;
   /** Variante de poză de share generate (plus/premium). */
   socialImages?: string[];
   /** Varianta selectată de user (sau prima implicit). */

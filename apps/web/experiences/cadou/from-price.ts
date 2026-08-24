@@ -1,19 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
-import { PACKAGES } from '@/lib/packages';
+import { useFromPriceCents } from '@/experiences/use-packages';
 
-/** Prețul „de la" pentru Cadou (pachet basic / 1+1), nu basePriceCents. */
-export function useCadouFromPrice(): number {
-  const fallback = PACKAGES.find((p) => p.tier === 'basic')?.priceCents ?? 2999;
-  const [cents, setCents] = useState(fallback);
-  useEffect(() => {
-    let cancelled = false;
-    api.priceQuote('basic')
-      .then((q) => { if (!cancelled && q.total > 0) setCents(q.total); })
-      .catch(() => undefined);
-    return () => { cancelled = true; };
-  }, []);
-  return cents;
+/**
+ * Prețul „de la" pe interfața Cadou = cel mai mic preț dintre pachetele ACTIVE,
+ * din configul de site (deja rezolvat de API cu prețul tenantului + override-ul
+ * pe interfață). `null` = nu-l știm încă → afișează schelet, nu o cifră de cod.
+ *
+ * Înainte era un fetch la `/payments/quote?packageTier=basic` cu fallback pe o
+ * constantă RON din cod — pe un site în EUR arăta cifra greșită până venea
+ * răspunsul, și ignora complet un `basic` dezactivat din admin.
+ */
+export function useCadouFromPrice(): number | null {
+  return useFromPriceCents();
 }

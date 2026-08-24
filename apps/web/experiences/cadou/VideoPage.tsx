@@ -9,7 +9,8 @@ import { CadouShell } from './Shell';
 import { useCadouFromName } from './from-name';
 import { cadouClipTracks, useCadouTrackLabels } from './video-tracks';
 
-const MAX_IMAGES = 15;
+/** Plafon folosit doar când comanda nu vine cu drepturi în payload. */
+const DEFAULT_MAX_IMAGES = 15;
 const MAX_MB = 10;
 const MAX_BYTES = MAX_MB * 1024 * 1024;
 
@@ -68,6 +69,11 @@ function CadouVideoInner() {
   useEffect(() => () => { previews.forEach((u) => URL.revokeObjectURL(u)); }, [previews]);
 
   const tracks = g ? cadouClipTracks(g, trackLabels) : [];
+  // Ce i s-a VÂNDUT comenzii (din `packageSnapshot`, calculat server-side).
+  // Plafonul de poze e al pachetului cumpărat — Plus are 4, nu 15 — ca să nu
+  // afle clientul de limită abia după ce a încărcat pozele.
+  const ent = g?.entitlements ?? null;
+  const maxImages = ent?.collagePhotoLimit ?? DEFAULT_MAX_IMAGES;
 
   const acceptFiles = (all: File[]) => {
     const picked = all.filter((f) => f.type.startsWith('image/'));
@@ -75,8 +81,8 @@ function CadouVideoInner() {
       if (all.length > 0) setError(t('errOnlyImages'));
       return;
     }
-    if (picked.length > MAX_IMAGES) {
-      setError(t('errMaxImages', { max: MAX_IMAGES }));
+    if (picked.length > maxImages) {
+      setError(t('errMaxImages', { max: maxImages }));
       return;
     }
     const tooBig = picked.find((f) => f.size > MAX_BYTES);
@@ -99,7 +105,7 @@ function CadouVideoInner() {
     setSubmitting(true);
     setError(null);
     try {
-      await api.createCollageBatch(id, files.slice(0, MAX_IMAGES), '9x16');
+      await api.createCollageBatch(id, files.slice(0, maxImages), '9x16');
       router.replace(`/m/${id}#cadou-video`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('errStart'));
@@ -110,7 +116,12 @@ function CadouVideoInner() {
   const titleName = fromName.displayRecipient(g?.recipientName);
   const songHref = id ? `/m/${id}` : '/manelele-mele';
   const paid = !!g && (g.type === 'full' || g.paidUnlocked);
-  const canMake = !!g && g.isOwner && paid && tracks.length > 0 && g.status === 'succeeded';
+  // Colajul se oferă doar dacă pachetul cumpărat îl include. Fără drepturi în
+  // payload (API vechi) păstrăm comportamentul de dinainte: lăsăm formularul, iar
+  // backend-ul rămâne autoritatea care refuză.
+  const collageAllowed = ent ? ent.collage && maxImages > 0 : true;
+  const canMake =
+    !!g && g.isOwner && paid && tracks.length > 0 && g.status === 'succeeded' && collageAllowed;
 
   return (
     <div className="cadou-wrap cadou-song-wrap">
@@ -129,7 +140,15 @@ function CadouVideoInner() {
 
             {!canMake && (
               <div className="cadou-song-status">
-                <p>{g.isOwner ? t('notReadyOwner') : t('notReadyOther')}</p>
+                {/* Motivul REAL, nu unul generic: cine nu are colajul în pachet
+                    nu trebuie să creadă că maneaua lui nu e gata. */}
+                <p>
+                  {!g.isOwner
+                    ? t('notReadyOther')
+                    : !collageAllowed
+                      ? t('notInPackage')
+                      : t('notReadyOwner')}
+                </p>
                 <Link href={songHref} className="cadou-cta">{t('seeSong')}</Link>
               </div>
             )}
@@ -169,7 +188,7 @@ function CadouVideoInner() {
                         : t('dropSelectedMany', { count: files.length }))
                       : dragOver ? t('dropOver') : t('dropIdle')}
                   </strong>
-                  <span>{t('dropHint', { max: MAX_IMAGES, mb: MAX_MB })}</span>
+                  <span>{t('dropHint', { max: maxImages, mb: MAX_MB })}</span>
                 </div>
 
                 {previews.length > 0 && (

@@ -2,12 +2,11 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { Ic } from './icons';
 import { SiteIcon } from './SiteIcon';
 import { OCC, STYLES, VOICES, type StyleOption } from '@/lib/seed-data';
-import type { SiteOccasionEntry, SiteStyleEntry, SiteVoiceEntry } from '@/lib/site-shared';
+import type { SiteOccasionEntry, SitePackage, SiteStyleEntry, SiteVoiceEntry } from '@/lib/site-shared';
 import { suggestMessage } from '@/lib/message-suggest';
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/providers';
@@ -15,7 +14,8 @@ import { useSite } from '@/lib/site-context';
 import { RotatingStatus } from './RotatingStatus';
 import { track } from '@/lib/tracking';
 import { formatPrice } from '@/lib/site-shared';
-import { PACKAGES, DEFAULT_PACKAGE_TIER, type PackageTier } from '@/lib/packages';
+import { DEFAULT_PACKAGE_TIER, discountPercent, type PackageTier } from '@/lib/packages';
+import { usePackages } from '@/experiences/use-packages';
 import { saveWizard, readWizard, clearWizard } from '@/lib/wizard';
 import { useExperienceCatalog } from '@/experiences/use-experience-catalog';
 import { useSamplePreview } from '@/lib/use-sample-preview';
@@ -106,6 +106,7 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
 
   const site = useSite();
   const catalog = useExperienceCatalog();
+  const packages = usePackages();
   // Pasul de review al versurilor (înainte de plată) e per-site, default ON.
   // Fără el: flux pay-first direct (Stil → Ocazie → Detalii → Pachet → Plată).
   const lyricsReviewEnabled = site.lyricsReviewEnabled !== false;
@@ -502,7 +503,9 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
     setSubmitting(true);
     setError(null);
     try {
-      const total = site.basePriceCents / 100;
+      // Valoarea raportată pixelurilor = prețul pachetului ALES, nu prețul
+      // legacy `basePriceCents` (alt câmp din admin, de obicei altă cifră).
+      const total = (packages.byTier[data.packageTier]?.priceCents ?? 0) / 100;
       track('InitiateCheckout', {
         content_id: generationId ?? 'pay-first',
         content_name: 'Manea Cadou',
@@ -1064,32 +1067,30 @@ function DetailsStep({ data, upd, voices, nudgeFields = [] }: any & { voices: Ar
 }
 
 // ============ STEP 4 — PACHETE ============
-/** Card individual de pachet — își ia prețul real din quote API, cu fallback
- *  la priceCents din contractul local. */
+/**
+ * Card individual de pachet. Tot conținutul (nume, preț, preț tăiat, bullets,
+ * livrare) vine din pachetul rezolvat de API pentru interfața curentă — adică
+ * din ce a editat proprietarul în admin. Nicio cifră și niciun text din cod.
+ */
 function PackageCard({
-  tier,
+  pkg,
+  featured,
   selected,
   onSelect,
 }: {
-  tier: PackageTier;
+  pkg: SitePackage;
+  featured: boolean;
   selected: boolean;
   onSelect: () => void;
 }) {
   const site = useSite();
-  const pkg = PACKAGES.find((p) => p.tier === tier)!;
-  const { data: quote } = useQuery({
-    queryKey: ['package-quote', tier],
-    queryFn: () => api.priceQuote(tier),
-    staleTime: 5 * 60_000,
-  });
-  const priceCents = quote?.total ?? pkg.priceCents;
+  const tg = useTranslations('generator');
+  const priceCents = pkg.priceCents;
   const fmt = (cents: number) => formatPrice(site, cents);
-  // Preț „tăiat" (marketing) — vine din quote, doar dacă e setat și > prețul real.
+  // Preț „tăiat" (marketing) — doar dacă e setat și strict > prețul real.
   const compareAtCents =
-    quote?.compareAtCents && quote.compareAtCents > priceCents ? quote.compareAtCents : null;
-  const discountPct = compareAtCents
-    ? Math.round((1 - priceCents / compareAtCents) * 100)
-    : 0;
+    pkg.compareAtCents && pkg.compareAtCents > priceCents ? pkg.compareAtCents : null;
+  const discountPct = discountPercent(pkg);
 
   return (
     <div
@@ -1105,14 +1106,14 @@ function PackageCard({
         textAlign: 'left',
         padding: '16px 14px',
         borderRadius: 12,
-        border: `2px solid ${selected ? 'var(--gold)' : pkg.recommended ? 'rgba(241,200,77,0.4)' : 'rgba(241,200,77,0.18)'}`,
+        border: `2px solid ${selected ? 'var(--gold)' : featured ? 'rgba(241,200,77,0.4)' : 'rgba(241,200,77,0.18)'}`,
         background: selected
           ? 'linear-gradient(135deg, rgba(241,200,77,0.12), rgba(176,124,30,0.06))'
           : 'rgba(255,255,255,0.02)',
         cursor: 'pointer',
       }}
     >
-      {pkg.recommended && (
+      {featured && (
         <span
           style={{
             position: 'absolute', top: -10, right: 12,
@@ -1123,12 +1124,12 @@ function PackageCard({
             boxShadow: '0 3px 10px rgba(241,200,77,0.4)',
           }}
         >
-          RECOMANDAT
+          {tg('step4.recommended')}
         </span>
       )}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
         <div style={{ fontWeight: 900, fontSize: 16, color: 'var(--gold-2)', fontFamily: 'Cinzel, serif' }}>
-          {pkg.nameRO}
+          {pkg.label}
         </div>
         <div style={{ textAlign: 'right' }}>
           {compareAtCents && (
@@ -1156,9 +1157,9 @@ function PackageCard({
               boxShadow: '0 2px 8px rgba(214,47,63,0.35)',
             }}
           >
-            −{discountPct}% REDUCERE
+            {tg('step4.discountBadge', { pct: String(discountPct) })}
           </span>
-          <OfferCountdown />
+          <OfferCountdown label={tg('step4.offerEnds')} />
         </div>
       )}
       <ul style={{ listStyle: 'none', padding: 0, margin: '12px 0 0' }}>
@@ -1189,22 +1190,60 @@ function PackageCard({
 
 function PackageStep({ data, upd }: { data: Data; upd: <K extends keyof Data>(k: K, v: Data[K]) => void }) {
   const tg = useTranslations('generator');
+  const { items, loaded, recommendedTier } = usePackages();
+
+  // Selecția implicită trebuie să existe în vitrină: dacă `basic` e oprit din
+  // admin, cade pe primul pachet activ — altfel userul ar plăti un pachet pe
+  // care nu-l vede nicăieri.
+  useEffect(() => {
+    if (!loaded || items.length === 0) return;
+    if (items.some((p) => p.tier === data.packageTier)) return;
+    upd('packageTier', items[0].tier);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, items, data.packageTier]);
+
   return (
     <>
       <h3>{tg('step4.title')}</h3>
       <p className="ld">{tg('step4.sub')}</p>
 
       <div style={{ display: 'grid', gap: 14, marginTop: 16 }}>
-        {PACKAGES.map((pkg) => (
-          <PackageCard
-            key={pkg.tier}
-            tier={pkg.tier}
-            selected={data.packageTier === pkg.tier}
-            onSelect={() => upd('packageTier', pkg.tier)}
-          />
-        ))}
+        {!loaded || items.length === 0 ? (
+          // Schelet: mai bine niciun preț decât un preț din cod, care pe acest
+          // tenant poate fi în altă monedă / altă cifră decât taxează Stripe.
+          [0, 1, 2].map((i) => <PackageCardSkeleton key={i} />)
+        ) : (
+          items.map((pkg) => (
+            <PackageCard
+              key={pkg.tier}
+              pkg={pkg}
+              featured={pkg.tier === recommendedTier}
+              selected={data.packageTier === pkg.tier}
+              onSelect={() => upd('packageTier', pkg.tier)}
+            />
+          ))
+        )}
       </div>
     </>
+  );
+}
+
+function PackageCardSkeleton() {
+  return (
+    <div
+      aria-hidden
+      className="pkg-skel"
+      style={{
+        padding: '16px 14px', borderRadius: 12,
+        border: '2px solid rgba(241,200,77,0.18)', background: 'rgba(255,255,255,0.02)',
+        display: 'grid', gap: 10,
+      }}
+    >
+      <div className="skel-line" style={{ width: '45%', height: 16 }} />
+      <div className="skel-line" style={{ width: '70%' }} />
+      <div className="skel-line" style={{ width: '60%' }} />
+      <div className="skel-line" style={{ width: '65%' }} />
+    </div>
   );
 }
 
@@ -1590,22 +1629,21 @@ function PayFirstStep({
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailDraft.trim());
   const emailSignal = useFieldErrorSignal(emailErrorTick);
   const showEmailError = emailErrorTick > 0 && !emailValid;
-  const pkg = PACKAGES.find((p) => p.tier === data.packageTier)!;
-  const { data: quote } = useQuery({
-    queryKey: ['package-quote', data.packageTier],
-    queryFn: () => api.priceQuote(data.packageTier),
-    staleTime: 5 * 60_000,
-  });
+  // Pachetul rezolvat din configul de site — aceeași precedență de preț ca
+  // `PaymentsService.quote`, deci recapitulativul arată exact ce taxează Stripe.
+  const pkg = usePackages().byTier[data.packageTier] ?? null;
   const fmt = (cents: number) => formatPrice(site, cents);
-  const packagePrice = quote?.total ?? pkg.priceCents;
+  const packagePrice = pkg?.priceCents ?? 0;
   const compareAtCents =
-    quote?.compareAtCents && quote.compareAtCents > packagePrice ? quote.compareAtCents : null;
+    pkg?.compareAtCents && pkg.compareAtCents > packagePrice ? pkg.compareAtCents : null;
   const finalTotal = Math.max(0, packagePrice - (promoApplied?.discountCents ?? 0));
 
   return (
     <>
       <h3>{tg('step5PayFirst.title')}</h3>
-      <p className="ld">{tg('step5PayFirst.sub')}</p>
+      {/* Durata promisă vine din pachetul rezolvat (`durationSec`, editabil din
+          admin), nu dintr-o cifră scrisă în traduceri. */}
+      <p className="ld">{tg('step5PayFirst.sub', { minutes: String(Math.max(1, Math.round((pkg?.durationSec ?? 0) / 60))) })}</p>
 
       <div
         ref={emailSignal.wrapperRef}
@@ -1640,19 +1678,19 @@ function PayFirstStep({
         border: '1px solid var(--gold)',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-          <span>{pkg.nameRO}</span>
+          <span>{pkg?.label ?? ''}</span>
           <span>
             {compareAtCents && (
               <span style={{ textDecoration: 'line-through', opacity: 0.5, marginRight: 6 }}>
                 {fmt(compareAtCents)}
               </span>
             )}
-            {fmt(packagePrice)}
+            {pkg ? fmt(packagePrice) : ''}
           </span>
         </div>
         {compareAtCents && (
           <div style={{ marginTop: 8 }}>
-            <OfferCountdown label="Prețul redus se termină în" />
+            <OfferCountdown label={tg('step4.offerEnds')} />
           </div>
         )}
         {promoApplied && (
@@ -1663,7 +1701,7 @@ function PayFirstStep({
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
           <span style={{ fontWeight: 800 }}>{tg('step5PayFirst.totalLabel')}</span>
-          <span className="gold-text" style={{ fontWeight: 900, fontSize: 22 }}>{fmt(finalTotal)}</span>
+          <span className="gold-text" style={{ fontWeight: 900, fontSize: 22 }}>{pkg ? fmt(finalTotal) : '—'}</span>
         </div>
       </div>
 
@@ -1727,12 +1765,15 @@ function PayFirstStep({
       <button
         className="btn btn-gold btn-lg btn-block"
         onClick={onPay}
-        disabled={submitting}
+        /* Fără pachet rezolvat n-avem preț: butonul ar zice „Plătește 0,00". */
+        disabled={submitting || !pkg}
         style={{ marginTop: 14 }}
         data-hint="true"
         data-hint-label={tg('step5PayFirst.payHint')}
       >
-        {submitting ? tg('step5PayFirst.payingCta') : tg('step5PayFirst.payCta', { amount: fmt(finalTotal) })}
+        {submitting || !pkg
+          ? tg('step5PayFirst.payingCta')
+          : tg('step5PayFirst.payCta', { amount: fmt(finalTotal) })}
       </button>
     </>
   );

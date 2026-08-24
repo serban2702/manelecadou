@@ -6,6 +6,7 @@ import { existsSync } from 'fs';
 import { AppModule } from './app.module';
 import { SitesService } from './modules/sites/sites.service';
 import { StorageService } from './storage/storage.service';
+import { MAIL_ATTACH_PREFIX } from './mailer/mail-storage';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
@@ -29,6 +30,41 @@ async function bootstrap() {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     const rel = decodeURIComponent(String(req.path ?? '').replace(/^\/+/, ''));
     if (!rel || rel.includes('..')) return next();
+    // Fișierele de mail stau tot în uploads (ca să ajungă pe R2), dar NU se
+    // servesc public: singura cale spre ele e /api/admin/mail/attachments/:id,
+    // în spatele AdminGuard. Fără 404-ul ăsta, `express.static` de mai jos le-ar
+    // da oricui nimerește cheia.
+    if (rel === MAIL_ATTACH_PREFIX || rel.startsWith(`${MAIL_ATTACH_PREFIX}/`)) {
+      return res.status(404).end();
+    }
+    // --- Descărcare forțată -------------------------------------------------
+    // `?download=1` nu redirectează NICIODATĂ: streamează prin API cu
+    // `Content-Disposition: attachment`.
+    //
+    // De ce e nevoie: butoanele „Descarcă" folosesc atributul HTML `download`,
+    // pe care specul îl ignoră după un redirect cross-origin. Cu fișierele pe
+    // R2 și `R2_PUBLIC_URL` setat, `/uploads/...` răspunde cu 302 spre alt
+    // origin, deci „Descarcă maneaua" ar deschide fișierul într-un tab în loc
+    // să-l salveze. Nu punem `Content-Disposition` pe obiectele din bucket,
+    // pentru că aceleași fișiere sunt și sursa de `<audio>`/`<video>` și
+    // trebuie să rămână redabile inline.
+    if (req.query?.download === '1' || req.query?.dl === '1') {
+      const fallbackName = rel.split('/').pop() || 'fisier';
+      const requested = typeof req.query.name === 'string' ? req.query.name : '';
+      // Doar caractere sigure: numele ajunge într-un header, iar ghilimelele
+      // sau CR/LF în el ar permite injecție de header.
+      const safeName = (requested || fallbackName).replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 120) || fallbackName;
+      const obj = await storage.getObjectStream(rel);
+      if (!obj) return next();
+      res.setHeader('Content-Type', obj.mime);
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+      res.setHeader('Cache-Control', 'private, max-age=0');
+      if (obj.contentLength != null) res.setHeader('Content-Length', String(obj.contentLength));
+      if (req.method === 'HEAD') return res.end();
+      obj.stream.pipe(res);
+      return;
+    }
+
     if (!storage.usesR2) return next();
 
     // Discul local câștigă când fișierul e acolo: `express.static` știe

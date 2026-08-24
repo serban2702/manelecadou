@@ -10,17 +10,22 @@
  * Conexiunea: PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE (sau DATABASE_URL).
  * Opțional:
  *   ADMIN_DOMAIN=admin.manelecadou.ro     îl adaugă la listă
- *   DEFAULT_SITE_DOMAIN=manelecadou.ro    adaugă și varianta `www.`
+ *   DEFAULT_SITE_DOMAIN=manelecadou.ro    (informativ; www se propune oricum)
  *   CURRENT_DOMAINS="a.ro,b.ro"           compară cu ce e deja în Coolify
+ *   WWW_VARIANTS=0                        nu propune deloc variantele `www.`
+ *   SKIP_DNS=1                            nu verifica DNS-ul (rulare offline)
  *
  * NU scrie nimic — nici în baza de date, nici în Coolify. Doar afișează lista,
  * ca s-o lipești în UI. E intenționat: o greșeală în câmpul ăla scoate site-uri
  * de pe internet, deci pasul rămâne al tău.
  */
 import pg from 'pg';
+import { resolve4, resolve6 } from 'dns/promises';
 
 const adminDomain = (process.env.ADMIN_DOMAIN || '').trim().toLowerCase();
 const defaultDomain = (process.env.DEFAULT_SITE_DOMAIN || '').trim().toLowerCase();
+const wwwVariants = process.env.WWW_VARIANTS !== '0';
+const skipDns = process.env.SKIP_DNS === '1';
 const current = (process.env.CURRENT_DOMAINS || '')
   .split(',')
   .map((d) => d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, ''))
@@ -68,15 +73,47 @@ for (const r of rows) {
     continue;
   }
   wanted.push(d);
-  // Site-ul principal are și www. Pentru restul nu presupunem nimic.
-  if (defaultDomain && d === defaultDomain) wanted.push(`www.${d}`);
+  // `www.` pentru TOATE domeniile, nu doar pentru cel principal.
+  // Verificat pe producție (24 aug 2026): www.chalgapodarok.bg și
+  // www.doroparaggelia.gr răspund azi cu 200 — Caddy le lua automat prin
+  // on_demand_tls. Traefik nu ghicește nimic: dacă nu sunt în listă, cele două
+  // site-uri pică pe www după cutover. Verificarea DNS de mai jos taie
+  // variantele care chiar nu există, ca să nu cerem certificate degeaba.
+  if (wwwVariants && !d.startsWith('www.')) wanted.push(`www.${d}`);
 }
 if (adminDomain) wanted.push(adminDomain);
 
-const list = [...new Set(wanted)].sort();
+const candidates = [...new Set(wanted)].sort();
+
+/** Are domeniul un A/AAAA? Fără DNS, Traefik cere un certificat care nu se poate emite. */
+async function resolves(domain) {
+  if (skipDns) return true;
+  for (const fn of [resolve4, resolve6]) {
+    try {
+      const a = await fn(domain);
+      if (a.length) return true;
+    } catch {
+      /* încercăm și celălalt tip */
+    }
+  }
+  return false;
+}
+
+const checks = await Promise.all(candidates.map(async (d) => [d, await resolves(d)]));
+const list = checks.filter(([, ok]) => ok).map(([d]) => d);
+const noDns = checks.filter(([, ok]) => !ok).map(([d]) => d);
 
 console.log(`\n${list.length} domenii pentru serviciul \`router\`:\n`);
 console.log(list.map((d) => `https://${d}`).join(',\n'));
+
+if (noDns.length) {
+  console.log(
+    `\nFără DNS acum (${noDns.length}) — LĂSATE PE DINAFARĂ, ca Traefik să nu ceară\n` +
+      'certificate imposibile și să nu ne apropiem de limitele Let\'s Encrypt.\n' +
+      'Adaugă-le după ce pui A record:',
+  );
+  for (const d of noDns) console.log(`  ${d}`);
+}
 
 if (skipped.length) {
   console.log('\nSărite:');

@@ -18,6 +18,7 @@ import { useSite } from '@/lib/site-context';
 import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
 import { openDemosModal, useWizardReachedPackage } from '@/lib/wizard';
+import { useFromPriceCents } from '@/experiences/use-packages';
 
 export default function HomePage() {
   const [playing, setPlaying] = useState<string | null>(null);
@@ -27,6 +28,9 @@ export default function HomePage() {
   const tHome = useTranslations('home');
   const tCommon = useTranslations('common');
   const site = useSite();
+  // „de la X" din cel mai ieftin pachet ACTIV — aceeași cifră ca în grila de
+  // tarife și ca la checkout (`basePriceCents` e legacy și diverge).
+  const fromCents = useFromPriceCents();
   const studio = getPagePath(site.locale, 'studio');
   const asculta = getPagePath(site.locale, 'asculta');
 
@@ -65,7 +69,9 @@ export default function HomePage() {
               data-hint="true"
               data-hint-label="Studio"
             >
-              {tCommon('ctaMakeManea', { price: formatPrice(site, site.basePriceCents) })}
+              {fromCents !== null
+                ? tCommon('ctaMakeManea', { price: formatPrice(site, fromCents) })
+                : tCommon('ctaMakeManeaPlain')}
             </Link>
             <button
               onClick={() => openDemosModal()}

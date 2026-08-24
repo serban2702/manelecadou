@@ -32,6 +32,7 @@ import {
   resolveExperienceWriterPrompt,
   resolveStylePersonaId,
 } from '../experiences/catalog-resolve';
+import { nextSongDiscountPercent, resolveSitePackage } from '../experiences/package-resolve';
 
 // concurrency: 3 — mai multe comenzi avansează în paralel (timpul e dominat de
 // așteptarea pe Suno, I/O-bound), ca a 2-a/3-a comandă să nu aștepte în coadă
@@ -829,7 +830,13 @@ export class GenerationsProcessor extends WorkerHost {
     // (full/paid) — pe demo rămâne CTA-ul de upgrade existent, ca să nu canibalizăm
     // prima vânzare. Idempotent pe gen.id (dedupeNote), deci re-trimiterea emailului
     // (retry worker) nu creează coduri multiple. Eșecul emiterii NU blochează mailul.
-    const NEXT_ORDER_DISCOUNT_PERCENT = 40;
+    // Procentul NU e hardcodat: e cel promis clientului la cumpărare (packageSnapshot,
+    // înghețat atunci), cu fallback pe pachetul rezolvat azi și, în ultimă instanță, pe
+    // 40% — valoarea implicită istorică pentru pachetele care nu promit nicio reducere.
+    const NEXT_ORDER_DISCOUNT_PERCENT = nextSongDiscountPercent(
+      gen.packageSnapshot,
+      resolveSitePackage(site, normalizeTier(gen.packageTier), gen.experienceSlug),
+    );
     const NEXT_ORDER_DISCOUNT_HOURS = 24;
     let discountCode: string | null = null;
     if (effectiveType === 'full') {
@@ -864,6 +871,8 @@ export class GenerationsProcessor extends WorkerHost {
       discountPercent: NEXT_ORDER_DISCOUNT_PERCENT,
       discountValidHours: NEXT_ORDER_DISCOUNT_HOURS,
       orderUrl: baseUrl,
+      durationSec:
+        effectiveType === 'full' ? (gen.durationSec ?? gen.packageSnapshot?.durationSec ?? null) : 30,
       locale: site?.locale ?? gen.locale ?? 'ro',
       branding,
     });

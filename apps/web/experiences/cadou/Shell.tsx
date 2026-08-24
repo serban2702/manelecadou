@@ -163,7 +163,10 @@ export function CadouShell({ children }: { children: ReactNode }) {
       {!onStudio && !onSong && !onMine && (
         <Link href={studio} className="cadou-sticky">
           <strong>{t('stickyCta')}</strong>
-          <span>{t('stickyMeta', { price: formatPrice(site, fromPrice) })}</span>
+          {/* Fără preț cunoscut nu inventăm o cifră — rămâne doar CTA-ul. */}
+          {fromPrice !== null && (
+            <span>{t('stickyMeta', { price: formatPrice(site, fromPrice) })}</span>
+          )}
         </Link>
       )}
       <ChatWidget />

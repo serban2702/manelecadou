@@ -75,7 +75,7 @@ const TRANSACTIONAL: TransactionalDef[] = [
     id: 'tx_payment_success',
     name: 'Plată confirmată',
     description: 'Chitanță după o plată reușită, cu suma și butonul de ascultare.',
-    render: (c) => paymentSuccessTemplate({ amountRON: 99, currency: 'lei', recipientName: 'Andrei', generationLink: 'https://manelecadou.ro/m/demo/view', locale: c.locale, branding: c.branding }),
+    render: (c) => paymentSuccessTemplate({ amountRON: 99, currency: 'lei', recipientName: 'Andrei', generationLink: 'https://manelecadou.ro/m/demo/view', durationSec: 150, locale: c.locale, branding: c.branding }),
   },
   {
     id: 'tx_gift_code',

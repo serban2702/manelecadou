@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { downloadUrl } from '@/lib/download';
 import { useTranslations } from 'next-intl';
 import { resolveMediaUrl } from '@/lib/api';
 import { claimPlayback, releasePlayback } from '@/lib/audio-registry';
@@ -31,14 +32,6 @@ function fileName(fileBase: string, label?: string): string {
   return `${prefix}-${base}.mp3`;
 }
 
-/** Same-origin `/uploads/...` so `download` works (local rewrite / prod Caddy). */
-function downloadHref(src: string): string {
-  try {
-    const u = new URL(src, 'http://localhost');
-    if (u.pathname.startsWith('/uploads/')) return `${u.pathname}${u.search}`;
-  } catch { /* ignore */ }
-  return src;
-}
 
 function clampVol(n: number): number {
   if (!Number.isFinite(n)) return 0.85;
@@ -300,7 +293,7 @@ export function CadouDemoPlayer({
         )}
         <a
           className="cadou-demo-dl"
-          href={downloadHref(src)}
+          href={downloadUrl(src, fileName(t('fileBase'), label))}
           download={fileName(t('fileBase'), label)}
           aria-label={t('downloadAria')}
         >

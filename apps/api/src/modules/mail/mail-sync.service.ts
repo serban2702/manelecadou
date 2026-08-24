@@ -155,7 +155,7 @@ export class MailSyncService {
     });
     const saved = await this.mail.messages.save(msg);
     if (m.attachments.length) {
-      const records = await this.imap.writeAttachmentsToDisk(saved.id, m.attachments);
+      const records = await this.imap.storeAttachments(saved.id, m.attachments);
       for (const r of records) {
         await this.mail.attachments.save(this.mail.attachments.create({ messageId: saved.id, ...r }));
       }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { downloadUrl } from '@/lib/download';
 import { Ic } from './icons';
 import { resolveMediaUrl } from '@/lib/api';
 import { claimPlayback, releasePlayback } from '@/lib/audio-registry';
@@ -284,7 +285,7 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
       </div>
       {!previewLimited && (
         <a
-          href={audioUrl}
+          href={downloadUrl(audioUrl)}
           download
           title="Descarcă MP3"
           onClick={() => {

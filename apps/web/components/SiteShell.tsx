@@ -17,6 +17,7 @@ import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
 import { openDemosModal, useWizardReachedPackage } from '@/lib/wizard';
 import { useExperience } from '@/lib/experience-context';
+import { usePackages } from '@/experiences/use-packages';
 
 // `hideStickyCta` rămâne în signature pentru retrocompatibilitate cu paginile
 // care îl pasează (legal, login, cont etc.), dar nu mai are efect — sticky
@@ -32,6 +33,18 @@ export function SiteShell({ children, hideStickyCta: _ignored }: { children: Rea
   const brandName = site.name;
   const logoSrc = site.brand?.logoUrl || '/logo-80.png';
   const t = useTranslations();
+  // Banda de urgență conține prețul: îl luăm din cel mai ieftin pachet ACTIV,
+  // nu din traducere (unde era o cifră în lei, afișată identic pe toate cele 8
+  // site-uri, indiferent de monedă sau de ce s-a editat în admin).
+  const { items: packs } = usePackages();
+  const cheapestPack = packs.reduce<(typeof packs)[number] | null>(
+    (best, p) => (p.priceCents > 0 && (!best || p.priceCents < best.priceCents) ? p : best),
+    null,
+  );
+  const urgencyCompare =
+    cheapestPack?.compareAtCents && cheapestPack.compareAtCents > cheapestPack.priceCents
+      ? cheapestPack.compareAtCents
+      : null;
   const [cookieOpen, setCookieOpen] = useState(false);
   const [rouletteOpen, setRouletteOpen] = useState(false);
 
@@ -86,9 +99,23 @@ export function SiteShell({ children, hideStickyCta: _ignored }: { children: Rea
 
   return (
     <div className="app site-shell">
-      <div className="urgency">
-        <span className="urgency-text" dangerouslySetInnerHTML={{ __html: t.raw('urgency') as string }} />
-      </div>
+      {cheapestPack && (
+        <div className="urgency">
+          <span className="urgency-text">
+            {urgencyCompare !== null
+              ? t.rich('urgency', {
+                  s: (chunks) => <s className="urgency-strike">{chunks}</s>,
+                  b: (chunks) => <b>{chunks}</b>,
+                  compareAt: formatPrice(site, urgencyCompare),
+                  price: formatPrice(site, cheapestPack.priceCents),
+                })
+              : t.rich('urgencyPlain', {
+                  b: (chunks) => <b>{chunks}</b>,
+                  price: formatPrice(site, cheapestPack.priceCents),
+                })}
+          </span>
+        </div>
+      )}
       <header className="hdr">
         <div className="hdr-inner">
           <Link href="/" className="brand" style={{ textDecoration: 'none' }}>

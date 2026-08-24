@@ -95,6 +95,10 @@ services:
       # fără valoare explicită aici, fișierele ies din volum.
       UPLOADS_DIR: /app/uploads
       STORAGE_DRIVER: ${STORAGE_DRIVER:-disk}
+      # `env`, nu `auto`: pe dev baza e de obicei un dump de producție, iar
+      # `app_settings` aduce cheile R2 REALE. Citite DB-first, un delete din
+      # dev ar șterge din bucketul de producție. Aici baza nu e consultată.
+      STORAGE_CONFIG_SOURCE: ${STORAGE_CONFIG_SOURCE:-env}
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}

@@ -678,12 +678,14 @@ export const SETTINGS_SCHEMA: SettingCategory[] = [
       },
       {
         key: 'MAIL_ATTACH_DIR',
-        label: 'Director atașamente',
+        label: 'Director atașamente (vechi)',
         kind: 'string',
         placeholder: '/tmp/manelecadou-mail-attach',
-        // Citit din `process.env` la încărcarea modulelor de mail (imap.service.ts,
-        // mail.service.ts, outbox-attachments.service.ts, mail-append.queue.ts).
-        helpWhat: 'Unde se salvează fișierele din Inbox (path în container).',
+        // Citit din `process.env` la încărcarea modulelor de mail. Fișierele NOI
+        // se scriu prin StorageService, în uploads (`mail-attach/...`) + R2;
+        // directorul ăsta rămâne doar ca sursă de citire pentru rândurile vechi.
+        helpWhat:
+          'Volumul vechi de atașamente. Fișierele noi merg în uploads/mail-attach (deci și pe R2); aici se mai caută doar atașamentele de dinainte de migrare.',
         helpWhere:
           'DOAR CITIRE aici: se ia din `.env` (MAIL_ATTACH_DIR) la pornirea API-ului. Salvarea din admin nu are efect — modifică `.env` și repornește API-ul.',
       },
@@ -694,6 +696,22 @@ export const SETTINGS_SCHEMA: SettingCategory[] = [
         kind: 'bool',
         hotReload: true,
         helpWhat: 'Citește soldul Suno și alertează pe Wingo la prag sau API căzut.',
+      },
+      {
+        key: 'IDENTITY_GUEST_ADOPTION',
+        label: 'Recuperare sesiune guest',
+        description:
+          'Când serverul are voie să dea înapoi un guest pe care browserul nu-l mai are (localStorage șters).',
+        kind: 'select',
+        options: ['visitor', 'off'],
+        optionLabels: {
+          visitor: 'Doar pe același browser (default)',
+          off: 'Oprit — nimeni nu primește un guest înapoi',
+        },
+        hotReload: true,
+        // Consumator: identity.service.ts → maybeAdoptGuest. Gol = 'visitor'.
+        helpWhat:
+          'Default „doar pe același browser": se dă înapoi exclusiv guest-ul legat de aceeași amprentă de vizitator, confirmat de cheia de dispozitiv. NU se mai adoptă pe cheie de dispozitiv + IP (se ciocnesc între iPhone-uri diferite din același /24 de operator, deci un om ajungea în comenzile altuia). „Oprit" e frâna de urgență dacă apar iar rapoarte ciudate — clienții cu storage șters pornesc pur și simplu o sesiune nouă.',
       },
       {
         key: 'SUNO_CREDIT_ALERT_THRESHOLD',

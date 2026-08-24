@@ -23,6 +23,7 @@ import { GenerationsService } from './generations.service';
 import { SiteDemosService } from '../site-demos/site-demos.service';
 import { SocialImageUploadService } from './social-image-upload.service';
 import { CreateGenerationDto } from './dto/create-generation.dto';
+import { generationEntitlements } from './entitlements';
 import { experienceSlugFromRequest } from '../experiences/request-slug';
 import { GiftCodesService } from '../gift-codes/gift-codes.service';
 import {
@@ -34,7 +35,8 @@ import {
 } from '../../common/decorators';
 import { Site } from '../sites/site.entity';
 import { PaymentsService } from '../payments/payments.service';
-import { PAID_REMAKE_CENTS } from '../payments/packages';
+import { paidRemakeCentsFor } from '../payments/packages';
+import { resolveSitePackage } from '../experiences/package-resolve';
 import { OptionalJwtAuthGuard } from '../../common/jwt.guard';
 import { verifyUnlock } from '../../common/unlock';
 
@@ -260,6 +262,7 @@ export class GenerationsController {
     @Param('id') id: string,
     @CurrentUser() user: AuthedRequestUser | null,
     @CurrentGuestId() guestId: string | null,
+    @CurrentSite() site: Site,
     @Headers('x-unlock-password') unlockPassword?: string,
   ) {
     // Întâi încercăm ca owner (date complete)
@@ -285,7 +288,11 @@ export class GenerationsController {
         unlocked: true,
         variants,
         workingVariants,
-        ...this.svc.remakeStats(g),
+        // Ce i s-a VÂNDUT comenzii (din packageSnapshot, cu fallback pe tier
+        // pentru comenzile de dinainte de snapshot). Pagina melodiei decide din
+        // asta ce livrabile arată, nu din tier-ul curent.
+        entitlements: generationEntitlements(g),
+        ...this.svc.remakeStats(g, resolveSitePackage(site, 'basic', g.experienceSlug).priceCents),
       };
     } catch {
       // Fallback: orice generation succeeded e accesibil public cu URL-ul direct.
@@ -330,6 +337,9 @@ export class GenerationsController {
         paidUnlocked: pub.paidUnlocked,
         // Model PACHETE — livrabile extra (instrumental/video doar pentru plătiți).
         packageTier: pub.packageTier,
+        // Drepturile vândute pe comandă — de aici știe pagina ce secțiuni arată
+        // (colaj, felicitare etc.), inclusiv unui vizitator care a deblocat cu parola.
+        entitlements: generationEntitlements(pub),
         socialImages: pub.socialImages ?? [],
         socialImageSelected: pub.socialImageSelected,
         // Poza custom ÎNCĂRCATĂ de owner e privată — doar cu parola corectă.
@@ -437,15 +447,19 @@ export class GenerationsController {
       userId: user?.id ?? null,
       guestId: user ? null : guestId,
     });
+    const slug = experienceSlugFromRequest(req);
     return this.payments.createCheckoutSession({
       userId: user?.id ?? null,
       guestId: user ? null : guestId,
-      overrideAmount: PAID_REMAKE_CENTS,
+      // Aceeași sumă pe care o vede clientul în `remakeStats.paidRemakeCents`,
+      // derivată din pachetul de intrare al site-ului. Constanta în RON ar fi
+      // însemnat 15 EURO pe site-urile în euro.
+      overrideAmount: paidRemakeCentsFor(resolveSitePackage(site, 'basic', slug).priceCents),
       overrideProductName: 'Refacere manea',
       remakeForGenerationId: id,
       remakeNotes: prepared.notes,
       site,
-      experienceSlug: experienceSlugFromRequest(req),
+      experienceSlug: slug,
     });
   }
 

@@ -161,12 +161,19 @@ function ShareGenerationViewInner() {
   // Cât așteptăm plata, NU arătăm progress bar-ul „Acum compunem…" (generarea
   // nu a pornit) — afișăm în schimb secțiunea de reluare a plății.
   const inProgress = IN_PROGRESS_STATUSES.has(g.status) && !awaitingPayment;
-  // Pachetele plus/premium au livrabile extra (imagini sociale; + videoclip la
-  // premium) care se generează în fundal după ce melodia e gata. Cât
-  // `deliverablesReady` e false, arătăm placeholder-e „se generează" — altfel
-  // clientul care a plătit nu vede nimic din ce a cumpărat.
-  const tierHasExtras = g.packageTier === 'plus' || g.packageTier === 'premium';
-  const enriching = isPaid && tierHasExtras && g.deliverablesReady === false;
+  // Ce i s-a VÂNDUT comenzii — calculat server-side din `packageSnapshot`
+  // (înghețat la plată). Decidem livrabilele din drepturi, nu din tier: Plus
+  // include colaj, iar oferta se poate schimba oricând sub o comandă veche.
+  // Dacă `entitlements` lipsește (API vechi / răspuns parțial), `ent` e null și
+  // fiecare secțiune cade pe comparația veche pe tier — mai bine o secțiune în
+  // plus decât un livrabil plătit și ascuns.
+  const ent = g.entitlements ?? null;
+  const tier = g.packageTier ?? 'basic';
+  // Cât `deliverablesReady` e false, backend-ul încă montează livrabile vândute
+  // pe comanda asta — arătăm placeholder-e „se generează", altfel clientul care
+  // a plătit nu vede nimic din ce a cumpărat. Semnalul e al backend-ului; nu-l
+  // mai ghicim din tier.
+  const enriching = isPaid && g.deliverablesReady === false;
   // Lookup chain: admin-defined config per site (cu i18n localizare) → seed-data
   //               → traduceri next-intl (pentru seed-data ids) → literal id.
   const adminStyle = site.styles?.find((s) => s.id === g.style);
@@ -225,13 +232,15 @@ function ShareGenerationViewInner() {
             }}>
               {isPaid ? t('unlockedBadge') : t('demoBadge')}
             </span>
-            {g.packageTier === 'premium' && (
+            {/* Coroana marchează pachetul de top — dreptul la pagina premium,
+                nu numele tier-ului (o interfață poate redenumi pachetele). */}
+            {(ent ? ent.premiumPage : tier === 'premium') && (
               <span style={{
                 fontSize: 11, padding: '3px 10px', borderRadius: 999,
                 background: 'linear-gradient(180deg,#ffe28a,#f1c84d,#b07c1e)',
                 color: '#2a1a04', fontWeight: 800, letterSpacing: '0.04em',
               }}>
-                👑 PREMIUM
+                👑 {(ent?.label ?? 'Premium').toUpperCase()}
               </span>
             )}
           </>
@@ -265,8 +274,9 @@ function ShareGenerationViewInner() {
         />
       )}
 
-      {/* Privacy: owner setează/șterge parola peste pozele private. */}
-      {isOwner && isPaid && g.status === 'succeeded' && (g.packageTier === 'plus' || g.packageTier === 'premium') && (
+      {/* Privacy: owner setează/șterge parola peste pozele private. Are sens
+          doar dacă poate încărca poze, adică dacă a cumpărat colajul. */}
+      {isOwner && isPaid && g.status === 'succeeded' && (ent ? ent.collage : tier === 'plus' || tier === 'premium') && (
         <OwnerPasswordControl
           skin="classic"
           generationId={g.id}
@@ -333,14 +343,22 @@ function ShareGenerationViewInner() {
       <ChorusClipsSection
         generation={g}
         skin="classic"
-        pending={enriching && g.packageTier === 'premium'}
+        pending={enriching && (ent ? ent.chorusClip : tier === 'premium')}
       />
 
-      {/* Colaj video din pozele tale — DOAR pachetul premium (cel mai scump),
-          după plată și melodie finalizată. Owner SAU vizitator deblocat poate
-          VEDEA colajele; doar owner-ul poate CREA (backend impune 403). */}
-      {canSeePrivate && isPaid && g.status === 'succeeded' && g.packageTier === 'premium' && (
-        <CollageSection generation={g} isOwner={isOwner} password={unlockPw ?? undefined} />
+      {/* Colaj video din pozele tale, după plată și melodie finalizată. Owner SAU
+          vizitator deblocat poate VEDEA colajele; doar owner-ul cu dreptul din
+          pachet poate CREA (backend impune 403 și plafonează numărul de poze).
+          Galeria rămâne montată chiar fără dreptul de creare — un colaj deja
+          livrat nu se ascunde niciodată. */}
+      {canSeePrivate && isPaid && g.status === 'succeeded' && (
+        <CollageSection
+          generation={g}
+          isOwner={isOwner}
+          password={unlockPw ?? undefined}
+          canCreate={ent ? ent.collage : tier === 'premium'}
+          maxImages={ent?.collagePhotoLimit ?? DEFAULT_COLLAGE_IMAGES}
+        />
       )}
 
       {g.status === 'succeeded' && !!(g.socialImages && g.socialImages.length) ? (
@@ -362,7 +380,9 @@ function ShareGenerationViewInner() {
             />
           )}
         />
-      ) : enriching ? (
+      ) : enriching && (ent ? ent.shareImages : true) ? (
+        // Placeholder doar dacă pozele de share chiar i-au fost vândute — altfel
+        // i-am promite un livrabil pe care nu-l primește niciodată.
         <div style={{
           marginTop: 16, padding: 16, borderRadius: 12,
           border: '1px solid rgba(241,200,77,0.25)', background: 'rgba(241,200,77,0.04)',
@@ -1180,12 +1200,16 @@ function ImageVideoPanel({
   );
 }
 
-const MAX_COLLAGE_IMAGES = 15;
+/** Plafonul de poze folosit doar când comanda nu are drepturi în payload. */
+const DEFAULT_COLLAGE_IMAGES = 15;
 const MAX_COLLAGE_FILE_BYTES = 10 * 1024 * 1024; // 10MB / fișier
+const MAX_COLLAGE_FILE_MB = MAX_COLLAGE_FILE_BYTES / (1024 * 1024);
 
 /**
  * UI „Fă-ți un colaj video" — userul alege una dintre cele 2 melodii, încarcă
- * până la 15 imagini (≤10MB fiecare) și backend-ul montează un colaj video.
+ * pozele (≤10MB fiecare) și backend-ul montează un colaj video. Numărul de poze
+ * e plafonat de pachetul CUMPĂRAT (`maxImages`), exact ca la validarea din API —
+ * altfel clientul încarcă 15 poze și primește eroare abia după upload.
  * După submit facem polling la `getLatestCollage` până la succeeded/failed.
  * Degradare grațioasă: dacă endpoint-urile lipsesc, secțiunea nu crapă pagina.
  */
@@ -1193,12 +1217,22 @@ function CollageSection({
   generation,
   isOwner,
   password,
+  canCreate,
+  maxImages,
 }: {
   generation: GenerationDto;
   isOwner: boolean;
   password?: string;
+  /** Pachetul cumpărat include colajul → arătăm formularul de creare. */
+  canCreate: boolean;
+  /** Câte poze acceptă pachetul cumpărat. */
+  maxImages: number;
 }) {
+  const t = useTranslations('mViewPage');
   const g = generation;
+  // Plafon efectiv: fără drept de colaj n-are sens un formular, deci limita
+  // scade la 0 și formularul nu se randează (vezi gardul de mai jos).
+  const limit = Math.max(0, maxImages);
   // A 2-a melodie există dacă avem audio/video bonus.
   const hasBonus = !!(g.bonusAudioUrl || g.videoUrlBonus);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -1251,8 +1285,8 @@ function CollageSection({
       return;
     }
     setErr(null);
-    if (picked.length > MAX_COLLAGE_IMAGES) {
-      setErr(`Poți alege maxim ${MAX_COLLAGE_IMAGES} imagini. Ai selectat ${picked.length}.`);
+    if (limit > 0 && picked.length > limit) {
+      setErr(`Poți alege maxim ${limit} imagini. Ai selectat ${picked.length}.`);
       return;
     }
     const tooBig = picked.find((f) => f.size > MAX_COLLAGE_FILE_BYTES);
@@ -1314,8 +1348,11 @@ function CollageSection({
       ? '🖼️ Videoclip cu o poză'
       : `🎞️ Colaj cu pozele tale${c.imageCount ? ` · ${c.imageCount} poze` : ''}`;
 
-  // Nimic de arătat și nici owner (fără formular de creare) → nu randăm nimic.
-  if (done.length === 0 && working.length === 0 && !isOwner) return null;
+  // Formularul de creare apare doar owner-ului care a cumpărat colajul.
+  const showForm = isOwner && canCreate && limit > 0;
+  // Nimic de arătat și fără formular → nu randăm nimic. Galeria colajelor deja
+  // făcute rămâne vizibilă chiar dacă pachetul nu (mai) dă dreptul de creare.
+  if (done.length === 0 && working.length === 0 && !showForm) return null;
 
   return (
     <>
@@ -1389,8 +1426,8 @@ function CollageSection({
         </div>
       )}
 
-      {/* Formular de creare (owner-only) — mereu disponibil ca să poată face altul. */}
-      {isOwner && (
+      {/* Formular de creare (owner cu drept din pachet) — mereu disponibil ca să poată face altul. */}
+      {showForm && (
     <div style={sectionStyle}>
       <div style={headerStyle}>🎞️ Fă-ți {done.length > 0 ? 'încă un' : 'un'} colaj video</div>
       <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
@@ -1496,7 +1533,7 @@ function CollageSection({
             : dragOver ? 'Dă drumul pozelor aici' : 'Trage pozele aici sau apasă să alegi'}
         </div>
         <div style={{ fontSize: 11.5, color: 'rgba(255,245,220,0.5)' }}>
-          max 15 imagini · până la 10MB fiecare · JPG / PNG / WEBP
+          {t('collageDropHint', { count: limit, mb: MAX_COLLAGE_FILE_MB })}
         </div>
       </div>
 

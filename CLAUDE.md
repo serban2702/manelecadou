@@ -971,6 +971,33 @@ fonturi care acoperă scriptul respectiv.
 
 Interfața `classic` nu e afectată: Cinzel + Manrope, cu alte subseturi.
 
+### 18.3.2 Identitatea vizitatorului — regulă de securitate, nu de UX
+
+`POST /api/identity/identify` e **public și neautentificat**. Tot ce trimite
+clientul e o afirmație, nu o dovadă. Singurul lucru pe baza căruia se poate
+returna guest-ul cuiva este **același rând `identity_visitors`** (potrivire
+exactă de `visitorId`), cu `deviceKey` doar ca semnal secundar de confirmare.
+
+Ce NU are voie să adopte un guest, oricât de tentant ar fi pentru continuitate:
+
+- **`deviceKey` + IP.** Pe iOS, `deviceMemory` și `hardwareConcurrency` sunt
+  `undefined`, deci toate iPhone-urile de același model produc același
+  `deviceKey`, iar un /24 de operator mobil e plin de ele. Ar fi însemnat
+  „Manelele mele" cu comenzile altui om, `isOwner` pe piesele lui, refacerile
+  lui gratuite consumate de un străin.
+- **Emailul din payload.** Oricine trimitea `{visitorId: al lui, email: al
+  victimei}` primea guest-ul victimei, fără nicio amprentă. Câmpul e ignorat;
+  legarea de email se face doar din propria sesiune, prin `linkEmail`.
+- **Un guest revendicat de un cont** (`userId != null`). Recuperarea se face
+  prin magic link.
+
+Frâna de urgență: setarea `IDENTITY_GUEST_ADOPTION` (Setări → Avansat) —
+`visitor` (implicit) sau `off`, fără redeploy. Adopțiile acordate și refuzate se
+loghează cu motiv.
+
+Prețul acceptat conștient: pe un dispozitiv nou, același om pornește cu sesiune
+nouă și își recuperează comenzile prin login. E preferabil alternativei.
+
 ### 18.4 Cum compari două interfețe
 
 Fără măsurare, rularea a două design-uri în paralel nu răspunde la nimic.
@@ -1001,6 +1028,18 @@ Regula de atribuire e într-un singur loc:
 
 Runbook complet de cutover: **`docs/COOLIFY_R2.md`**. Rezumat aici.
 
+### 19.0 Unde
+
+| | |
+|---|---|
+| Coolify | <https://coolify.freevox.ro> (v4.3.10) |
+| Server | OVH `37.187.159.41`, alias SSH `ovh` — 16 vCPU / 62 GB RAM / 387 GB liberi |
+| Proxy | Traefik v3.6 (`coolify-proxy`), HTTP-01 pe resolver-ul `letsencrypt` |
+| Vecini pe server | Wingo CRM + mailul Stalwart — nu se ating, tot ce publicăm trece prin Traefik |
+
+Producția e azi pe Ionos `212.227.184.215`; mutarea înseamnă A record nou
+pentru fiecare domeniu.
+
 ### 19.1 Traficul
 
 ```
@@ -1021,6 +1060,19 @@ domeniile publice + `admin.<domeniu>`. `api`, `web`, `admin`, `postgres` și
 Fișiere: `docker-compose.coolify.yml` (fără Caddy, cu paritate completă de env
 față de `docker-compose.prod.yml`), `deploy/coolify-deploy.sh` (opțional — dacă
 „Auto Deploy" e pornit, `git push` e de ajuns), target `make deploy-coolify`.
+
+Două lucruri pe care Coolify le face altfel decât te-ai aștepta, ambele
+descoperite citindu-i sursa, nu documentația:
+
+1. **Nu montăm `nginx.conf`, îl copiem în imagine** (`deploy/router/Dockerfile`).
+   Pentru un volum scris ca string, Coolify nu poate ști dacă sursa e fișier sau
+   director și presupune director (`bootstrap/helpers/shared.php`,
+   `$isDirectory = true`). Bind mount-ul ar fi transformat configul într-un
+   folder gol, iar tot traficul ar fi căzut pe pagina implicită nginx.
+2. **`ops` nu e în compose-ul de Coolify.** Coolify ignoră `profiles:` — nu apare
+   nici în parser, nici în jobul de deploy — deci l-ar construi și porni la
+   fiecare deploy, degeaba. Rămâne în `docker-compose.prod.yml`; routerul îl
+   tolerează lipsă (`/ops` dă 502, nu rupe nginx-ul).
 
 ⚠️ Variabilele `NEXT_PUBLIC_*` se marchează ca **Build Variable** în Coolify.
 Next.js le fixează în bundle la build; dacă ajung doar la runtime, pixelii și
@@ -1054,6 +1106,20 @@ folosește-l — altfel fișierul există doar pe containerul curent.
 Configurarea R2 se poate face și din admin `/settings` → Chei (DB întâi, env ca
 rezervă), cu reinițializare la salvare. Credențiale lipsă nu opresc API-ul: cade
 pe disc și loghează eroarea.
+
+**Două bucketuri: producție și dev.** Comutatorul e `STORAGE_CONFIG_SOURCE`:
+`db` (producție — cheile din admin), `env` (dev — baza e ignorată complet),
+`auto` (implicit: `env` în afara producției, `db` în producție).
+
+Există pentru un scenariu foarte concret: pe dev lucrăm cu un dump al bazei de
+producție, iar dump-ul aduce cheile R2 **reale** în `app_settings`. Citite
+DB-first, un `storage.delete` dintr-un test local ar șterge melodia unui client
+care a plătit-o. `docker-compose.yml` (dev) fixează `env`;
+`docker-compose.coolify.yml` fixează `db`.
+
+Bucketul activ apare în loguri la boot: `storage=r2 bucket=… (config=db, boot)`.
+Scriptul de sync cere `R2_CONFIRM_BUCKET` egal cu `R2_BUCKET` la orice rulare
+reală, exact ca să nu urci în bucketul greșit.
 
 ### 19.4 Scripturi de operare (`apps/api/scripts/`)
 

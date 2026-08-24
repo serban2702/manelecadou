@@ -15,12 +15,13 @@ import { CadouShell } from './Shell';
 import { CadouDemoPlayer } from './DemoPlayer';
 import { CadouVideoSection } from './VideoSection';
 import { CadouRemakeCard } from './RemakeCard';
+import { CadouUpsellModal, upsellAlreadySeen } from './UpsellModal';
 import { CadouFollowCard } from './FollowCard';
 import { CadouFold } from './Fold';
 import { cadouStyleArt } from './style-art';
 import { useCadouFromName } from './from-name';
 import { useExperienceCatalog } from '../use-experience-catalog';
-import { PACKAGES } from '@/lib/packages';
+import { usePackage } from '@/experiences/use-packages';
 
 const IN_PROGRESS = new Set([
   'pending', 'queued', 'writing_lyrics', 'checking_lyrics', 'generating_audio', 'running',
@@ -155,6 +156,7 @@ function CadouOrderCard({ generation }: { generation: GenerationDto }) {
   const fromName = useCadouFromName();
   const catalog = useExperienceCatalog();
   const g = generation;
+  const packLabel = usePackage(g.packageTier)?.label ?? null;
   const rec = fromName.displayRecipient(g.recipientName);
   const noDedic = !g.recipientName?.trim() || g.recipientName.trim() === NO_VALUE;
   const from = fromName.senderOf(g);
@@ -162,7 +164,9 @@ function CadouOrderCard({ generation }: { generation: GenerationDto }) {
   const occNm = catalog.occasions.find((o) => o.id === g.occasion)?.nm ?? (g.occasion && g.occasion !== 'altul' ? g.occasion : NO_VALUE);
   const voiceNm = catalog.voices.find((v) => v.id === g.voiceArtist)?.nm
     ?? (g.voiceArtist === 'female' ? t('voiceFemale') : t('voiceMale'));
-  const pack = PACKAGES.find((p) => p.tier === g.packageTier)?.nameRO ?? g.packageTier ?? NO_VALUE;
+  // Numele pachetului din admin (interfața curentă). Lookup-ul acceptă și
+  // pachetele oprite între timp — o comandă veche trebuie să-și arate pachetul.
+  const pack = packLabel ?? g.packageTier ?? NO_VALUE;
   const story = fromName.stripFromLine(g.message);
   const rows: Array<[string, string]> = [
     [t('orderStyle'), styleNm],
@@ -221,6 +225,7 @@ function CadouSongInner() {
   const [g, setG] = useState<GenerationDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
+  const [upsellOpen, setUpsellOpen] = useState(false);
   // Parola de privacy peste conținutul vechi privat (poza încărcată de owner +
   // colaje). Owner-ul nu are nevoie de ea; vizitatorul o introduce o dată.
   const { password, unlock } = useUnlockPassword(id);
@@ -295,6 +300,15 @@ function CadouSongInner() {
     ];
   }, [g, trackMain, trackBonus]);
 
+  // Upsell: o singură dată per generare, doar pentru owner, doar după ce piesa
+  // e livrată. Conținutul vine din pachetul rezolvat (admin) — vezi UpsellModal.
+  useEffect(() => {
+    if (!g?.isOwner || !g.id) return;
+    const delivered = g.status === 'succeeded' && (g.type === 'full' || g.paidUnlocked);
+    if (!delivered || upsellAlreadySeen(g.id)) return;
+    setUpsellOpen(true);
+  }, [g?.id, g?.isOwner, g?.status, g?.type, g?.paidUnlocked]);
+
   const lyrics = g?.lyrics || g?.lyricsDraft || '';
   const paid = !!g && (g.type === 'full' || g.paidUnlocked);
   const justPaid = search.get('success') === '1' || !!search.get('paymentId');
@@ -340,6 +354,13 @@ function CadouSongInner() {
 
   return (
     <>
+      {upsellOpen && g?.id && (
+        <CadouUpsellModal
+          generationId={g.id}
+          currentTier={g.packageTier === 'plus' || g.packageTier === 'premium' ? g.packageTier : 'basic'}
+          onClose={() => setUpsellOpen(false)}
+        />
+      )}
       <div className="cadou-wrap cadou-song-wrap cadou-song">
           <Link href={mine} className="cadou-song-back">{t('back')}</Link>
 
