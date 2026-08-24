@@ -10,7 +10,7 @@ import { ChatGateway } from '../chat/chat.gateway';
 import { Conversation, WizardData, WizardState } from '../chat/conversation.entity';
 import { ChatMessage, ChatMessagePayload } from '../chat/message.entity';
 import { PaymentsService } from '../payments/payments.service';
-import { normalizeTier, packageLabel, packageDef, PACKAGE_FEATURES, currencyWord, chatPackageUpsellRo, type PackageTier } from '../payments/packages';
+import { normalizeTier, packageLabel, packageDef, PACKAGE_FEATURES, currencyWord, chatPackageUpsell, type PackageTier } from '../payments/packages';
 import { effectiveExperienceSlug, resolveSitePackage, resolveSitePackages } from '../experiences/package-resolve';
 import type { ResolvedExperiencePackage } from '../experiences/types';
 import { GenerationsService } from '../generations/generations.service';
@@ -1795,7 +1795,27 @@ Mostre audio pentru play_sample → stiluri: [${ctx.styleSampleIds.join(', ') ||
     // Preț „tăiat" Plus (marketing) — dacă e setat, Irina îl prezintă ca reducere limitată.
     const plusCompareCents = compareOverrides.plus ?? null;
     const plusOldPrice = plusCompareCents ? `${(plusCompareCents / 100).toFixed(2)} ${cur}` : null;
-    const packageUpsell = chatPackageUpsellRo(overrides, { compareAt: compareOverrides, currency: cur });
+    // Pitch-ul se construiește din pachetele REZOLVATE (nume, beneficii, preț
+    // tăiat, activat/oprit), nu din constantele de cod — altfel Irina descrie
+    // altceva decât arată site-ul și prezintă pachete pe care checkout-ul le
+    // refuză. Vezi `chatPackageUpsell`.
+    const resolvedPkgs = resolveSitePackages(site, experienceSlug ?? null);
+    const packageUpsell = chatPackageUpsell(
+      (['basic', 'plus', 'premium'] as PackageTier[]).map((t) => resolvedPkgs[t]),
+      cur,
+    );
+    // Livrabilele din blocul PACHETE vin tot din pachetele rezolvate. Erau
+    // scrise în text („maxim 4 poze", „3 refaceri") — deci o schimbare din admin
+    // se vedea pe site, dar Irina continua să promită vechile valori.
+    const plusPhotos = resolvedPkgs.plus.collagePhotoLimit;
+    const premiumPhotos = resolvedPkgs.premium.collagePhotoLimit;
+    const basicRemakes = resolvedPkgs.basic.remakes;
+    const plusRemakes = resolvedPkgs.plus.remakes;
+    const premiumRemakes = resolvedPkgs.premium.remakes;
+    const plusNextDiscount = resolvedPkgs.plus.nextSongDiscountPercent;
+    const premiumNextDiscount = resolvedPkgs.premium.nextSongDiscountPercent;
+    const premiumScope = resolvedPkgs.premium.collageFullTrack ? 'pe TOATĂ melodia' : 'doar pe REFREN';
+    const plusScope = resolvedPkgs.plus.collageFullTrack ? 'pe TOATĂ melodia' : 'doar pe refren';
     // Durata REALĂ a piesei per pachet, derivată din PACKAGES.durationSec (nu hardcodată).
     // Fără ea, Irina confirma cifra propusă de client (vezi bug-ul din blocul PACHETE).
     // Prezentăm un INTERVAL (85%..100% din țintă) pentru că `durationSec` e ținta cerută
@@ -1896,16 +1916,19 @@ banilor și nu spune că are „drept de refund 30 zile" (vezi regula 29). BUG o
 conv 9d844ab9: AI a spus clientului că are drept de refund 30 zile — fals, nu oferim refund.
 
 PACHETE (în chat le prezinți pe TOATE 3 — chiar înainte de linkul de plată, vezi ETAPA 5.5):
-- STANDARD = ${price} (preț de intrare — maneaua personalizată, 1 refacere gratuită), durează ${basicDuration}.
-- PLUS = ${plusPrice}${plusOldPrice ? ` (REDUS de la ${plusOldPrice} — ofertă valabilă încă 3 zile)` : ''} (mai lungă + colaj video cu maxim 4 poze, doar pe refren; 2 refaceri gratuite; 25% reducere la următoarea manea), durează ${plusDuration}.
-- PREMIUM = ${premiumPrice} (tot ce e în Plus + colaj video cu până la 15 poze pe TOATĂ melodia + felicitare + pagină premium; 3 refaceri gratuite; 40% reducere la următoarea manea), durează ${premiumDuration}.
+- STANDARD = ${price} (preț de intrare — maneaua personalizată, ${basicRemakes} refacere/refaceri gratuite), durează ${basicDuration}.
+- PLUS = ${plusPrice}${plusOldPrice ? ` (REDUS de la ${plusOldPrice} — ofertă valabilă încă 3 zile)` : ''} (mai lungă + colaj video cu maxim ${plusPhotos} poze, ${plusScope}; ${plusRemakes} refaceri gratuite; ${plusNextDiscount}% reducere la următoarea manea), durează ${plusDuration}.
+- PREMIUM = ${premiumPrice} (tot ce e în Plus + colaj video cu până la ${premiumPhotos} poze ${premiumScope} + felicitare + pagină premium; ${premiumRemakes} refaceri gratuite; ${premiumNextDiscount}% reducere la următoarea manea), durează ${premiumDuration}.
 Când userul întreabă „cât costă?", spune că prețul PLEACĂ DE LA ${price} (Standard) și că
 sunt 3 pachete din care alege — nu ascunde variantele Plus și Premium.
 
 📸 SINGURUL livrabil cu poze e COLAJUL VIDEO (pozele clientului + melodia pe fundal):
 - Standard — NU are colaj deloc.
-- Plus — colaj cu MAXIM 4 poze, doar pe REFREN.
-- Premium — colaj cu până la 15 poze, pe TOATĂ melodia.
+- Plus — colaj cu MAXIM ${plusPhotos} poze, ${plusScope}.
+- Premium — colaj cu până la ${premiumPhotos} poze, ${premiumScope}.
+⚠️ Cifrele din blocul ăsta sunt cele CONFIGURATE pentru site-ul curent. Dacă vezi
+altundeva în instrucțiuni alte numere (4 / 15 / 3 refaceri), acelea sunt exemple —
+astea de aici au prioritate.
 Clientul își încarcă SINGUR pozele, gratuit, de pe pagina melodiei (/m/...), DUPĂ livrare — nu i le
 punem noi și nu le trimite în chat (vezi regula 32).
 ⛔ LIVRABILE SCOASE DIN OFERTĂ — nu mai există la NICIUN pachet și NU le mai oferi NICIODATĂ,

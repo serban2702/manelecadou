@@ -238,28 +238,6 @@ export function packageLabel(tier: PackageTier): string {
   return PACKAGES[tier].label;
 }
 
-/**
- * Pitch text pentru toate pachetele (folosit de Irina înainte de link plată).
- * Prețurile reflectă override-urile per-site dacă există.
- */
-export function packagesPitchRo(
-  overrides?: Partial<Record<PackageTier, number>> | null,
-): string {
-  return PACKAGE_TIERS.map((tier) => {
-    const d = PACKAGES[tier];
-    const price = (packagePriceCents(tier, overrides) / 100).toFixed(2);
-    return `${d.label} (${price} lei): ${d.featuresRo.join(', ')}.`;
-  }).join(' ');
-}
-
-/**
- * Pitch pentru chat-ul Irinei — TOATE 3 pachetele (decizie owner 2026-06-13, review-uri
- * admin: clienții trebuie să vadă și varianta de 69.99, nu doar standard + plus):
- *  - Standard = basic (preț de intrare, maneaua personalizată)
- *  - Plus     = plus  (mai lungă + colaj 4 poze)
- *  - Premium  = premium (colaj 15 poze + felicitare + pagină premium)
- * Folosit în ETAPA de alegere a pachetului, înainte de linkul de plată.
- */
 /** Cuvântul natural pentru monedă, folosit în chat (mai uman decât codul ISO). */
 export function currencyWord(currency?: string | null): string {
   switch ((currency ?? 'RON').toUpperCase()) {
@@ -274,25 +252,50 @@ export function currencyWord(currency?: string | null): string {
   }
 }
 
-export function chatPackageUpsellRo(
-  overrides?: Partial<Record<PackageTier, number>> | null,
-  opts?: {
-    compareAt?: Partial<Record<PackageTier, number>> | null;
-    currency?: string | null;
-  },
-): string {
-  const cur = currencyWord(opts?.currency);
-  const fmt = (cents: number) => (cents / 100).toFixed(2);
-  const standard = fmt(packagePriceCents('basic', overrides));
-  const plus = fmt(packagePriceCents('plus', overrides));
-  const premium = fmt(packagePriceCents('premium', overrides));
-  const plusCompare = packageCompareAtCents('plus', opts?.compareAt, overrides);
-  const plusLine = plusCompare
-    ? `Plus ${plus} ${cur} (redus de la ${fmt(plusCompare)} ${cur} — oferta valabila inca 3 zile) — mai lunga, cu colaj 4 poze pe refren; `
-    : `Plus ${plus} ${cur} — colaj 4 poze (refren), manea mai calitativa, 2 refaceri si 25% la a doua manea; `;
-  return (
-    `Avem 3 pachete: Standard ${standard} ${cur} — maneaua ta in 5-10 minute, cu o refacere gratuita; ` +
-    plusLine +
-    `Premium ${premium} ${cur} — colaj cu 15 poze, felicitare, 3 refaceri gratuite si postare pe Facebook/TikTok. Ce alegi?`
-  );
+/** Forma minimă de care are nevoie pitch-ul. Structurală, ca `packages.ts` să nu
+ *  importe din `experiences/` (ar face ciclu — package-resolve importă de aici). */
+export interface PitchPackage {
+  label: string;
+  priceCents: number;
+  compareAtCents?: number | null;
+  features: string[];
+  enabled?: boolean;
 }
+
+/**
+ * Textul cu care Irina prezintă pachetele, construit din pachetele REZOLVATE
+ * (per site și per interfață), nu din constantele de cod.
+ *
+ * Înainte, doar prețurile veneau din override-uri; numele și lista de beneficii
+ * erau literale românești fixe („colaj 4 poze (refren)", „colaj cu 15 poze,
+ * felicitare, 3 refaceri gratuite"). Adică proprietarul edita pachetul în admin,
+ * site-ul afișa corect, iar Irina continua să descrie varianta veche — și
+ * prezenta inclusiv pachete scoase din vitrină, pe care checkout-ul apoi le
+ * refuza.
+ *
+ * Pachetele cu `enabled === false` nu mai apar deloc.
+ */
+export function chatPackageUpsell(
+  packages: PitchPackage[],
+  currency?: string | null,
+): string {
+  const cur = currencyWord(currency);
+  const fmt = (cents: number) => (cents / 100).toFixed(2);
+  const active = packages.filter((p) => p.enabled !== false);
+  if (active.length === 0) return '';
+
+  const parts = active.map((p) => {
+    const price = `${fmt(p.priceCents)} ${cur}`;
+    const compare =
+      typeof p.compareAtCents === 'number' && p.compareAtCents > p.priceCents
+        ? ` (redus de la ${fmt(p.compareAtCents)} ${cur})`
+        : '';
+    const what = p.features.length > 0 ? ` — ${p.features.join(', ')}` : '';
+    return `${p.label} ${price}${compare}${what}`;
+  });
+
+  const count =
+    active.length === 1 ? 'un pachet' : `${active.length === 2 ? 'doua' : String(active.length)} pachete`;
+  return `Avem ${count}: ${parts.join('; ')}. Ce alegi?`;
+}
+
