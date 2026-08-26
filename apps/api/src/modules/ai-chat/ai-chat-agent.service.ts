@@ -138,6 +138,20 @@ const AFFIRM_ONLY = new Set([
 
 /** Normalizare „slabă" pentru comparații semantice: fără diacritice, lowercase,
  *  punctuația colapsată în spații. Păstrează `@` și `.` ca să nu spargă emailurile. */
+/** Cum îi spunem piesei pe cardul de plată. Default „Manea", dar când clientul a cerut
+ *  explicit alt gen îl folosim pe al lui. BUG observat 2026-08-26 conv 02a15adf: un om care
+ *  comanda o DOINĂ pentru nașul mort a primit cardul de plată „Manea pentru nashu — pachet
+ *  Standard". Cuvântul greșit, exact pe ecranul unde omul dă banii, la o comandă de doliu.
+ *  Conservator: schimbăm doar pe genurile pe care le numește el fără echivoc. */
+function songWord(...hints: (string | null | undefined)[]): string {
+  const t = normLoose(hints.filter(Boolean).join(' '));
+  if (/\bdoin[ae]?\b/.test(t)) return 'Doină';
+  if (/\bcolind\w*\b/.test(t)) return 'Colind';
+  if (/\broman[tz]\w*\b/.test(t)) return 'Romanță';
+  if (/\bbalad\w*\b/.test(t)) return 'Baladă';
+  return 'Manea';
+}
+
 function normLoose(s: string): string {
   return (s ?? '')
     .normalize('NFD')
@@ -1319,6 +1333,57 @@ zero răspunsuri de la user între ele.`;
           !!finalNorm && blockedNorm.some((b) => b === finalNorm || textOverlap(b, finalNorm) >= 0.7);
         if (wasBlockedThisTurn) {
           this.logger.warn(`AI auto safety-net: finalContent respins de un guard în turul curent pentru conv=${conv.id.slice(0, 8)} — trimit textul neutru.`);
+        }
+        /** Turul ăsta n-a produs conținut propriu — ce ar pleca e doar textul-umplutură. */
+        const onlyNeutralLeft = !finalRaw || isJunkText(finalRaw) || wasBlockedThisTurn;
+
+        // „Spune-mi încă o dată ce ai nevoie" e cel mai prost lucru pe care-l putem spune în
+        // două situații, ambele văzute pe 2026-08-26 conv 02a15adf (4 apariții într-o singură
+        // conversație, la un om care comanda o doină pentru nașul mort):
+        //  (a) clientul n-a CERUT nimic — a dat un „ok" / „da" / „mrs" de încheiere. Nu există
+        //      nimic de reformulat; tăcerea e răspunsul corect, nu o întrebare care-l pune pe
+        //      el să explice ce voia. (16:39 și 16:44 au plecat exact pe „ok".)
+        //  (b) tocmai a răspuns perfect, dar mesajul nostru a fost oprit de un guard (la 16:33
+        //      și-a scris emailul, `wizard_update` l-a salvat corect, `send_message` a fost
+        //      blocat ca near-duplicate → omul a primit „spune-mi încă o dată ce ai nevoie"
+        //      la 6 secunde după ce-și scrisese emailul). Vina noastră, aruncată pe el.
+        // În ambele cazuri NU trimitem textul neutru. Dacă modelul chiar a produs conținut
+        // real (finalRaw curat, neblocat), acela pleacă normal — suprimăm doar textul-umplutură.
+        if (onlyNeutralLeft && !didCheckStatus) {
+          const lastUserMsg = await this.msg.findOne({
+            where: { conversationId: conv.id, authorRole: 'user' },
+            order: { createdAt: 'DESC' },
+          });
+          const t = normLoose(lastUserMsg?.body ?? '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+          const rawBody = (lastUserMsg?.body ?? '').trim();
+          const isPassiveAck =
+            (!!t &&
+              t.length <= 22 &&
+              /^(ok+|oki|okey|okay|bine|bn|da|daa|dap|sigur|perfect|super|multumesc|multumesc mult|mersi|mrs|ms|merci|multam|am inteles|inteleg|asa|aha|ada|bun|bine multumesc|ok multumesc|ok mersi|de acord)$/.test(t)) ||
+            // doar emoji („👍", „❤️", „🙏") — normLoose le curăță complet, dar sunt tot un ack
+            (!t && rawBody.length > 0 && rawBody.length <= 8);
+          if (isPassiveAck) {
+            this.logger.warn(`AI auto fallback SUPPRESSED pe conv=${conv.id.slice(0, 8)} — ultimul mesaj user e un ack pasiv („${t}"), n-are ce reformula.`);
+            return;
+          }
+          if (ctx.blockedTexts?.length) {
+            this.logger.warn(`AI auto fallback SUPPRESSED pe conv=${conv.id.slice(0, 8)} — mesajul a fost oprit de un guard al nostru, nu cerem clientului să repete.`);
+            return;
+          }
+          // Turnuri concurente (userul a trimis 2 mesaje la câteva secunde): dacă tocmai a
+          // plecat un mesaj AI, al doilea tur n-are ce adăuga cu un text-umplutură.
+          try {
+            const lastAi = await this.msg.findOne({
+              where: { conversationId: conv.id, authorRole: 'admin', aiGenerated: true },
+              order: { createdAt: 'DESC' },
+            });
+            if (lastAi && Date.now() - new Date(lastAi.createdAt).getTime() < 25_000) {
+              this.logger.warn(`AI auto fallback SUPPRESSED pe conv=${conv.id.slice(0, 8)} — un mesaj AI a plecat acum câteva secunde (tururi concurente).`);
+              return;
+            }
+          } catch {
+            /* dacă query-ul pică, lăsăm fallback-ul normal să plece */
+          }
         }
         const fallback = finalRaw && !isJunkText(finalRaw) && !wasBlockedThisTurn ? finalRaw.slice(0, 800) : neutralFallback;
         // GUARD anti-duplicat pe safety net. Safety net-ul persistă finalContent-ul DIRECT
@@ -4605,7 +4670,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       const amount = packageTotalCents(tier, site.packagePricesCents ?? null);
       const currency = site.currency.toUpperCase();
       const tierLabel = packageLabel(tier);
-      const description = `Manea pentru ${state.data.recipientName} — pachet ${tierLabel}`;
+      const description = `${songWord(state.data.styleHint, state.data.style, state.data.occasion, state.data.message)} pentru ${state.data.recipientName} — pachet ${tierLabel}`;
       const msg = this.msg.create({
         conversationId: conv.id,
         siteId: conv.siteId,
@@ -7411,18 +7476,41 @@ ${transcript}`;
     // fără asta AI poate spama același link. BUG observat 2026-06-19 conv b6bf78a7: userul
     // a zis de 2 ori că linkul nu se deschide („nu ma sala lincu", „nu pot intra") iar AI
     // a retrimis EXACT același link de mostră de 3 ori la rând.
+    // Două scăpări reale, ambele văzute pe 2026-08-26 conv 02a15adf (om care voia o doină):
+    //  (a) fereastra de 6 mesaje — mostra „romantica" trimisă la 16:29 ieșise din ea până la
+    //      16:42, așa că a fost retrimisă deși clientul o respinsese explicit („nu asa gen");
+    //  (b) `?v=` — același mp3 servit cu alt query string trecea de `includes(audioUrl)`, așa
+    //      că „clasic", respinsă de client cu „asta e de joc", i-a fost trimisă din nou.
+    // Căutăm pe TOATĂ conversația și comparăm URL-ul fără query string.
+    const baseUrl = (u: string) => u.split('?')[0];
+    const wantedBase = baseUrl(entry.audioUrl);
     const recentSamples = await this.msg.find({
       where: { conversationId: ctx.conv.id, aiGenerated: true },
       order: { createdAt: 'DESC' },
-      take: 6,
+      take: 120,
     });
-    if (recentSamples.some((m) => m.body.includes(entry.audioUrl))) {
+    if (recentSamples.some((m) => m.body.includes(wantedBase))) {
+      // Câte mostre DISTINCTE i-am trimis deja: dacă a respins tot ce avem, insistența e o
+      // capcană — clientul cere un stil pe care catalogul nu-l are (2026-08-26 conv 02a15adf:
+      // voia o doină, noi aveam doar „romantica" și „clasic", iar Irina i-a promis de 3 ori
+      // „îți caut imediat o mostră mai potrivită" și i-a retrimis exact ce respinsese).
+      const sentBases = new Set<string>();
+      for (const k of availableKeys) {
+        const url = samples?.[k]?.audioUrl;
+        if (url && recentSamples.some((m) => m.body.includes(baseUrl(url)))) sentBases.add(k);
+      }
+      const exhausted = sentBases.size >= Math.min(2, availableKeys.length);
       return {
         sent: false,
         status: 'SAMPLE_ALREADY_SENT',
         audioUrl: entry.audioUrl,
+        alreadySentIds: [...sentBases],
+        remainingIds: availableKeys.filter((k) => !sentBases.has(k)),
         instruction:
-          'STAI — ai trimis DEJA exact această mostră în conversație. NU o retrimite identic. Dacă userul spune că linkul nu se deschide / nu poate intra, NU repeta linkul: răspunde-i ca un om — sugerează-i să apese direct pe link sau să-l deschidă în alt browser (Chrome/Safari), ori întreabă dacă vrea altă mostră (alt stil/voce). Dacă insistă că nu merge, asigură-l că mostra e doar un exemplu de stil și că maneaua lui va fi complet personalizată, apoi avansează spre finalizarea comenzii — nu te bloca pe mostră.',
+          'STAI — ai trimis DEJA exact această mostră în conversație. NU o retrimite identic. Dacă userul spune că linkul nu se deschide / nu poate intra, NU repeta linkul: răspunde-i ca un om — sugerează-i să apese direct pe link sau să-l deschidă în alt browser (Chrome/Safari), ori întreabă dacă vrea altă mostră (alt stil/voce). Dacă insistă că nu merge, asigură-l că mostra e doar un exemplu de stil și că maneaua lui va fi complet personalizată, apoi avansează spre finalizarea comenzii — nu te bloca pe mostră.' +
+          (exhausted
+            ? ` ⚠️ I-ai arătat deja mostrele pe care le avem (${[...sentBases].join(', ')}) și nu i-au plăcut. NU-i mai promite „îți caut una mai potrivită" — n-avem alta, iar promisiunea repetată e minciună. Spune-i ADEVĂRUL, cald și scurt: mostrele sunt doar exemple de sunet, nu acoperă tot ce putem cânta, iar melodia LUI se face pe stilul cerut de el (folosește cuvintele lui: doină, jale, acordeon, saxofon...). Oferă-i alternativa reală: îi scrii versurile complete gratuit ca să vadă exact ce se cântă. NU-l lăsa să aștepte o mostră care nu vine.`
+            : ` Mostre pe care NU i le-ai trimis încă: ${availableKeys.filter((k) => !sentBases.has(k)).join(', ') || 'niciuna'}.`),
       };
     }
 
@@ -7647,12 +7735,28 @@ ${transcript}`;
     // memoria/amintirea lui..." unei mame îndoliate (fiul mort de 45 zile) — condoleanțe
     // repetate cuvânt cu cuvânt sună robotic exact unde doare cel mai tare. Blocăm un mesaj de
     // empatie ~identic cu unul dintre ultimele mesaje AI, FĂRĂ să consumăm cota de 2/conv.
+    // Fereastra de „ultimele 4 mesaje AI" era prea scurtă și lăsa duplicatul să treacă peste
+    // câteva schimburi. BUG observat 2026-08-26 conv 02a15adf: același text de condoleanțe,
+    // literă cu literă, trimis la 16:25 și din nou la 16:32 (între ele guard-ul îl blocase de
+    // 2 ori corect, apoi mesajul original i-a ieșit din fereastră). Comparăm pe TOATE mesajele
+    // de empatie ale conversației — sunt max 2, deci costul e zero — plus ultimele mesaje AI.
     const empNorm = cleaned.toLowerCase().replace(/\s+/g, ' ');
-    const recentAiForEmpathy = await this.msg.find({
-      where: { conversationId: ctx.conv.id, aiGenerated: true },
-      order: { createdAt: 'DESC' },
-      take: 4,
-    });
+    const pastEmpathy = await this.msg
+      .createQueryBuilder('m')
+      .where('m."conversationId" = :cid', { cid: ctx.conv.id })
+      .andWhere('m."aiGenerated" = true')
+      .andWhere(`m.payload->>'empathyTrigger' IS NOT NULL`)
+      .orderBy('m."createdAt"', 'DESC')
+      .take(5)
+      .getMany();
+    const recentAiForEmpathy = [
+      ...pastEmpathy,
+      ...(await this.msg.find({
+        where: { conversationId: ctx.conv.id, aiGenerated: true },
+        order: { createdAt: 'DESC' },
+        take: 4,
+      })),
+    ];
     const dupEmpathy = recentAiForEmpathy.some((m) => {
       const prev = m.body.toLowerCase().replace(/\s+/g, ' ');
       return prev === empNorm || textOverlap(prev, empNorm) >= 0.7;
@@ -8016,7 +8120,7 @@ ${transcript}`;
     const tier = normalizeTier(state.data.packageTier);
     const amount = packageTotalCents(tier, site.packagePricesCents ?? null);
     const currency = site.currency.toUpperCase();
-    const description = `Manea pentru ${state.data.recipientName ?? 'tine'} — pachet ${packageLabel(tier)}`;
+    const description = `${songWord(state.data.styleHint, state.data.style, state.data.occasion, state.data.message)} pentru ${state.data.recipientName ?? 'tine'} — pachet ${packageLabel(tier)}`;
 
     let checkoutUrl: string;
     let paymentId: string;
@@ -8130,10 +8234,38 @@ ${transcript}`;
     const check = await this.assertNotManual(ctx);
     if (check.aborted) return { aborted: true, status: 'ABORTED_MANUAL_MODE' };
     if (!ctx.conv.siteId) return { error: 'no_site' };
+    const siteId = ctx.conv.siteId;
     const conv = await this.conv.findOne({ where: { id: ctx.conv.id } });
     if (!conv) return { error: 'conversation gone' };
     const state = this.getOrInitWizardState(conv);
-    if (!state.data.recipientName || !state.data.message) {
+
+    // BUG observat 2026-08-26 conv 02a15adf: un om îndoliat își scrisese SINGUR versurile
+    // pentru doina nașului mort (salvate corect în `customLyrics`) și dăduse și destinatarul
+    // („nasu"), dar lipsea `message` — așa că `generate_lyrics` a fost refuzat de 3 ori la rând
+    // cu MISSING_FIELDS. La fiecare refuz Irina reîntreba „ce vrei să transmită melodia?", omul
+    // răspundea („amintiri", „durere si amintiri", „pentru baiat fata si sotia lui"), iar
+    // răspunsul NU ajungea în `message` → următorul apel pica identic. Șase mesaje pierdute pe
+    // aceeași întrebare, într-o conversație de doliu. Două porți de scăpare, ambele sigure:
+    //  1. dacă userul și-a dat versurile lui, `message` e inutil — versurile alea se cântă
+    //     literal, nu avem ce „poveste" să mai inventăm;
+    //  2. dacă modelul a trimis povestea în `revisionNotes` (exact ce s-a întâmplat aici — de
+    //     2 ori, cu descrierea completă), o promovăm în `message` în loc s-o aruncăm la gunoi.
+    const hasOwnLyrics = !!state.data.customLyrics?.trim();
+    if (!state.data.message && !hasOwnLyrics && (revisionNotes?.trim().length ?? 0) >= 25) {
+      state.data.message = revisionNotes!.trim().slice(0, 1500);
+      state.updatedAt = new Date().toISOString();
+      conv.wizardState = state;
+      await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ wizardState: state })
+        .where('id = :id', { id: conv.id })
+        .execute();
+      ctx.conv = conv;
+      this.logger.log(`generate_lyrics: message promovat din revisionNotes pe conv=${conv.id.slice(0, 8)}`);
+    }
+
+    if (!state.data.recipientName || (!state.data.message && !hasOwnLyrics)) {
       // Marcăm promisiunea ca NEONORATĂ. BUG observat 2026-07-30 conv 1e1319a9: userul a
       // zis „aș vrea mai întâi să aud cum sună" + „vreau să aud cum se aude cu numele lui",
       // Irina a promis versurile de 3 ori, `generate_lyrics` a picat pe MISSING_FIELDS, iar
@@ -8154,7 +8286,9 @@ ${transcript}`;
       }
       return {
         status: 'MISSING_FIELDS',
-        missingFields: ['recipientName', 'message'].filter((f) => !state.data[f as keyof WizardData]),
+        missingFields: ['recipientName', 'message'].filter(
+          (f) => !state.data[f as keyof WizardData] && !(f === 'message' && hasOwnLyrics),
+        ),
         instruction:
           'Înainte de versuri am nevoie de pentru cine e melodia + mesajul. Întreabă-le întâi (wizard_update), apoi generate_lyrics. ⚠️ I-ai PROMIS userului versurile — e o datorie deschisă: în clipa în care ai destinatarul + mesajul, apelezi `generate_lyrics` ÎNAINTE de orice altceva (email, pachete, recapitulare, link de plată). NU-l duce spre plată cu promisiunea neonorată.',
       };
@@ -8185,15 +8319,74 @@ ${transcript}`;
         instruction: 'Ai trimis deja un draft de versuri. Ca să generezi altul, RE-apelează generate_lyrics cu revisionNotes = EXACT ce a cerut userul să se schimbe față de draftul anterior (ce scoatem, ce adăugăm, ce păstrăm — citează cerințele lui, inclusiv interdicțiile: „NU menționa X"). Fără revisionNotes, writer-ul rescrie orbește și repetă aceleași greșeli.',
       };
     }
-    const site = await this.sites.findById(ctx.conv.siteId);
+    const site = await this.sites.findById(siteId);
     if (!site) return { error: 'site_not_found' };
+
+    // Versurile SCRISE DE CLIENT nu se aruncă. BUG observat 2026-08-26 conv 02a15adf: omul a
+    // zis „versurile mele" și și-a scris singur doina pentru nașul mort; textul lui s-a salvat
+    // corect în `customLyrics`, dar `generate_lyrics` l-a suprascris cu versuri compuse de la
+    // zero de AI — clientul a comandat melodia pe versurile Irinei, nu pe ale lui, fără să afle
+    // vreodată. `customLyrics` fără niciun draft AI în urmă = text al omului, intangibil:
+    //  - fără `revisionNotes` (n-a cerut nicio schimbare) → i le arătăm ÎNAPOI, nu rescriem;
+    //  - cu `revisionNotes` → writer-ul primește versurile lui ca BAZĂ obligatorie și doar le
+    //    ajustează punctual (nu compune altele).
+    const userOwnLyrics =
+      (state.lyricsDraftCount ?? 0) === 0 && state.data.customLyrics?.trim()
+        ? state.data.customLyrics.trim()
+        : null;
+
+    if (userOwnLyrics && !revisionNotes?.trim()) {
+      const ownText = `Astea sunt versurile tale, exact cum mi le-ai scris 🎤\n\n${userOwnLyrics.slice(0, 3000)}\n\nPe ele se cântă melodia, cuvânt cu cuvânt. Vrei să schimbăm ceva sau le lăsăm așa?`;
+      state.lyricsPromisedAt = null; // datoria „i-am promis versurile" e achitată
+      state.updatedAt = new Date().toISOString();
+      await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ wizardState: state })
+        .where('id = :id', { id: conv.id })
+        .execute();
+      ctx.conv = conv;
+      ctx.lyricsSentThisTurn = true;
+      await this.humanDelay(ownText.slice(0, 150), ctx.mode);
+      const om = this.msg.create({
+        conversationId: conv.id,
+        siteId: conv.siteId,
+        authorRole: ctx.mode === 'suggest' ? 'system' : 'admin',
+        authorId: null,
+        body: ownText,
+        messageType: ctx.mode === 'suggest' ? 'ai_suggestion' : 'text',
+        aiGenerated: true,
+        detectedLang: site.locale,
+      });
+      const savedOwn = await this.msg.save(om);
+      if (ctx.mode === 'suggest') {
+        this.gateway.emitAiSuggestion({ conversation: conv, message: savedOwn });
+        return { sent: false, status: 'SUGGESTION_PERSISTED', ownLyrics: true };
+      }
+      await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ lastMessageAt: savedOwn.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+        .where('id = :id', { id: conv.id })
+        .execute();
+      this.gateway.emitMessage({ message: savedOwn, conversation: conv });
+      ctx.sentRealMessages++;
+      return {
+        sent: true,
+        status: 'OWN_LYRICS_SHOWN',
+        instruction:
+          'Clientul își scrisese SINGUR versurile — i le-ai arătat înapoi exact cum le-a dat, NU le-ai rescris. Melodia se va cânta pe ele, cuvânt cu cuvânt. NU compune versuri noi peste ele și NU-i promite „îți scriu eu versurile". Dacă cere schimbări punctuale, re-apelează generate_lyrics cu revisionNotes = exact ce a cerut. TERMINĂ TURUL.',
+      };
+    }
 
     // Inferăm stil/ocazie/voce din transcript (același mecanism ca la finalize) ca
     // versurile să sune exact ca melodia finală.
     const inference = await this.inferCreativeFields(conv, state.data, site);
-    const messageForLyrics = revisionNotes
-      ? `${inference.message.value}\n\nAJUSTĂRI CERUTE DE CLIENT LA VERSURI: ${revisionNotes.slice(0, 600)}`
-      : inference.message.value;
+    const messageForLyrics = userOwnLyrics
+      ? `VERSURILE SCRISE DE CLIENT (bază OBLIGATORIE — păstrează-le cuvintele, imaginile și ordinea; NU compune altele de la zero, doar aplică ajustările cerute):\n${userOwnLyrics.slice(0, 2000)}\n\nAJUSTĂRI CERUTE DE CLIENT: ${revisionNotes!.slice(0, 600)}\n\nContext: ${inference.message.value}`
+      : revisionNotes
+        ? `${inference.message.value}\n\nAJUSTĂRI CERUTE DE CLIENT LA VERSURI: ${revisionNotes.slice(0, 600)}`
+        : inference.message.value;
 
     let lyrics: string;
     try {
