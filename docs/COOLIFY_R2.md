@@ -316,9 +316,24 @@ migrează** — pe stack-ul nou certificatele le emite Traefik de la zero.
 ## 4. Cutover
 
 ### Pas 1 — migrarea de schemă, PE IONOS, înainte de dump
+
+Imaginea api de pe Ionos e mai veche decât acest branch și **nu conține
+`scripts/`** (`COPY scripts ./scripts` s-a adăugat abia aici), așa că scriptul se
+copiază în container. Se rulează din `/app`, altfel `node` nu găsește modulul
+`pg`, iar conexiunea se dă prin `PG*`, nu prin `POSTGRES_*`:
+
 ```bash
-docker exec manele-api-1 node scripts/migrate-prod-to-new-stack.mjs --phase=pre
+scp apps/api/scripts/migrate-prod-to-new-stack.mjs VPSIonos:/tmp/mig.mjs
+ssh VPSIonos 'docker cp /tmp/mig.mjs manele-api-1:/app/mig.mjs && \
+  docker exec -w /app \
+    -e PGHOST=postgres -e PGUSER=manelecadou -e PGDATABASE=manelecadou \
+    -e PGPASSWORD="$(grep "^POSTGRES_PASSWORD=" /home/manele/.env | cut -d= -f2-)" \
+    manele-api-1 node mig.mjs --phase=pre'
 ```
+
+Rulează întâi cu `--phase=check` (nu scrie nimic) și cu `--phase=pre --dry-run`
+ca să vezi exact ce SQL urmează. Ambele verificate pe producție (24 aug 2026).
+La final: `ssh VPSIonos 'docker exec manele-api-1 rm -f /app/mig.mjs'`.
 Lărgește `video_collages.track` de la `varchar(8)` la `varchar(64)`.
 **Obligatoriu**: TypeORM cu `synchronize: true` nu face ALTER la schimbarea de
 lungime — face DROP + ADD, iar toate colajele existente ar rămâne cu
@@ -339,10 +354,14 @@ variabila și redeployează.)*
 ### Pas 2 — dump + restore
 ```bash
 # pe Ionos
-docker exec manele-postgres-1 pg_dump -U manelecadou manelecadou | gzip > /backups/cutover.sql.gz
-# pe Coolify
-gunzip -c cutover.sql.gz | docker exec -i <postgres> psql -U manelecadou manelecadou
+ssh VPSIonos 'docker exec manele-postgres-1 pg_dump -U manelecadou manelecadou | gzip > /backups/cutover.sql.gz'
+scp VPSIonos:/backups/cutover.sql.gz .
+
+# pe serverul Coolify (numele containerului îl vezi cu `docker ps | grep postgres`)
+scp cutover.sql.gz ovh:/tmp/
+ssh ovh 'gunzip -c /tmp/cutover.sql.gz | docker exec -i <container-postgres> psql -U <POSTGRES_USER> <POSTGRES_DB>'
 ```
+Baza de producție are ~330 MB, deci transferul e de ordinul minutelor.
 
 ### Pas 3 — deploy în Coolify
 Push pe branch, sau butonul Deploy. Urmărește logurile serviciului `api` până
