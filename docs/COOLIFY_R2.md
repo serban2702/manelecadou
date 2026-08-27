@@ -89,6 +89,11 @@ iar `X-Forwarded-Proto: https` se propagă corect.
 Build-ul complet al stack-ului (`docker compose -f docker-compose.coolify.yml
 build`) trece — api, web, admin și router.
 
+**Topologia cu bază separată e verificată**, nu doar scrisă: un Postgres pe o
+rețea proprie, cu hostname de forma unui UUID (cum îl dă Coolify), plus API-ul
+pornit cu `POSTGRES_HOST` pe acel UUID. Rezultat: health OK și **49 de tabele
+create în resursa separată**.
+
 **Driverul R2 e verificat pe un S3 real.** Nu avem credențiale R2, dar R2 e
 S3-compatibil, iar `apps/api/src/storage/storage-s3.spec.ts` rulează întreg
 contractul pe un MinIO local: scriere, citire, listare, **Range** (de el depind
