@@ -1098,8 +1098,10 @@ o cheie existentă, lipită manual), copiezi `public_key` în GitHub → Deploy 
 apoi **+ New Resource → Private Repository (with deploy key)**. Ecranul are doi
 pași: cheia, apoi Repository URL / Branch / **Build pack: Docker Compose** /
 **Compose file** (implicit `/docker-compose.yaml`, de schimbat în
-`/docker-compose.coolify.yml`). „Connect to Predefined Network" e în tabul
-**Advanced** al aplicației; domeniile per serviciu, în **General**.
+`/docker-compose.coolify.yml`). Rețeaua comună cu baza de date se alege din
+**Advanced → „Docker compose" → dropdownul „Predefined network"** →
+*Connect to predefined network* (nu e o bifă, iar secțiunea apare doar pentru
+aplicații cu build pack `dockercompose`); domeniile per serviciu, în **General**.
 
 ### 19.2 Două hop-uri de proxy
 

@@ -219,9 +219,20 @@ Coolify înseamnă A record nou → `37.187.159.41`, pentru fiecare domeniu.
 3. **Load/Parse** compose-ul. Trebuie să apară exact 5 servicii:
    `redis`, `api`, `web`, `admin`, `router`. Postgres NU e printre ele — e o
    resursă separată (pasul 0 de mai jos).
-4. **Settings → „Connect to Predefined Network"** pe aplicație. Fără el,
-   containerele din compose nu văd resursa de bază de date și API-ul pornește
-   fără DB.
+4. **Advanced → secțiunea „Docker compose" → dropdownul „Predefined network"**,
+   pe aplicație. NU e o bifă și nu se numește „Connect to Predefined Network":
+   e un listbox (`isConnectToDockerNetworkEnabled`, `advanced.blade.php:116`) cu
+   „Isolated network only" (implicit) și **„Connect to predefined network"** —
+   alege-l pe al doilea. Fără el, containerele din compose nu văd resursa de
+   bază de date și API-ul pornește fără DB.
+
+   Lângă el e „Compose deployment": lasă-l pe **Managed by Coolify**; „Raw
+   (deploy file as-is)" ar însemna să configurezi singur partea de proxy.
+
+   ⚠️ Secțiunea apare **doar după ce aplicația există** și are build pack
+   `dockercompose` — e condiționată pe exact asta
+   (`@if ($application->build_pack === 'dockercompose')`). Dacă n-o vezi, ori
+   ești încă înainte de pasul 2, ori te uiți la resursa de bază de date.
 5. **Environment Variables** — vezi §3.3.
 6. **Domains** — numai pe serviciul `router`, restul rămân fără. Vezi Pas 5 din §4.
 7. **Deploy**.
