@@ -146,6 +146,22 @@ Coolify înseamnă A record nou → `37.187.159.41`, pentru fiecare domeniu.
 
 1. **Project** → `+ New` → nume `manelecadou`. (Instanța e goală: doar
    „My first project" și „Mail".)
+
+1b. **Baza de date, ÎNAINTE de aplicație.** `+ New Resource` → **PostgreSQL**,
+   imaginea **`postgres:16-alpine`** — aceeași ca pe Ionos. O versiune mai nouă
+   ar merge, dar un dump făcut pe 16 nu intră într-o versiune mai veche, deci nu
+   coborî sub ea. Notează user / parolă / nume de bază: ele devin
+   `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` pe aplicație.
+
+   Pe pagina resursei, la **Postgres URL (internal)**, vei vedea ceva de forma
+   `postgres://user:pass@<uuid>:5432/db`. **`<uuid>`-ul de acolo e
+   `POSTGRES_HOST`** — hostname-ul intern al bazei e chiar UUID-ul resursei.
+
+   De ce separat, și nu în compose: doar așa capătă backupuri programate direct
+   într-un bucket S3/R2, cu retenție și restore din interfață. În compose,
+   dump-urile ar fi stat pe același disc cu baza — dacă pică serverul, pierzi și
+   baza, și copiile. Baza e singurul lucru de neînlocuit; fișierele sunt oricum
+   pe R2. În plus, supraviețuiește ștergerii sau recreării aplicației.
 2. **+ New Resource** → **Private Repository (with deploy key)**, pentru
    `git@github.com:serban2702/manelecadou.git`.
 
@@ -163,11 +179,15 @@ Coolify înseamnă A record nou → `37.187.159.41`, pentru fiecare domeniu.
    - **Docker Compose Location**: `/docker-compose.coolify.yml`. Câmpul apare
      doar când build pack-ul e „Docker Compose", iar valoarea implicită e
      `/docker-compose.yaml` — trebuie schimbată.
-3. **Load/Parse** compose-ul. Trebuie să apară exact 6 servicii:
-   `postgres`, `redis`, `api`, `web`, `admin`, `router`.
-4. **Environment Variables** — vezi §3.3.
-5. **Domains** — numai pe serviciul `router`, restul rămân fără. Vezi Pas 5 din §4.
-6. **Deploy**.
+3. **Load/Parse** compose-ul. Trebuie să apară exact 5 servicii:
+   `redis`, `api`, `web`, `admin`, `router`. Postgres NU e printre ele — e o
+   resursă separată (pasul 0 de mai jos).
+4. **Settings → „Connect to Predefined Network"** pe aplicație. Fără el,
+   containerele din compose nu văd resursa de bază de date și API-ul pornește
+   fără DB.
+5. **Environment Variables** — vezi §3.3.
+6. **Domains** — numai pe serviciul `router`, restul rămân fără. Vezi Pas 5 din §4.
+7. **Deploy**.
 
 Ce trebuie să știi despre cum se poartă Coolify cu acest compose:
 
@@ -188,10 +208,6 @@ Ce trebuie să știi despre cum se poartă Coolify cu acest compose:
 - Volumele numite din compose le gestionează Coolify (le prefixează cu UUID-ul
   resursei). Nu șterge `api_uploads` înainte de a confirma sync-ul pe R2.
 
-Alternativ, Postgres și Redis pot fi resurse gestionate de Coolify (cu backup-uri
-programate din UI) — atunci le scoți din compose și pui `POSTGRES_HOST` /
-`REDIS_HOST` pe hostname-urile date de Coolify.
-
 ### 3.3 Variabile de mediu
 
 Pleci de la `.env`-ul de pe Ionos (`/home/manele/.env`) și adaugi:
@@ -208,9 +224,10 @@ R2_PUBLIC_URL=https://…
 
 **Obligatorii** (compose-ul nu are default pentru ele — dacă lipsesc, stack-ul
 pornește stricat, nu dă eroare la parse):
-`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `JWT_SECRET`,
-`SETTINGS_ENCRYPTION_KEY`, `APP_URL`, `ADMIN_URL`, `API_URL`,
-`DEFAULT_SITE_DOMAIN`, `ADMIN_EMAILS`, `MAIL_FROM`.
+`POSTGRES_HOST` (UUID-ul resursei de bază), `POSTGRES_USER`,
+`POSTGRES_PASSWORD`, `POSTGRES_DB`, `JWT_SECRET`, `SETTINGS_ENCRYPTION_KEY`,
+`APP_URL`, `ADMIN_URL`, `API_URL`, `DEFAULT_SITE_DOMAIN`, `ADMIN_EMAILS`,
+`MAIL_FROM`.
 
 ⚠️ **De marcat „Build Variable"** în Coolify — altfel rămân goale în pagina
 livrată, pentru că Next.js le fixează în bundle la build:
@@ -290,34 +307,29 @@ Avantajul: dacă apare o problemă, știi din care dintre cele două mutări vin
 Pe Ionos, `deploy.sh` făcea `pg_dump` **înainte de fiecare deploy**. Pe Coolify
 deploy-ul îl face Coolify, deci pasul acela dispare — exact plasa care ne apără
 de `synchronize: true`, care execută DDL la fiecare boot al API-ului. Trebuie
-refăcută din UI, nu e opțională.
+refăcută, nu e opțională.
 
-**Pre-deployment Command** (resursa stack-ului → Advanced):
-- Container: `postgres`
-- Command:
-  ```sh
-  sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > /backups/predeploy_$(date +%F_%H%M%S).sql.gz && find /backups -name "*.sql.gz" -mtime +30 -delete'
-  ```
-Scrie în volumul `pg_backups`, adăugat în compose exact pentru asta.
+Fiindcă baza e resursă gestionată (§3.2, pasul 1b), se face din interfața ei, cu
+destinația în afara serverului:
 
-**Scheduled Task** pentru dump-ul zilnic (resursa → Scheduled Tasks):
-- Container: `postgres`, Frequency: `0 3 * * *`
-- Aceeași comandă, cu prefixul `db_` în loc de `predeploy_`.
+1. **Settings → Storages → S3 Storages** în Coolify: adaugă bucketul R2 ca
+   destinație S3. Endpoint `https://<account>.r2.cloudflarestorage.com`, cheile
+   de la §3.1.2. Poate fi bucketul de producție sau, mai curat, unul separat
+   (ex. `manelecadou-backups`) — dump-urile n-au ce căuta lângă fișierele
+   servite public.
+2. **Resursa de bază de date → Backups → Add**: frecvență `0 3 * * *`,
+   „Save to S3" pornit, storage-ul de mai sus, retenție după cât vrei să ții.
+3. **Rulează unul manual acum** și verifică în bucket că fișierul chiar apare.
+   Un backup neverificat nu e backup.
 
-**Restore:**
-```bash
-gunzip -c /backups/<FIȘIER>.sql.gz | psql -U "$POSTGRES_USER" "$POSTGRES_DB"
-```
+Restore: din aceeași pagină, butonul de restore pe un backup din listă.
 
-Ambele comenzi sunt verificate pe un `postgres:16-alpine` curat (24 aug 2026):
-dump → tabel șters → restore → date întoarse. Nu le-am lăsat nescrise pe hârtie.
+Ce NU mai e nevoie: „Pre-deployment Command", volumul `pg_backups` și dump-urile
+scrise pe același disc cu baza — toate au dispărut odată cu mutarea bazei în
+resursă separată.
 
-**Alternativa mai bună, dacă vrei backup-uri în afara serverului**: scoate
-`postgres` din compose și fă-l resursă **Postgres gestionată de Coolify**. Atunci
-capeți din UI backup-uri programate direct într-un bucket S3 (deci și R2), cu
-retenție și restore din interfață — strict mai bine decât un dump pe același
-disc cu baza. Costul: încă o resursă de administrat și `POSTGRES_HOST` mutat pe
-hostname-ul dat de Coolify. Compose-ul e pregătit pentru ambele variante.
+⚠️ Backup-ul programat acoperă ritmul zilnic, nu momentul dinaintea unui deploy
+riscant. Înainte de un deploy cu schimbări de schemă, apasă manual un backup.
 
 ⚠️ Volumul `caddy_data` de pe Ionos (certificatele Let's Encrypt) **nu se
 migrează** — pe stack-ul nou certificatele le emite Traefik de la zero.
@@ -368,9 +380,10 @@ variabila și redeployează.)*
 ssh VPSIonos 'docker exec manele-postgres-1 pg_dump -U manelecadou manelecadou | gzip > /backups/cutover.sql.gz'
 scp VPSIonos:/backups/cutover.sql.gz .
 
-# pe serverul Coolify (numele containerului îl vezi cu `docker ps | grep postgres`)
+# pe serverul Coolify. Containerul bazei e numit după UUID-ul resursei —
+# îl vezi cu `docker ps | grep postgres` sau în pagina resursei.
 scp cutover.sql.gz ovh:/tmp/
-ssh ovh 'gunzip -c /tmp/cutover.sql.gz | docker exec -i <container-postgres> psql -U <POSTGRES_USER> <POSTGRES_DB>'
+ssh ovh 'gunzip -c /tmp/cutover.sql.gz | docker exec -i <uuid-resursei> psql -U <POSTGRES_USER> <POSTGRES_DB>'
 ```
 Baza de producție are ~330 MB, deci transferul e de ordinul minutelor.
 

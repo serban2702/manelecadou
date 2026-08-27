@@ -8,7 +8,7 @@
 #
 # ÎN COOLIFY: domeniile se pun pe UN SINGUR serviciu — `router`. Toate
 # domeniile publice + `admin.<domeniu>`, în câmpul „Domains" al serviciului.
-# Celelalte servicii (api, web, admin, postgres, redis) rămân FĂRĂ domeniu.
+# Celelalte servicii (api, web, admin, redis) rămân FĂRĂ domeniu.
 #
 # De ce nu domenii per serviciu: ruta publică e împărțită pe path
 # (`/api`, `/socket.io`, `/health`, `/uploads` → api; restul → web), deci
@@ -19,32 +19,29 @@
 # `apps/api/scripts/coolify-domains.mjs` generează lista de domenii din DB,
 # gata de lipit.
 #
-# Postgres și Redis sunt aici, în stack. Dacă preferi resursele gestionate de
-# Coolify (backup-uri programate din UI), scoate-le de aici și pune
-# POSTGRES_HOST / REDIS_HOST pe hostname-urile date de Coolify.
+# Redis rămâne în stack: ține coada de joburi și cache-ul, n-are istoric de
+# salvat, deci o resursă separată ar fi administrare în plus fără câștig.
+# Postgres, în schimb, e resursă separată — vezi comentariul de la `services`.
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-    volumes:
-      - pg_data:/var/lib/postgresql/data
-      # Volum dedicat de dump-uri. Pe Ionos backup-ul dinaintea fiecărui deploy
-      # îl făcea `deploy.sh`; pe Coolify deploy-ul îl face Coolify, deci plasa
-      # de siguranță se reface din „Pre-deployment Command" pe containerul
-      # `postgres`, care scrie aici. Obligatoriu cât timp `synchronize: true`
-      # execută DDL la fiecare boot. Comenzile exacte: docs/COOLIFY_R2.md §3.6.
-      - pg_backups:/backups
-    healthcheck:
-      # pg_dump --version în test ca stack-ul să nu pornească fără binarul de backup.
-      test: ["CMD-SHELL", "pg_dump --version >/dev/null && pg_isready -U ${POSTGRES_USER}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+  # NU e aici Postgres. Baza e o resursă SEPARATĂ, gestionată de Coolify.
+  #
+  # Motiv: doar așa capătă backupuri programate direct într-un bucket S3/R2
+  # (`ScheduledDatabaseBackup.save_s3`), cu retenție și restore din interfață.
+  # În compose, dump-urile ar fi stat pe același disc cu baza — dacă pică
+  # serverul, pierzi și baza, și copiile. Baza e singurul lucru de neînlocuit:
+  # fișierele sunt oricum pe R2.
+  #
+  # Bonus: supraviețuiește ștergerii sau recreării acestei aplicații.
+  #
+  # De setat în Coolify:
+  #   - resursă nouă „PostgreSQL", imaginea `postgres:16-alpine` (aceeași ca pe
+  #     Ionos — un dump de pe 16 nu intră într-o versiune mai veche);
+  #   - pe ACEASTĂ aplicație, bifează „Connect to Predefined Network", altfel
+  #     containerele de aici n-o văd;
+  #   - POSTGRES_HOST = UUID-ul resursei de bază (îl vezi în „Postgres URL
+  #     (internal)": postgres://user:pass@<uuid>:5432/db).
+  # Vezi docs/COOLIFY_R2.md §3.2.
 
   redis:
     image: redis:7-alpine
@@ -68,8 +65,8 @@ services:
       # Traefik + router = 2 hop-uri de proxy. Fără asta req.ip e IP-ul router-ului
       # → throttler global și IP greșit în analytics/OpenReplay.
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-2}
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
@@ -185,8 +182,6 @@ services:
       - api_mail_attach:/app/mail-attach
       - api_logs:/app/logs
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -277,8 +272,6 @@ services:
   # `/ops-chat` merg pe upstream prin variabilă, deci dau 502, nu rup nginx-ul.
 
 volumes:
-  pg_data:
-  pg_backups:
   redis_data:
   api_uploads:
   api_backups:

@@ -1073,6 +1073,17 @@ descoperite citindu-i sursa, nu documentația:
    nici în parser, nici în jobul de deploy — deci l-ar construi și porni la
    fiecare deploy, degeaba. Rămâne în `docker-compose.prod.yml`; routerul îl
    tolerează lipsă (`/ops` dă 502, nu rupe nginx-ul).
+3. **Postgres nu e în compose**, ci resursă gestionată de Coolify. Doar așa
+   capătă backup-uri programate direct într-un bucket S3/R2
+   (`ScheduledDatabaseBackup.save_s3`), cu retenție și restore din UI; în
+   compose, dump-urile ar fi stat pe același disc cu baza. `POSTGRES_HOST` =
+   **UUID-ul resursei de bază** (hostname-ul intern e chiar UUID-ul), iar pe
+   aplicație trebuie bifat **„Connect to Predefined Network"**, altfel
+   containerele nu văd baza. Redis rămâne în compose: coadă + cache, fără
+   istoric de salvat.
+
+Stack-ul de Coolify are deci **5 servicii**: `redis`, `api`, `web`, `admin`,
+`router`.
 
 ⚠️ Variabilele `NEXT_PUBLIC_*` se marchează ca **Build Variable** în Coolify.
 Next.js le fixează în bundle la build; dacă ajung doar la runtime, pixelii și
