@@ -176,8 +176,16 @@ Coolify înseamnă A record nou → `37.187.159.41`, pentru fiecare domeniu.
    repo, deci `build:` din surse (`./apps/api`, `./apps/web`, `./deploy/router`)
    n-ar avea de unde construi. Sursa se alege prima, tipul de build după.
 
-   - Coolify generează o cheie publică; o adaugi în GitHub la repo → Settings →
-     Deploy keys (read-only e suficient).
+   - **Cheia SSH, întâi.** Keys & Tokens → Private Keys → **săgeata din dreapta**
+     butonului „+ New private key" → **Generate ED25519**. (Butonul propriu-zis
+     duce la un formular care cere o cheie privată EXISTENTĂ, lipită manual —
+     `Livewire/Security/PrivateKey/Create.php` doar extrage cheia publică din ce
+     lipești. Generarea e ascunsă în meniul din săgeată:
+     `generatePrivateKey('ed25519')` din `Index.php`.)
+
+     Apoi deschizi cheia creată, copiezi câmpul read-only `public_key` și îl pui
+     în GitHub → repo → Settings → Deploy keys. FĂRĂ „Allow write access" —
+     Coolify doar clonează.
    - Branch: **`main`**. Versiunea nouă e deja acolo (27 aug 2026).
 
      ⚠️ **`main` e acum înaintea a ce rulează Ionosul.** Producția a rămas
@@ -200,9 +208,14 @@ Coolify înseamnă A record nou → `37.187.159.41`, pentru fiecare domeniu.
      `varchar(8)` → `varchar(64)`, cele 26 `main` + 3 `bonus` intacte.
    - **Build pack: Docker Compose** — listboxul apare abia după ce ai ales
      repo-ul.
-   - **Docker Compose Location**: `/docker-compose.coolify.yml`. Câmpul apare
-     doar când build pack-ul e „Docker Compose", iar valoarea implicită e
-     `/docker-compose.yaml` — trebuie schimbată.
+   - **Base directory**: `/`
+   - **Compose file**: `/docker-compose.coolify.yml`. Eticheta din UI e „Compose
+     file", nu „Docker Compose Location", și apare doar după ce alegi build
+     pack-ul. Valoarea implicită e `/docker-compose.yaml` — alt nume, altă
+     extensie; dacă o lași, Coolify nu găsește nimic.
+
+   Ecranul are DOI pași (`current_step`): întâi alegi cheia privată, apoi apar
+   Repository URL / Branch / Build pack.
 3. **Load/Parse** compose-ul. Trebuie să apară exact 5 servicii:
    `redis`, `api`, `web`, `admin`, `router`. Postgres NU e printre ele — e o
    resursă separată (pasul 0 de mai jos).
@@ -253,14 +266,12 @@ pornește stricat, nu dă eroare la parse):
 `APP_URL`, `ADMIN_URL`, `API_URL`, `DEFAULT_SITE_DOMAIN`, `ADMIN_EMAILS`,
 `MAIL_FROM`.
 
-⚠️ **De marcat „Build Variable"** în Coolify — altfel rămân goale în pagina
-livrată, pentru că Next.js le fixează în bundle la build:
-`NEXT_PUBLIC_API_URL` (rămâne gol, intenționat — same-origin),
-`NEXT_PUBLIC_GA_ID`, `NEXT_PUBLIC_META_PIXEL_ID`, `NEXT_PUBLIC_TIKTOK_PIXEL_ID`,
-`NEXT_PUBLIC_DEFAULT_LOCALE`, `NEXT_PUBLIC_SHOW_LANG_SWITCHER`,
-`NEXT_PUBLIC_OPENREPLAY_PROJECT_KEY`, `NEXT_PUBLIC_OPENREPLAY_INGEST_POINT`.
-Aceeași clasă de capcană ca `API_INTERNAL_URL` (CLAUDE.md §9.3), în cealaltă
-direcție.
+⚠️ **Nu căuta bifa „Build Variable"** — nu există în v4.3.10. `is_build_time` nu apare
+nici în model, nici în interfață. Și nici nu e nevoie: pentru build pack-ul
+Docker Compose, Coolify scrie un `.env` în directorul proiectului
+(`$service['env_file'] = ['.env']`) și rulează `docker compose up --build` de
+acolo, deci `args:` din compose — toate variabilele `NEXT_PUBLIC_*` — își iau
+valorile automat.
 
 `.env.example` are lista completă, comentată.
 

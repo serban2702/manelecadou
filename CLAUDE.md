@@ -1085,9 +1085,21 @@ descoperite citindu-i sursa, nu documentația:
 Stack-ul de Coolify are deci **5 servicii**: `redis`, `api`, `web`, `admin`,
 `router`.
 
-⚠️ Variabilele `NEXT_PUBLIC_*` se marchează ca **Build Variable** în Coolify.
-Next.js le fixează în bundle la build; dacă ajung doar la runtime, pixelii și
-cheia OpenReplay rămân goale în pagina livrată.
+⚠️ **Nu căuta bifa „Build Variable" în Coolify** — nu există în v4.3.10
+(`is_build_time` nu apare nici în model, nici în interfață). Nici nu e nevoie:
+pentru build pack-ul Docker Compose, Coolify scrie un `.env` în directorul
+proiectului (`$service['env_file'] = ['.env']`) și rulează
+`docker compose up --build` de acolo, deci `args:` — adică toate variabilele
+`NEXT_PUBLIC_*`, pe care Next.js le fixează în bundle — își iau valorile automat.
+
+Fluxul de creare a resursei, ca să nu-l cauți: **Keys & Tokens → Private Keys →
+săgeata de lângă „+ New private key" → Generate ED25519** (butonul în sine cere
+o cheie existentă, lipită manual), copiezi `public_key` în GitHub → Deploy keys,
+apoi **+ New Resource → Private Repository (with deploy key)**. Ecranul are doi
+pași: cheia, apoi Repository URL / Branch / **Build pack: Docker Compose** /
+**Compose file** (implicit `/docker-compose.yaml`, de schimbat în
+`/docker-compose.coolify.yml`). „Connect to Predefined Network" e în tabul
+**Advanced** al aplicației; domeniile per serviciu, în **General**.
 
 ### 19.2 Două hop-uri de proxy
 
