@@ -178,18 +178,24 @@ Coolify înseamnă A record nou → `37.187.159.41`, pentru fiecare domeniu.
 
    - Coolify generează o cheie publică; o adaugi în GitHub la repo → Settings →
      Deploy keys (read-only e suficient).
-   - Branch: **`feat/experience-variants`**, nu `main`.
+   - Branch: **`main`**. Versiunea nouă e deja acolo (27 aug 2026).
 
-     `main` e ce deployează Ionosul **singur, la fiecare 5 ore**: auditul
-     autonom (`com.manele.auto-review-chats.plist`) face
-     `git add -A && git commit && make deploy-api`. Dacă versiunea nouă ajunge
-     pe `main`, următoarea rulare automată o pune pe stack-ul VECHI, la o oră
-     aleatoare — și, fără §3.2/Pas 1 rulat înainte, TypeORM face drop + add pe
-     `video_collages.track`.
+     ⚠️ **`main` e acum înaintea a ce rulează Ionosul.** Producția a rămas
+     deliberat pe commit-ul vechi; `deploy.sh` face `git reset --hard
+     origin/main`, deci **orice `make deploy` de acum încolo urcă versiunea nouă
+     pe stack-ul vechi**. Nu e catastrofal — lărgirea de coloană e făcută
+     (vezi mai jos), interfața clasică rămâne implicită și storage-ul rămâne pe
+     disc cât timp `STORAGE_DRIVER` nu e setat — dar e o decizie, nu un accident.
+     Deployează pe Ionos doar dacă chiar vrei asta.
 
-     Merge-ul în `main` se face DUPĂ cutover, împreună cu repointarea sau
-     oprirea auditului autonom (care altfel ar deploya într-un Ionos pe care
-     nu-l mai folosește nimeni).
+     Pentru ca decizia să nu fie luată de altcineva, **auditul autonom e oprit**
+     (`launchctl unload ~/Library/LaunchAgents/com.manele.auto-review-chats.plist`).
+     Rula la 5 ore și făcea `git add -A && git commit && make deploy-api`.
+     După cutover: ori îl repointezi pe deploy-ul Coolify, ori îl lași oprit.
+
+     Lărgirea `video_collages.track` (§3.2/Pas 1) **e deja rulată pe producție**
+     — 27 aug 2026, cu backup înainte (`/backups/pre_alter_*.sql.gz`),
+     `varchar(8)` → `varchar(64)`, cele 26 `main` + 3 `bonus` intacte.
    - **Build pack: Docker Compose** — listboxul apare abia după ce ai ales
      repo-ul.
    - **Docker Compose Location**: `/docker-compose.coolify.yml`. Câmpul apare
@@ -354,12 +360,23 @@ migrează** — pe stack-ul nou certificatele le emite Traefik de la zero.
 
 ## 4. Cutover
 
-### Pas 1 — migrarea de schemă, PE IONOS, înainte de dump
+### Pas 1 — migrarea de schemă, PE IONOS ✅ FĂCUT
 
-Imaginea api de pe Ionos e mai veche decât acest branch și **nu conține
-`scripts/`** (`COPY scripts ./scripts` s-a adăugat abia aici), așa că scriptul se
-copiază în container. Se rulează din `/app`, altfel `node` nu găsește modulul
-`pg`, iar conexiunea se dă prin `PG*`, nu prin `POSTGRES_*`:
+**Rulat pe producție la 27 aug 2026.** `video_collages.track` e acum
+`varchar(64)`, default-ul repus, cele 26 `main` + 3 `bonus` intacte. Backup
+înainte în `/backups/pre_alter_2026-08-27_210125.sql.gz`. Nu mai e nimic de
+făcut aici; dump-ul de la Pas 2 ajunge pe Coolify deja corect.
+
+De ce era obligatoriu: TypeORM cu `synchronize: true` nu face ALTER la
+schimbarea de lungime — face DROP + ADD, iar colajele pe bonus s-ar fi ratat la
+listare și la regenerare.
+
+<details>
+<summary>Comanda, dacă vreodată trebuie repetată pe altă bază</summary>
+
+Imaginea api de pe Ionos nu conține `scripts/`, iar scriptul citește conexiunea
+din `PG*`, nu din `POSTGRES_*` — de aceea se copiază în container și se rulează
+din `/app`:
 
 ```bash
 scp apps/api/scripts/migrate-prod-to-new-stack.mjs VPSIonos:/tmp/mig.mjs
@@ -370,25 +387,8 @@ ssh VPSIonos 'docker cp /tmp/mig.mjs manele-api-1:/app/mig.mjs && \
     manele-api-1 node mig.mjs --phase=pre'
 ```
 
-Rulează întâi cu `--phase=check` (nu scrie nimic) și cu `--phase=pre --dry-run`
-ca să vezi exact ce SQL urmează. Ambele verificate pe producție (24 aug 2026).
-La final: `ssh VPSIonos 'docker exec manele-api-1 rm -f /app/mig.mjs'`.
-Lărgește `video_collages.track` de la `varchar(8)` la `varchar(64)`.
-**Obligatoriu**: TypeORM cu `synchronize: true` nu face ALTER la schimbarea de
-lungime — face DROP + ADD, iar toate colajele existente ar rămâne cu
-`track = 'main'` (cele pe bonus s-ar rata la listare și la regenerare).
-
-Se rulează pe Ionos, **înainte** de dump, tocmai ca să nu ai problema pe
-Coolify: acolo API-ul pornește odată cu restul stack-ului, deci n-ai o fereastră
-în care baza există dar codul nou n-a pornit încă. Cu ALTER-ul făcut din timp,
-dump-ul ajunge pe Coolify deja corect, iar la primul boot TypeORM nu mai are ce
-atinge.
-
-Codul vechi de pe Ionos nu e afectat: e doar o lărgire de coloană.
-
-*(Dacă din orice motiv ajungi cu dump-ul nemigrat pe Coolify: pornește stack-ul
-o dată cu `DB_SYNCHRONIZE=false`, restaurează, rulează `--phase=pre`, apoi scoate
-variabila și redeployează.)*
+`--phase=check` raportează fără să scrie; `--phase=pre --dry-run` arată SQL-ul.
+</details>
 
 ### Pas 2 — dump + restore
 ```bash
