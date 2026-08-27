@@ -188,10 +188,12 @@ Coolify înseamnă A record nou → `37.187.159.41`, pentru fiecare domeniu.
      disc cât timp `STORAGE_DRIVER` nu e setat — dar e o decizie, nu un accident.
      Deployează pe Ionos doar dacă chiar vrei asta.
 
-     Pentru ca decizia să nu fie luată de altcineva, **auditul autonom e oprit**
-     (`launchctl unload ~/Library/LaunchAgents/com.manele.auto-review-chats.plist`).
-     Rula la 5 ore și făcea `git add -A && git commit && make deploy-api`.
-     După cutover: ori îl repointezi pe deploy-ul Coolify, ori îl lași oprit.
+     Pentru ca decizia să nu fie luată de altcineva, **auditul autonom a fost
+     ELIMINAT** (28 aug 2026): job launchd, wrapper și skill, toate scoase.
+     Rula la 5 ore și făcea `git add -A && git commit && make deploy-api` — iar
+     `git add -A` rula în repo-ul principal, care are permanent modificări
+     străine necommitate. Arhivă completă, dacă vreodată e nevoie:
+     `~/.manele-auto-review-ARHIVA-2026-08-28/`.
 
      Lărgirea `video_collages.track` (§3.2/Pas 1) **e deja rulată pe producție**
      — 27 aug 2026, cu backup înainte (`/backups/pre_alter_*.sql.gz`),
