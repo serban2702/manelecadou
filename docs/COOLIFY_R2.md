@@ -146,12 +146,23 @@ Coolify înseamnă A record nou → `37.187.159.41`, pentru fiecare domeniu.
 
 1. **Project** → `+ New` → nume `manelecadou`. (Instanța e goală: doar
    „My first project" și „Mail".)
-2. **+ New Resource** → **Docker Compose** → **Private Repository (with deploy key)**
-   pentru `git@github.com:serban2702/manelecadou.git`.
+2. **+ New Resource** → **Private Repository (with deploy key)**, pentru
+   `git@github.com:serban2702/manelecadou.git`.
+
+   ⚠️ **NU** alege „Docker Compose" din lista de resurse. În ecranul acela,
+   „Docker Compose" și „Private Repository (with deploy key)" sunt opțiuni
+   FRAȚI, nu una în alta: prima e un editor în care lipești un compose și n-are
+   repo, deci `build:` din surse (`./apps/api`, `./apps/web`, `./deploy/router`)
+   n-ar avea de unde construi. Sursa se alege prima, tipul de build după.
+
    - Coolify generează o cheie publică; o adaugi în GitHub la repo → Settings →
      Deploy keys (read-only e suficient).
    - Branch: `main` (după ce merge-ui `feat/experience-variants`).
-   - **Docker Compose Location**: `/docker-compose.coolify.yml`.
+   - **Build pack: Docker Compose** — listboxul apare abia după ce ai ales
+     repo-ul.
+   - **Docker Compose Location**: `/docker-compose.coolify.yml`. Câmpul apare
+     doar când build pack-ul e „Docker Compose", iar valoarea implicită e
+     `/docker-compose.yaml` — trebuie schimbată.
 3. **Load/Parse** compose-ul. Trebuie să apară exact 6 servicii:
    `postgres`, `redis`, `api`, `web`, `admin`, `router`.
 4. **Environment Variables** — vezi §3.3.
