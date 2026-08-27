@@ -178,7 +178,18 @@ Coolify înseamnă A record nou → `37.187.159.41`, pentru fiecare domeniu.
 
    - Coolify generează o cheie publică; o adaugi în GitHub la repo → Settings →
      Deploy keys (read-only e suficient).
-   - Branch: `main` (după ce merge-ui `feat/experience-variants`).
+   - Branch: **`feat/experience-variants`**, nu `main`.
+
+     `main` e ce deployează Ionosul **singur, la fiecare 5 ore**: auditul
+     autonom (`com.manele.auto-review-chats.plist`) face
+     `git add -A && git commit && make deploy-api`. Dacă versiunea nouă ajunge
+     pe `main`, următoarea rulare automată o pune pe stack-ul VECHI, la o oră
+     aleatoare — și, fără §3.2/Pas 1 rulat înainte, TypeORM face drop + add pe
+     `video_collages.track`.
+
+     Merge-ul în `main` se face DUPĂ cutover, împreună cu repointarea sau
+     oprirea auditului autonom (care altfel ar deploya într-un Ionos pe care
+     nu-l mai folosește nimeni).
    - **Build pack: Docker Compose** — listboxul apare abia după ce ai ales
      repo-ul.
    - **Docker Compose Location**: `/docker-compose.coolify.yml`. Câmpul apare
