@@ -7,7 +7,7 @@
  *
  *   docker compose -f docker-compose.coolify.yml exec api node scripts/coolify-domains.mjs
  *
- * Conexiunea: PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE (sau DATABASE_URL).
+ * Conexiunea: DATABASE_URL, PG* sau POSTGRES_* (vezi scripts/lib/pg-env.mjs).
  * Opțional:
  *   ADMIN_DOMAIN=admin.manelecadou.ro     îl adaugă la listă
  *   DEFAULT_SITE_DOMAIN=manelecadou.ro    (informativ; www se propune oricum)
@@ -19,7 +19,7 @@
  * ca s-o lipești în UI. E intenționat: o greșeală în câmpul ăla scoate site-uri
  * de pe internet, deci pasul rămâne al tău.
  */
-import pg from 'pg';
+import { makePgClient } from './lib/pg-env.mjs';
 import { resolve4, resolve6 } from 'dns/promises';
 
 const adminDomain = (process.env.ADMIN_DOMAIN || '').trim().toLowerCase();
@@ -31,15 +31,7 @@ const current = (process.env.CURRENT_DOMAINS || '')
   .map((d) => d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, ''))
   .filter(Boolean);
 
-const client = process.env.DATABASE_URL
-  ? new pg.Client({ connectionString: process.env.DATABASE_URL })
-  : new pg.Client({
-      host: process.env.PGHOST || 'postgres',
-      port: Number(process.env.PGPORT || 5432),
-      user: process.env.PGUSER,
-      password: process.env.PGPASSWORD,
-      database: process.env.PGDATABASE,
-    });
+const client = makePgClient();
 
 await client.connect();
 let rows;

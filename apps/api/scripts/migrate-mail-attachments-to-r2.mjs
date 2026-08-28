@@ -25,7 +25,7 @@
  * peste rândurile deja rescrise. NU șterge nimic de pe volumul vechi — după
  * migrare fișierele rămân acolo, ca plasă de siguranță.
  */
-import pg from 'pg';
+import { makePgClient } from './lib/pg-env.mjs';
 import { createReadStream, readdirSync, statSync } from 'fs';
 import { copyFile, mkdir, readFile, stat } from 'fs/promises';
 import { dirname, extname, join } from 'path';
@@ -266,15 +266,7 @@ console.log(
 // ---------------------------------------------------------------------------
 // Pasul 2 — mail_attachments.storagePath → cheia relativă nouă
 // ---------------------------------------------------------------------------
-const client = process.env.DATABASE_URL
-  ? new pg.Client({ connectionString: process.env.DATABASE_URL })
-  : new pg.Client({
-      host: process.env.PGHOST || 'postgres',
-      port: Number(process.env.PGPORT || 5432),
-      user: process.env.PGUSER,
-      password: process.env.PGPASSWORD,
-      database: process.env.PGDATABASE,
-    });
+const client = makePgClient();
 
 /** Aceeași mapare ca `resolveMailStoragePath` din `mailer/mail-storage.ts`. */
 function keyFor(storagePath) {

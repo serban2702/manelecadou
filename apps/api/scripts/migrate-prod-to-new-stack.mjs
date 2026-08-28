@@ -17,7 +17,7 @@
  *   # oricând: doar raport, fără scrieri
  *   node scripts/migrate-prod-to-new-stack.mjs --phase=check
  *
- * Conexiunea: PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE (sau DATABASE_URL).
+ * Conexiunea: DATABASE_URL, PG* sau POSTGRES_* (vezi scripts/lib/pg-env.mjs).
  * Adaugă `--dry-run` ca să vezi SQL-ul fără să-l execuți.
  *
  * Totul e idempotent: îl poți rula de câte ori vrei.
@@ -34,7 +34,7 @@
  * deja corectă și nu mai atinge coloana.
  * ---------------------------------------------------------------------------
  */
-import pg from 'pg';
+import { makePgClient, pgTarget } from './lib/pg-env.mjs';
 import { createHmac } from 'crypto';
 
 const args = new Set(process.argv.slice(2));
@@ -73,15 +73,7 @@ if (!['freeze', 'grant'].includes(legacyRemakes)) {
   process.exit(1);
 }
 
-const client = process.env.DATABASE_URL
-  ? new pg.Client({ connectionString: process.env.DATABASE_URL })
-  : new pg.Client({
-      host: process.env.PGHOST || 'postgres',
-      port: Number(process.env.PGPORT || 5432),
-      user: process.env.PGUSER,
-      password: process.env.PGPASSWORD,
-      database: process.env.PGDATABASE,
-    });
+const client = makePgClient();
 
 const log = (...a) => console.log(...a);
 const applied = [];
@@ -365,7 +357,7 @@ async function phaseCheck() {
 
 await client.connect();
 try {
-  log(`Bază: ${client.database || process.env.PGDATABASE} @ ${client.host || process.env.PGHOST}`);
+  log(`Bază: ${pgTarget()}`);
   if (dryRun) log('MOD DRY-RUN — nu se scrie nimic.');
 
   if (phase === 'pre') await phasePre();

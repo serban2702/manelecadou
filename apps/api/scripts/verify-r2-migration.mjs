@@ -17,7 +17,7 @@
  *
  * Ieșire 1 dacă lipsește ceva din R2 → nu da cutover până nu iese 0.
  */
-import pg from 'pg';
+import { makePgClient } from './lib/pg-env.mjs';
 import { statSync } from 'fs';
 import { join } from 'path';
 import { S3Client, HeadObjectCommand } from '@aws-sdk/client-s3';
@@ -80,15 +80,7 @@ function keysFromJson(value, out) {
   }
 }
 
-const client = process.env.DATABASE_URL
-  ? new pg.Client({ connectionString: process.env.DATABASE_URL })
-  : new pg.Client({
-      host: process.env.PGHOST || 'postgres',
-      port: Number(process.env.PGPORT || 5432),
-      user: process.env.PGUSER,
-      password: process.env.PGPASSWORD,
-      database: process.env.PGDATABASE,
-    });
+const client = makePgClient();
 
 async function tableExists(name) {
   const { rows } = await client.query(
