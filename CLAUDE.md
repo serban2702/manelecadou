@@ -596,14 +596,32 @@ middleware-ul).
 livrat**: dacă schimbi definiția unui pachet, comenzile vechi păstrează ce li
 s-a promis.
 
-### 10.3.1 Limita de font a interfeței `cadou`
+### 10.3.1 Fontul interfeței `cadou` pe scripturi non-latine
 
 `cadou` folosește **Outfit**, care are pe Google Fonts doar subseturile `latin`
-și `latin-ext`. Acoperă româna (ș, ț, ă, â, î) și limbile sud-slave cu alfabet
-latin, dar **nu are greacă și nici chirilic**. Pe un site `el` sau `bg`, textul
-cade pe `system-ui` din stiva de fallback — lizibil, dar altă literă decât în
-RO. Dacă lansezi `cadou` pe piața greacă sau bulgară, alege întâi o pereche de
-fonturi care acoperă scriptul respectiv.
+și `latin-ext` — verificabil în `font-data.json` din `next/font`. Acoperă româna
+(ș, ț, ă, â, î) și limbile sud-slave cu alfabet latin, dar **nu are greacă și
+nici chirilic**.
+
+**Rezolvat (29 aug 2026).** Pe `bg` (chirilic) și `el` (grec), interfața comută
+pe **Manrope**, care acoperă ambele scripturi, e din aceeași familie geometrică
+și e deja fontul de corp al interfeței `classic`. Comutarea se face din CSS, pe
+`lang` de pe `<html>`:
+
+```css
+:root { --font-cadou: var(--font-outfit); }
+:root:lang(bg), :root:lang(el) { --font-cadou: var(--font-cadou-intl); }
+```
+
+Manrope e declarat ca **instanță separată** în `app/layout.tsx`, cu
+`preload: false` — nu ca subseturi adăugate la instanța existentă, care e
+preîncărcată pe toate site-urile și ar fi livrat greacă și chirilic și celor
+care nu le folosesc niciodată.
+
+Dacă adaugi un locale cu alt script, trece-l în selectorul de mai sus. Celelalte
+locale livrate (sr, bs, hr, sl, tr) sunt în **alfabet latin** — verificat pe
+conținutul din `messages/`, nu presupus: sârba de pe site e latină, nu
+chirilică — iar `latin-ext` le acoperă diacriticele.
 
 Interfața `classic` nu e afectată: Cinzel + Manrope, cu alte subseturi.
 
@@ -823,6 +841,9 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
 20. **`background` (proprietatea scurtă) resetează `background-image`.** Dacă scrii `background: #1a1a1a center/cover` și pe urmă `background-image: …`, ordinea contează — iar la specificitate egală câștigă ultima declarație din fișier. Un `@supports` cu `image-set()` scris ÎNAINTE de regula de bază e suprascris tăcut: pagina arată perfect și servește JPEG-ul, deși variantele AVIF există. A fost cazul lui `.cadou-style`; de-aia blocul `@supports` vine acum după regula de bază, cu un comentariu care spune de ce.
 21. **`preload="auto"` pe `<video>` descarcă fișierul întreg imediat.** Telefoanele din hero-ul cadou porneau așa: două clipuri, ~3,5 MB, înainte ca vizitatorul să fi derulat până la ele. Acum `preload` urmează `playing`; posterul se vede oricum. Perechea obligatorie e `+faststart` la encodare (indexul `moov` la început), altfel până și `preload="metadata"` poate trage aproape tot fișierul.
 22. **Când reușești să negociezi formatul într-un loc dar nu în altul, verifică dacă nu descarci ambele.** Imaginile din ramele de telefon folosesc exact fișierul din `<video poster>`. Trecute pe `<picture>` cu AVIF, ar fi adus o a doua descărcare în loc de o economie, fiindcă `poster` rămâne JPEG. Acolo câștigul vine din recomprimarea sursei, nu din format.
+23. **Pe `cadou`, TOATE paginile capătă shell-ul cadou, dar doar 6 au componente proprii.** `SiteShell` deleagă către `exp.Shell`, deci `/istoric`, `/top`, `/faq`, contact, articole și legalele randează markup `classic` — gândit pentru fundal închis — pe crem. Remaparea jetoanelor sub `.cadou-root` rezolvă majoritatea; culorile scrise direct în stiluri inline **nu pot fi suprascrise din CSS** și trebuie transformate în variabile (`--fg-muted`, `--fg-soft`, `--avatar-fill`). Dacă adaugi o pagină nouă, verific-o pe ambele interfețe.
+24. **Elementele de grilă au implicit `min-width: auto`.** Un titlu lung cu `white-space: nowrap` lărgește pista până iese din container, în loc să se taie cu elipsă — pe `/istoric` ieșea toată coloana a treia din panou. `.demo-grid > * { min-width: 0 }`.
+25. **WaveSurfer descarcă și decodează fișierul ÎNTREG ca să deseneze unda**, la montare, pentru fiecare instanță. 30 de carduri = 30 de MP3-uri înainte de orice click. Player-ul se montează acum la primul click; până atunci unda e decorativă. Iar `play()` trebuie apelat pe elementul de media **în interiorul gestului** — altfel iOS Safari îl refuză, și primul tap n-ar porni nimic.
 ---
 
 ## 13. Endpoint-uri utile
