@@ -145,9 +145,17 @@ async function bootstrap() {
         // *.local pe orice port (testare multi-tenant locală fără TLS)
         if (host.endsWith('.local')) return callback(null, true);
 
-        // Domeniile site-urilor active din DB (prod)
+        // Domeniile site-urilor active din DB (prod).
+        //
+        // `www.` se taie ÎNAINTE de comparație: `sites.create` îl elimină din
+        // domeniul stocat (vezi `SitesService.create`), deci lista de aici nu
+        // conține niciodată varianta cu www. Fără tăierea asta, un vizitator
+        // venit pe `www.<domeniu>` primea 500 la ORICE POST — inclusiv la
+        // `/api/guest-sessions`, adică nu putea nici măcar începe o comandă.
+        // Rezolvarea de tenant trata deja corect www; doar CORS nu.
         const domains = await sitesService.listActiveDomains();
-        if (domains.includes(host)) return callback(null, true);
+        const bare = host.replace(/^www\./, '');
+        if (domains.includes(host) || domains.includes(bare)) return callback(null, true);
 
         return callback(new Error(`CORS blocked: ${origin}`), false);
       } catch (err) {
