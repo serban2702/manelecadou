@@ -24,8 +24,32 @@ export interface SunoGenerateInput {
   /**
    * Marchează această cerere ca mostră audio scurtă pentru carduri-le din /studio.
    * Implicit 'submit' (manea pentru user). Ajunge ca tag în SunoLog.
+   * `playground` = generare din admin playground (nu e comandă de client).
    */
-  requestType?: 'submit' | 'sample';
+  requestType?: 'submit' | 'sample' | 'playground';
+  /**
+   * Override model (ex. V5_5). Omis → SUNO_MODEL din settings.
+   * Folosit de playground ca să poți testa un model fără să schimbi setarea globală.
+   */
+  model?: string;
+  /**
+   * Override Custom Mode. Omis → true dacă există `lyrics`.
+   * Playground: poți forța description-mode (Suno scrie versurile) sau custom (lyrics literal).
+   */
+  customMode?: boolean;
+  /**
+   * Tag-uri de style trimise ca `body.style` în loc de `buildStyleTag`.
+   * Când e setat, e WYSIWYG — nu se mai lipește CORE-ul intern.
+   */
+  styleOverride?: string;
+  /**
+   * Prompt trimis ca `body.prompt` în loc de lyrics/simplePrompt.
+   * Custom mode: e tratat ca versuri sacre (fără injectare de dedicație).
+   * Non-custom: e descrierea piesei (limita ~500 chars).
+   */
+  promptOverride?: string;
+  /** Titlu piesă. Omis → „Pentru X, de la Y". */
+  titleOverride?: string;
   /** Sex vocal — Suno acceptă 'm' sau 'f' direct. */
   vocalGender?: 'm' | 'f';
   /** PersonaId pre-existent (din /generate/generate-persona) pentru a forța

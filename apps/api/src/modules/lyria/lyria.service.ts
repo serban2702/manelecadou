@@ -66,6 +66,13 @@ export interface LyriaGenerateInput {
   generationId?: string;
   /** Codul limbii versurilor (ro, bg, sr, tr, el, hr, sl, bs). Default: ro. */
   lyricsLocale?: string;
+  /** Override model. Omis → LYRIA_MODEL din settings. */
+  model?: string;
+  /**
+   * Prompt complet, trimis ca `input` la Interactions API.
+   * Când e setat, `buildLyriaPrompt` e sărit — playground custom.
+   */
+  promptOverride?: string;
 }
 
 export interface LyriaTrack {
@@ -111,8 +118,8 @@ export class LyriaService {
     // nici în env.validation, deci era o cale moartă care ascundea eroarea reală.
     const apiKey = await this.settings.get('GEMINI_API_KEY');
     if (!apiKey) throw new NonRetryableGenerationError(MISSING_KEY_MESSAGE);
-    const model = (await this.settings.get('LYRIA_MODEL')) || DEFAULT_MODEL;
-    const prompt = buildLyriaPrompt(input, variant);
+    const model = input.model?.trim() || (await this.settings.get('LYRIA_MODEL')) || DEFAULT_MODEL;
+    const prompt = input.promptOverride?.trim() || buildLyriaPrompt(input, variant);
     this.logger.log(
       `lyria generate v${variant} gen=${input.generationId?.slice(0, 8) ?? '-'} model=${model} prompt=${prompt.length}c`,
     );

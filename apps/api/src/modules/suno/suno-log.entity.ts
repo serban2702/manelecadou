@@ -36,12 +36,13 @@ export class SunoLog {
 
   /**
    * Tipul de cerere:
-   *   - 'submit'  — generare normală (manea pentru user)
-   *   - 'sample'  — mostră audio scurtă pentru cardul de stil/voce din /studio
-   *                 (generată din admin, NU apare în galerie publică)
+   *   - 'submit'     — generare normală (manea pentru user)
+   *   - 'sample'     — mostră audio scurtă pentru cardul de stil/voce din /studio
+   *                    (generată din admin, NU apare în galerie publică)
+   *   - 'playground' — generare din admin playground (fără comandă de client)
    */
   @Column({ type: 'varchar', length: 32, default: 'submit' })
-  requestType!: 'submit' | 'sample';
+  requestType!: 'submit' | 'sample' | 'playground';
 
   @Column({ type: 'varchar', length: 256 })
   endpoint!: string;

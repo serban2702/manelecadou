@@ -44,6 +44,7 @@ import { AppearanceScreen } from './screens/appearance-screen';
 import { CatalogScreen } from './screens/catalog-screen';
 import { InterfacesScreen } from './screens/interfaces-screen';
 import { GenerationScreen } from './screens/generation-screen';
+import { PlaygroundScreen } from './screens/playground-screen';
 import { OperationsScreen } from './screens/operations-screen';
 import { TopScreen } from './screens/top-screen';
 
@@ -410,6 +411,7 @@ export default function SiteConfigPage() {
           {match.id === 'prices' && <PricesScreen form={form} setForm={setForm} />}
           {match.id === 'appearance' && <AppearanceScreen siteId={siteId} form={form} setForm={setForm} />}
           {match.id === 'generation' && <GenerationScreen form={form} setForm={setForm} />}
+          {match.id === 'playground' && <PlaygroundScreen form={form} />}
           {match.id === 'operations' && <OperationsScreen siteId={siteId} form={form} setForm={setForm} />}
           {match.id === 'interfaces' && (
             <InterfacesScreen form={form} setForm={setForm} demos={siteDemos} />

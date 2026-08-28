@@ -9,7 +9,7 @@ export interface SunoLogStartInput {
   endpoint: string;
   requestBody: Record<string, unknown>;
   siteId?: string | null;
-  requestType?: 'submit' | 'sample';
+  requestType?: 'submit' | 'sample' | 'playground';
 }
 
 export interface SunoLogFinalizeInput {

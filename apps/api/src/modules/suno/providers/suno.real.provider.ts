@@ -41,14 +41,15 @@ export class SunoRealProvider extends SunoProvider {
     // SUNO_* citite din DB (admin /settings UI). API_URL rămâne din env (infra).
     const baseUrl = (await this.settings.get('SUNO_API_BASE_URL')) || 'https://api.sunoapi.org';
     const apiKey = await this.settings.get('SUNO_API_KEY');
-    const model = (await this.settings.get('SUNO_MODEL')) || 'V4_5';
+    const model = input.model?.trim() || (await this.settings.get('SUNO_MODEL')) || 'V4_5';
     const apiUrl = this.config.get<string>('API_URL') ?? 'http://localhost:1501';
 
     if (!apiKey) {
       throw new Error('SUNO_API_KEY not configured');
     }
 
-    const customMode = !!input.lyrics;
+    const customMode =
+      input.customMode !== undefined ? !!input.customMode : !!input.lyrics || !!input.promptOverride;
     const limits = modelLimits(model);
 
     const body: Record<string, unknown> = {
@@ -109,16 +110,29 @@ export class SunoRealProvider extends SunoProvider {
       // versurile noastre AI-generated → Custom Mode (prompt = lyrics literal).
       // Scoatem și nume de artiști reali din lyrics pentru orice eventualitate
       // (Suno respinge dacă apar în prompt sau style).
-      const safeLyrics = stripBannedArtistNames(cleanInput.lyrics ?? '');
-      body.prompt = truncate(this.ensureDedicationOpening(safeLyrics, cleanInput), limits.prompt);
-      body.style = truncate(this.buildStyleTag(cleanInput), limits.style);
+      const rawLyrics = cleanInput.promptOverride?.trim() || cleanInput.lyrics || '';
+      const safeLyrics = stripBannedArtistNames(rawLyrics);
+      const sacred = !!cleanInput.promptOverride?.trim() || !!cleanInput.lyricsAreCustom;
+      body.prompt = truncate(
+        sacred ? safeLyrics : this.ensureDedicationOpening(safeLyrics, cleanInput),
+        limits.prompt,
+      );
+      body.style = truncate(
+        cleanInput.styleOverride?.trim()
+          ? styleOverrideTag(cleanInput.styleOverride, cleanInput.vocalGender)
+          : this.buildStyleTag(cleanInput),
+        limits.style,
+      );
       const titleBase = cleanDedication
         ? `Pentru ${cleanRecipient}, de la ${cleanDedication}`
         : `Pentru ${cleanRecipient}`;
-      body.title = truncate(titleBase, limits.title);
+      body.title = truncate(cleanInput.titleOverride?.trim() || titleBase, limits.title);
     } else {
       // Non-custom: Suno generează versurile pe baza prompt-ului. Limita e 500.
-      body.prompt = truncate(this.buildSimplePrompt(cleanInput), limits.simplePrompt);
+      body.prompt = truncate(
+        cleanInput.promptOverride?.trim() || this.buildSimplePrompt(cleanInput),
+        limits.simplePrompt,
+      );
     }
 
     this.logger.log(
@@ -872,6 +886,17 @@ function occasionStyleHint(i: SunoGenerateInput): string {
   const extra = i.occasionPrompt?.trim();
   if (extra) return `, ${extra}`;
   return i.occasion ? `, themed for ${i.occasion}` : '';
+}
+
+/** Style tag WYSIWYG (playground): păstrăm textul dat, doar aliniem genul vocal. */
+function styleOverrideTag(raw: string, gender?: 'm' | 'f'): string {
+  const genderTag =
+    gender === 'f'
+      ? 'female vocals only, woman singer, '
+      : gender === 'm'
+        ? 'male vocals only, man singer, '
+        : '';
+  return genderTag + alignVocalGender(raw.trim(), gender);
 }
 
 function alignVocalGender(text: string, gender?: 'm' | 'f'): string {

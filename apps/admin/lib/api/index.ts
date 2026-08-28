@@ -15,3 +15,4 @@ export * from './web-push.api';
 export * from './outbound-email.api';
 export * from './site-demos.api';
 export * from './invoices.api';
+export * from './playground.api';

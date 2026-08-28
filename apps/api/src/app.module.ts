@@ -49,6 +49,7 @@ import { MarketingModule } from './modules/marketing/marketing.module';
 import { CollageModule } from './modules/collage/collage.module';
 import { RecoveryModule } from './modules/recovery/recovery.module';
 import { FxModule } from './modules/fx/fx.module';
+import { PlaygroundModule } from './modules/playground/playground.module';
 import { StorageModule } from './storage/storage.module';
 
 @Module({
@@ -109,6 +110,7 @@ import { StorageModule } from './storage/storage.module';
     CollageModule,
     RecoveryModule,
     FxModule,
+    PlaygroundModule,
     SeederModule,
   ],
   providers: [

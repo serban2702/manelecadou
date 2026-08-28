@@ -53,6 +53,8 @@ export interface LyricsInput {
   /** Context pentru logging — opțional, doar pentru audit. */
   siteId?: string | null;
   generationId?: string | null;
+  /** Override model OpenAI. Omis → OPENAI_MODEL din settings. */
+  model?: string;
 }
 
 export interface LyricsOutput {
@@ -453,7 +455,7 @@ export class LyricsService {
       this.logger.log(`[DEV] writer locale=${input.locale ?? 'ro'} override=${!!input.writerSystemPrompt} sys_chars=${sys.length}`);
     }
     const apiKey = await this.settings.get('OPENAI_API_KEY');
-    const model = (await this.settings.get('OPENAI_MODEL')) || 'gpt-4o-mini';
+    const model = input.model?.trim() || (await this.settings.get('OPENAI_MODEL')) || 'gpt-4o-mini';
     const logId = (await this.logs.start({
       stage: 'writer',
       systemPrompt: sys,
@@ -513,7 +515,7 @@ export class LyricsService {
     const sys = this.criticSystem(input);
     const user = this.criticUser(input, draft);
     const apiKey = await this.settings.get('OPENAI_API_KEY');
-    const model = (await this.settings.get('OPENAI_MODEL')) || 'gpt-4o-mini';
+    const model = input.model?.trim() || (await this.settings.get('OPENAI_MODEL')) || 'gpt-4o-mini';
     const logId = (await this.logs.start({
       stage: 'critic',
       systemPrompt: sys,
@@ -570,6 +572,39 @@ export class LyricsService {
       });
       return mock;
     }
+  }
+
+  /** Template-urile default (când site-ul n-are override). Pentru playground. */
+  defaultTemplates(): {
+    writerSystem: string;
+    writerUser: string;
+    criticSystem: string;
+    criticUser: string;
+  } {
+    return {
+      writerSystem: DEFAULT_WRITER_SYSTEM,
+      writerUser: WRITER_USER_TEMPLATE,
+      criticSystem: DEFAULT_CRITIC_SYSTEM,
+      criticUser: CRITIC_USER_TEMPLATE,
+    };
+  }
+
+  /** Prompturile efective (cu langDirective + interpolare) pe care le-ar primi GPT. */
+  previewPrompts(
+    input: LyricsInput,
+    draftForCritic = '[Verse 1]\n…\n[Chorus]\n…',
+  ): {
+    writerSystem: string;
+    writerUser: string;
+    criticSystem: string;
+    criticUser: string;
+  } {
+    return {
+      writerSystem: this.writerSystem(input),
+      writerUser: this.writerUser(input),
+      criticSystem: this.criticSystem(input),
+      criticUser: this.criticUser(input, draftForCritic),
+    };
   }
 
   /**

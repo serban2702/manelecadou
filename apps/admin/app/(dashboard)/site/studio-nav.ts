@@ -7,6 +7,7 @@ import {
   Music2,
   LayoutTemplate,
   Wand2,
+  FlaskConical,
   Settings2,
   Star,
 } from 'lucide-react';
@@ -21,6 +22,7 @@ export type StudioNavId =
   | 'catalog'
   | 'interfaces'
   | 'generation'
+  | 'playground'
   | 'operations'
   | 'top';
 
@@ -40,6 +42,7 @@ export const SITE_NAV: StudioNavItem[] = [
   { id: 'prices', href: '/site/prices', label: 'Plată', help: 'Demo, cadou, Stripe', icon: BadgeDollarSign },
   { id: 'catalog', href: '/site/catalog/styles', label: 'Librărie', help: 'Se copiază în interfețe', icon: Music2 },
   { id: 'generation', href: '/site/generation', label: 'Versuri', help: 'Writer / critic default', icon: Wand2 },
+  { id: 'playground', href: '/site/playground', label: 'Playground', help: 'Generează Suno / Lyria', icon: FlaskConical },
   { id: 'operations', href: '/site/operations', label: 'Operațiuni', help: 'Live, email, facturi, pixeli', icon: Settings2 },
   { id: 'top', href: '/site/top', label: 'Top săptămână', help: 'Ce apare pe /top', icon: Star },
 ];
@@ -120,6 +123,7 @@ export const STUDIO_SEARCH: StudioSearchItem[] = [
   { id: 'generation.writerUser', label: 'Cererea către scriitorul de versuri', href: '/site/generation', keywords: ['writerUserTemplate', 'placeholder', 'writer'], group: 'generation' },
   { id: 'generation.critic', label: 'Editor de versuri', href: '/site/generation', keywords: ['critic', 'draft', 'placeholder', 'editor'], group: 'generation' },
   { id: 'generation.criticUser', label: 'Cererea către editorul de versuri', href: '/site/generation', keywords: ['criticUserTemplate', 'draft', 'editor'], group: 'generation' },
+  { id: 'playground', label: 'Playground', href: '/site/playground', keywords: ['suno', 'lyria', 'google', 'test', 'prompt', 'generează'], group: 'playground' },
   { id: 'operations.active', label: 'Site activ', href: '/site/operations', keywords: ['active', 'online'], group: 'operations' },
   { id: 'operations.ssl', label: 'SSL', href: '/site/operations', keywords: ['tls', 'certificat', 'https'], group: 'operations' },
   { id: 'operations.maintenance', label: 'Mentenanță', href: '/site/operations', keywords: ['maintenance', 'ascuns', 'hidden'], group: 'operations' },
@@ -190,6 +194,7 @@ export function matchStudioPath(pathname: string): {
     }
   }
   if (p === '/site/generation') return { id: 'generation', href: p, unknown: false };
+  if (p === '/site/playground') return { id: 'playground', href: p, unknown: false };
   if (p === '/site/operations') return { id: 'operations', href: p, unknown: false };
   if (p === '/site/top') return { id: 'top', href: p, unknown: false };
   if (p.startsWith('/site/')) return { id: 'overview', href: '/site/overview', unknown: true };
