@@ -78,7 +78,7 @@ manelecadou/
 ├── Caddyfile                 reverse proxy + on-demand TLS (stack vechi)
 ├── deploy/
 │   ├── router/nginx.conf     rutare pe path/host pentru stack-ul nou (§19)
-│   └── coolify-deploy.sh     declanșează un deploy în Coolify (opțional — push-ul e de ajuns)
+│   └── coolify-deploy.sh     declanșează un deploy în Coolify (push-ul NU deployează — §19.1)
 ├── docker-compose.yml        DEV (postgres + redis + adminer + api hot-reload)
 ├── docker-compose.prod.yml   PROD Ionos (toate 6 servicii + caddy)
 ├── docker-compose.coolify.yml PROD nou pe Coolify (fără caddy, cu router, R2) — §19
@@ -1058,8 +1058,17 @@ domeniile publice + `admin.<domeniu>`. `api`, `web`, `admin`, `postgres` și
 `redis` rămân fără domeniu. Un site nou = încă un rând în același câmp.
 
 Fișiere: `docker-compose.coolify.yml` (fără Caddy, cu paritate completă de env
-față de `docker-compose.prod.yml`), `deploy/coolify-deploy.sh` (opțional — dacă
-„Auto Deploy" e pornit, `git push` e de ajuns), target `make deploy-coolify`.
+față de `docker-compose.prod.yml`), `deploy/coolify-deploy.sh`, target
+`make deploy-coolify`.
+
+⚠️ **`git push` singur NU deployează.** Repo-ul e legat prin deploy key, iar
+pentru sursele de tip deploy key Coolify nu poate crea singur webhook-ul în
+GitHub — toate deploy-urile apar în istoric ca „Manual". Deploy-ul se pornește
+fie din UI (**Actions → Deploy / Redeploy**), fie din terminal cu
+`make deploy-coolify` având `COOLIFY_URL` / `COOLIFY_TOKEN` / `COOLIFY_RESOURCE_UUID`
+în env. Dacă vrei totuși push-to-deploy, ia URL-ul și secretul din resursă →
+**Webhooks → Manual Git webhooks → GitHub** și adaugă-le ca webhook în GitHub;
+înseamnă însă că orice push pe `main` ajunge direct pe producție.
 
 Două lucruri pe care Coolify le face altfel decât te-ai aștepta, ambele
 descoperite citindu-i sursa, nu documentația:

@@ -18,7 +18,7 @@ Ionos (Caddy + disc local) rămâne pornit până noul stack e verificat. Nu se
 | | Acum (Ionos) | După (Coolify) |
 |---|---|---|
 | TLS + domenii | Caddy, `on_demand_tls` | **Traefik**, gestionat de Coolify |
-| Deploy | `make deploy` → SSH → `deploy.sh` | Coolify (push pe git sau butonul Deploy) |
+| Deploy | `make deploy` → SSH → `deploy.sh` | Coolify: **Actions → Deploy** (push-ul singur nu declanșează nimic — deploy key, fără webhook) |
 | Rutare pe path | Caddyfile | `router` (nginx în stack, `deploy/router/nginx.conf`) |
 | Fișiere | volume `api_uploads` + `api_mail_attach` | **Cloudflare R2** — bucket separat pentru producție și pentru dev (mailul sub `mail-attach/`), cu volumul local ca sursă de cache |
 | Compose | `docker-compose.prod.yml` | `docker-compose.coolify.yml` |

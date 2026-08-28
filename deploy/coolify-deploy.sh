@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Declanșează un deploy în Coolify și așteaptă să se termine.
 #
-# Nu e obligatoriu: dacă ai „Auto Deploy" pornit pe resursă, un `git push` face
-# același lucru. Scriptul e pentru cazurile în care vrei să forțezi deploy-ul
-# din terminal sau dintr-un pipeline.
+# Pe setup-ul actual NU e opțional: repo-ul e conectat prin deploy key, deci
+# Coolify n-a putut crea webhook în GitHub și un `git push` nu declanșează nimic.
+# Fără scriptul ăsta (sau fără butonul Deploy din UI), codul rămâne nedeployat.
 #
 #   COOLIFY_URL=https://coolify.freevox.ro \
 #   COOLIFY_TOKEN=... \

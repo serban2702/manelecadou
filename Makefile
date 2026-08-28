@@ -71,9 +71,10 @@ restart:
 	@ssh $(VPS) "cd $(REMOTE) && docker compose -f docker-compose.prod.yml restart"
 
 # --- Stack nou pe Coolify (docker-compose.coolify.yml) ---------------------
-# Coolify face build-ul și restartul singur. Dacă „Auto Deploy" e pornit pe
-# resursă, `git push` e tot ce trebuie — target-urile de mai jos sunt pentru
-# când vrei să forțezi din terminal.
+# Coolify face build-ul și restartul singur, dar TREBUIE pornit: repo-ul e legat
+# prin deploy key, deci nu există webhook în GitHub și un `git push` nu declanșează
+# nimic (toate deploy-urile apar ca „Manual"). Ori apeși Actions → Deploy în UI,
+# ori setezi COOLIFY_TOKEN și rulezi target-ul de mai jos.
 #
 #   COOLIFY_URL=https://coolify.freevox.ro
 #   COOLIFY_TOKEN=...            (Coolify → Keys & Tokens → API tokens)
@@ -84,7 +85,8 @@ deploy-coolify:
 	@if [ -n "$$COOLIFY_TOKEN" ]; then \
 		./deploy/coolify-deploy.sh; \
 	else \
-		echo "→ push făcut. Coolify preia de aici (sau apasă Deploy în UI)."; \
+		echo "→ push făcut, DAR nu s-a deployat nimic: fără COOLIFY_TOKEN"; \
+		echo "  trebuie să apeși Actions → Deploy în UI-ul Coolify."; \
 		echo "  Pentru deploy forțat din terminal, setează COOLIFY_URL/TOKEN/RESOURCE_UUID."; \
 	fi
 
