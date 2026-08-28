@@ -23,7 +23,6 @@
     "studio": "Napravi pjesmu",
     "top": "Top",
     "cadou": "Poklon",
-    "intra": "Prijava",
     "cont": "Moj račun",
     "istoric": "Historija"
   },
@@ -43,7 +42,7 @@
   },
   "price": {
     "badge": "⚡ Samo danas",
-    "newAccount": "novi račun"
+    "firstOrder": "prva narudžba"
   },
   "quickListen": {
     "title": "🎧 Slušaj sad",
@@ -52,7 +51,7 @@
   },
   "cookie": {
     "title": "Brate, kolačići",
-    "body": "Koristimo kolačiće za tvoju sesiju, prijavu, plaćanja (Stripe), analitiku i personalizovane reklame. Svi su neophodni za potpuno funkcioniranje. Detalji na stranici <a>Kolačići</a>.",
+    "body": "Koristimo kolačiće za tvoju sesiju, plaćanja (Stripe), analitiku i personalizovane reklame. Svi su neophodni za potpuno funkcioniranje. Detalji na stranici <a>Kolačići</a>.",
     "accept": "Razumijem, nastavi 👑"
   },
   "cookieBanner": {
@@ -770,7 +769,7 @@
       },
       "sec2": {
         "h": "2. Koje podatke prikupljamo",
-        "b1": "<b>Tvoj email</b> — za isporuku manele i za autentifikaciju.",
+        "b1": "<b>Tvoj email</b> — za isporuku manele i obavijest o narudžbi.",
         "b2": "<b>ID gost sesije</b> (anonimni UUID) — u localStorage-u, pomaže nam da zapamtimo tvoje stanje bez naloga.",
         "b3": "<b>Sadržaj zahtjeva</b> (ime primaoca, poruka, stil) — koristi se samo za generisanje tvoje manele.",
         "b4": "<b>Tehnički podaci</b> (IP, browser, vremenska oznaka) — za sigurnost i sprečavanje zloupotrebe.",
@@ -820,15 +819,14 @@
       },
       "sec2": {
         "h": "Svi kolačići su obavezni za funkcionalnost",
-        "p": "Da bi sajt potpuno funkcionisao (generisanje, plaćanje, autentifikacija, isporuka), potrebni su nam svi kolačići navedeni ispod. Korištenjem sajta u potpunosti prihvataš politiku kolačića. Ako se ne slažeš, molimo te da ne koristiš sajt."
+        "p": "Da bi sajt potpuno funkcionisao (generisanje, plaćanje, isporuka), potrebni su nam svi kolačići navedeni ispod. Korištenjem sajta u potpunosti prihvataš politiku kolačića. Ako se ne slažeš, molimo te da ne koristiš sajt."
       },
       "sec3": {
         "h": "Kategorije"
       },
       "cat1": {
-        "h": "1. Funkcionalni (sesija, autentifikacija)",
+        "h": "1. Funkcionalni (sesija, narudžba)",
         "b1": "<code>mc_guest_id</code> — tvoja sesija bez naloga. Trajanje: 1 godina.",
-        "b2": "<code>mc_access_token</code> — pri prijavi, drži te autentifikovanim. Trajanje: 7 dana.",
         "b3": "<code>mc_cookie_consent</code> — tvoja potvrda da si pročitao politiku. Trajanje: trajno."
       },
       "cat2": {
@@ -847,7 +845,7 @@
       },
       "sec4": {
         "h": "Kako ih možeš obrisati",
-        "p": "U bilo kojem trenutku možeš obrisati kolačiće iz postavki tvog browser-a (Chrome, Firefox, Safari). Pažnja: nakon brisanja, nećeš moći koristiti određene funkcije (npr. ostati prijavljen, obrada plaćanja)."
+        "p": "U bilo kojem trenutku možeš obrisati kolačiće iz postavki tvog browser-a (Chrome, Firefox, Safari). Pažnja: nakon brisanja, nećeš moći koristiti određene funkcije (npr. nastavak narudžbe, obrada plaćanja)."
       }
     }
   },
@@ -941,46 +939,6 @@
         "a": "Bankovnom karticom putem Stripe-a. U budućnosti: Apple Pay, Google Pay."
       }
     ]
-  },
-  "loginPage": {
-    "title": "Prijavi se",
-    "sub": "Šaljemo ti link na email. Klikni link → prijavljen si. Bez lozinke.",
-    "sentTo": "Poslali smo ti link na",
-    "sentHint": "Provjeri inbox.",
-    "emailLabel": "Email",
-    "emailPlaceholder": "ti@email.ba",
-    "submitting": "Šalje se...",
-    "submit": "Pošalji link za prijavu",
-    "errGeneric": "Greška pri slanju.",
-    "verifyTitle": "Prijavljujemo te...",
-    "verifyHint": "Trenutak...",
-    "verifyMissing": "Token nedostaje.",
-    "verifyUnknown": "Nepoznata greška"
-  },
-  "contPage": {
-    "loading": "Učitava se...",
-    "title": "Tvoj račun",
-    "adminBadge": "ADMIN",
-    "makeManea": "🎤 Napravi pjesmu",
-    "logout": "Odjava",
-    "gdprTitle": "📦 Tvoji podaci (GDPR)",
-    "gdprBody": "Imaš pravo, prema GDPR-u, zatražiti izvoz svih naših podataka o tebi ili potpuno brisanje računa. Zahtjevi se obrađuju ručno od tima u roku od najviše 30 dana.",
-    "reasonLabel": "Razlog (opciono)",
-    "reasonPlaceholder": "npr. više ne koristim uslugu",
-    "errGeneric": "Greška. Pokušaj ponovo.",
-    "submittedExport": "✓ Zahtjev za izvoz je registriran. Kontaktirat ćemo te emailom u roku od najviše 30 dana.",
-    "submittedDelete": "✓ Zahtjev za brisanje je registriran. Kontaktirat ćemo te emailom u roku od najviše 30 dana.",
-    "submitting": "Šalje se...",
-    "exportCta": "📥 Zatraži izvoz podataka",
-    "deleteCta": "🗑️ Zatraži brisanje računa",
-    "deleteTitle": "Brišeš račun?",
-    "deleteDesc": "Zahtjev za brisanje je nepovratan kad ga tim obradi (max 30 dana).",
-    "deleteConfirm": "Zatraži brisanje",
-    "exportTitle": "Zatraži izvoz podataka?",
-    "exportDesc": "Naš tim će te kontaktirati emailom u roku od max 30 dana s arhivom tvojih podataka.",
-    "exportConfirm": "Zatraži izvoz",
-    "footer": "Detalji na stranici",
-    "privacy": "Privatnost"
   },
   "mViewPage": {
     "errUnknown": "Nepoznata greška",

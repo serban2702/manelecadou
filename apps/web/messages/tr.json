@@ -23,7 +23,6 @@
     "studio": "Şarkı yap",
     "top": "En iyiler",
     "cadou": "Hediye",
-    "intra": "Giriş",
     "cont": "Hesabım",
     "istoric": "Geçmiş"
   },
@@ -43,7 +42,7 @@
   },
   "price": {
     "badge": "⚡ Sadece bugün",
-    "newAccount": "yeni hesap"
+    "firstOrder": "ilk sipariş"
   },
   "quickListen": {
     "title": "🎧 Şimdi dinle",
@@ -52,7 +51,7 @@
   },
   "cookie": {
     "title": "Kanka, çerezler",
-    "body": "Oturumun, girişin, ödemelerin (Stripe), analitiğin ve kişiselleştirilmiş reklamlar için çerez kullanıyoruz. Hepsi sitenin tam çalışması için gerekli. Detaylar <a>Çerezler</a> sayfasında.",
+    "body": "Oturumun, ödemelerin (Stripe), analitiğin ve kişiselleştirilmiş reklamlar için çerez kullanıyoruz. Hepsi sitenin tam çalışması için gerekli. Detaylar <a>Çerezler</a> sayfasında.",
     "accept": "Anladım, devam et 👑"
   },
   "cookieBanner": {
@@ -770,7 +769,7 @@
       },
       "sec2": {
         "h": "2. Hangi verileri topluyoruz",
-        "b1": "<b>E-posta adresin</b> — maneleni teslim etmek ve kimlik doğrulaması için.",
+        "b1": "<b>E-posta adresin</b> — maneleni teslim etmek ve siparişin hakkında seni bilgilendirmek için.",
         "b2": "<b>Misafir oturum kimliği</b> (anonim UUID) — localStorage'da, hesap olmadan durumunu hatırlamamıza yardımcı olur.",
         "b3": "<b>Talep içeriği</b> (alıcı adı, mesaj, stil) — yalnızca maneleni üretmek için kullanılır.",
         "b4": "<b>Teknik veriler</b> (IP, tarayıcı, zaman damgası) — güvenlik ve kötüye kullanımın önlenmesi için.",
@@ -820,15 +819,14 @@
       },
       "sec2": {
         "h": "Tüm çerezler işlevsellik için zorunludur",
-        "p": "Sitenin tam olarak çalışması için (üretim, ödeme, kimlik doğrulama, teslimat), aşağıda listelenen tüm çerezlere ihtiyacımız var. Siteyi kullanarak çerez politikasını tamamen kabul etmiş olursun. Kabul etmiyorsan, lütfen siteyi kullanma."
+        "p": "Sitenin tam olarak çalışması için (üretim, ödeme, teslimat), aşağıda listelenen tüm çerezlere ihtiyacımız var. Siteyi kullanarak çerez politikasını tamamen kabul etmiş olursun. Kabul etmiyorsan, lütfen siteyi kullanma."
       },
       "sec3": {
         "h": "Kategoriler"
       },
       "cat1": {
-        "h": "1. İşlevsel (oturum, kimlik doğrulama)",
+        "h": "1. İşlevsel (oturum, sipariş)",
         "b1": "<code>mc_guest_id</code> — hesap olmadan oturumun. Süre: 1 yıl.",
-        "b2": "<code>mc_access_token</code> — giriş yaptığında seni oturumda tutar. Süre: 7 gün.",
         "b3": "<code>mc_cookie_consent</code> — politikayı okuduğuna dair onayın. Süre: kalıcı."
       },
       "cat2": {
@@ -847,7 +845,7 @@
       },
       "sec4": {
         "h": "Nasıl silebilirsin",
-        "p": "Çerezleri istediğin zaman tarayıcı ayarlarından (Chrome, Firefox, Safari) silebilirsin. Dikkat: silme sonrasında bazı özellikleri kullanamayabilirsin (örn. oturumda kalma, ödeme işleme)."
+        "p": "Çerezleri istediğin zaman tarayıcı ayarlarından (Chrome, Firefox, Safari) silebilirsin. Dikkat: silme sonrasında bazı özellikleri kullanamayabilirsin (örn. siparişe kaldığın yerden devam etme, ödeme işleme)."
       }
     }
   },
@@ -941,46 +939,6 @@
         "a": "Stripe üzerinden banka kartıyla. Gelecekte: Apple Pay, Google Pay."
       }
     ]
-  },
-  "loginPage": {
-    "title": "Hesaba gir",
-    "sub": "Sana e-postayla link gönderiyoruz. Tıkla → giriş yaptın. Parola yok.",
-    "sentTo": "Sana şu adrese link gönderdik:",
-    "sentHint": "Gelen kutunu kontrol et.",
-    "emailLabel": "E-posta",
-    "emailPlaceholder": "sen@email.com",
-    "submitting": "Gönderiliyor...",
-    "submit": "Giriş linki gönder",
-    "errGeneric": "Gönderim hatası.",
-    "verifyTitle": "Giriş yapıyoruz...",
-    "verifyHint": "Bir saniye...",
-    "verifyMissing": "Token eksik.",
-    "verifyUnknown": "Bilinmeyen hata"
-  },
-  "contPage": {
-    "loading": "Yükleniyor...",
-    "title": "Hesabın",
-    "adminBadge": "ADMIN",
-    "makeManea": "🎤 Şarkı yap",
-    "logout": "Çıkış",
-    "gdprTitle": "📦 Verilerin (GDPR)",
-    "gdprBody": "GDPR'a göre, hakkındaki tüm verilerimizin ihracını veya hesabın tamamen silinmesini talep etme hakkın var. Talepler ekip tarafından maksimum 30 günde manuel olarak işlenir.",
-    "reasonLabel": "Sebep (opsiyonel)",
-    "reasonPlaceholder": "örn. hizmeti artık kullanmıyorum",
-    "errGeneric": "Hata. Tekrar dene.",
-    "submittedExport": "✓ İhraç talebi kaydedildi. Max 30 gün içinde e-postayla seninle iletişime geçeceğiz.",
-    "submittedDelete": "✓ Silme talebi kaydedildi. Max 30 gün içinde e-postayla seninle iletişime geçeceğiz.",
-    "submitting": "Gönderiliyor...",
-    "exportCta": "📥 Veri ihracı talep et",
-    "deleteCta": "🗑️ Hesap silme talep et",
-    "deleteTitle": "Hesabı siliyor musun?",
-    "deleteDesc": "Silme talebi, ekip işledikten sonra geri alınamaz (max 30 gün).",
-    "deleteConfirm": "Silme talep et",
-    "exportTitle": "Veri ihracı talep et?",
-    "exportDesc": "Ekibimiz, verilerinin arşiviyle max 30 gün içinde e-posta üzerinden seninle iletişime geçecek.",
-    "exportConfirm": "İhraç talep et",
-    "footer": "Detaylar şu sayfada:",
-    "privacy": "Gizlilik"
   },
   "mViewPage": {
     "errUnknown": "Bilinmeyen hata",

@@ -22,7 +22,6 @@
     "asculta": "Ascultă",
     "studio": "Fă o manea",
     "top": "Top",
-    "intra": "Cont",
     "cont": "Contul meu",
     "istoric": "Istoric"
   },
@@ -42,7 +41,7 @@
   },
   "price": {
     "badge": "⚡ Doar azi",
-    "newAccount": "cont nou"
+    "firstOrder": "prima comandă"
   },
   "quickListen": {
     "title": "🎧 Ascultă acum",
@@ -51,7 +50,7 @@
   },
   "cookie": {
     "title": "Bă fine, cookie-uri",
-    "body": "Folosim cookie-uri pentru sesiunea ta, autentificare, plăți (Stripe), analytics și reclame personalizate. Toate sunt necesare pentru funcționarea completă a site-ului. Detalii pe pagina <a>Cookies</a>.",
+    "body": "Folosim cookie-uri pentru sesiunea ta, plăți (Stripe), analytics și reclame personalizate. Toate sunt necesare pentru funcționarea completă a site-ului. Detalii pe pagina <a>Cookies</a>.",
     "accept": "Am înțeles, continuă 👑"
   },
   "cookieBanner": {
@@ -768,7 +767,7 @@
       },
       "sec2": {
         "h": "2. Ce date colectăm",
-        "b1": "<b>Email-ul tău</b> — pentru a-ți livra maneaua și pentru autentificare.",
+        "b1": "<b>Email-ul tău</b> — pentru a-ți livra maneaua și pentru a te anunța despre comandă.",
         "b2": "<b>ID de sesiune guest</b> (UUID anonim) — în localStorage, ne ajută să-ți reținem starea fără cont.",
         "b3": "<b>Conținutul request-ului</b> (nume destinatar, mesaj, stil) — folosit doar pentru a genera maneaua ta.",
         "b4": "<b>Date tehnice</b> (IP, browser, timestamp) — pentru securitate și prevenirea abuzului.",
@@ -818,15 +817,14 @@
       },
       "sec2": {
         "h": "Toate cookie-urile sunt obligatorii pentru funcționalitate",
-        "p": "Pentru ca site-ul să funcționeze complet (generare, plată, autentificare, livrare), avem nevoie de toate cookie-urile listate mai jos. Prin folosirea site-ului, accepți integral politica de cookies. Dacă nu ești de acord, te rugăm să nu folosești site-ul."
+        "p": "Pentru ca site-ul să funcționeze complet (generare, plată, livrare), avem nevoie de toate cookie-urile listate mai jos. Prin folosirea site-ului, accepți integral politica de cookies. Dacă nu ești de acord, te rugăm să nu folosești site-ul."
       },
       "sec3": {
         "h": "Categorii"
       },
       "cat1": {
-        "h": "1. Funcționale (sesiune, autentificare)",
+        "h": "1. Funcționale (sesiune, comandă)",
         "b1": "<code>mc_guest_id</code> — sesiunea ta fără cont. Durată: 1 an.",
-        "b2": "<code>mc_access_token</code> — la login, te ține autentificat. Durată: 7 zile.",
         "b3": "<code>mc_cookie_consent</code> — confirmarea ta că ai citit politica. Durată: persistent."
       },
       "cat2": {
@@ -845,7 +843,7 @@
       },
       "sec4": {
         "h": "Cum le poți șterge",
-        "p": "Poți oricând șterge cookie-urile din setările browser-ului tău (Chrome, Firefox, Safari). Atenție: după ștergere, nu vei mai putea folosi anumite funcții (ex: rămâne logat, procesare plată)."
+        "p": "Poți oricând șterge cookie-urile din setările browser-ului tău (Chrome, Firefox, Safari). Atenție: după ștergere, nu vei mai putea folosi anumite funcții (ex: reluarea comenzii, procesare plată)."
       }
     }
   },
@@ -939,46 +937,6 @@
         "a": "Card bancar prin Stripe. În viitor: Apple Pay, Google Pay, Netopia (cardul românesc)."
       }
     ]
-  },
-  "loginPage": {
-    "title": "Intră în cont",
-    "sub": "Îți trimitem un link pe email. Click pe link → ești logat. Fără parolă.",
-    "sentTo": "Ți-am trimis un link la",
-    "sentHint": "Verifică-ți inbox-ul (sau dev console / mailcatcher).",
-    "emailLabel": "Email",
-    "emailPlaceholder": "tu@email.ro",
-    "submitting": "Se trimite...",
-    "submit": "Trimite link de logare",
-    "errGeneric": "Eroare la trimitere.",
-    "verifyTitle": "Te logăm...",
-    "verifyHint": "Un moment...",
-    "verifyMissing": "Token lipsă.",
-    "verifyUnknown": "Eroare necunoscută"
-  },
-  "contPage": {
-    "loading": "Se încarcă...",
-    "title": "Contul tău",
-    "adminBadge": "ADMIN",
-    "makeManea": "🎤 Fă o manea",
-    "logout": "Logout",
-    "gdprTitle": "📦 Datele tale (GDPR)",
-    "gdprBody": "Ai dreptul, conform GDPR, să ceri exportul tuturor datelor noastre despre tine sau ștergerea completă a contului. Cererile sunt procesate manual de echipă în maxim 30 zile.",
-    "reasonLabel": "Motiv (opțional)",
-    "reasonPlaceholder": "ex. nu mai folosesc serviciul",
-    "errGeneric": "Eroare. Încearcă din nou.",
-    "submittedExport": "✓ Cererea de export a fost înregistrată. Te contactăm pe email în maxim 30 zile.",
-    "submittedDelete": "✓ Cererea de ștergere a fost înregistrată. Te contactăm pe email în maxim 30 zile.",
-    "submitting": "Se trimite...",
-    "exportCta": "📥 Cere export date",
-    "deleteCta": "🗑️ Cere ștergere cont",
-    "deleteTitle": "Ștergi contul?",
-    "deleteDesc": "Cererea de ștergere e ireversibilă odată procesată de echipă (în maxim 30 zile).",
-    "deleteConfirm": "Cere ștergere",
-    "exportTitle": "Cere export al datelor?",
-    "exportDesc": "Echipa noastră te va contacta pe email în maxim 30 zile cu arhiva datelor tale.",
-    "exportConfirm": "Cere export",
-    "footer": "Detalii pe pagina",
-    "privacy": "Confidențialitate"
   },
   "mViewPage": {
     "errUnknown": "Eroare necunoscută",

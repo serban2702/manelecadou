@@ -103,7 +103,7 @@ export function PriceStrip() {
       </div>
       <div className="right">
         {discountPct > 0 && <div className="save">{`-${discountPct}%`}</div>}
-        <div style={{ fontSize: 10, color: 'rgba(255,245,220,0.5)', marginTop: 4 }}>{t('newAccount')}</div>
+        <div style={{ fontSize: 10, color: 'rgba(255,245,220,0.5)', marginTop: 4 }}>{t('firstOrder')}</div>
       </div>
     </div>
   );

@@ -28,7 +28,10 @@ export default async function CookiesPage() {
         <h2 style={{ fontSize: 16 }}>{t('cat1.h')}</h2>
         <ul>
           <li>{t.rich('cat1.b1', { code: (chunks) => <code>{chunks}</code> })}</li>
-          <li>{t.rich('cat1.b2', { code: (chunks) => <code>{chunks}</code> })}</li>
+          {/* `cat1.b2` era `mc_access_token` — cookie-ul de login. Nu se mai
+              setează pentru clienți (login doar în admin), deci nu-l mai
+              declarăm: o politică de cookies care listează un cookie inexistent
+              e la fel de greșită ca una care omite unul real. */}
           <li>{t.rich('cat1.b3', { code: (chunks) => <code>{chunks}</code> })}</li>
         </ul>
 
