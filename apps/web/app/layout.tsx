@@ -34,6 +34,16 @@ const manrope = Manrope({ subsets: ['latin'], weight: ['400', '500', '600', '700
 // `latin-ext` e obligatoriu pentru diacriticele RO (ă/î/ș/ț/â) — CSS-ul Google
 // le livra prin unicode-range, deci fără subsetul ăsta ar fi o regresie vizibilă.
 const outfit = Outfit({ subsets: ['latin', 'latin-ext'], weight: ['400', '500', '600', '700', '800'], variable: '--font-outfit', display: 'swap', preload: false });
+// Outfit NU are subseturi greacă sau chirilic — pe Google Fonts există doar
+// `latin` și `latin-ext`. Pe site-urile `el` și `bg`, fiecare literă ar fi căzut
+// pe `system-ui`, adică interfața cadou și-ar fi pierdut tipografia exact acolo
+// unde o lansăm. Manrope acoperă ambele scripturi, e din aceeași familie
+// geometrică și e deja fontul de corp al interfeței `classic`.
+// Instanță separată, nu subseturi adăugate la `manrope`: aceea e preîncărcată pe
+// toate site-urile, iar subseturile în plus ar fi ajuns și la cele care nu le
+// folosesc niciodată. Aici `preload: false` — se descarcă doar când chiar se
+// randează text cu el. Alegerea per limbă se face în experiences/cadou/theme.css.
+const cadouIntl = Manrope({ subsets: ['latin', 'latin-ext', 'greek', 'cyrillic'], weight: ['400', '500', '600', '700', '800'], variable: '--font-cadou-intl', display: 'swap', preload: false });
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:1500';
 
@@ -178,7 +188,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     : '';
 
   return (
-    <html lang={htmlLang} className={`${cinzel.variable} ${manrope.variable} ${outfit.variable}`}>
+    <html lang={htmlLang} className={`${cinzel.variable} ${manrope.variable} ${outfit.variable} ${cadouIntl.variable}`}>
       <head>
         <style dangerouslySetInnerHTML={{ __html: brandVars }} />
         {clientIpScript && (
