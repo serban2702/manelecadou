@@ -138,8 +138,8 @@ export function InterfaceStudio({
           <CardContent className="p-4 space-y-3" data-field="interfaces.enabled">
             {slug !== 'classic' && (
               <Toggle
-                label="Disponibilă din ads / UTM"
-                description="Oprită = nu se alege din ads. Nu e același lucru cu implicita: homepage-ul rămâne pe interfața marcată Implicită. Linkul ?ui= de mai sus o deschide oricum."
+                label="Disponibilă pe site"
+                description="Oprită = interfața nu se activează deloc: nici din ads/UTM, nici cu linkul ?ui= de mai sus, care trece prin aceeași verificare. Nu e același lucru cu Implicita: homepage-ul rămâne pe interfața marcată Implicită. Ca s-o vezi tu fără s-o dai clienților, pornește-o aici și las-o neimplicită."
                 value={isEnabled(form, slug)}
                 onChange={(on) => setForm(patchItem(form, slug, { enabled: on }))}
                 fieldId="interfaces.enabled"

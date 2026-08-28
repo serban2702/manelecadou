@@ -37,10 +37,22 @@ export function itemOf(form: SiteDto, slug: string): ExperienceItemConfig {
 }
 
 /** classic e mereu on; item lipsă = activ (runtime). */
+/**
+ * Trebuie să dea EXACT același verdict ca `isExperienceEnabled` din
+ * `apps/web/experiences/assign.ts` și `apps/api/src/modules/experiences/assign.ts`.
+ *
+ * Avea `if (!item) return true`, adică opusul runtime-ului: pe un site fără
+ * `experienceConfig` (toate cele de producție), ecranul arăta „Cadou ·
+ * Disponibilă" cu comutatorul aprins, în timp ce site-ul refuza interfața și
+ * ignora inclusiv `?ui=cadou`. Adminul raporta activată o interfață care nu era
+ * — cel mai prost fel de a greși, fiindcă te face să cauți defectul în altă parte.
+ */
 export function isEnabled(form: SiteDto, slug: string): boolean {
   if (slug === 'classic') return true;
+  if (slug === form.experienceConfig?.defaultSlug) return true;
   const item = form.experienceConfig?.items?.[slug];
-  if (!item) return true;
+  // Lipsa configurării înseamnă „nu e activată pe site-ul ăsta", nu „e liberă".
+  if (!item) return false;
   return item.enabled !== false;
 }
 
