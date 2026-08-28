@@ -30,6 +30,7 @@ export interface PlaygroundAssembleInput {
   skipCritic?: boolean;
   phonetic?: boolean;
   openaiModel?: string;
+  openaiTemperature?: number;
   writerSystemPrompt?: string;
   writerUserTemplate?: string;
   criticSystemPrompt?: string;
@@ -157,6 +158,7 @@ export function assemblePlayground(site: Site, dto: PlaygroundAssembleInput): Pl
     criticSystemPrompt: pickOverride(dto.criticSystemPrompt, site.suno?.criticSystemPrompt),
     criticUserTemplate: pickOverride(dto.criticUserTemplate, site.suno?.criticUserTemplate),
     model: dto.openaiModel?.trim() || undefined,
+    temperature: dto.openaiTemperature,
     siteId: site.id,
     customLyrics: lyricsMode === 'custom' ? dto.lyrics?.trim() || undefined : undefined,
   };

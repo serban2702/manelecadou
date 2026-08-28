@@ -55,6 +55,8 @@ export interface LyricsInput {
   generationId?: string | null;
   /** Override model OpenAI. Omis → OPENAI_MODEL din settings. */
   model?: string;
+  /** Temperatura writer/critic. Ignorată pe modelele gpt-5 / o-series. */
+  temperature?: number;
 }
 
 export interface LyricsOutput {
@@ -434,6 +436,11 @@ function phoneticSystem(locale?: string): string {
   ].join('\n');
 }
 
+function clampTemp(n: number | undefined): number {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return 0.85;
+  return Math.min(2, Math.max(0, n));
+}
+
 @Injectable()
 export class LyricsService {
   private readonly logger = new Logger('LyricsService');
@@ -456,6 +463,7 @@ export class LyricsService {
     }
     const apiKey = await this.settings.get('OPENAI_API_KEY');
     const model = input.model?.trim() || (await this.settings.get('OPENAI_MODEL')) || 'gpt-4o-mini';
+    const temperature = clampTemp(input.temperature);
     const logId = (await this.logs.start({
       stage: 'writer',
       systemPrompt: sys,
@@ -476,7 +484,7 @@ export class LyricsService {
       return mock;
     }
     try {
-      const result = await this.openaiChat(apiKey, model, sys, user);
+      const result = await this.openaiChat(apiKey, model, sys, user, { temperature });
       // SAFETY: scrub sentinel ÎN WRITER. Critic-ul va mai face un scrub la final,
       // dar dacă writer-ul produce sentinel, critic-ul ar putea să-l propage.
       const scrubbed = scrubSentinel(result.content);
@@ -516,6 +524,7 @@ export class LyricsService {
     const user = this.criticUser(input, draft);
     const apiKey = await this.settings.get('OPENAI_API_KEY');
     const model = input.model?.trim() || (await this.settings.get('OPENAI_MODEL')) || 'gpt-4o-mini';
+    const temperature = clampTemp(input.temperature);
     const logId = (await this.logs.start({
       stage: 'critic',
       systemPrompt: sys,
@@ -536,7 +545,7 @@ export class LyricsService {
       return mock;
     }
     try {
-      const result = await this.openaiChat(apiKey, model, sys, user);
+      const result = await this.openaiChat(apiKey, model, sys, user, { temperature });
       // SAFETY: scrub sentinel dacă scapă în output (observat în prod 2026-05-28:
       // 2 melodii livrate cu „De la Utilizatorul nu a completat pentru Mirela").
       // Dacă apare ORICE mențiune a sentinel-ului, ștergem rândul întreg și logăm.

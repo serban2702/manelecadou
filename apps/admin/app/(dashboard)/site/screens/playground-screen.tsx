@@ -1,13 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  FlaskConical,
-  Loader2,
-  RotateCcw,
-  Sparkles,
-  Volume2,
-} from 'lucide-react';
+import { Loader2, RotateCcw, Sparkles, Volume2 } from 'lucide-react';
 import type { SiteDto } from '@/lib/api/sites.api';
 import {
   PlaygroundApi,
@@ -20,14 +14,12 @@ import {
 } from '@/lib/api/playground.api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/cn';
 import { LOCALES, LOCALE_LABELS } from '../studio-constants';
-import { Field, StudioSection, Toggle } from '../studio-primitives';
 import { humanExperienceLabel } from '../interfaces/config';
 
 function absUrl(rel: string): string {
@@ -36,15 +28,38 @@ function absUrl(rel: string): string {
   return `${base}${rel}`;
 }
 
-type Slim = { id: string; nm: string; sunoPrompt?: string; googlePrompt?: string; gender?: 'm' | 'f'; sunoPersonaId?: string; lyricsHint?: string; styleWeight?: number; weirdnessConstraint?: number; negativeTags?: string; sunoPersonaIdMale?: string; sunoPersonaIdFemale?: string };
+type Slim = {
+  id: string;
+  nm: string;
+  sunoPrompt?: string;
+  googlePrompt?: string;
+  gender?: 'm' | 'f';
+  sunoPersonaId?: string;
+  lyricsHint?: string;
+  styleWeight?: number;
+  weirdnessConstraint?: number;
+  negativeTags?: string;
+  sunoPersonaIdMale?: string;
+  sunoPersonaIdFemale?: string;
+};
 
 function catalogOf(form: SiteDto, slug: string) {
   const cat = slug ? form.experienceConfig?.items?.[slug]?.catalog : undefined;
-  const styles = (cat?.styles?.length ? cat.styles : form.styles ?? []) as Slim[];
-  const occasions = (cat?.occasions?.length ? cat.occasions : form.occasions ?? []) as Slim[];
-  const voices = (cat?.voices?.length ? cat.voices : form.voices ?? []) as Slim[];
-  const writer = cat?.writerSystemPrompt?.trim() || form.suno?.writerSystemPrompt || '';
-  return { styles, occasions, voices, writer };
+  const stylesOwn = Array.isArray(cat?.styles);
+  const occasionsOwn = Array.isArray(cat?.occasions);
+  const voicesOwn = Array.isArray(cat?.voices);
+  return {
+    slug,
+    styles: (stylesOwn ? cat?.styles ?? [] : form.styles ?? []) as Slim[],
+    occasions: (occasionsOwn ? cat?.occasions ?? [] : form.occasions ?? []) as Slim[],
+    voices: (voicesOwn ? cat?.voices ?? [] : form.voices ?? []) as Slim[],
+    writer: cat?.writerSystemPrompt?.trim() || form.suno?.writerSystemPrompt || '',
+    inherited: {
+      styles: !!slug && !cat?.styles?.length,
+      occasions: !!slug && !cat?.occasions?.length,
+      voices: !!slug && !cat?.voices?.length,
+    },
+  };
 }
 
 function statusLabel(s: PlaygroundRun['status']): string {
@@ -55,6 +70,11 @@ function statusLabel(s: PlaygroundRun['status']): string {
   return 'Eșuat';
 }
 
+function isGpt5(model: string): boolean {
+  const m = model.trim().toLowerCase();
+  return m.startsWith('gpt-5') || /^o[1-9]/.test(m);
+}
+
 export function PlaygroundScreen({ form }: { form: SiteDto }) {
   const { toast } = useToast();
   const [meta, setMeta] = useState<PlaygroundMeta | null>(null);
@@ -62,20 +82,21 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
   const [experienceSlug, setExperienceSlug] = useState('');
   const catalog = useMemo(() => catalogOf(form, experienceSlug), [form, experienceSlug]);
 
-  const [styleId, setStyleId] = useState(catalog.styles[0]?.id ?? '');
-  const [occasionId, setOccasionId] = useState(catalog.occasions[0]?.id ?? '');
-  const [voiceId, setVoiceId] = useState(catalog.voices[0]?.id ?? '');
+  const [styleId, setStyleId] = useState('');
+  const [occasionId, setOccasionId] = useState('');
+  const [voiceId, setVoiceId] = useState('');
   const [recipient, setRecipient] = useState('Mirela');
   const [sender, setSender] = useState('Costel');
   const [message, setMessage] = useState('La mulți ani cu sănătate');
   const [tipAmount, setTipAmount] = useState('');
   const [durationSec, setDurationSec] = useState('120');
-  const [lyricsMode, setLyricsMode] = useState<PlaygroundLyricsMode>('generate');
+  const [lyricsMode, setLyricsMode] = useState<PlaygroundLyricsMode>('custom');
   const [lyrics, setLyrics] = useState('');
   const [lyricsDraft, setLyricsDraft] = useState('');
-  const [phonetic, setPhonetic] = useState(form.lyricsReviewEnabled ?? true);
+  const [phonetic, setPhonetic] = useState(false);
   const [skipCritic, setSkipCritic] = useState(false);
   const [openaiModel, setOpenaiModel] = useState('');
+  const [openaiTemperature, setOpenaiTemperature] = useState('0.85');
   const [locale, setLocale] = useState(form.suno?.lyricsLocale || form.locale);
   const [languageOverride, setLanguageOverride] = useState('');
   const [writerSystem, setWriterSystem] = useState(form.suno?.writerSystemPrompt || '');
@@ -89,10 +110,10 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
   const [sunoOccasion, setSunoOccasion] = useState('');
   const [sunoRaw, setSunoRaw] = useState('');
   const [sunoTitle, setSunoTitle] = useState('');
-  const [vocalGender, setVocalGender] = useState<'m' | 'f' | ''>('');
-  const [styleWeight, setStyleWeight] = useState('');
-  const [weirdness, setWeirdness] = useState('');
-  const [negativeTags, setNegativeTags] = useState('');
+  const [vocalGender, setVocalGender] = useState<'m' | 'f' | ''>('m');
+  const [styleWeight, setStyleWeight] = useState('0.65');
+  const [weirdness, setWeirdness] = useState('0.30');
+  const [negativeTags, setNegativeTags] = useState('pop, EDM, trap-rap');
   const [personaId, setPersonaId] = useState('');
   const [personaModel, setPersonaModel] = useState<'style_persona' | 'voice_persona'>('style_persona');
   const [instrumental, setInstrumental] = useState(false);
@@ -101,7 +122,6 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
   const [lyriaOccasion, setLyriaOccasion] = useState('');
   const [lyriaRaw, setLyriaRaw] = useState('');
   const [showGpt, setShowGpt] = useState(false);
-  const [showAudioAdvanced, setShowAudioAdvanced] = useState(false);
   const [busyLyrics, setBusyLyrics] = useState(false);
   const [busyGenerate, setBusyGenerate] = useState(false);
   const [preview, setPreview] = useState<PlaygroundPreview | null>(null);
@@ -114,32 +134,46 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
     return Object.keys(items).filter((slug) => items[slug]?.enabled !== false);
   }, [form.experienceConfig]);
 
-  const applyCatalog = useCallback(
-    (next: { styles: Slim[]; occasions: Slim[]; voices: Slim[]; writer: string }, sid?: string, oid?: string, vid?: string) => {
-      const st = next.styles.find((s) => s.id === sid) ?? next.styles[0];
-      const oc = next.occasions.find((o) => o.id === oid) ?? next.occasions[0];
-      const vo = next.voices.find((v) => v.id === vid) ?? next.voices[0];
-      setStyleId(st?.id ?? '');
-      setOccasionId(oc?.id ?? '');
-      setVoiceId(vo?.id ?? '');
-      setSunoStyle(st?.sunoPrompt ?? '');
-      setSunoOccasion(oc?.sunoPrompt ?? '');
-      setLyriaStyle(st?.googlePrompt ?? '');
-      setLyriaOccasion(oc?.googlePrompt ?? oc?.nm ?? '');
-      setStyleWeight(st?.styleWeight != null ? String(st.styleWeight) : '');
-      setWeirdness(st?.weirdnessConstraint != null ? String(st.weirdnessConstraint) : '');
-      setNegativeTags(st?.negativeTags ?? '');
-      const gender = vo?.gender ?? (vo?.id === 'female' ? 'f' : vo?.id === 'male' ? 'm' : '');
-      setVocalGender(gender);
-      const persona =
-        (gender === 'f' ? st?.sunoPersonaIdFemale : gender === 'm' ? st?.sunoPersonaIdMale : '') ||
-        vo?.sunoPersonaId ||
-        '';
-      setPersonaId(persona);
-      if (next.writer) setWriterSystem(next.writer);
+  const fillFromEntries = useCallback((st?: Slim, oc?: Slim, vo?: Slim, writer?: string) => {
+    setStyleId(st?.id ?? '');
+    setOccasionId(oc?.id ?? '');
+    setVoiceId(vo?.id ?? '');
+    setSunoStyle(st?.sunoPrompt ?? '');
+    setSunoOccasion(oc?.sunoPrompt ?? '');
+    setLyriaStyle(st?.googlePrompt ?? '');
+    setLyriaOccasion(oc?.googlePrompt ?? oc?.nm ?? '');
+    if (st?.styleWeight != null) setStyleWeight(String(st.styleWeight));
+    if (st?.weirdnessConstraint != null) setWeirdness(String(st.weirdnessConstraint));
+    if (st?.negativeTags) setNegativeTags(st.negativeTags);
+    const gender = vo?.gender ?? (vo?.id === 'female' ? 'f' : vo?.id === 'male' ? 'm' : '');
+    if (gender) setVocalGender(gender);
+    const persona =
+      (gender === 'f' ? st?.sunoPersonaIdFemale : gender === 'm' ? st?.sunoPersonaIdMale : '') ||
+      vo?.sunoPersonaId ||
+      '';
+    setPersonaId(persona);
+    if (writer) setWriterSystem(writer);
+  }, []);
+
+  const loadSource = useCallback(
+    (slug: string) => {
+      setExperienceSlug(slug);
+      const next = catalogOf(form, slug);
+      fillFromEntries(next.styles[0], next.occasions[0], next.voices[0], next.writer);
     },
-    [],
+    [form, fillFromEntries],
   );
+
+  useEffect(() => {
+    const id = 'pg-fonts';
+    if (document.getElementById(id)) return;
+    const link = document.createElement('link');
+    link.id = id;
+    link.rel = 'stylesheet';
+    link.href =
+      'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap';
+    document.head.appendChild(link);
+  }, []);
 
   useEffect(() => {
     PlaygroundApi.meta()
@@ -157,13 +191,11 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
     PlaygroundApi.runs()
       .then((r) => setHistory(r.items))
       .catch(() => undefined);
-  }, [toast]);
-
-  useEffect(() => {
-    applyCatalog(catalog, styleId, occasionId, voiceId);
-    // doar la schimbarea catalogului (site / interfață), nu la fiecare edit
+    const next = catalogOf(form, '');
+    fillFromEntries(next.styles[0], next.occasions[0], next.voices[0], next.writer);
+    // o dată la mount / schimbarea site-ului
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.id, experienceSlug]);
+  }, [form.id]);
 
   function body(): PlaygroundRequest {
     const num = (v: string) => {
@@ -186,6 +218,7 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
       skipCritic: skipCritic || lyricsMode === 'writer_only',
       phonetic,
       openaiModel: openaiModel || undefined,
+      openaiTemperature: num(openaiTemperature),
       writerSystemPrompt: writerSystem,
       writerUserTemplate: writerUser,
       criticSystemPrompt: criticSystem,
@@ -226,10 +259,11 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
   async function generateLyrics() {
     setBusyLyrics(true);
     try {
-      const res = await PlaygroundApi.lyrics(body());
+      const res = await PlaygroundApi.lyrics({ ...body(), lyricsMode: skipCritic ? 'writer_only' : 'generate' });
       setLyricsDraft(res.draft);
       setLyrics(res.final);
-      toast({ title: 'Versuri gata', description: res.notes === 'writer_only' ? 'Doar writer, fără critic.' : undefined });
+      setLyricsMode('custom');
+      toast({ title: 'Versuri gata' });
     } catch (err) {
       toast({ variant: 'destructive', title: 'Versurile au eșuat', description: (err as Error).message });
     } finally {
@@ -254,7 +288,7 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
           }
         }
       } catch {
-        /* ignore transient */
+        /* ignore */
       }
     }, 4000);
   }
@@ -265,7 +299,7 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
     const costHint =
       engine === 'suno'
         ? 'Consumă credite Suno reale (~10 / request, 2 piese).'
-        : 'Apelează Gemini Lyria (2 variante în paralel, câteva minute).';
+        : 'Apelează Gemini Lyria (2 variante, câteva minute).';
     const ok = await confirmDialog({
       title: engine === 'suno' ? 'Generezi pe Suno?' : 'Generezi pe Google Lyria?',
       description: `${costHint} Nu se creează o comandă de client.`,
@@ -285,370 +319,512 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
   }
 
   const pending = active?.status === 'queued' || active?.status === 'writing_lyrics' || active?.status === 'generating_audio';
+  const modelOptions = meta?.openaiModelOptions?.length
+    ? meta.openaiModelOptions
+    : (meta?.openaiModels ?? []).map((id) => ({ id, label: id, group: 'Modele' }));
+  const groups = [...new Set(modelOptions.map((m) => m.group))];
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] items-start">
-      <div className="grid gap-6 min-w-0">
-        <StudioSection
-          title="Playground"
-          help="Generezi versuri și audio pe site-ul ăsta, cu prompturile din catalog sau complet custom. Fără comandă, fără email, fără plată."
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <EngineCard
-              active={engine === 'suno'}
-              title="Suno"
-              body="Custom mode (versuri literal) sau description. 2 piese / request."
-              onClick={() => setEngine('suno')}
-            />
-            <EngineCard
-              active={engine === 'google'}
-              title="Google Lyria"
-              body="Prompt în limbaj natural. 2 variante în paralel."
-              onClick={() => setEngine('google')}
-            />
-          </div>
-        </StudioSection>
-
-        <Card>
-          <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Catalog" description="Librăria site-ului sau catalogul unei interfețe.">
-              <select
-                value={experienceSlug}
-                onChange={(e) => setExperienceSlug(e.target.value)}
-                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
-              >
-                <option value="">Librărie (tenant)</option>
-                {experiences.map((slug) => (
-                  <option key={slug} value={slug}>
-                    Interfață {humanExperienceLabel(slug)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Limbă versuri">
-              <select
-                value={locale}
-                onChange={(e) => setLocale(e.target.value)}
-                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
-              >
-                {LOCALES.map((l) => (
-                  <option key={l} value={l}>
-                    {LOCALE_LABELS[l] ?? l} ({l})
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Stil" description={catalog.styles.length ? undefined : 'Librăria e goală — scrie promptul de stil mai jos.'}>
-              <select
-                value={styleId}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  setStyleId(id);
-                  applyCatalog(catalog, id, occasionId, voiceId);
-                }}
-                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
-              >
-                {catalog.styles.length === 0 && <option value="">(niciun stil în catalog)</option>}
-                {catalog.styles.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nm}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Ocazie" description={catalog.occasions.length ? undefined : 'Nicio ocazie în catalog — poți scrie promptul ocaziei manual.'}>
-              <select
-                value={occasionId}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  setOccasionId(id);
-                  applyCatalog(catalog, styleId, id, voiceId);
-                }}
-                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
-              >
-                {catalog.occasions.length === 0 && <option value="">(nicio ocazie în catalog)</option>}
-                {catalog.occasions.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.nm}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Voce">
-              <select
-                value={voiceId}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  setVoiceId(id);
-                  applyCatalog(catalog, styleId, occasionId, id);
-                }}
-                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
-              >
-                {catalog.voices.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.nm}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Durată (sec, Lyria)">
-              <Input value={durationSec} onChange={(e) => setDurationSec(e.target.value)} />
-            </Field>
-            <Field label="Destinatar">
-              <Input value={recipient} onChange={(e) => setRecipient(e.target.value)} />
-            </Field>
-            <Field label="Expeditor">
-              <Input value={sender} onChange={(e) => setSender(e.target.value)} />
-            </Field>
-            <Field label="Mesaj" description="Brief pentru writer. Nu pune versuri finite aici.">
-              <Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} />
-            </Field>
-            <Field label="Sumă dedicație">
-              <Input value={tipAmount} onChange={(e) => setTipAmount(e.target.value)} placeholder="opțional" />
-            </Field>
-          </CardContent>
-        </Card>
-
-        <StudioSection title="Versuri" help="Writer + critic GPT, sau lipești tu. Instrumental sare peste voce.">
-          <Card>
-            <CardContent className="p-4 space-y-3">
-              <div className="flex flex-wrap gap-1.5">
-                {(
-                  [
-                    ['generate', 'Writer + critic'],
-                    ['writer_only', 'Doar writer'],
-                    ['custom', 'Lipesc eu'],
-                    ['instrumental', 'Instrumental'],
-                  ] as Array<[PlaygroundLyricsMode, string]>
-                ).map(([id, label]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => {
-                      setLyricsMode(id);
-                      if (id === 'writer_only') setSkipCritic(true);
-                      if (id === 'generate') setSkipCritic(false);
-                      if (id === 'instrumental') setInstrumental(true);
-                      else setInstrumental(false);
-                    }}
-                    className={cn(
-                      'rounded-full border px-2.5 py-1 text-xs',
-                      lyricsMode === id
-                        ? 'border-primary bg-primary/15 text-primary'
-                        : 'border-border text-muted-foreground',
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Field label="Model OpenAI">
-                  <ModelSelect
-                    value={openaiModel}
-                    options={meta?.openaiModels ?? []}
-                    onChange={setOpenaiModel}
-                    placeholder={meta?.openaiModel}
-                  />
-                </Field>
-                <Field label="Limbă forțată (opțional)" description="Ex. ucraineană. Gol = limba de mai sus.">
-                  <Input value={languageOverride} onChange={(e) => setLanguageOverride(e.target.value)} />
-                </Field>
-              </div>
-              <Toggle
-                label="Rescriere fonetică (doar Suno)"
-                description="Versurile afișate rămân curate; Suno primește varianta „cum se aud”."
-                value={phonetic}
-                onChange={setPhonetic}
-              />
-              <button
-                type="button"
-                className="text-xs text-primary hover:underline"
-                onClick={() => setShowGpt((v) => !v)}
-              >
-                {showGpt ? 'Ascunde prompturile GPT' : 'Editează prompturile GPT (writer / critic)'}
-              </button>
-              {showGpt && (
-                <div className="space-y-3">
-                  <div className="flex justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setWriterSystem(catalog.writer || meta?.defaultTemplates.writerSystem || '');
-                        setWriterUser(form.suno?.writerUserTemplate || meta?.defaultTemplates.writerUser || '');
-                        setCriticSystem(form.suno?.criticSystemPrompt || meta?.defaultTemplates.criticSystem || '');
-                        setCriticUser(form.suno?.criticUserTemplate || meta?.defaultTemplates.criticUser || '');
-                      }}
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" />
-                      Reia din site
-                    </Button>
-                  </div>
-                  <Field label="Writer — system">
-                    <Textarea value={writerSystem} onChange={(e) => setWriterSystem(e.target.value)} rows={6} className="font-mono text-xs" />
-                  </Field>
-                  <Field label="Writer — user template" description="Placeholders: {{style}} {{occasion}} {{recipientName}} {{senderName}} {{message}} {{tipAmount}} {{currency}} {{voiceArtist}} {{styleHint}}">
-                    <Textarea value={writerUser} onChange={(e) => setWriterUser(e.target.value)} rows={8} className="font-mono text-xs" />
-                  </Field>
-                  <Field label="Critic — system">
-                    <Textarea value={criticSystem} onChange={(e) => setCriticSystem(e.target.value)} rows={5} className="font-mono text-xs" />
-                  </Field>
-                  <Field label="Critic — user template" description="Plus {{draft}}.">
-                    <Textarea value={criticUser} onChange={(e) => setCriticUser(e.target.value)} rows={7} className="font-mono text-xs" />
-                  </Field>
-                </div>
-              )}
-              <Field label="Versuri">
-                <Textarea
-                  value={lyrics}
-                  onChange={(e) => setLyrics(e.target.value)}
-                  rows={12}
-                  placeholder="[Verse 1]…"
-                  className="font-mono text-xs"
-                />
-              </Field>
-              {lyricsDraft && lyricsDraft !== lyrics && (
-                <details className="text-xs text-muted-foreground">
-                  <summary className="cursor-pointer">Draft writer (înainte de critic)</summary>
-                  <pre className="mt-2 whitespace-pre-wrap font-mono bg-secondary/40 rounded-md p-2">{lyricsDraft}</pre>
-                </details>
-              )}
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" onClick={() => void generateLyrics()} disabled={busyLyrics || lyricsMode === 'instrumental'}>
-                  {busyLyrics ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                  {busyLyrics ? 'Se scriu versurile…' : 'Generează versuri'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </StudioSection>
-
-        {engine === 'suno' ? (
-          <StudioSection title="Suno" help="Promptul de stil e preluat din catalog. Îl poți rescrie. Prompt brut = body.prompt trimis ca atare.">
-            <Card>
-              <CardContent className="p-4 space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Field label="Model">
-                    <ModelSelect value={sunoModel} options={meta?.sunoModels ?? []} onChange={setSunoModel} placeholder={meta?.sunoModel} />
-                  </Field>
-                  <Field label="Titlu piesă">
-                    <Input value={sunoTitle} onChange={(e) => setSunoTitle(e.target.value)} placeholder="Pentru Mirela, de la Costel" />
-                  </Field>
-                </div>
-                <Toggle
-                  label="Custom mode (versuri literal)"
-                  description="ON: prompt = versurile. OFF: Suno își scrie versurile din descriere (limita ~500)."
-                  value={sunoCustomMode && lyricsMode !== 'instrumental'}
-                  onChange={setSunoCustomMode}
-                />
-                <Field label="Prompt de stil (tag-uri)">
-                  <Textarea value={sunoStyle} onChange={(e) => setSunoStyle(e.target.value)} rows={4} className="font-mono text-xs" />
-                </Field>
-                <Field label="Prompt ocazie (lipit la stil)">
-                  <Textarea value={sunoOccasion} onChange={(e) => setSunoOccasion(e.target.value)} rows={2} className="font-mono text-xs" />
-                </Field>
-                <Field label="Prompt de bază (folosit doar dacă stilul e gol)">
-                  <Textarea value={sunoBase} onChange={(e) => setSunoBase(e.target.value)} rows={3} className="font-mono text-xs" />
-                </Field>
-                <Field label="Prompt brut (opțional)" description="Dacă e completat, înlocuiește versurile / descrierea. Style-ul de mai sus rămâne.">
-                  <Textarea value={sunoRaw} onChange={(e) => setSunoRaw(e.target.value)} rows={5} className="font-mono text-xs" placeholder="lasă gol = versurile din caseta de mai sus" />
-                </Field>
-                <button type="button" className="text-xs text-primary hover:underline" onClick={() => setShowAudioAdvanced((v) => !v)}>
-                  {showAudioAdvanced ? 'Ascunde opțiuni avansate' : 'Opțiuni avansate (voce, persona, weight)'}
-                </button>
-                {showAudioAdvanced && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Field label="Gen vocal">
-                      <select
-                        value={vocalGender}
-                        onChange={(e) => setVocalGender(e.target.value as 'm' | 'f' | '')}
-                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
-                      >
-                        <option value="">auto</option>
-                        <option value="m">masculin</option>
-                        <option value="f">feminin</option>
-                      </select>
-                    </Field>
-                    <Field label="Persona ID">
-                      <Input value={personaId} onChange={(e) => setPersonaId(e.target.value)} />
-                    </Field>
-                    <Field label="Tip persona">
-                      <select
-                        value={personaModel}
-                        onChange={(e) => setPersonaModel(e.target.value as 'style_persona' | 'voice_persona')}
-                        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
-                      >
-                        <option value="style_persona">style_persona</option>
-                        <option value="voice_persona">voice_persona (V5+)</option>
-                      </select>
-                    </Field>
-                    <Field label="styleWeight (0–1)">
-                      <Input value={styleWeight} onChange={(e) => setStyleWeight(e.target.value)} />
-                    </Field>
-                    <Field label="weirdness (0–1)">
-                      <Input value={weirdness} onChange={(e) => setWeirdness(e.target.value)} />
-                    </Field>
-                    <Field label="negativeTags">
-                      <Input value={negativeTags} onChange={(e) => setNegativeTags(e.target.value)} />
-                    </Field>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </StudioSection>
-        ) : (
-          <StudioSection title="Google Lyria" help="Prompt natural-language. Brut = tot `input`-ul către Interactions API.">
-            <Card>
-              <CardContent className="p-4 space-y-3">
-                <Field label="Model">
-                  <ModelSelect value={lyriaModel} options={meta?.lyriaModels ?? []} onChange={setLyriaModel} placeholder={meta?.lyriaModel} />
-                </Field>
-                <Field label="Prompt de stil">
-                  <Textarea value={lyriaStyle} onChange={(e) => setLyriaStyle(e.target.value)} rows={4} className="font-mono text-xs" />
-                </Field>
-                <Field label="Prompt ocazie">
-                  <Textarea value={lyriaOccasion} onChange={(e) => setLyriaOccasion(e.target.value)} rows={2} className="font-mono text-xs" />
-                </Field>
-                <Field label="Prompt complet personalizat" description="Dacă e completat, înlocuiește tot ce construiește API-ul (stil + voce + versuri).">
-                  <Textarea value={lyriaRaw} onChange={(e) => setLyriaRaw(e.target.value)} rows={8} className="font-mono text-xs" placeholder="lasă gol = promptul asamblat automat" />
-                </Field>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Field label="Gen vocal">
-                    <select
-                      value={vocalGender}
-                      onChange={(e) => setVocalGender(e.target.value as 'm' | 'f' | '')}
-                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
-                    >
-                      <option value="">auto</option>
-                      <option value="m">masculin</option>
-                      <option value="f">feminin</option>
-                    </select>
-                  </Field>
-                  <Toggle label="Instrumental" value={instrumental} onChange={setInstrumental} />
-                </div>
-              </CardContent>
-            </Card>
-          </StudioSection>
-        )}
-
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" onClick={() => void runPreview()}>
-            Preview prompturi
-          </Button>
-          <Button type="button" onClick={() => void generateAudio()} disabled={busyGenerate || pending}>
-            {busyGenerate || pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
-            {pending ? statusLabel(active!.status) : 'Generează melodia'}
-          </Button>
+    <div
+      className="pg -mx-4 md:-mx-6 -mb-6 px-4 md:px-6 pb-8"
+      style={{ fontFamily: "'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif" }}
+    >
+      <header className="flex flex-wrap items-end justify-between gap-3 mb-5 pt-1">
+        <div>
+          <div className="text-[10px] tracking-[0.22em] uppercase text-muted-foreground">Consolă de test</div>
+          <h2
+            className="text-[28px] leading-none mt-1"
+            style={{ fontFamily: 'Fraunces, Georgia, serif', fontOpticalSizing: 'auto' }}
+          >
+            Studio
+          </h2>
+          <p className="text-xs text-muted-foreground mt-1.5 max-w-xl">
+            Catalogul doar umple câmpurile. Testezi tu: versuri, prompt, voce, weirdness, model.
+          </p>
         </div>
-      </div>
+        <div className="flex rounded-full border border-border p-0.5 bg-card">
+          {(['suno', 'google'] as const).map((e) => (
+            <button
+              key={e}
+              type="button"
+              onClick={() => setEngine(e)}
+              className={cn(
+                'px-4 py-1.5 text-xs font-medium rounded-full transition-colors',
+                engine === e ? 'bg-[#d4a84b] text-[#1a1408]' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {e === 'suno' ? 'Suno' : 'Google Lyria'}
+            </button>
+          ))}
+        </div>
+      </header>
 
-      <div className="grid gap-4 min-w-0 lg:sticky lg:top-16">
-        <Card>
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-sm font-semibold">Rezultat</div>
+      <section className="rounded-2xl border border-border bg-[#121018] p-3 md:p-4 mb-5">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="text-[10px] tracking-[0.18em] uppercase text-muted-foreground">Sursă — încarcă din catalog</div>
+          <span className="text-[11px] text-muted-foreground">
+            {catalog.styles.length} stiluri
+            {catalog.inherited.styles ? ' (moștenite)' : ''}
+            {' · '}
+            {catalog.occasions.length} ocazii
+            {catalog.inherited.occasions ? ' (moștenite)' : ''}
+            {' · '}
+            {catalog.voices.length} voci
+            {catalog.inherited.voices ? ' (moștenite)' : ''}
+          </span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3">
+          <select
+            value={experienceSlug}
+            onChange={(e) => loadSource(e.target.value)}
+            className="h-9 rounded-lg border border-border bg-[#1c1924] px-3 text-sm"
+          >
+            <option value="">Librărie (tenant)</option>
+            {experiences.map((slug) => (
+              <option key={slug} value={slug}>
+                Interfață {humanExperienceLabel(slug)}
+              </option>
+            ))}
+          </select>
+          <select
+            key={`oc-${experienceSlug}`}
+            value={occasionId}
+            onChange={(e) => {
+              const id = e.target.value;
+              const oc = catalog.occasions.find((o) => o.id === id);
+              setOccasionId(id);
+              setSunoOccasion(oc?.sunoPrompt ?? '');
+              setLyriaOccasion(oc?.googlePrompt ?? oc?.nm ?? '');
+            }}
+            className="h-9 rounded-lg border border-border bg-[#1c1924] px-3 text-sm"
+          >
+            {catalog.occasions.length === 0 && <option value="">Fără ocazii în sursă</option>}
+            {catalog.occasions.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.nm}
+              </option>
+            ))}
+          </select>
+          <select
+            key={`vo-${experienceSlug}`}
+            value={voiceId}
+            onChange={(e) => {
+              const id = e.target.value;
+              const vo = catalog.voices.find((v) => v.id === id);
+              const st = catalog.styles.find((s) => s.id === styleId);
+              setVoiceId(id);
+              const gender = vo?.gender ?? (vo?.id === 'female' ? 'f' : vo?.id === 'male' ? 'm' : '');
+              if (gender) setVocalGender(gender);
+              setPersonaId(
+                (gender === 'f' ? st?.sunoPersonaIdFemale : gender === 'm' ? st?.sunoPersonaIdMale : '') ||
+                  vo?.sunoPersonaId ||
+                  '',
+              );
+            }}
+            className="h-9 rounded-lg border border-border bg-[#1c1924] px-3 text-sm"
+          >
+            {catalog.voices.length === 0 && <option value="">Fără voci în sursă</option>}
+            {catalog.voices.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.nm}
+              </option>
+            ))}
+          </select>
+          <select
+            value={locale}
+            onChange={(e) => setLocale(e.target.value)}
+            className="h-9 rounded-lg border border-border bg-[#1c1924] px-3 text-sm"
+          >
+            {LOCALES.map((l) => (
+              <option key={l} value={l}>
+                {LOCALE_LABELS[l] ?? l}
+              </option>
+            ))}
+          </select>
+        </div>
+        {experienceSlug && (catalog.inherited.styles || catalog.inherited.occasions) && (
+          <p className="text-[11px] text-amber-400/90 mb-2">
+            Interfața {humanExperienceLabel(experienceSlug)} n-are catalog propriu — vezi librăria tenantului.
+            Ca să testezi prompturi separate, pune-le la Interfețe → Catalog.
+          </p>
+        )}
+        <div key={`st-${experienceSlug}`} className="flex gap-1.5 overflow-x-auto pb-1 -mx-0.5 px-0.5">
+          {catalog.styles.length === 0 && (
+            <span className="text-xs text-muted-foreground py-1.5">
+              {experienceSlug
+                ? `Interfața ${humanExperienceLabel(experienceSlug)} n-are stiluri proprii — scrie promptul jos.`
+                : 'Librăria e goală — scrie promptul de stil jos.'}
+            </span>
+          )}
+          {catalog.styles.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => {
+                const oc = catalog.occasions.find((o) => o.id === occasionId) ?? catalog.occasions[0];
+                const vo = catalog.voices.find((v) => v.id === voiceId) ?? catalog.voices[0];
+                fillFromEntries(s, oc, vo, catalog.writer);
+              }}
+              className={cn(
+                'shrink-0 rounded-full px-3 py-1 text-xs border transition-colors',
+                styleId === s.id
+                  ? 'border-[#d4a84b] bg-[#d4a84b]/15 text-[#f3e6c0]'
+                  : 'border-border text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {s.nm}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.85fr)_minmax(280px,0.7fr)] items-start">
+        <div
+          className="rounded-2xl p-5 md:p-6 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.7)]"
+          style={{ background: '#efe6d0', color: '#1a1410' }}
+        >
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div style={{ fontFamily: 'Fraunces, Georgia, serif' }} className="text-lg">
+              Versuri
+            </div>
+            <div className="flex gap-1">
+              {(
+                [
+                  ['custom', 'Le scriu'],
+                  ['generate', 'GPT'],
+                  ['instrumental', 'Fără voce'],
+                ] as Array<[PlaygroundLyricsMode, string]>
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    setLyricsMode(id);
+                    setInstrumental(id === 'instrumental');
+                    setSkipCritic(false);
+                    if (id === 'instrumental') setSunoCustomMode(false);
+                    else setSunoCustomMode(true);
+                  }}
+                  className={cn(
+                    'rounded-full px-2.5 py-0.5 text-[11px] border',
+                    lyricsMode === id ? 'border-[#1a1410] bg-[#1a1410] text-[#efe6d0]' : 'border-[#1a1410]/25',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <textarea
+            value={lyrics}
+            onChange={(e) => {
+              setLyrics(e.target.value);
+              if (e.target.value.trim()) setLyricsMode('custom');
+            }}
+            rows={16}
+            placeholder={'[Verse 1]\nDe la Costel, pentru Mirela, cu drag\n[Chorus]\nMirela, Mirela…'}
+            className="w-full resize-y rounded-lg border-0 bg-[#f7f1e2] px-3 py-2 text-[13px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-[#d4a84b]"
+            style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace", color: '#1a1410' }}
+          />
+          {lyricsDraft && lyricsDraft !== lyrics && (
+            <details className="mt-2 text-[11px] opacity-70">
+              <summary className="cursor-pointer">Draft writer</summary>
+              <pre className="mt-1 whitespace-pre-wrap">{lyricsDraft}</pre>
+            </details>
+          )}
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <label className="text-[11px] opacity-70 col-span-2 sm:col-span-1">
+              Destinatar
+              <input
+                value={recipient}
+                onChange={(e) => setRecipient(e.target.value)}
+                className="mt-1 w-full h-8 rounded-md border border-[#1a1410]/15 bg-white/50 px-2 text-sm"
+              />
+            </label>
+            <label className="text-[11px] opacity-70 col-span-2 sm:col-span-1">
+              Expeditor
+              <input
+                value={sender}
+                onChange={(e) => setSender(e.target.value)}
+                className="mt-1 w-full h-8 rounded-md border border-[#1a1410]/15 bg-white/50 px-2 text-sm"
+              />
+            </label>
+            <label className="text-[11px] opacity-70 col-span-2">
+              Brief pentru GPT (nu versuri)
+              <input
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                className="mt-1 w-full h-8 rounded-md border border-[#1a1410]/15 bg-white/50 px-2 text-sm"
+              />
+            </label>
+          </div>
+          <div className="mt-4 flex flex-wrap items-end gap-2">
+            <button
+              type="button"
+              onClick={() => void generateLyrics()}
+              disabled={busyLyrics || lyricsMode === 'instrumental'}
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-[#1a1410] text-[#efe6d0] text-xs font-medium disabled:opacity-50"
+            >
+              {busyLyrics ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              Scrie cu GPT
+            </button>
+            <label className="flex items-center gap-1.5 text-[11px] opacity-80">
+              <input type="checkbox" checked={skipCritic} onChange={(e) => setSkipCritic(e.target.checked)} />
+              fără critic
+            </label>
+            <label className="flex items-center gap-1.5 text-[11px] opacity-80">
+              <input type="checkbox" checked={phonetic} onChange={(e) => setPhonetic(e.target.checked)} />
+              fonetic Suno
+            </label>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-[#121018] p-4 space-y-4">
+          <div className="text-[10px] tracking-[0.18em] uppercase text-muted-foreground">
+            {engine === 'suno' ? 'Masă Suno' : 'Masă Lyria'}
+          </div>
+
+          <div className="flex gap-1.5">
+            {(['m', 'f'] as const).map((g) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => setVocalGender(g)}
+                className={cn(
+                  'flex-1 h-11 rounded-xl border text-sm font-medium transition-colors',
+                  vocalGender === g
+                    ? 'border-[#d4a84b] bg-[#d4a84b]/15 text-[#f3e6c0]'
+                    : 'border-border text-muted-foreground',
+                )}
+              >
+                {g === 'm' ? 'Voce masculin' : 'Voce feminin'}
+              </button>
+            ))}
+          </div>
+
+          {engine === 'suno' ? (
+            <>
+              <KnobField
+                label="Prompt de stil Suno"
+                hint="Tag-uri. Asta e ce testezi — scrie-l tu sau încarcă-l dintr-un stil."
+              >
+                <Textarea
+                  value={sunoStyle}
+                  onChange={(e) => setSunoStyle(e.target.value)}
+                  rows={5}
+                  className="font-mono text-xs bg-[#1c1924] border-border"
+                  placeholder="classic lăutărească manele, accordion, violin, 95 BPM"
+                />
+              </KnobField>
+              <KnobField label="Prompt ocazie (lipit la stil)">
+                <Textarea
+                  value={sunoOccasion}
+                  onChange={(e) => setSunoOccasion(e.target.value)}
+                  rows={2}
+                  className="font-mono text-xs bg-[#1c1924] border-border"
+                />
+              </KnobField>
+              <KnobField label="Prompt de bază (doar dacă stilul e gol)">
+                <Textarea
+                  value={sunoBase}
+                  onChange={(e) => setSunoBase(e.target.value)}
+                  rows={2}
+                  className="font-mono text-xs bg-[#1c1924] border-border"
+                />
+              </KnobField>
+              <div className="grid grid-cols-2 gap-3">
+                <RangeField label="styleWeight" value={styleWeight} onChange={setStyleWeight} />
+                <RangeField label="weirdness" value={weirdness} onChange={setWeirdness} />
+              </div>
+              <KnobField label="negativeTags">
+                <Input value={negativeTags} onChange={(e) => setNegativeTags(e.target.value)} className="h-8 text-xs bg-[#1c1924]" />
+              </KnobField>
+              <div className="grid grid-cols-2 gap-2">
+                <KnobField label="Model Suno">
+                  <select
+                    value={sunoModel}
+                    onChange={(e) => setSunoModel(e.target.value)}
+                    className="h-9 w-full rounded-md border border-border bg-[#1c1924] px-2 text-sm"
+                  >
+                    {(meta?.sunoModels ?? ['V4_5', 'V5', 'V5_5']).map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </KnobField>
+                <KnobField label="Titlu">
+                  <Input value={sunoTitle} onChange={(e) => setSunoTitle(e.target.value)} placeholder="Pentru Mirela" className="h-9 text-sm bg-[#1c1924]" />
+                </KnobField>
+                <KnobField label="Persona ID">
+                  <Input value={personaId} onChange={(e) => setPersonaId(e.target.value)} className="h-9 text-xs bg-[#1c1924]" />
+                </KnobField>
+                <KnobField label="Tip persona">
+                  <select
+                    value={personaModel}
+                    onChange={(e) => setPersonaModel(e.target.value as 'style_persona' | 'voice_persona')}
+                    className="h-9 w-full rounded-md border border-border bg-[#1c1924] px-2 text-sm"
+                  >
+                    <option value="style_persona">style_persona</option>
+                    <option value="voice_persona">voice_persona (V5+)</option>
+                  </select>
+                </KnobField>
+              </div>
+              <label className="flex items-center justify-between gap-2 text-xs">
+                <span>Custom mode — versurile se cântă literal</span>
+                <input
+                  type="checkbox"
+                  checked={sunoCustomMode && lyricsMode !== 'instrumental'}
+                  onChange={(e) => setSunoCustomMode(e.target.checked)}
+                />
+              </label>
+              <KnobField label="Prompt brut (înlocuiește versurile / descrierea)">
+                <Textarea
+                  value={sunoRaw}
+                  onChange={(e) => setSunoRaw(e.target.value)}
+                  rows={3}
+                  className="font-mono text-xs bg-[#1c1924] border-border"
+                  placeholder="gol = versurile din foaie"
+                />
+              </KnobField>
+            </>
+          ) : (
+            <>
+              <KnobField label="Prompt de stil Lyria" hint="Limbaj natural: gen, instrumente, BPM, mood.">
+                <Textarea
+                  value={lyriaStyle}
+                  onChange={(e) => setLyriaStyle(e.target.value)}
+                  rows={5}
+                  className="font-mono text-xs bg-[#1c1924] border-border"
+                />
+              </KnobField>
+              <KnobField label="Prompt ocazie">
+                <Textarea
+                  value={lyriaOccasion}
+                  onChange={(e) => setLyriaOccasion(e.target.value)}
+                  rows={2}
+                  className="font-mono text-xs bg-[#1c1924] border-border"
+                />
+              </KnobField>
+              <KnobField label="Prompt complet (înlocuiește tot)">
+                <Textarea
+                  value={lyriaRaw}
+                  onChange={(e) => setLyriaRaw(e.target.value)}
+                  rows={6}
+                  className="font-mono text-xs bg-[#1c1924] border-border"
+                  placeholder="gol = asamblat din stil + voce + versuri"
+                />
+              </KnobField>
+              <div className="grid grid-cols-2 gap-2">
+                <KnobField label="Model">
+                  <Input value={lyriaModel} onChange={(e) => setLyriaModel(e.target.value)} className="h-9 text-xs bg-[#1c1924]" />
+                </KnobField>
+                <KnobField label="Durată (sec)">
+                  <Input value={durationSec} onChange={(e) => setDurationSec(e.target.value)} className="h-9 text-sm bg-[#1c1924]" />
+                </KnobField>
+              </div>
+              <label className="flex items-center justify-between gap-2 text-xs">
+                <span>Instrumental</span>
+                <input type="checkbox" checked={instrumental} onChange={(e) => setInstrumental(e.target.checked)} />
+              </label>
+            </>
+          )}
+
+          <div className="border-t border-border pt-3 space-y-2">
+            <div className="text-[10px] tracking-[0.18em] uppercase text-[#a78bfa]">GPT versuri</div>
+            <select
+              value={modelOptions.some((m) => m.id === openaiModel) ? openaiModel : '__custom__'}
+              onChange={(e) => {
+                if (e.target.value !== '__custom__') setOpenaiModel(e.target.value);
+              }}
+              className="h-9 w-full rounded-md border border-border bg-[#1c1924] px-2 text-sm"
+            >
+              {groups.map((g) => (
+                <optgroup key={g} label={g}>
+                  {modelOptions
+                    .filter((m) => m.group === g)
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}
+                      </option>
+                    ))}
+                </optgroup>
+              ))}
+              <option value="__custom__">alt id…</option>
+            </select>
+            <Input
+              value={openaiModel}
+              onChange={(e) => setOpenaiModel(e.target.value)}
+              placeholder="id model, ex. gpt-5.6-luna"
+              className="h-8 text-xs bg-[#1c1924] font-mono"
+            />
+            <RangeField
+              label={isGpt5(openaiModel) ? 'temperatură (ignorată pe GPT-5)' : 'temperatură'}
+              value={openaiTemperature}
+              onChange={setOpenaiTemperature}
+              min={0}
+              max={2}
+              step={0.05}
+            />
+            <Input
+              value={languageOverride}
+              onChange={(e) => setLanguageOverride(e.target.value)}
+              placeholder="limbă forțată (ex. ucraineană)"
+              className="h-8 text-xs bg-[#1c1924]"
+            />
+            <Input
+              value={tipAmount}
+              onChange={(e) => setTipAmount(e.target.value)}
+              placeholder="sumă dedicație"
+              className="h-8 text-xs bg-[#1c1924]"
+            />
+            <button type="button" className="text-[11px] text-[#a78bfa] hover:underline" onClick={() => setShowGpt((v) => !v)}>
+              {showGpt ? 'Ascunde instrucțiunile GPT' : 'Instrucțiuni writer / critic'}
+            </button>
+            {showGpt && (
+              <div className="space-y-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => {
+                    setWriterSystem(catalog.writer || meta?.defaultTemplates.writerSystem || '');
+                    setWriterUser(form.suno?.writerUserTemplate || meta?.defaultTemplates.writerUser || '');
+                    setCriticSystem(form.suno?.criticSystemPrompt || meta?.defaultTemplates.criticSystem || '');
+                    setCriticUser(form.suno?.criticUserTemplate || meta?.defaultTemplates.criticUser || '');
+                  }}
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Reia din site
+                </Button>
+                <Textarea value={writerSystem} onChange={(e) => setWriterSystem(e.target.value)} rows={5} className="font-mono text-[11px] bg-[#1c1924]" />
+                <Textarea value={writerUser} onChange={(e) => setWriterUser(e.target.value)} rows={5} className="font-mono text-[11px] bg-[#1c1924]" />
+                <Textarea value={criticSystem} onChange={(e) => setCriticSystem(e.target.value)} rows={4} className="font-mono text-[11px] bg-[#1c1924]" />
+                <Textarea value={criticUser} onChange={(e) => setCriticUser(e.target.value)} rows={4} className="font-mono text-[11px] bg-[#1c1924]" />
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={() => void runPreview()}>
+              Preview
+            </Button>
+            <button
+              type="button"
+              onClick={() => void generateAudio()}
+              disabled={busyGenerate || pending}
+              className="flex-1 h-11 rounded-xl bg-[#e11d48] text-white text-sm font-semibold tracking-wide disabled:opacity-50 inline-flex items-center justify-center gap-2"
+            >
+              {busyGenerate || pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {pending ? statusLabel(active!.status) : '●  GENEREAZĂ'}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-3 xl:sticky xl:top-16">
+          <div className="rounded-2xl border border-border bg-[#121018] p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] tracking-[0.18em] uppercase text-muted-foreground">Monitor</div>
               {active && (
                 <Badge variant={active.status === 'succeeded' ? 'success' : active.status === 'failed' ? 'destructive' : 'warning'}>
                   {statusLabel(active.status)}
@@ -659,10 +835,10 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
             {active?.tracks?.length ? (
               <div className="space-y-2">
                 {active.tracks.map((t, i) => (
-                  <div key={`${t.audioUrl}-${i}`} className="space-y-1">
-                    <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+                  <div key={`${t.audioUrl}-${i}`}>
+                    <div className="text-[11px] text-muted-foreground flex items-center gap-1 mb-1">
                       <Volume2 className="h-3 w-3" />
-                      Varianta {i + 1}
+                      Take {i + 1}
                       {t.durationSec ? ` · ${t.durationSec}s` : ''}
                     </div>
                     <audio controls src={absUrl(t.audioUrl)} className="w-full h-8" preload="metadata" />
@@ -671,51 +847,43 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                {pending ? 'Aștept audio-ul — Suno/Lyria durează 2–8 minute.' : 'Nicio generare încă.'}
+                {pending ? 'Suno/Lyria: 2–8 minute.' : 'Nicio piesă încă.'}
               </p>
             )}
             {active?.lyrics && (
-              <details open>
-                <summary className="text-xs cursor-pointer">Versuri livrate</summary>
-                <pre className="mt-2 whitespace-pre-wrap font-mono text-xs bg-secondary/40 rounded-md p-2 max-h-64 overflow-auto">
-                  {active.lyrics}
-                </pre>
-              </details>
+              <pre className="whitespace-pre-wrap font-mono text-[11px] bg-[#1c1924] rounded-lg p-2 max-h-48 overflow-auto">
+                {active.lyrics}
+              </pre>
             )}
             {active?.providerJobId && (
-              <div className="text-[11px] text-muted-foreground font-mono break-all">job {active.providerJobId}</div>
+              <div className="text-[10px] text-muted-foreground font-mono break-all">{active.providerJobId}</div>
             )}
-          </CardContent>
-        </Card>
+          </div>
 
-        {preview && (
-          <Card>
-            <CardContent className="p-4 space-y-2">
-              <div className="text-sm font-semibold">Ce s-ar trimite</div>
+          {preview && (
+            <div className="rounded-2xl border border-border bg-[#121018] p-4 space-y-1">
+              <div className="text-[10px] tracking-[0.18em] uppercase text-muted-foreground mb-2">Ce pleacă</div>
               {engine === 'suno' ? (
                 <>
-                  <PreviewBlock title="Suno style" text={preview.suno.style || '(default intern + basePrompt)'} />
-                  <PreviewBlock title="Suno prompt" text={preview.suno.prompt || '(gol)'} />
+                  <PreviewBlock title="style" text={preview.suno.style || '(default intern)'} />
+                  <PreviewBlock title="prompt" text={preview.suno.prompt || '(gol)'} />
                 </>
               ) : (
-                <PreviewBlock title="Lyria prompt" text={preview.lyria.prompt} />
+                <PreviewBlock title="Lyria" text={preview.lyria.prompt} />
               )}
-              <PreviewBlock title="Writer system" text={preview.gpt.writerSystem} />
-              <PreviewBlock title="Writer user" text={preview.gpt.writerUser} />
-            </CardContent>
-          </Card>
-        )}
+              <PreviewBlock title="writer user" text={preview.gpt.writerUser} />
+            </div>
+          )}
 
-        <Card>
-          <CardContent className="p-4 space-y-2">
-            <div className="text-sm font-semibold">Istoric pe site</div>
-            {history.length === 0 && <p className="text-sm text-muted-foreground">Nicio rulare.</p>}
-            <ul className="grid gap-1.5">
+          <div className="rounded-2xl border border-border bg-[#121018] p-4">
+            <div className="text-[10px] tracking-[0.18em] uppercase text-muted-foreground mb-2">Istoric</div>
+            {history.length === 0 && <p className="text-sm text-muted-foreground">Gol.</p>}
+            <ul className="grid gap-1">
               {history.map((r) => (
                 <li key={r.id}>
                   <button
                     type="button"
-                    className="w-full text-left rounded-md border border-border px-2.5 py-1.5 text-xs hover:bg-secondary/50"
+                    className="w-full text-left rounded-lg px-2 py-1.5 text-xs hover:bg-[#1c1924]"
                     onClick={() => {
                       setActive(r);
                       if (r.lyrics) setLyrics(r.lyrics);
@@ -724,77 +892,71 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
                     <span className="font-medium">{r.engine === 'google' ? 'Lyria' : 'Suno'}</span>
                     {' · '}
                     {statusLabel(r.status)}
-                    {' · '}
-                    {new Date(r.createdAt).toLocaleString('ro-RO')}
+                    <span className="block text-[10px] text-muted-foreground">
+                      {new Date(r.createdAt).toLocaleString('ro-RO')}
+                    </span>
                   </button>
                 </li>
               ))}
             </ul>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function EngineCard({
-  active,
-  title,
-  body,
-  onClick,
+function KnobField({
+  label,
+  hint,
+  children,
 }: {
-  active: boolean;
-  title: string;
-  body: string;
-  onClick: () => void;
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'rounded-xl border px-4 py-3 text-left transition-colors',
-        active ? 'border-primary/50 bg-primary/5 ring-1 ring-primary/40' : 'border-border hover:border-primary/30',
-      )}
-    >
-      <div className="text-sm font-medium">{title}</div>
-      <p className="text-[11px] text-muted-foreground mt-1 leading-snug">{body}</p>
-    </button>
+    <label className="block space-y-1">
+      <span className="text-[11px] text-muted-foreground">{label}</span>
+      {hint && <span className="block text-[10px] text-muted-foreground/80 -mt-0.5">{hint}</span>}
+      {children}
+    </label>
   );
 }
 
-function ModelSelect({
+function RangeField({
+  label,
   value,
-  options,
   onChange,
-  placeholder,
+  min = 0,
+  max = 1,
+  step = 0.05,
 }: {
+  label: string;
   value: string;
-  options: string[];
   onChange: (v: string) => void;
-  placeholder?: string;
+  min?: number;
+  max?: number;
+  step?: number;
 }) {
-  const extra = value && !options.includes(value);
+  const n = Number(value);
+  const shown = Number.isFinite(n) ? n.toFixed(2) : value;
   return (
-    <div className="space-y-1">
-      <select
-        value={extra ? '__custom__' : value}
-        onChange={(e) => {
-          if (e.target.value === '__custom__') return;
-          onChange(e.target.value);
-        }}
-        className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
-      >
-        {!value && placeholder && <option value="">{placeholder} (default)</option>}
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-        {extra && <option value="__custom__">{value}</option>}
-      </select>
-      <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="sau scrie un model" className="h-8 text-xs" />
-    </div>
+    <label className="block">
+      <span className="flex justify-between text-[11px] text-muted-foreground">
+        {label}
+        <span className="font-mono text-foreground">{shown}</span>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={Number.isFinite(n) ? n : min}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full accent-[#d4a84b]"
+      />
+    </label>
   );
 }
 
@@ -802,7 +964,7 @@ function PreviewBlock({ title, text }: { title: string; text: string }) {
   return (
     <details>
       <summary className="text-[11px] cursor-pointer text-muted-foreground">{title}</summary>
-      <pre className="mt-1 whitespace-pre-wrap font-mono text-[11px] bg-secondary/40 rounded-md p-2 max-h-48 overflow-auto">
+      <pre className="mt-1 whitespace-pre-wrap font-mono text-[11px] bg-[#1c1924] rounded-md p-2 max-h-40 overflow-auto">
         {text}
       </pre>
     </details>

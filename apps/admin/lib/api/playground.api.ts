@@ -24,6 +24,7 @@ export interface PlaygroundRequest {
   skipCritic?: boolean;
   phonetic?: boolean;
   openaiModel?: string;
+  openaiTemperature?: number;
   writerSystemPrompt?: string;
   writerUserTemplate?: string;
   criticSystemPrompt?: string;
@@ -56,6 +57,7 @@ export interface PlaygroundMeta {
   sunoModel: string;
   lyriaModel: string;
   openaiModels: string[];
+  openaiModelOptions?: Array<{ id: string; label: string; group: string }>;
   sunoModels: string[];
   lyriaModels: string[];
   defaultTemplates: {

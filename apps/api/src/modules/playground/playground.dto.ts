@@ -84,6 +84,13 @@ export class PlaygroundRequestDto {
   openaiModel?: string;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(2)
+  openaiTemperature?: number;
+
+  @IsOptional()
   @IsString()
   @MaxLength(20_000)
   writerSystemPrompt?: string;

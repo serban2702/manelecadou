@@ -10,6 +10,7 @@ import { assemblePlayground } from './playground-assemble';
 import { PlaygroundRun } from './playground-run.entity';
 import {
   LYRIA_MODELS,
+  OPENAI_MODEL_OPTIONS,
   OPENAI_MODELS,
   PLAYGROUND_QUEUE,
   SUNO_MODELS,
@@ -46,6 +47,7 @@ export class PlaygroundService {
       sunoModel: sunoModel || 'V4_5',
       lyriaModel: lyriaModel || 'lyria-3-pro-preview',
       openaiModels: [...OPENAI_MODELS],
+      openaiModelOptions: OPENAI_MODEL_OPTIONS,
       sunoModels: [...SUNO_MODELS],
       lyriaModels: [...LYRIA_MODELS],
       defaultTemplates: this.lyrics.defaultTemplates(),
