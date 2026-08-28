@@ -945,7 +945,14 @@ export default function AdminChatPage() {
           ) : (
             <>
               <header className="px-3 md:px-4 py-3 border-b border-border">
-                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between md:gap-3">
+                {/*
+                  Titlul și bara de acțiuni stau UNUL SUB ALTUL, nu alături.
+                  `md:` măsoară fereastra, nu coloana: la 1440px lățime fereastra
+                  trece de `md`, dar coloana de conversație are ~510px, iar bara
+                  (8 controale + „Preia" + „AI Auto" + „Force open") era `shrink-0`
+                  — se suprapunea peste numele conversației și ieșea din card.
+                */}
+                <div className="flex flex-col gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold flex items-center gap-2 flex-wrap">
                       <button
@@ -966,7 +973,7 @@ export default function AdminChatPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 md:gap-2 shrink-0 flex-wrap justify-start md:justify-end">
+                  <div className="flex items-center gap-1.5 md:gap-2 flex-wrap justify-start">
                     <button
                       type="button"
                       onClick={() => setShowEmailModal(true)}

@@ -218,7 +218,12 @@ export default function AdminDashboard() {
           </div>
 
           {/* ===== KPI secundare ===== */}
-          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4 mb-5">
+          {/*
+            Patru pe rând, nu opt: la opt coloane cardul rămâne cu ~40px pentru
+            cifră după padding + iconiță, iar `truncate` tăia „10.042" în „10...".
+            Un dashboard pe care nu poți citi numărul de sesiuni nu e un dashboard.
+          */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
             <Stat label="Sesiuni" value={mkt?.sessions ?? '…'} icon={<Eye />} />
             <Stat label="Vizitatori" value={mkt?.visitors ?? '…'} icon={<Users />} />
             <Stat
