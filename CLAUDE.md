@@ -113,6 +113,16 @@ URL-uri locale:
 
 ## 5. Producție
 
+> **⚠️ Mutat pe Coolify (OVH) în 28 august 2026.** Toate cele 7 domenii publice
+> arată acum spre `37.187.159.41`, fișierele sunt pe Cloudflare R2, iar baza e
+> resursa gestionată de Coolify. Secțiunea 5 de mai jos descrie **stack-ul vechi
+> de pe Ionos**, care rămâne pornit ca plasă de siguranță, dar nu mai primește
+> trafic. Pentru stack-ul curent, vezi **§19**.
+>
+> `make deploy*` (Ionos) cer acum `IONOS=1` explicit, ca să nu deployezi din
+> obișnuință pe serverul care nu mai servește pe nimeni. Deploy-ul real:
+> `make deploy-coolify`.
+
 ### 5.1 Infrastructură
 
 - **VPS**: IONOS Ubuntu 24.04 LTS, 232 GB SSD / 7.7 GB RAM / 4 vCPU
@@ -1069,8 +1079,18 @@ Runbook complet de cutover: **`docs/COOLIFY_R2.md`**. Rezumat aici.
 | Proxy | Traefik v3.6 (`coolify-proxy`), HTTP-01 pe resolver-ul `letsencrypt` |
 | Vecini pe server | Wingo CRM + mailul Stalwart — nu se ating, tot ce publicăm trece prin Traefik |
 
-Producția e azi pe Ionos `212.227.184.215`; mutarea înseamnă A record nou
-pentru fiecare domeniu.
+**Cutover făcut în 28 august 2026.** Cele 7 domenii publice
+(`manelecadou.ro`, `www`, `admin`, `chalgapodarok.bg` + `www`,
+`doroparaggelia.gr` + `www`) arată spre `37.187.159.41`. `files`, `file`, `mail`
+și `openreplay` au rămas neatinse, pe serverele lor.
+
+O lecție din ziua aia: **Traefik cere certificatul în clipa în care vede
+domeniul**, nu la primul request. Domeniile fuseseră adăugate înainte de DNS,
+deci Let's Encrypt a validat spre Ionos și a eșuat pe toate șapte, iar Traefik a
+intrat în backoff — după mutarea DNS-ului site-urile serveau tot
+`TRAEFIK DEFAULT CERT`. Fixul e un `docker restart coolify-proxy`, care reia
+ACME imediat: toate cele 7 certificate au fost emise în mai puțin de un minut.
+Dacă mai muți domenii, ori le adaugi după DNS, ori repornești proxy-ul după.
 
 ### 19.1 Traficul
 

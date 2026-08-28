@@ -13,14 +13,33 @@
 # Token-ul: Coolify → Keys & Tokens → API tokens.
 # UUID-ul resursei: din URL-ul resursei în Coolify.
 #
-# ATENȚIE: nu a fost rulat împotriva unei instanțe reale de Coolify. Dacă API-ul
-# răspunde altfel decât se așteaptă, scriptul afișează răspunsul brut și iese cu
-# eroare, în loc să raporteze un succes fals.
+# Calea prin SSH (fără token) a fost rulată împotriva instanței reale la cutover.
+# Calea prin API token nu — dacă API-ul răspunde altfel decât se așteaptă,
+# scriptul afișează răspunsul brut și iese cu eroare, nu raportează succes fals.
 set -euo pipefail
 
+RESOURCE="${COOLIFY_RESOURCE_UUID:-tzjg60mashnbuojrjdffa5e7}"
+
+# Fără token API? Pornim deploy-ul direct din aplicația Coolify, prin SSH.
+# `queue_application_deployment` e exact ce apelează și butonul din UI
+# (bootstrap/helpers/applications.php), deci rezultatul e identic. Metoda asta a
+# fost verificată pe instanța reală la cutover-ul din 28 aug 2026 — spre
+# deosebire de calea cu API token, care cerea un token pe care nu-l aveam.
+if [ -z "${COOLIFY_TOKEN:-}" ]; then
+  SSH_HOST="${COOLIFY_SSH_HOST:-ovh}"
+  echo "→ fără COOLIFY_TOKEN: pornesc deploy-ul prin SSH pe $SSH_HOST"
+  ssh "$SSH_HOST" "docker exec coolify php artisan tinker --execute='
+    \$app = \App\Models\Application::where(\"uuid\",\"$RESOURCE\")->firstOrFail();
+    \$uuid = (string) new \Visus\Cuid2\Cuid2();
+    queue_application_deployment(application: \$app, deployment_uuid: \$uuid, is_api: true);
+    echo \"deployment_uuid=\".\$uuid.PHP_EOL;
+  '"
+  echo "  urmărește progresul în Coolify → Deployment Logs"
+  exit 0
+fi
+
 : "${COOLIFY_URL:?Setează COOLIFY_URL (ex. https://coolify.freevox.ro)}"
-: "${COOLIFY_TOKEN:?Setează COOLIFY_TOKEN}"
-: "${COOLIFY_RESOURCE_UUID:?Setează COOLIFY_RESOURCE_UUID}"
+COOLIFY_RESOURCE_UUID="$RESOURCE"
 
 BASE="${COOLIFY_URL%/}"
 FORCE="${COOLIFY_FORCE:-false}"

@@ -1,27 +1,40 @@
 VPS=VPSIonos
 REMOTE=/home/manele
 
-.PHONY: deploy deploy-api deploy-web deploy-admin deploy-ops ssh logs logs-api logs-web logs-admin logs-caddy logs-ops logs-file logs-429 backup rollback restart status \
+# ⚠️ PRODUCȚIA E PE COOLIFY (OVH) din 28 august 2026. Ionos rămâne pornit ca
+# plasă de siguranță, dar nu mai primește trafic — niciun domeniu nu mai arată
+# spre el. Target-urile `deploy*` de mai jos deployează pe IONOS, adică pe
+# nimic. Ca să nu ajungi acolo din obișnuință, cer `IONOS=1` explicit.
+# Deploy-ul real: `make deploy-coolify`.
+ionos-guard:
+	@if [ "$$IONOS" != "1" ]; then \
+		echo "STOP: acest target deployează pe Ionos, care NU mai e producția."; \
+		echo "  Producția e pe Coolify → foloseste: make deploy-coolify"; \
+		echo "  Dacă chiar vrei Ionos (plasa de siguranță): IONOS=1 make <target>"; \
+		exit 1; \
+	fi
+
+.PHONY: ionos-guard deploy deploy-api deploy-web deploy-admin deploy-ops ssh logs logs-api logs-web logs-admin logs-caddy logs-ops logs-file logs-429 backup rollback restart status \
         deploy-coolify coolify-domains
 
-deploy:
+deploy: ionos-guard
 	@echo "→ git push + remote deploy (full)"
 	@git push origin main
 	@ssh $(VPS) "cd $(REMOTE) && ./deploy.sh full"
 
-deploy-api:
+deploy-api: ionos-guard
 	@git push origin main
 	@ssh $(VPS) "cd $(REMOTE) && ./deploy.sh api"
 
-deploy-web:
+deploy-web: ionos-guard
 	@git push origin main
 	@ssh $(VPS) "cd $(REMOTE) && ./deploy.sh web"
 
-deploy-admin:
+deploy-admin: ionos-guard
 	@git push origin main
 	@ssh $(VPS) "cd $(REMOTE) && ./deploy.sh admin"
 
-deploy-ops:
+deploy-ops: ionos-guard
 	@git push origin main
 	@ssh $(VPS) "cd $(REMOTE) && ./deploy.sh ops"
 
