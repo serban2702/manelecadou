@@ -35,7 +35,7 @@ export const SITE_DEMO_CATEGORIES: SiteDemoCategory[] = [
 /**
  * Demo-uri pre-încărcate de admin per site (NU cross-tenant). Afișate ca
  * exemple de manele „bine sunătoare" — distincte de generațiile reale ale
- * userilor, care merg pe /istoric. Vezi CLAUDE.md §16 — adăugarea tabelei e
+ * userilor, care merg pe /istoric. Vezi CLAUDE.md §15 — adăugarea tabelei e
  * additive (CREATE TABLE), safe pentru `synchronize: true`.
  */
 @Entity({ name: 'site_demos' })

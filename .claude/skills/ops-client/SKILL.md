@@ -10,8 +10,20 @@ Construiește imaginea completă a unui client pornind de la email, nume sau un 
 
 ## Mediu de execuție
 
-- **Container ops (VPS)** — dacă `PGHOST=postgres` e în env: `psql` e conectat direct (rol `claude_ops`), API-ul intern prin `api-admin GET /api/admin/...`.
-- **Local (Mac)** — SQL: `ssh VPSIonos 'docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -c "..."'`; API admin: `ssh VPSIonos 'docker exec manele-ops-1 api-admin GET /api/admin/...'`.
+Producția e pe **Coolify (OVH)** din 28 august 2026. Accesul trece prin
+`deploy/prod.sh` din repo. **Nu folosi `ssh VPSIonos`**: duce la baza înghețată în
+ziua mutării — interogările răspund frumos, cu date vechi de luni de zile, iar o
+scriere „repară" o comandă pe care n-o mai citește nimeni.
+
+```bash
+deploy/prod.sh psql     "SELECT ..."   # output tabelar, pentru citit
+deploy/prod.sh psql-tsv "SELECT ..."   # separat cu | — pentru parsat
+deploy/prod.sh api GET  /api/admin/...
+deploy/prod.sh api POST /api/admin/... '{"json":true}'
+```
+
+SQL-ul și JSON-ul sunt transmise base64 până la destinație, deci ghilimelele,
+apostrofurile și diacriticele ajung intacte. Scrie-le normal, fără escape-uri.
 
 ## Pași
 

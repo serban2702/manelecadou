@@ -34,12 +34,25 @@ Contrast (ce să EVIȚI vs ce vrem):
 
 ## Mediu de execuție
 
-- **Local (Mac)**: DB → `ssh VPSIonos 'docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -c "…"'`;
-  API admin → `ssh VPSIonos 'docker exec manele-ops-1 api-admin GET|POST /api/... [json]'`.
-- **Container ops (VPS)**: `psql` și `api-admin` direct (fără ssh/docker exec).
-- **JSON cu diacritice/emoji**: construiește-l cu `python3 -c 'import json; print(json.dumps({...}, ensure_ascii=False))'`
-  într-un fișier, apoi `cat file | ssh VPSIonos 'docker exec -i manele-ops-1 sh -c "cat > /tmp/x.json"'`
-  și `api-admin POST <path> "$(cat /tmp/x.json)"`. NU pune diacritice/ghilimele direct în shell.
+Producția e pe **Coolify (OVH)** din 28 august 2026. Accesul trece prin
+`deploy/prod.sh` din repo. **Nu folosi `ssh VPSIonos`**: duce la baza înghețată în
+ziua mutării — interogările răspund frumos, cu date vechi de luni de zile, iar o
+scriere „repară" o comandă pe care n-o mai citește nimeni.
+
+```bash
+deploy/prod.sh psql     "SELECT ..."   # output tabelar, pentru citit
+deploy/prod.sh psql-tsv "SELECT ..."   # separat cu | — pentru parsat
+deploy/prod.sh api GET  /api/admin/...
+deploy/prod.sh api POST /api/admin/... '{"json":true}'
+```
+
+SQL-ul și JSON-ul sunt transmise base64 până la destinație, deci ghilimelele,
+apostrofurile și diacriticele ajung intacte. Scrie-le normal, fără escape-uri.
+
+**JSON cu diacritice sau emoji**: construiește-l cu
+`python3 -c 'import json; print(json.dumps({...}, ensure_ascii=False))'` și dă-l ca
+al treilea argument lui `deploy/prod.sh api POST`. Encodarea base64 din helper îl
+duce intact — nu mai e nevoie de fișiere intermediare.
 
 ## Pași
 
@@ -73,7 +86,7 @@ dacă problema e de conținut.
 
 ### 3. Trimite un mesaj SCURT de operator (Daniel)
 Verifică că `conversations.aiMode='manual'` (ca AI-ul să nu răspundă peste tine); dacă nu:
-`api-admin POST /api/admin/chat/conversations/<convId>/ai-mode '{"mode":"manual"}'`.
+`deploy/prod.sh api POST /api/admin/chat/conversations/<convId>/ai-mode '{"mode":"manual"}'`.
 
 Mesaj de preluare (2-3 fraze, vezi regulile de sus). Endpoint:
 `POST /api/admin/chat/conversations/<convId>/messages` cu `{"body":"…"}`.
@@ -89,9 +102,9 @@ Pentru regenerare/modificare folosește pattern-ul din **/ops-regen**:
 
 ```bash
 # regenerare ca variație (non-distructiv), apoi promovare:
-api-admin POST /api/admin/generations/<gid>/regenerate '{"target":"new_track","lyricsMode":"custom","customLyrics":"…","edits":{"voiceArtist":"female","style":"pahar"},"label":"fix"}'
+deploy/prod.sh api POST /api/admin/generations/<gid>/regenerate '{"target":"new_track","lyricsMode":"custom","customLyrics":"…","edits":{"voiceArtist":"female","style":"pahar"},"label":"fix"}'
 # monitorizează până succeeded (1-3 min), apoi:
-api-admin POST /api/admin/generations/<variationId>/promote '{"slot":"main","notify":true}'
+deploy/prod.sh api POST /api/admin/generations/<variationId>/promote '{"slot":"main","notify":true}'
 ```
 `promote {notify:true}` copiază audio-ul în comanda principală (pagina `/m/<gid>` se
 actualizează), trimite email clientului și postează în chat. NB: promote copiază doar audio-ul

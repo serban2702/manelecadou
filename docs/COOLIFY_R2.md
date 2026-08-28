@@ -1,15 +1,24 @@
 # Mutare pe Coolify + Cloudflare R2
 
-Runbook de cutover. Stare: **codul e pregătit; contul R2 și serverul Coolify le
-faci tu.**
+> ## ✅ Executat pe 28 august 2026
+>
+> Cele 7 domenii publice (`manelecadou.ro`, `www`, `admin`, `chalgapodarok.bg`
+> + `www`, `doroparaggelia.gr` + `www`) arată spre `37.187.159.41`. Dump-ul a
+> fost luat la 14:06 UTC (247 MB → 32 MB) și restaurat cu 3 site-uri, 837 de
+> generări, 925 de plăți și 14.405 mesaje de chat. Pe Ionos nu s-a mai scris
+> niciun rând după dump — nu s-a pierdut nimic.
+>
+> Numele care erau substituenți au rămas cele reale: bucket `manelecadou-uploads`,
+> domeniu public `files.manelecadou.ro`.
+>
+> Documentul rămâne ca **runbook**, util dacă mai faci o mutare sau dacă trebuie
+> să reconstruiești stack-ul. Pentru starea curentă: `CLAUDE.md` §5–§7.
+>
+> **Ce a rămas deschis:** backup off-site (cere un bucket R2 dedicat + token —
+> vezi §3.6) și intrarea „Claude Ops" din admin, care dă 502 (§3.2).
 
-Ionos (Caddy + disc local) rămâne pornit până noul stack e verificat. Nu se
-șterge nimic de pe el în ziua cutover-ului.
-
-> **Numele de mai jos sunt substituenți.** `manelecadou-uploads` și
-> `files.manelecadou.ro` vin din planul inițial, nu dintr-un cont R2 existent —
-> nu e configurat niciun bucket. Înlocuiește-le cu ce creezi tu. Codul le
-> citește din variabile de mediu, deci nu e nimic de modificat în cod.
+Ionos (Caddy + disc local) a rămas pornit ca plasă de siguranță. Nu s-a șters
+nimic de pe el.
 
 ---
 
@@ -146,7 +155,8 @@ Instanța: **<https://coolify.freevox.ro>** (Coolify 4.3.10). Serverul înregist
 pe 80/443. Pe el mai rulează Wingo CRM și mailul; nu au porturi în conflict,
 pentru că tot ce publicăm trece prin Traefik.
 
-**Atenție la DNS**: producția e azi pe Ionos `212.227.184.215`. Mutarea pe
+**Atenție la DNS** (la momentul scrierii; mutarea s-a făcut între timp):
+producția era pe Ionos `212.227.184.215`. Mutarea pe
 Coolify înseamnă A record nou → `37.187.159.41`, pentru fiecare domeniu.
 
 1. **Project** → `+ New` → nume `manelecadou`. (Instanța e goală: doar

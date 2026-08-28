@@ -15,7 +15,7 @@ async function bootstrap() {
   // `req.ip` să fie IP-ul real al vizitatorului. Fără asta, ThrottlerGuard pune
   // toți utilizatorii în același bucket (IP-ul containerului de proxy din
   // rețeaua Docker) → 429-uri generalizate. Și IP-ul din OpenReplay/analytics
-  // devine al proxy-ului (CLAUDE.md §15.7 pct. 12bis).
+  // devine al proxy-ului (CLAUDE.md §16.7 pct. 12bis).
   //
   // Numărul de hop-uri diferă în funcție de stack:
   //   1 = Caddy direct (stack-ul vechi de pe Ionos)

@@ -8,10 +8,24 @@ argument-hint: "[perioadă / pattern / generationId]"
 
 ## Mediu de execuție
 
-- **Container ops (VPS)**: `psql` direct; loguri API în `/workspace`-adjacent nu sunt
-  accesibile — folosește tabelele DB (error_logs, suno_logs) care au tot.
-- **Local (Mac)**: `ssh VPSIonos 'docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -c "..."'`
-  plus `make logs-api` pentru loguri live.
+Producția e pe **Coolify (OVH)** din 28 august 2026. Accesul trece prin
+`deploy/prod.sh` din repo. **Nu folosi `ssh VPSIonos`**: duce la baza înghețată în
+ziua mutării — interogările răspund frumos, cu date vechi de luni de zile, iar o
+scriere „repară" o comandă pe care n-o mai citește nimeni.
+
+```bash
+deploy/prod.sh psql     "SELECT ..."   # output tabelar, pentru citit
+deploy/prod.sh psql-tsv "SELECT ..."   # separat cu | — pentru parsat
+deploy/prod.sh api GET  /api/admin/...
+deploy/prod.sh api POST /api/admin/... '{"json":true}'
+```
+
+SQL-ul și JSON-ul sunt transmise base64 până la destinație, deci ghilimelele,
+apostrofurile și diacriticele ajung intacte. Scrie-le normal, fără escape-uri.
+
+Pentru loguri live: `deploy/prod.sh logs api 200`. Tot ce contează la triaj e
+oricum în DB (`error_logs`, `suno_logs`), care supraviețuiește restartului
+containerului — logurile nu.
 
 ## Pași
 
@@ -66,4 +80,4 @@ SELECT * FROM suno_logs WHERE "generationId" = '<id>' ORDER BY "createdAt" DESC 
 Grupat pe: 🔴 acțiune necesară acum / 🟡 de urmărit / ⚪ zgomot. Pentru fiecare
 problemă reală: ce e, câți clienți afectează, link replay, cauza probabilă din cod
 (citește din /workspace dacă ajută) și fix-ul recomandat. Fix-urile de COD se fac
-local + `make deploy`, nu pe VPS — propune-le doar.
+local + `make deploy-coolify`, nu pe server — propune-le doar.

@@ -35,7 +35,7 @@ Fiecare astfel de site are **90% structură identică** și **10% specific** (ti
 | `03-FRONTEND-WIZARD-UX.md` | Frontend public, wizard-ul, standardele de UX mobile-first, i18n, persistența stării |
 | `04-ANALYTICS-PIXELI-OPENREPLAY-STRIPE.md` | Pixeli + CAPI server-side, GA4, funnel & atribuire, OpenReplay (overlay adaptabil), Stripe checkout + webhook, dashboard cheltuieli ads vs încasări |
 | `05-CHAT-AI-DIRECTII.md` | Chatul și agentul AI — zona NEstandardizată: direcțiile posibile (de la „doar info" la „agent de vânzări complet care comandă din chat") și ce se activează per proiect |
-| `06-DEPLOYMENT-VPS-NPM.md` | Deployment single-VPS prin Nginx Proxy Manager, Docker, GHCR/rsync, DNS Cloudflare, backup, skill de deploy dintr-un singur Claude command |
+| `06-DEPLOYMENT.md` | Deployment single-VPS: **Coolify** (recomandat, probat pe Manele Cadou în aug. 2026) sau Nginx Proxy Manager; Docker, DNS Cloudflare, backup, skill de deploy dintr-un singur Claude command |
 | `07-WORKFLOW-PROIECT-NOU.md` | Procedura completă de la zero: Claude Design → chestionar → chei API → workflow Claude autonom → self-test Chrome MCP → check final |
 | `08-CHESTIONAR-ONBOARDING.md` | Lista completă de întrebări pe care agentul trebuie să mi le pună înainte să scrie o linie de cod, grupate pe domenii |
 | `09-SKILLS-CLAUDE.md` | Skill-urile Claude Code standard pe care fiecare proiect le primește (deploy, start-app, ops, add-translation etc.) |

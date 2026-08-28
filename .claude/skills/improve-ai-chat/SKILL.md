@@ -20,13 +20,13 @@ implementează fix-uri în agentul AI și (după confirmare) dă deploy.
 
 Întâi numără-le:
 ```bash
-ssh VPSIonos 'docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -t -A -c "SELECT COUNT(*) FROM conversation_reviews WHERE resolved=false"'
+deploy/prod.sh psql-tsv "SELECT COUNT(*) FROM conversation_reviews WHERE resolved=false"
 ```
 Dacă e 0 → spune userului că nu există review-uri de procesat și oprește-te.
 
 Listează review-urile (id, conversație, verdict, categorie, comentariu):
 ```bash
-ssh VPSIonos 'docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -t -A -F"|" -c "SELECT r.id, r.\"conversationId\", r.rating, r.category, COALESCE(r.comment,'\'''\''), COALESCE(r.\"createdByEmail\",'\''admin'\''), r.\"createdAt\" FROM conversation_reviews r WHERE r.resolved=false ORDER BY r.category, r.\"createdAt\" DESC"'
+deploy/prod.sh psql-tsv "SELECT r.id, r.\"conversationId\", r.rating, r.category, COALESCE(r.comment,''), COALESCE(r.\"createdByEmail\",'admin'), r.\"createdAt\" FROM conversation_reviews r WHERE r.resolved=false ORDER BY r.category, r.\"createdAt\" DESC"
 ```
 
 ### 2. Trage transcriptul fiecărei conversații reviewuite
@@ -34,11 +34,11 @@ ssh VPSIonos 'docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -
 Pentru fiecare `conversationId` unic din lista de mai sus, dump transcriptul complet
 (rulează în paralel pentru toate conversațiile):
 ```bash
-ssh VPSIonos "docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -t -A -F'>>' -c \"SELECT \\\"authorRole\\\", \\\"messageType\\\", COALESCE(LEFT(body,800),'') FROM chat_messages WHERE \\\"conversationId\\\"='<CONVERSATION_ID>' AND \\\"deletedAt\\\" IS NULL ORDER BY \\\"createdAt\\\" ASC\""
+deploy/prod.sh psql-tsv "SELECT \"authorRole\", \"messageType\", COALESCE(LEFT(body,800),'') FROM chat_messages WHERE \"conversationId\"='<CONVERSATION_ID>' AND \"deletedAt\" IS NULL ORDER BY \"createdAt\" ASC"
 ```
 Opțional, vezi și tool call-urile AI pe conversație (ce a apelat agentul, ce a primit):
 ```bash
-ssh VPSIonos "docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -t -A -F'|' -c \"SELECT \\\"toolName\\\", LEFT(input::text,200), LEFT(output::text,200) FROM ai_tool_calls WHERE \\\"conversationId\\\"='<CONVERSATION_ID>' ORDER BY \\\"createdAt\\\" ASC\""
+deploy/prod.sh psql-tsv "SELECT \"toolName\", LEFT(input::text,200), LEFT(output::text,200) FROM ai_tool_calls WHERE \"conversationId\"='<CONVERSATION_ID>' ORDER BY \"createdAt\" ASC"
 ```
 
 ### 3. Analizează pe categorii
@@ -84,22 +84,32 @@ Dacă ai atins web/admin, rulează `npx tsc --noEmit` și acolo. Repară până 
 Prezintă userului un rezumat scurt:
 - câte review-uri ai procesat, pe ce categorii,
 - ce fix-uri concrete ai făcut (fișier + ce s-a schimbat),
-- ce target de deploy propui (`make deploy-api` dacă doar backend; `make deploy` dacă și web).
+- că deploy-ul e `make deploy-coolify` (pe Coolify stack-ul se deployează întreg,
+  nu pe servicii — nu mai există `deploy-api` / `deploy-web` separate).
 
 **OPREȘTE-TE și cere confirmare explicită** ("Dau deploy?"). NU da deploy fără aprobare.
 
 ### 7. Deploy (după confirmare)
 
+Commit **doar fișierele pe care le-ai atins**. Working tree-ul are aproape mereu
+modificări străine, necommise, ale altcuiva — `git add -A` le-ar trimite în producție
+odată cu fix-ul tău.
+
 ```bash
-cd "/Users/serbanrusu/Desktop/Manele/Manele cadou/manelecadou" && git add -A && git commit -m "fix(ai-chat): îmbunătățiri din review-uri admin" && make deploy-api
+cd "/Users/serbanrusu/Desktop/Manele/Manele cadou/manelecadou"
+git add <fișierele pe care chiar le-ai modificat>
+git commit -m "fix(ai-chat): îmbunătățiri din review-uri admin"
+make deploy-coolify
 ```
-(Alege `make deploy` dacă ai modificat și web/admin.) Verifică health-ul după deploy.
+
+`git push` singur **nu** deployează (repo-ul e legat prin deploy key, fără webhook).
+După deploy verifică `curl -s https://manelecadou.ro/health`.
 
 ### 8. Marchează review-urile ca rezolvate
 
 DOAR review-urile pe care chiar le-ai adresat. Cu lista de ID-uri procesate:
 ```bash
-ssh VPSIonos "docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -c \"UPDATE conversation_reviews SET resolved=true, \\\"resolvedAt\\\"=NOW() WHERE id IN ('<id1>','<id2>',...)\""
+deploy/prod.sh psql "UPDATE conversation_reviews SET resolved=true, \"resolvedAt\"=NOW() WHERE id IN ('<id1>','<id2>',...)"
 ```
 Dacă le-ai adresat pe toate, poți folosi `WHERE resolved=false`.
 

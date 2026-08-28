@@ -23,7 +23,9 @@ Stripe permite din coada (out of the box) să accepți plăți în orice valută
 
 În Stripe Dashboard → Developers → Webhooks → Add endpoint:
 
-- **URL**: `https://api.<domeniul-tau-principal>/api/payments/webhook` (sau prin Caddy reverse proxy: poți expune `https://api.manelecadou.ro/api/payments/webhook` care merge la VPS-ul tău).
+- **URL**: `https://manelecadou.ro/api/payments/webhook` — API-ul e expus
+  same-origin pe fiecare domeniu de tenant. **Nu există `api.manelecadou.ro`**
+  (vezi CLAUDE.md §11.3); un webhook configurat spre el n-ar ajunge nicăieri.
 - **Events**:
   - `checkout.session.completed`
   - `payment_intent.succeeded`

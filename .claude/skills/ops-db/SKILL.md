@@ -12,10 +12,25 @@ la deploy — vezi CLAUDE.md §6.2).
 
 ## Mediu de execuție
 
-- **Container ops (VPS)**: `psql` e configurat din env (PGHOST/PGUSER/PGDATABASE) —
-  rulează direct `psql -c "..."`.
-- **Local (Mac)**: `ssh VPSIonos 'docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -c "..."'`
-  (user-ul aplicației — și mai multă grijă).
+Producția e pe **Coolify (OVH)** din 28 august 2026. Accesul trece prin
+`deploy/prod.sh` din repo. **Nu folosi `ssh VPSIonos`**: duce la baza înghețată în
+ziua mutării — interogările răspund frumos, cu date vechi de luni de zile, iar o
+scriere „repară" o comandă pe care n-o mai citește nimeni.
+
+```bash
+deploy/prod.sh psql     "SELECT ..."   # output tabelar, pentru citit
+deploy/prod.sh psql-tsv "SELECT ..."   # separat cu | — pentru parsat
+deploy/prod.sh api GET  /api/admin/...
+deploy/prod.sh api POST /api/admin/... '{"json":true}'
+```
+
+SQL-ul și JSON-ul sunt transmise base64 până la destinație, deci ghilimelele,
+apostrofurile și diacriticele ajung intacte. Scrie-le normal, fără escape-uri.
+
+> **Rolul read-only `claude_ops` nu mai există.** Pe Ionos exista un rol fără DDL,
+> ca plasă de siguranță. Pe stack-ul nou `deploy/prod.sh` se conectează cu
+> utilizatorul aplicației, care poate face **orice**, inclusiv `DROP TABLE`.
+> Singura plasă rămasă e procedura de mai jos. Respect-o literal.
 
 ## Citire (liberă)
 
@@ -49,9 +64,10 @@ COMMIT;
 - **Tabele sensibile** (`payments`, `app_settings`, `sites`, `users.role`) →
   explică impactul business înainte (ex.: modificarea unui payment falsifică
   raportarea financiară; preferă corectarea sursei, nu a efectului).
-- **Niciodată** UPDATE/DELETE fără WHERE. Niciodată TRUNCATE/DROP/ALTER (rolul
-  oricum nu are voie — dacă pare necesar, problema se rezolvă prin entități + deploy).
-- Înainte de operații cu risc, există backup zilnic 03:00 UTC în `/backups` pe VPS;
-  pentru operații mari poți cere un backup manual întâi
-  (`ssh VPSIonos` → `docker exec manele-postgres-1 pg_dump ... | gzip > /backups/manual_<TS>.sql.gz`
-  — din container ops nu ai acces la docker, cere userului sau fă-o din local).
+- **Niciodată** UPDATE/DELETE fără WHERE. Niciodată TRUNCATE/DROP/ALTER — de data
+  asta chiar ai voie tehnic (vezi avertismentul de sus), deci regula te ține doar pe
+  tine. Schimbările de schemă se fac prin entități + deploy, nu de aici.
+- Backup: Coolify rulează unul zilnic la 03:00 UTC pe resursa de bază (retenție 14
+  fișiere / 30 de zile), restaurabil din UI → Databases → Backups. Înainte de o
+  operație mare, ia-ți unul proaspăt al tău: `deploy/prod.sh dump` îl descarcă local.
+  Restaurarea se face din UI-ul Coolify, nu de aici.

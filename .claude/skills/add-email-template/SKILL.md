@@ -83,9 +83,10 @@ Arată-i userului subiectul + deschide HTML-ul. Iterați pe copy/stil până e o
 După ce userul confirmă că preview-ul arată bine, **dă deploy** ca șablonul să ajungă în producție.
 Șablonul trăiește în API (`apps/api`), iar catalogul din admin îl ia de acolo — deci rebuild la ambele:
 ```bash
-make deploy-api && make deploy-admin
+make deploy-coolify
 ```
-`deploy-api` face automat backup DB pre-deploy. După deploy, confirmă cu userul că șablonul apare în
+Pe Coolify stack-ul se deployează întreg (API + admin într-un pas), deci nu mai există
+targeturi separate. `git push` singur nu declanșează nimic. După deploy, confirmă cu userul că șablonul apare în
 `https://admin.manelecadou.ro/marketing` → tab „Șabloane". Dacă userul cere explicit să NU dea deploy
 încă (vrea doar local), sari peste acest pas și spune-i clar că modificarea e doar locală.
 

@@ -12,8 +12,20 @@ relații/nume greșite în versuri („Dani este tatăl, nu iubitul"), stil nepo
 
 ## Mediu de execuție
 
-- **Container ops (VPS)**: API prin `api-admin`, DB prin `psql`.
-- **Local (Mac)**: `ssh VPSIonos 'docker exec manele-ops-1 api-admin ...'`.
+Producția e pe **Coolify (OVH)** din 28 august 2026. Accesul trece prin
+`deploy/prod.sh` din repo. **Nu folosi `ssh VPSIonos`**: duce la baza înghețată în
+ziua mutării — interogările răspund frumos, cu date vechi de luni de zile, iar o
+scriere „repară" o comandă pe care n-o mai citește nimeni.
+
+```bash
+deploy/prod.sh psql     "SELECT ..."   # output tabelar, pentru citit
+deploy/prod.sh psql-tsv "SELECT ..."   # separat cu | — pentru parsat
+deploy/prod.sh api GET  /api/admin/...
+deploy/prod.sh api POST /api/admin/... '{"json":true}'
+```
+
+SQL-ul și JSON-ul sunt transmise base64 până la destinație, deci ghilimelele,
+apostrofurile și diacriticele ajung intacte. Scrie-le normal, fără escape-uri.
 
 ## API-ul de regenerare
 
@@ -64,7 +76,7 @@ FROM generations WHERE id = '<id>';
      orientală, sistem live, percuție grea" etc.) + de regulă `lyricsMode: "keep"`.
    - Versuri complet noi din aceleași date → `lyricsMode: "rewrite"`.
 4. **Arată userului EXACT ce vei trimite** (body-ul JSON complet) și **cere confirmare**.
-5. Execută: `api-admin POST /api/admin/generations/<id>/regenerate '<json>'`.
+5. Execută: `deploy/prod.sh api POST /api/admin/generations/<id>/regenerate '<json>'`.
 6. **Monitorizează** până la final (generarea durează 1-3 min):
 ```sql
 SELECT id, status, LEFT(error, 120), "audioUrl" FROM generations

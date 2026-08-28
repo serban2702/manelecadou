@@ -1,6 +1,19 @@
 # 06 — Deployment: single-VPS prin Nginx Proxy Manager
 
-> Modelul-țintă pentru proiecte noi e cel de la **Melodia Ta**: o stivă Docker izolată pe un VPS, în spatele unui Nginx Proxy Manager (NPM) partajat, cu domeniu propriu. **NU** modelul cross-tenant + Caddy on-demand TLS de la Manele Cadou. Fiecare site = stivă proprie, intrare proprie în NPM, domeniu propriu.
+> Modelul-țintă pentru proiecte noi: o stivă Docker izolată pe un VPS, cu domeniu propriu. Fiecare site = stivă proprie, intrare proprie în proxy, domeniu propriu. **NU** modelul cross-tenant de la Manele Cadou.
+>
+> ### Actualizare, 28 august 2026 — preferă Coolify în locul lui NPM
+>
+> Documentul de mai jos descrie varianta cu **Nginx Proxy Manager**, cea folosită la Melodia Ta. Între timp, Manele Cadou a fost mutat pe **Coolify** (OVH), iar experiența e concludentă: Coolify face ce făcea NPM (proxy + TLS Let's Encrypt automat), dar aduce în plus deploy din UI sau CLI, variabile de mediu gestionate, **baze de date ca resurse cu backup programat și restore din interfață**, și istoric de deploy-uri cu rollback dintr-un click. Backup-ul programat, mai ales, era în varianta NPM un cron scris de mână pe host.
+>
+> Pentru un proiect nou, pornește de la Coolify. Cele patru lucruri neevidente, plătite deja o dată — toate detaliate în `docs/COOLIFY_R2.md` și `CLAUDE.md` §5:
+>
+> 1. **Traefik cere certificatul când vede domeniul**, nu la primul request. Adaugi domeniul înainte ca DNS-ul să arate spre server ⇒ validare eșuată ⇒ backoff ⇒ servește `TRAEFIK DEFAULT CERT` chiar și după ce DNS-ul devine corect. Ordinea corectă: DNS întâi, domeniul în Coolify după. Reparare: `docker restart coolify-proxy`.
+> 2. **Coolify ignoră `profiles:`** din compose — un serviciu marcat astfel va fi construit și pornit la fiecare deploy, oricum.
+> 3. **Nu monta fișiere de configurare ca volum.** Pentru un volum scris ca string, Coolify presupune că sursa e director; bind mount-ul transformă fișierul într-un folder gol. Copiază-l în imagine printr-un `Dockerfile`.
+> 4. **Baza de date se face resursă gestionată**, nu serviciu în compose — doar așa capeți backup programat spre S3 și restore din UI. `POSTGRES_HOST` devine UUID-ul resursei, iar aplicația trebuie legată la rețeaua predefinită (*Advanced → Docker compose → Predefined network*).
+>
+> Restul documentului rămâne valabil pentru partea care nu ține de proxy: layout pe VPS, domenii, variabile, backup, checklist.
 
 ---
 

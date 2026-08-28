@@ -100,13 +100,51 @@ Dacă lipsește, **NU adăuga automat** (necesită sudo). Afișează userului co
 sudo sh -c 'echo "127.0.0.1 <DOMAIN>" >> /etc/hosts'
 ```
 
-## Pas 6 — Mod PROD: verifică DNS
+## Pas 6 — Mod PROD: DNS, apoi domeniul în Coolify
+
+**Ordinea contează.** Traefik cere certificatul în clipa în care vede domeniul, nu la
+primul request. Dacă adaugi domeniul în Coolify înainte ca DNS-ul să arate spre OVH,
+Let's Encrypt validează spre serverul vechi, eșuează, iar Traefik intră în backoff —
+site-ul servește `TRAEFIK DEFAULT CERT` chiar și după ce DNS-ul e corect. Exact așa
+au picat toate cele 7 domenii la cutover-ul din 28 aug 2026.
+
+**1. Întâi DNS** — A record la Cloudflare, **nor gri (DNS only)**:
 
 ```bash
-dig +short <DOMAIN>
+dig +short <DOMAIN>     # trebuie să întoarcă 37.187.159.41
 ```
-- Returnează IP-ul VPS-ului → ✅ DNS propagat.
-- Gol → afișează userului „Adaugă A record la registrar: `<DOMAIN> → <IP_VPS>`. Așteaptă propagare 1-15 min."
+
+Cu norul portocaliu, HTTP-01 nu ajunge la Traefik și certificatul nu se emite
+niciodată.
+
+**2. Abia apoi domeniul în Coolify**, pe serviciul **`router`** (nu pe `web`, nu pe
+`api` — routerul le împarte pe path). Coolify → resursa `manele-cadou-app` →
+serviciul `router` → câmpul Domains, adaugi la lista existentă:
+
+```
+https://<DOMAIN>:80,https://www.<DOMAIN>:80
+```
+
+Lista completă, gata de lipit, o generezi cu:
+
+```bash
+make coolify-domains
+```
+
+**3. Dacă domeniul a fost adăugat înainte de DNS** (sau certificatul nu vine în
+2-3 minute), scoate Traefik din backoff:
+
+```bash
+ssh ovh 'docker restart coolify-proxy'
+```
+
+Certificatele se emit apoi în mai puțin de un minut. Verifică:
+
+```bash
+curl -sI https://<DOMAIN> | head -1
+echo | openssl s_client -connect <DOMAIN>:443 -servername <DOMAIN> 2>/dev/null \
+  | openssl x509 -noout -issuer -dates
+```
 
 ## Pas 7 — Verificare end-to-end
 
@@ -114,7 +152,7 @@ dig +short <DOMAIN>
 # 1. Site config răspunde corect
 curl -s http://localhost:1501/api/public/site -H 'Host: <DOMAIN>' | head -c 300
 
-# 2. Frontend răspunde (doar local, prod necesită HTTPS via Caddy)
+# 2. Frontend răspunde (local; pe prod site-ul iese prin Traefik → router)
 curl -sI -H 'Host: <DOMAIN>' http://localhost:1500 | head -1
 
 # 3. Admin selector vede site-ul
@@ -136,7 +174,9 @@ Afișează userului:
 Pași rămași MANUAL:
 □ <doar local, dacă lipsește> sudo sh -c 'echo "127.0.0.1 <DOMAIN>" >> /etc/hosts'
 □ <doar dacă lipsește traducerea> Tradu apps/web/messages/<LOCALE>.json
-□ <doar prod, dacă DNS nu e propagat> Adaugă A record la registrar
+□ <prod> A record `<DOMAIN> → 37.187.159.41` la Cloudflare, nor GRI (DNS only)
+□ <prod> Adaugă `<DOMAIN>` la câmpul Domains al serviciului `router` din Coolify
+□ <prod> Dacă certificatul nu vine în ~3 min: ssh ovh 'docker restart coolify-proxy'
 □ <prod> Trimite sitemap la Google Search Console: https://<DOMAIN>/sitemap.xml
 
 Test rapid:

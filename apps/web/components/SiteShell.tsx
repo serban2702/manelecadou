@@ -174,7 +174,7 @@ export function SiteShell({ children, hideStickyCta: _ignored }: { children: Rea
               Fără cont de client pe site-urile publice: login-ul există doar în
               admin. Vizitatorul își regăsește comenzile prin identitatea de
               vizitator („Manelele mele") și prin linkul direct din emailul de
-              livrare — vezi CLAUDE.md §18.3.2.
+              livrare — vezi CLAUDE.md §10.3.2.
             */}
           </div>
         </div>

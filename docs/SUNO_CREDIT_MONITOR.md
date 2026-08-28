@@ -59,11 +59,10 @@ POST /api/admin/suno-credits/test   # trimite o notificare de test pe Wingo
 
 ```bash
 # stare + sold curent
-ssh VPSIonos 'docker exec manele-postgres-1 psql -U manelecadou -d manelecadou \
-  -c "SELECT \"lastCredits\", \"lastCheckedAt\", \"lowAlertActive\", \"lowAlertCredits\", \"apiDown\", \"consecutiveFailures\" FROM suno_credit_monitor_state"'
+deploy/prod.sh psql 'SELECT "lastCredits", "lastCheckedAt", "lowAlertActive", "lowAlertCredits", "apiDown", "consecutiveFailures" FROM suno_credit_monitor_state'
 
 # logurile cron-ului
-make logs-api   # caută [SunoCreditMonitor]
+deploy/prod.sh logs api 300   # caută [SunoCreditMonitor]
 ```
 
 ## Note

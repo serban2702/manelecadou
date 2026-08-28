@@ -16,7 +16,7 @@ import {
  * Sursă: https://www.bnr.ro/nbrfxrates.xml (ziua curentă),
  * nbrfxrates10days.xml (plasă) și curs.bnr.ro/files/xml/years/nbrfxrates<AN>.xml
  * (istoric complet). Tabela e additive (CREATE TABLE) — safe pentru
- * `synchronize: true` (vezi CLAUDE.md §6.2).
+ * `synchronize: true` (vezi CLAUDE.md §6.4).
  */
 @Entity({ name: 'fx_rates' })
 @Unique(['date', 'currency'])

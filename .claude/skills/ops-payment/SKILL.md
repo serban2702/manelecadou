@@ -14,8 +14,20 @@ livrare nu a ajuns, (4) clientul a plătit cu alt email decât cel din chat.
 
 ## Mediu de execuție
 
-- **Container ops (VPS)**: `psql` direct; API prin `api-admin`.
-- **Local (Mac)**: `ssh VPSIonos 'docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -c "..."'` / `ssh VPSIonos 'docker exec manele-ops-1 api-admin ...'`.
+Producția e pe **Coolify (OVH)** din 28 august 2026. Accesul trece prin
+`deploy/prod.sh` din repo. **Nu folosi `ssh VPSIonos`**: duce la baza înghețată în
+ziua mutării — interogările răspund frumos, cu date vechi de luni de zile, iar o
+scriere „repară" o comandă pe care n-o mai citește nimeni.
+
+```bash
+deploy/prod.sh psql     "SELECT ..."   # output tabelar, pentru citit
+deploy/prod.sh psql-tsv "SELECT ..."   # separat cu | — pentru parsat
+deploy/prod.sh api GET  /api/admin/...
+deploy/prod.sh api POST /api/admin/... '{"json":true}'
+```
+
+SQL-ul și JSON-ul sunt transmise base64 până la destinație, deci ghilimelele,
+apostrofurile și diacriticele ajung intacte. Scrie-le normal, fără escape-uri.
 
 ## Pași
 
@@ -57,8 +69,8 @@ WHERE "to" ILIKE '%<email>%' ORDER BY "createdAt" DESC LIMIT 10;
 
 5. **Acțiuni de remediere** (cere confirmare înainte de oricare):
    - Generare failed după plată → `/ops-regen` cu target `overwrite` (re-rulează comanda).
-   - Generare blocată în `pending`/`processing` → `api-admin POST /api/admin/generations/<id>/retry`.
-   - Email de livrare lipsă dar piesa există → caută endpoint-ul de resend în admin API (`api-admin GET /api/admin/...`) sau marchează pentru trimitere manuală din admin UI.
+   - Generare blocată în `pending`/`processing` → `deploy/prod.sh api POST /api/admin/generations/<id>/retry`.
+   - Email de livrare lipsă dar piesa există → caută endpoint-ul de resend în admin API (`deploy/prod.sh api GET /api/admin/...`) sau marchează pentru trimitere manuală din admin UI.
    - **Refund: NICIODATĂ automat.** Doar raportezi situația + recomanzi; refund-ul se face manual din Stripe dashboard de către om.
 
 ## Raport final

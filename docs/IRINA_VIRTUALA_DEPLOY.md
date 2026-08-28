@@ -103,32 +103,16 @@ Mâine după activare:
 
 ```bash
 # vezi conv-urile cu greeting trimis în ultimele 2h
-ssh VPSIonos "docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -c \"
-SELECT id, \\\"siteId\\\", \\\"greetingSentAt\\\", \\\"lastClientPath\\\"
-FROM conversations
-WHERE \\\"greetingSentAt\\\" > NOW() - INTERVAL '2 hours'
-ORDER BY \\\"greetingSentAt\\\" DESC LIMIT 20;
-\""
+deploy/prod.sh psql "SELECT id, \"siteId\", \"greetingSentAt\", \"lastClientPath\" FROM conversations WHERE \"greetingSentAt\" > NOW() - INTERVAL '2 hours' ORDER BY \"greetingSentAt\" DESC LIMIT 20"
 
 # vezi inferenceMeta pe ultimele generation
-ssh VPSIonos "docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -c \"
-SELECT id, style, occasion, \\\"voiceArtist\\\", \\\"inferredFromChat\\\", jsonb_pretty(\\\"inferenceMeta\\\") AS inference
-FROM generations WHERE \\\"inferredFromChat\\\"=true
-ORDER BY \\\"createdAt\\\" DESC LIMIT 5;
-\""
+deploy/prod.sh psql "SELECT id, style, occasion, \"voiceArtist\", \"inferredFromChat\", jsonb_pretty(\"inferenceMeta\") AS inference FROM generations WHERE \"inferredFromChat\"=true ORDER BY \"createdAt\" DESC LIMIT 5"
 
 # vezi coduri promo emise de AI
-ssh VPSIonos "docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -c \"
-SELECT code, \\\"discountValue\\\", \\\"restrictedToEmail\\\", \\\"validUntil\\\", \\\"createdAt\\\"
-FROM promo_codes WHERE \\\"aiIssued\\\"=true ORDER BY \\\"createdAt\\\" DESC LIMIT 10;
-\""
+deploy/prod.sh psql "SELECT code, \"discountValue\", \"restrictedToEmail\", \"validUntil\", \"createdAt\" FROM promo_codes WHERE \"aiIssued\"=true ORDER BY \"createdAt\" DESC LIMIT 10"
 
 # audit AI tool calls în ultima oră (vezi /ai-monitor UI)
-ssh VPSIonos "docker exec manele-postgres-1 psql -U manelecadou -d manelecadou -c \"
-SELECT \\\"toolName\\\", \\\"aiMode\\\", COUNT(*) FROM ai_tool_calls
-WHERE \\\"createdAt\\\" > NOW() - INTERVAL '1 hour'
-GROUP BY \\\"toolName\\\", \\\"aiMode\\\" ORDER BY COUNT(*) DESC;
-\""
+deploy/prod.sh psql "SELECT \"toolName\", \"aiMode\", COUNT(*) FROM ai_tool_calls WHERE \"createdAt\" > NOW() - INTERVAL '1 hour' GROUP BY \"toolName\", \"aiMode\" ORDER BY COUNT(*) DESC"
 ```
 
 ## Lucruri neimplementate (intenționat)

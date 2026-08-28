@@ -103,7 +103,7 @@ Reguli:
 - Logging cu rotație (`json-file`, max-size + max-file) per serviciu.
 - Toate serviciile cu `restart: unless-stopped` + healthcheck.
 
-Detaliile complete de deployment în `06-DEPLOYMENT-VPS-NPM.md`.
+Detaliile complete de deployment în `06-DEPLOYMENT.md`.
 
 ---
 
