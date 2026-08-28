@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { assemblePlayground } from './playground-assemble';
+import { assemblePlayground, playgroundNeedsLyricsWrite } from './playground-assemble';
 import type { Site } from '../sites/site.entity';
 
 function site(partial: Partial<Site>): Site {
@@ -101,6 +101,25 @@ describe('assemblePlayground', () => {
     assert.equal(a.lyria.stylePrompt, 'heartbroken manele');
     assert.equal(a.lyricsInput.writerSystemPrompt, 'cadou writer');
     assert.equal(a.voice?.id, 'male');
+  });
+
+  it('skips GPT when a complete Lyria/Suno prompt is set', () => {
+    const google = assemblePlayground(site({}), {
+      engine: 'google',
+      lyricsMode: 'generate',
+      lyriaPromptOverride: 'FULL CUSTOM',
+    });
+    assert.equal(playgroundNeedsLyricsWrite(google), false);
+    assert.equal(google.variantCount, 1);
+    const suno = assemblePlayground(site({}), {
+      engine: 'suno',
+      lyricsMode: 'generate',
+      sunoPromptOverride: 'FULL SUNO',
+    });
+    assert.equal(playgroundNeedsLyricsWrite(suno), false);
+    const fields = assemblePlayground(site({}), { lyricsMode: 'generate', variantCount: 2 });
+    assert.equal(playgroundNeedsLyricsWrite(fields), true);
+    assert.equal(fields.variantCount, 2);
   });
 
   it('description-mode Suno when there are no lyrics', () => {

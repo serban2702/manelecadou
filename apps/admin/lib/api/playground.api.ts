@@ -50,6 +50,7 @@ export interface PlaygroundRequest {
   lyriaStylePrompt?: string;
   lyriaOccasionPrompt?: string;
   lyriaPromptOverride?: string;
+  variantCount?: number;
 }
 
 export interface PlaygroundMeta {

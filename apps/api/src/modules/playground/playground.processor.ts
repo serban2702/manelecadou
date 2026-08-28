@@ -8,7 +8,11 @@ import { LyricsService } from '../lyrics/lyrics.module';
 import { LyriaService } from '../lyria/lyria.service';
 import { SitesService } from '../sites/sites.service';
 import { SunoProvider } from '../suno/suno.types';
-import { assemblePlayground, type PlaygroundAssembleInput } from './playground-assemble';
+import {
+  assemblePlayground,
+  playgroundNeedsLyricsWrite,
+  type PlaygroundAssembleInput,
+} from './playground-assemble';
 import { PlaygroundRun, type PlaygroundTrack } from './playground-run.entity';
 import { PLAYGROUND_QUEUE } from './playground.constants';
 import type { PlaygroundRequestDto } from './playground.dto';
@@ -49,7 +53,7 @@ export class PlaygroundProcessor extends WorkerHost {
       let lyrics = assembled.lyrics;
       let draft = run.lyricsDraft ?? '';
 
-      if (!assembled.instrumental && assembled.lyricsMode !== 'custom') {
+      if (playgroundNeedsLyricsWrite(assembled)) {
         const needWrite = !lyrics || assembled.lyricsMode === 'generate' || assembled.lyricsMode === 'writer_only';
         if (needWrite && !lyrics) {
           run.status = 'writing_lyrics';
@@ -109,12 +113,8 @@ export class PlaygroundProcessor extends WorkerHost {
         };
         await this.runs.save(run);
 
-        if (assembled.instrumental) {
-          const one = await this.lyria.generateOne(lyriaInput, 1);
-          const url = await this.persistBuffer(run.id, 0, one.audio);
-          tracks.push({ audioUrl: url, durationSec: assembled.lyria.durationSec, audioId: one.interactionId });
-          providerJobId = `lyria:${one.interactionId}`;
-        } else {
+        const takeCount = assembled.instrumental ? 1 : assembled.variantCount;
+        if (takeCount === 2) {
           const pair = await this.lyria.generatePair(lyriaInput);
           for (let i = 0; i < pair.tracks.length; i++) {
             const url = await this.persistBuffer(run.id, i, pair.tracks[i].audio);
@@ -125,6 +125,11 @@ export class PlaygroundProcessor extends WorkerHost {
             });
           }
           providerJobId = pair.providerJobId;
+        } else {
+          const one = await this.lyria.generateOne(lyriaInput, 1);
+          const url = await this.persistBuffer(run.id, 0, one.audio);
+          tracks.push({ audioUrl: url, durationSec: assembled.lyria.durationSec, audioId: one.interactionId });
+          providerJobId = `lyria:${one.interactionId}`;
         }
       } else {
         audioModel = assembled.suno.model || '';

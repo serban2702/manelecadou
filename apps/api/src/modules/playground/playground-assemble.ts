@@ -56,6 +56,7 @@ export interface PlaygroundAssembleInput {
   lyriaStylePrompt?: string;
   lyriaOccasionPrompt?: string;
   lyriaPromptOverride?: string;
+  variantCount?: number;
 }
 
 export interface PlaygroundAssembled {
@@ -98,6 +99,7 @@ export interface PlaygroundAssembled {
     lyricsLocale: string;
     builtPrompt: string;
   };
+  variantCount: 1 | 2;
 }
 
 const RO_LYRIA_FALLBACK =
@@ -241,7 +243,17 @@ export function assemblePlayground(site: Site, dto: PlaygroundAssembleInput): Pl
       lyricsLocale,
       builtPrompt: dto.lyriaPromptOverride?.trim() || lyriaBuilt,
     },
+    variantCount: dto.variantCount === 2 ? 2 : 1,
   };
+}
+
+/** GPT nu are ce scrie dacă operatorul a lipit promptul complet sau versurile. */
+export function playgroundNeedsLyricsWrite(a: PlaygroundAssembled): boolean {
+  if (a.instrumental) return false;
+  if (a.engine === 'google' && a.lyria.promptOverride) return false;
+  if (a.engine === 'suno' && a.suno.promptOverride) return false;
+  if (a.lyricsMode === 'custom') return false;
+  return a.lyricsMode === 'generate' || a.lyricsMode === 'writer_only';
 }
 
 /**

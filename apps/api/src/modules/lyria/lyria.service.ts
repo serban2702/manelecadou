@@ -172,8 +172,7 @@ export class LyriaService {
     });
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) {
-      const msg = formatGoogleError(json) || `Lyria HTTP ${res.status}`;
-      throw new Error(msg);
+      throw lyriaHttpError(json, res.status);
     }
     return json;
   }
@@ -188,8 +187,7 @@ export class LyriaService {
     });
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) {
-      const msg = formatGoogleError(json) || `Lyria GET HTTP ${res.status}`;
-      throw new Error(msg);
+      throw lyriaHttpError(json, res.status, 'GET');
     }
     return json;
   }
@@ -379,9 +377,48 @@ function extractText(json: Record<string, unknown>): string | null {
   return null;
 }
 
-function formatGoogleError(json: Record<string, unknown>): string {
-  const err = json.error as { message?: string } | undefined;
+const LYRIA_FREE_TIER_MESSAGE =
+  'Lyria 3 Pro nu are plan gratuit — Google întoarce cota free_tier = 0 ' +
+  '(chiar dacă modelul apelat e lyria-3-pro-preview; cota e raportată ca lyria-3-pro). ' +
+  'Cheia GEMINI_API_KEY e pe un proiect fără billing. Activează Pay as you go în Google AI Studio ' +
+  'pe același proiect ca și cheia (aistudio.google.com → API keys → upgrade), apoi reia. ' +
+  'Cost: ~0,08 USD / piesă Pro, ~0,04 USD / clip de 30s.';
+
+export function rawGoogleError(json: Record<string, unknown>): string {
+  const err = json.error as { message?: string; status?: string } | undefined;
   if (err?.message) return err.message;
   if (typeof json.message === 'string') return json.message;
   return '';
+}
+
+export function isLyriaQuotaError(raw: string): boolean {
+  const t = raw.toLowerCase();
+  return (
+    t.includes('free_tier') ||
+    t.includes('generate_content_free_tier') ||
+    t.includes('resource_exhausted') ||
+    t.includes('exceeded your current quota') ||
+    t.includes('quota exceeded') ||
+    (t.includes('quota') && (t.includes('limit: 0') || t.includes('limit:0')))
+  );
+}
+
+export function friendlyLyriaError(raw: string): string {
+  if (!raw) return raw;
+  if (isLyriaQuotaError(raw) && (raw.toLowerCase().includes('free_tier') || /limit:\s*0/.test(raw))) {
+    return LYRIA_FREE_TIER_MESSAGE;
+  }
+  if (isLyriaQuotaError(raw)) {
+    return `Cota Google Lyria e epuizată. ${raw}`;
+  }
+  return raw;
+}
+
+function lyriaHttpError(json: Record<string, unknown>, status: number, verb?: string): Error {
+  const raw = rawGoogleError(json) || `Lyria ${verb ? `${verb} ` : ''}HTTP ${status}`;
+  const msg = friendlyLyriaError(raw);
+  if (status === 429 || isLyriaQuotaError(raw)) {
+    return new NonRetryableGenerationError(msg);
+  }
+  return new Error(msg);
 }

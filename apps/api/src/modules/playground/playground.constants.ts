@@ -1,7 +1,7 @@
 export const PLAYGROUND_QUEUE = 'playground';
 
 export const SUNO_MODELS = ['V4', 'V4_5', 'V4_5PLUS', 'V4_5ALL', 'V5', 'V5_5'] as const;
-export const LYRIA_MODELS = ['lyria-3-pro-preview'] as const;
+export const LYRIA_MODELS = ['lyria-3-pro-preview', 'lyria-3-clip-preview'] as const;
 
 /** Modele utile la versuri. `id` e stringul de API. Lista e curată, nu exhaustivă —
  *  playground-ul acceptă oricum un id scris de mână. */

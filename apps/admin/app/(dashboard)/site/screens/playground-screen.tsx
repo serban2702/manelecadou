@@ -121,6 +121,8 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
   const [lyriaStyle, setLyriaStyle] = useState('');
   const [lyriaOccasion, setLyriaOccasion] = useState('');
   const [lyriaRaw, setLyriaRaw] = useState('');
+  const [formKind, setFormKind] = useState<'full' | 'fields'>('full');
+  const [variantCount, setVariantCount] = useState<1 | 2>(1);
   const [showGpt, setShowGpt] = useState(false);
   const [busyLyrics, setBusyLyrics] = useState(false);
   const [busyGenerate, setBusyGenerate] = useState(false);
@@ -213,8 +215,8 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
       senderName: sender,
       message,
       tipAmount: num(tipAmount),
-      lyricsMode,
-      lyrics: lyrics || undefined,
+      lyricsMode: formKind === 'full' ? 'custom' : lyricsMode,
+      lyrics: formKind === 'full' ? undefined : lyrics || undefined,
       skipCritic: skipCritic || lyricsMode === 'writer_only',
       phonetic,
       openaiModel: openaiModel || undefined,
@@ -230,7 +232,7 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
       sunoBasePrompt: sunoBase,
       sunoStylePrompt: sunoStyle,
       sunoOccasionPrompt: sunoOccasion,
-      sunoPromptOverride: sunoRaw || undefined,
+      sunoPromptOverride: formKind === 'full' ? sunoRaw || undefined : undefined,
       sunoTitle: sunoTitle || undefined,
       vocalGender: vocalGender || undefined,
       styleWeight: num(styleWeight),
@@ -243,7 +245,8 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
       lyriaModel: lyriaModel || undefined,
       lyriaStylePrompt: lyriaStyle,
       lyriaOccasionPrompt: lyriaOccasion,
-      lyriaPromptOverride: lyriaRaw || undefined,
+      lyriaPromptOverride: formKind === 'full' ? lyriaRaw || undefined : undefined,
+      variantCount: engine === 'google' ? variantCount : undefined,
     };
   }
 
@@ -296,10 +299,19 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   async function generateAudio() {
+    if (formKind === 'full') {
+      const raw = engine === 'google' ? lyriaRaw : sunoRaw;
+      if (!raw.trim()) {
+        toast({ variant: 'destructive', title: 'Promptul complet e gol' });
+        return;
+      }
+    }
     const costHint =
       engine === 'suno'
         ? 'Consumă credite Suno reale (~10 / request, 2 piese).'
-        : 'Apelează Gemini Lyria (2 variante, câteva minute).';
+        : variantCount === 2
+          ? 'Apelează Gemini Lyria de 2 ori (~0,16 USD pe plan plătit). Lyria n-are plan gratuit.'
+          : 'Apelează Gemini Lyria o dată (~0,08 USD pe plan plătit). Lyria n-are plan gratuit.';
     const ok = await confirmDialog({
       title: engine === 'suno' ? 'Generezi pe Suno?' : 'Generezi pe Google Lyria?',
       description: `${costHint} Nu se creează o comandă de client.`,
@@ -339,26 +351,49 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
             Studio
           </h2>
           <p className="text-xs text-muted-foreground mt-1.5 max-w-xl">
-            Catalogul doar umple câmpurile. Testezi tu: versuri, prompt, voce, weirdness, model.
+            Două formulare separate: promptul complet înlocuiește tot, inclusiv GPT. Câmpurile sunt pentru catalog + versuri.
           </p>
         </div>
-        <div className="flex rounded-full border border-border p-0.5 bg-card">
-          {(['suno', 'google'] as const).map((e) => (
-            <button
-              key={e}
-              type="button"
-              onClick={() => setEngine(e)}
-              className={cn(
-                'px-4 py-1.5 text-xs font-medium rounded-full transition-colors',
-                engine === e ? 'bg-[#d4a84b] text-[#1a1408]' : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {e === 'suno' ? 'Suno' : 'Google Lyria'}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-full border border-border p-0.5 bg-card">
+            {(['suno', 'google'] as const).map((e) => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => setEngine(e)}
+                className={cn(
+                  'px-4 py-1.5 text-xs font-medium rounded-full transition-colors',
+                  engine === e ? 'bg-[#d4a84b] text-[#1a1408]' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {e === 'suno' ? 'Suno' : 'Google Lyria'}
+              </button>
+            ))}
+          </div>
+          <div className="flex rounded-full border border-border p-0.5 bg-card">
+            {(
+              [
+                ['full', 'Prompt complet'],
+                ['fields', 'Câmpuri + GPT'],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setFormKind(id)}
+                className={cn(
+                  'px-4 py-1.5 text-xs font-medium rounded-full transition-colors',
+                  formKind === id ? 'bg-[#efe6d0] text-[#1a1410]' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
+      {formKind === 'fields' && (
       <section className="rounded-2xl border border-border bg-[#121018] p-3 md:p-4 mb-5">
         <div className="flex items-center justify-between gap-2 mb-3">
           <div className="text-[10px] tracking-[0.18em] uppercase text-muted-foreground">Sursă — încarcă din catalog</div>
@@ -477,8 +512,17 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
           ))}
         </div>
       </section>
+      )}
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.85fr)_minmax(280px,0.7fr)] items-start">
+      <div
+        className={cn(
+          'grid gap-5 items-start',
+          formKind === 'fields'
+            ? 'xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.85fr)_minmax(280px,0.7fr)]'
+            : 'xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.7fr)]',
+        )}
+      >
+        {formKind === 'fields' && (
         <div
           className="rounded-2xl p-5 md:p-6 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.7)]"
           style={{ background: '#efe6d0', color: '#1a1410' }}
@@ -578,12 +622,108 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
             </label>
           </div>
         </div>
+        )}
 
         <div className="rounded-2xl border border-border bg-[#121018] p-4 space-y-4">
           <div className="text-[10px] tracking-[0.18em] uppercase text-muted-foreground">
-            {engine === 'suno' ? 'Masă Suno' : 'Masă Lyria'}
+            {formKind === 'full'
+              ? engine === 'suno'
+                ? 'Prompt complet Suno'
+                : 'Prompt complet Lyria'
+              : engine === 'suno'
+                ? 'Masă Suno'
+                : 'Masă Lyria'}
           </div>
 
+          {formKind === 'full' ? (
+            engine === 'suno' ? (
+              <>
+                <KnobField
+                  label="Prompt complet (înlocuiește tot)"
+                  hint="Trimis ca prompt/versuri către Suno. Nu trece prin GPT și nu se lipește stilul din catalog."
+                >
+                  <Textarea
+                    value={sunoRaw}
+                    onChange={(e) => setSunoRaw(e.target.value)}
+                    rows={16}
+                    className="font-mono text-xs bg-[#1c1924] border-border min-h-[280px] resize-y"
+                    placeholder="Versurile + descrierea muzicală, exact cum vrei să plece la Suno."
+                  />
+                  <CharCount value={sunoRaw} />
+                </KnobField>
+                <div className="grid grid-cols-2 gap-2">
+                  <KnobField label="Model Suno">
+                    <select
+                      value={sunoModel}
+                      onChange={(e) => setSunoModel(e.target.value)}
+                      className="h-9 w-full rounded-md border border-border bg-[#1c1924] px-2 text-sm"
+                    >
+                      {(meta?.sunoModels ?? ['V4_5', 'V5', 'V5_5']).map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  </KnobField>
+                  <KnobField label="Titlu">
+                    <Input value={sunoTitle} onChange={(e) => setSunoTitle(e.target.value)} placeholder="Pentru Mirela" className="h-9 text-sm bg-[#1c1924]" />
+                  </KnobField>
+                </div>
+              </>
+            ) : (
+              <>
+                <KnobField
+                  label="Prompt complet (înlocuiește tot)"
+                  hint="Trimis ca input la Lyria. Nu trece prin GPT, nu se lipește stilul, ocazia sau versurile din celălalt formular."
+                >
+                  <Textarea
+                    value={lyriaRaw}
+                    onChange={(e) => setLyriaRaw(e.target.value)}
+                    rows={16}
+                    className="font-mono text-xs bg-[#1c1924] border-border min-h-[280px] resize-y"
+                    placeholder={'Descrierea muzicală în engleză, apoi:\n\nLyrics:\n\n[Verse 1]\n…'}
+                  />
+                  <CharCount value={lyriaRaw} />
+                </KnobField>
+                <div className="grid grid-cols-2 gap-2">
+                  <KnobField label="Model">
+                    <select
+                      value={lyriaModel}
+                      onChange={(e) => setLyriaModel(e.target.value)}
+                      className="h-9 w-full rounded-md border border-border bg-[#1c1924] px-2 text-sm font-mono"
+                    >
+                      {lyriaModelChoices(meta?.lyriaModels, lyriaModel).map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  </KnobField>
+                  <KnobField label="Durată (sec)">
+                    <Input value={durationSec} onChange={(e) => setDurationSec(e.target.value)} className="h-9 text-sm bg-[#1c1924]" />
+                  </KnobField>
+                </div>
+                <div className="flex gap-1.5">
+                  {([1, 2] as const).map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setVariantCount(n)}
+                      className={cn(
+                        'flex-1 h-9 rounded-lg border text-xs font-medium',
+                        variantCount === n
+                          ? 'border-[#d4a84b] bg-[#d4a84b]/15 text-[#f3e6c0]'
+                          : 'border-border text-muted-foreground',
+                      )}
+                    >
+                      {n === 1 ? '1 piesă' : '2 piese (2× cotă)'}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )
+          ) : (
+            <>
           <div className="flex gap-1.5">
             {(['m', 'f'] as const).map((g) => (
               <button
@@ -678,15 +818,6 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
                   onChange={(e) => setSunoCustomMode(e.target.checked)}
                 />
               </label>
-              <KnobField label="Prompt brut (înlocuiește versurile / descrierea)">
-                <Textarea
-                  value={sunoRaw}
-                  onChange={(e) => setSunoRaw(e.target.value)}
-                  rows={3}
-                  className="font-mono text-xs bg-[#1c1924] border-border"
-                  placeholder="gol = versurile din foaie"
-                />
-              </KnobField>
             </>
           ) : (
             <>
@@ -706,22 +837,40 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
                   className="font-mono text-xs bg-[#1c1924] border-border"
                 />
               </KnobField>
-              <KnobField label="Prompt complet (înlocuiește tot)">
-                <Textarea
-                  value={lyriaRaw}
-                  onChange={(e) => setLyriaRaw(e.target.value)}
-                  rows={6}
-                  className="font-mono text-xs bg-[#1c1924] border-border"
-                  placeholder="gol = asamblat din stil + voce + versuri"
-                />
-              </KnobField>
               <div className="grid grid-cols-2 gap-2">
                 <KnobField label="Model">
-                  <Input value={lyriaModel} onChange={(e) => setLyriaModel(e.target.value)} className="h-9 text-xs bg-[#1c1924]" />
+                  <select
+                    value={lyriaModel}
+                    onChange={(e) => setLyriaModel(e.target.value)}
+                    className="h-9 w-full rounded-md border border-border bg-[#1c1924] px-2 text-sm font-mono"
+                  >
+                    {lyriaModelChoices(meta?.lyriaModels, lyriaModel).map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
                 </KnobField>
                 <KnobField label="Durată (sec)">
                   <Input value={durationSec} onChange={(e) => setDurationSec(e.target.value)} className="h-9 text-sm bg-[#1c1924]" />
                 </KnobField>
+              </div>
+              <div className="flex gap-1.5">
+                {([1, 2] as const).map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setVariantCount(n)}
+                    className={cn(
+                      'flex-1 h-9 rounded-lg border text-xs font-medium',
+                      variantCount === n
+                        ? 'border-[#d4a84b] bg-[#d4a84b]/15 text-[#f3e6c0]'
+                        : 'border-border text-muted-foreground',
+                    )}
+                  >
+                    {n === 1 ? '1 piesă' : '2 piese (2× cotă)'}
+                  </button>
+                ))}
               </div>
               <label className="flex items-center justify-between gap-2 text-xs">
                 <span>Instrumental</span>
@@ -804,6 +953,8 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
               </div>
             )}
           </div>
+            </>
+          )}
 
           <div className="flex gap-2 pt-1">
             <Button type="button" variant="outline" size="sm" onClick={() => void runPreview()}>
@@ -831,7 +982,9 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
                 </Badge>
               )}
             </div>
-            {active?.errorMessage && <p className="text-sm text-destructive">{active.errorMessage}</p>}
+            {active?.errorMessage && (
+              <p className="text-sm text-destructive whitespace-pre-wrap leading-relaxed">{active.errorMessage}</p>
+            )}
             {active?.tracks?.length ? (
               <div className="space-y-2">
                 {active.tracks.map((t, i) => (
@@ -871,7 +1024,7 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
               ) : (
                 <PreviewBlock title="Lyria" text={preview.lyria.prompt} />
               )}
-              <PreviewBlock title="writer user" text={preview.gpt.writerUser} />
+              {formKind === 'fields' && <PreviewBlock title="writer user" text={preview.gpt.writerUser} />}
             </div>
           )}
 
@@ -906,6 +1059,24 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
   );
 }
 
+function lyriaModelChoices(fromMeta: string[] | undefined, current: string): string[] {
+  return Array.from(
+    new Set([...(fromMeta ?? ['lyria-3-pro-preview', 'lyria-3-clip-preview']), current].filter(Boolean)),
+  );
+}
+
+function CharCount({ value }: { value: string }) {
+  const n = [...value].length;
+  return (
+    <div className="flex justify-between text-[11px] text-muted-foreground pt-1">
+      <span>
+        {n === 1 ? '1 caracter' : `${n.toLocaleString('ro-RO')} caractere`}
+      </span>
+      {n === 0 ? <span>lipsește promptul</span> : null}
+    </div>
+  );
+}
+
 function KnobField({
   label,
   hint,
@@ -916,11 +1087,11 @@ function KnobField({
   children: React.ReactNode;
 }) {
   return (
-    <label className="block space-y-1">
+    <div className="block space-y-1">
       <span className="text-[11px] text-muted-foreground">{label}</span>
       {hint && <span className="block text-[10px] text-muted-foreground/80 -mt-0.5">{hint}</span>}
       {children}
-    </label>
+    </div>
   );
 }
 

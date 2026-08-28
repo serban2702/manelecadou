@@ -216,4 +216,11 @@ export class PlaygroundRequestDto {
   @IsString()
   @MaxLength(20_000)
   lyriaPromptOverride?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(2)
+  variantCount?: number;
 }
