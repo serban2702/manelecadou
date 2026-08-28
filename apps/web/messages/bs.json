@@ -473,7 +473,6 @@
       "customBtn": "Po izboru",
       "customPlaceholder": "npr. 1500",
       "customSurcharge": "Doplata: +{amount} KM (5%, plafon 50).",
-      "baseLine": "Osnovna pjesma (3 min × 2)",
       "tipSurchargeLine": "Doplata posveta ({amount} KM × 5%, plafon 50)",
       "totalUnlock": "Ukupno za otključavanje",
       "recommended": "PREPORUČENO",
@@ -482,7 +481,6 @@
     },
     "step5Demo": {
       "title": "5. Besplatni demo (30s)",
-      "sub": "Prvo generiramo besplatni demo od 30s. Ako ti se svidi, otključavaš cijelu pjesmu (3 min × 2).",
       "emailLabel": "📧 Tvoj email (obavezno — šaljemo pjesmu ovdje)",
       "emailPlaceholder": "ti@email.ba",
       "emailHint": "Koristi se samo za dostavu. Bez spama.",
@@ -496,7 +494,6 @@
       "sub": "Tvoja pjesma ({minutes} min × 2 verzije) se generira U MOMENTU kada se plaćanje potvrdi. Šaljemo rezultat na email i vidiš ga i ovdje čim bude gotov.",
       "emailLabel": "📧 Tvoj email (obavezno)",
       "emailSentTo": "✓ Šaljemo pjesmu na",
-      "completeLine": "Cijela pjesma (3 min × 2)",
       "tipLine": "Doplata posveta {amount} {currency}",
       "promoLine": "Promo:",
       "totalLabel": "Ukupno",

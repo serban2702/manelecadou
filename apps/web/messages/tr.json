@@ -473,7 +473,6 @@
       "customBtn": "Özel",
       "customPlaceholder": "örn. 1500",
       "customSurcharge": "Ek ücret: +{amount} TL (%5, üst sınır 50 TL).",
-      "baseLine": "Temel şarkı (3 min × 2)",
       "tipSurchargeLine": "İthaf ek ücreti ({amount} TL × %5, üst sınır 50)",
       "totalUnlock": "Kilidi açma toplam",
       "recommended": "ÖNERİLEN",
@@ -482,7 +481,6 @@
     },
     "step5Demo": {
       "title": "5. Ücretsiz demo (30s)",
-      "sub": "Önce 30 saniyelik ücretsiz bir demo üretiriz. Beğenirsen tam şarkıyı (3 min × 2) açarsın.",
       "emailLabel": "📧 E-posta adresin (zorunlu — şarkıyı buraya gönderiyoruz)",
       "emailPlaceholder": "sen@email.com",
       "emailHint": "Sadece teslimat için kullanılır. Spam yok.",
@@ -496,7 +494,6 @@
       "sub": "Şarkın ({minutes} dk × 2 versiyon) ödeme onaylandığı ANDA üretilir. Sonucu e-postaya göndeririz, hazır olur olmaz burada da görürsün.",
       "emailLabel": "📧 E-posta adresin (zorunlu)",
       "emailSentTo": "✓ Şarkıyı şu adrese gönderiyoruz:",
-      "completeLine": "Tam şarkı (3 min × 2)",
       "tipLine": "İthaf ek ücreti {amount} {currency}",
       "promoLine": "Promo:",
       "totalLabel": "Toplam",

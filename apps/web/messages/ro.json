@@ -471,7 +471,6 @@
       "customBtn": "Custom",
       "customPlaceholder": "ex. 1500",
       "customSurcharge": "Suprataxă: +{amount} lei (5% capped la 50 lei).",
-      "baseLine": "Manea de bază (3 min × 2)",
       "tipSurchargeLine": "Suprataxă dedicație ({amount} lei × 5%, plafon 50)",
       "totalUnlock": "Total la deblocare",
       "recommended": "RECOMANDAT",
@@ -480,7 +479,6 @@
     },
     "step5Demo": {
       "title": "5. Demo gratuit (30s)",
-      "sub": "Generăm întâi un demo de 30s gratis. Dacă-ți place, deblochezi maneaua completă (3 min × 2).",
       "emailLabel": "📧 Email-ul tău (obligatoriu — îți trimitem maneaua aici)",
       "emailPlaceholder": "tu@email.ro",
       "emailHint": "Folosit doar pentru livrare. Fără spam.",
@@ -494,7 +492,6 @@
       "sub": "Maneaua ta ({minutes} min × 2 versiuni) se generează ÎN MOMENTUL în care plata e confirmată. Trimitem rezultatul pe email și-l vezi și aici imediat ce e gata.",
       "emailLabel": "📧 Email-ul tău (obligatoriu)",
       "emailSentTo": "✓ Trimitem maneaua la",
-      "completeLine": "Manea completă (3 min × 2)",
       "tipLine": "Suprataxă dedicație {amount} {currency}",
       "promoLine": "Promo:",
       "totalLabel": "Total",

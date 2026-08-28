@@ -7,7 +7,12 @@
  *  - song:        maneaua personalizată (toate pachetele)
  *  - instrumental: track instrumental separat
  *  - premiumPage:  pagină premium de ascultare (premium)
- *  - durationSec:  durata țintă a melodiei
+ *  - durationSec:  durata comunicată clientului („{minutes} min × 2 versiuni"
+ *                  la pasul de plată). NU e trimisă la Suno — payload-ul cererii
+ *                  conține doar customMode/instrumental/model/voce/prompt, iar
+ *                  durata reală se citește din răspuns (`it.duration`). E deci o
+ *                  valoare de afișare, iar piesele livrate ies mai lungi decât
+ *                  atât (măsurat pe fișiere reale: 4,5–8 min).
  *  - greetingClip: clip de urare AI (Veo) — setare; generarea vine mai târziu
  *  - deliveryLabel: copy de marketing pentru timpul de livrare (nu garantat tehnic)
  *
@@ -45,7 +50,7 @@ export const PACKAGES: Record<PackageTier, PackageDef> = {
     // de pachet pe care nu-l auzise niciodată, chiar în momentul plății.
     label: 'Standard',
     priceCents: 2999,
-    durationSec: 90,
+    durationSec: 180,
     instrumental: false,
     socialImage: false,
     video: false,
@@ -62,7 +67,7 @@ export const PACKAGES: Record<PackageTier, PackageDef> = {
     tier: 'plus',
     label: 'Plus',
     priceCents: 4999,
-    durationSec: 150,
+    durationSec: 240,
     instrumental: false,
     socialImage: false,
     video: false,
@@ -83,7 +88,7 @@ export const PACKAGES: Record<PackageTier, PackageDef> = {
     // Prețul de LISTĂ (99.99 lei). Site-urile de producție au override în
     // `site.packagePricesCents`; valoarea de aici e ce primește un site nou.
     priceCents: 9999,
-    durationSec: 150,
+    durationSec: 240,
     instrumental: false,
     socialImage: false,
     video: false,

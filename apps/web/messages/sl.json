@@ -473,7 +473,6 @@
       "customBtn": "Po meri",
       "customPlaceholder": "npr. 1500",
       "customSurcharge": "Doplačilo: +{amount} € (5%, zgornja meja 50 €).",
-      "baseLine": "Osnovna pesem (3 min × 2)",
       "tipSurchargeLine": "Doplačilo posvetilo ({amount} € × 5%, zgornja meja 50)",
       "totalUnlock": "Skupaj za odklepanje",
       "recommended": "PRIPOROČENO",
@@ -482,7 +481,6 @@
     },
     "step5Demo": {
       "title": "5. Brezplačni demo (30s)",
-      "sub": "Najprej generiramo brezplačni demo 30s. Če ti je všeč, odkleneš celotno pesem (3 min × 2).",
       "emailLabel": "📧 Tvoj email (obvezno — pošljemo pesem sem)",
       "emailPlaceholder": "ti@email.si",
       "emailHint": "Uporablja se samo za dostavo. Brez spama.",
@@ -496,7 +494,6 @@
       "sub": "Tvoja pesem ({minutes} min × 2 različici) se generira V TRENUTKU, ko je plačilo potrjeno. Rezultat pošljemo na email in ga vidiš tudi tukaj, takoj ko je pripravljen.",
       "emailLabel": "📧 Tvoj email (obvezno)",
       "emailSentTo": "✓ Pošljemo pesem na",
-      "completeLine": "Celotna pesem (3 min × 2)",
       "tipLine": "Doplačilo posvetilo {amount} {currency}",
       "promoLine": "Promo:",
       "totalLabel": "Skupaj",

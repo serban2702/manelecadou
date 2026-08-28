@@ -473,7 +473,6 @@
       "customBtn": "Po izboru",
       "customPlaceholder": "npr. 1500",
       "customSurcharge": "Doplata: +{amount} RSD (5%, plafon 50).",
-      "baseLine": "Osnovna pesma (3 min × 2)",
       "tipSurchargeLine": "Doplata posveta ({amount} RSD × 5%, plafon 50)",
       "totalUnlock": "Ukupno za otključavanje",
       "recommended": "PREPORUČENO",
@@ -482,7 +481,6 @@
     },
     "step5Demo": {
       "title": "5. Besplatni demo (30s)",
-      "sub": "Prvo generišemo besplatni demo od 30s. Ako ti se svidi, otključavaš celu pesmu (3 min × 2).",
       "emailLabel": "📧 Tvoj email (obavezno — šaljemo pesmu ovde)",
       "emailPlaceholder": "ti@email.rs",
       "emailHint": "Koristi se samo za isporuku. Bez spama.",
@@ -496,7 +494,6 @@
       "sub": "Tvoja pesma ({minutes} min × 2 verzije) se generiše U MOMENTU kada se plaćanje potvrdi. Šaljemo rezultat na email i vidiš ga i ovde čim bude gotov.",
       "emailLabel": "📧 Tvoj email (obavezno)",
       "emailSentTo": "✓ Šaljemo pesmu na",
-      "completeLine": "Cela pesma (3 min × 2)",
       "tipLine": "Doplata posveta {amount} {currency}",
       "promoLine": "Promo:",
       "totalLabel": "Ukupno",

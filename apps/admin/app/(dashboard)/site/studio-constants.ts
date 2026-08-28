@@ -61,7 +61,7 @@ export const PACKAGE_FLAG_DEFAULTS: Record<PackageTier, PackageFlagDefaults> = {
   basic: {
     instrumental: false,
     premiumPage: false,
-    durationSec: 90,
+    durationSec: 180,
     remakes: 1,
     collage: false,
     collagePhotoLimit: 0,
@@ -75,7 +75,7 @@ export const PACKAGE_FLAG_DEFAULTS: Record<PackageTier, PackageFlagDefaults> = {
   plus: {
     instrumental: false,
     premiumPage: false,
-    durationSec: 150,
+    durationSec: 240,
     remakes: 2,
     collage: true,
     collagePhotoLimit: 4,
@@ -89,7 +89,7 @@ export const PACKAGE_FLAG_DEFAULTS: Record<PackageTier, PackageFlagDefaults> = {
   premium: {
     instrumental: false,
     premiumPage: true,
-    durationSec: 150,
+    durationSec: 240,
     remakes: 3,
     collage: true,
     collagePhotoLimit: 15,
