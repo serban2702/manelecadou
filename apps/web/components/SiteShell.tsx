@@ -11,7 +11,6 @@ import { LangSwitcher } from './LangSwitcher';
 import { CountrySwitcher } from './CountrySwitcher';
 import { MyGenerationsCounter } from './MyGenerationsCounter';
 import { DemosPopup } from './DemosPopup';
-import { useSession } from '@/lib/providers';
 import { useSite } from '@/lib/site-context';
 import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
@@ -25,7 +24,6 @@ import { usePackages } from '@/experiences/use-packages';
 export function SiteShell({ children, hideStickyCta: _ignored }: { children: ReactNode; hideStickyCta?: boolean }) {
   const exp = useExperience();
   const pathname = usePathname();
-  const session = useSession();
   const tNav = useTranslations('nav');
   const tHeader = useTranslations('header');
   const tCommon = useTranslations('common');
@@ -172,15 +170,12 @@ export function SiteShell({ children, hideStickyCta: _ignored }: { children: Rea
                 „Meniu selectare limbă". Userii vor unul SAU niciunul. */}
             {site.langSwitcherEnabled === true && <CountrySwitcher />}
             <LangSwitcher />
-            {session.user ? (
-              <Link href={getPagePath(site.locale, 'cont')} className="lang-btn" style={{ textDecoration: 'none' }}>
-                👤 {session.user.email.split('@')[0]}
-              </Link>
-            ) : (
-              <Link href={getPagePath(site.locale, 'login')} className="lang-btn" style={{ textDecoration: 'none' }}>
-                {tNav('intra')}
-              </Link>
-            )}
+            {/*
+              Fără cont de client pe site-urile publice: login-ul există doar în
+              admin. Vizitatorul își regăsește comenzile prin identitatea de
+              vizitator („Manelele mele") și prin linkul direct din emailul de
+              livrare — vezi CLAUDE.md §18.3.2.
+            */}
           </div>
         </div>
       </header>

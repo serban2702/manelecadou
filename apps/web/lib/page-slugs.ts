@@ -25,10 +25,8 @@ export type PageKey =
   | 'cadou'
   | 'contact'
   | 'faq'
-  | 'cont'
   | 'manelele-mele'
-  | 'studio'
-  | 'login';
+  | 'studio';
 
 /** Numele folderului din `app/` (ruta canonică Next.js). */
 export const PAGE_CANONICAL: Record<PageKey, string> = {
@@ -42,10 +40,8 @@ export const PAGE_CANONICAL: Record<PageKey, string> = {
   cadou: 'cadou',
   contact: 'contact',
   faq: 'faq',
-  cont: 'cont',
   'manelele-mele': 'manelele-mele',
   studio: 'studio',
-  login: 'login',
 };
 
 /**
@@ -68,10 +64,8 @@ export const PAGE_SLUGS: Record<Locale, Record<PageKey, string>> = {
     cadou: 'cadou',
     contact: 'contact',
     faq: 'faq',
-    cont: 'cont',
     'manelele-mele': 'manelele-mele',
     studio: 'studio',
-    login: 'login',
   },
   bg: {
     terms: 'uslovia',
@@ -84,10 +78,8 @@ export const PAGE_SLUGS: Record<Locale, Record<PageKey, string>> = {
     cadou: 'podaruk',
     contact: 'kontakt',
     faq: 'vaprosi',
-    cont: 'profil',
     'manelele-mele': 'moite-pesni',
     studio: 'studio',
-    login: 'vhod',
   },
   sr: {
     terms: 'uslovi',
@@ -100,10 +92,8 @@ export const PAGE_SLUGS: Record<Locale, Record<PageKey, string>> = {
     cadou: 'poklon',
     contact: 'kontakt',
     faq: 'pitanja',
-    cont: 'nalog',
     'manelele-mele': 'moje-pesme',
     studio: 'studio',
-    login: 'prijava',
   },
   tr: {
     terms: 'sartlar',
@@ -116,10 +106,8 @@ export const PAGE_SLUGS: Record<Locale, Record<PageKey, string>> = {
     cadou: 'hediye',
     contact: 'iletisim',
     faq: 'sss',
-    cont: 'hesap',
     'manelele-mele': 'sarkilarim',
     studio: 'studio',
-    login: 'giris',
   },
   el: {
     terms: 'oroi',
@@ -132,10 +120,8 @@ export const PAGE_SLUGS: Record<Locale, Record<PageKey, string>> = {
     cadou: 'doro',
     contact: 'epikoinonia',
     faq: 'syxnes-erotiseis',
-    cont: 'logariasmos',
     'manelele-mele': 'ta-tragoudia-mou',
     studio: 'studio',
-    login: 'syndesi',
   },
   hr: {
     terms: 'uvjeti',
@@ -148,10 +134,8 @@ export const PAGE_SLUGS: Record<Locale, Record<PageKey, string>> = {
     cadou: 'poklon',
     contact: 'kontakt',
     faq: 'pitanja',
-    cont: 'racun',
     'manelele-mele': 'moje-pjesme',
     studio: 'studio',
-    login: 'prijava',
   },
   sl: {
     terms: 'pogoji',
@@ -164,10 +148,8 @@ export const PAGE_SLUGS: Record<Locale, Record<PageKey, string>> = {
     cadou: 'darilo',
     contact: 'kontakt',
     faq: 'vprasanja',
-    cont: 'racun',
     'manelele-mele': 'moje-pesmi',
     studio: 'studio',
-    login: 'prijava',
   },
   bs: {
     terms: 'uslovi',
@@ -180,10 +162,8 @@ export const PAGE_SLUGS: Record<Locale, Record<PageKey, string>> = {
     cadou: 'poklon',
     contact: 'kontakt',
     faq: 'pitanja',
-    cont: 'racun',
     'manelele-mele': 'moje-pjesme',
     studio: 'studio',
-    login: 'prijava',
   },
 };
 

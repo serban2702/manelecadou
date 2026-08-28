@@ -475,20 +475,10 @@ export const api = {
       body: JSON.stringify({ email }),
     }),
   authMe: () => request<MeUser | null>('/auth/me'),
-  gdprRequest: (type: 'export' | 'delete', reason?: string) =>
-    request<{ ok: true }>('/auth/gdpr/request', {
-      method: 'POST',
-      body: JSON.stringify({ type, reason }),
-    }),
-  requestMagicLink: (email: string) =>
-    request<{ ok: true }>('/auth/magic-link/request', {
-      method: 'POST',
-      body: JSON.stringify({ email }),
-    }),
-  consumeMagicLink: (token: string) =>
-    request<{ accessToken: string; userId: string }>(
-      `/auth/magic-link/consume?token=${encodeURIComponent(token)}`,
-    ),
+  // Fără `requestMagicLink` / `consumeMagicLink` / `gdprRequest`: pe site-urile
+  // publice nu mai există cont de client. API-ul respinge oricum magic link-urile
+  // cerute de pe alt host decât admin-ul, iar cererile GDPR merg pe adresa din
+  // politica de confidențialitate.
   suggestMessage: (input: {
     style: string;
     occasion: string;

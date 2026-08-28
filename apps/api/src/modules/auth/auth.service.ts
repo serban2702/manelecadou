@@ -12,6 +12,7 @@ import { DataSource, Repository } from 'typeorm';
 import { randomBytes, createHash } from 'crypto';
 
 import { MagicLink } from './magic-link.entity';
+import { isAdminHost } from './admin-host';
 import { UsersService } from '../users/users.service';
 import { User } from '../users/user.entity';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
@@ -62,12 +63,11 @@ export class AuthService {
       }),
     );
 
-    // Construim link-ul către domeniul site-ului curent (nu APP_URL global) — magic
-    // link-ul trebuie consumat pe același site pe care a fost emis.
-    // Excepție: dacă request-ul vine de pe Host-ul admin (admin.<domain>),
-    // link-ul trebuie să întoarcă userul în admin app, nu pe site-ul public.
+    // Link-ul duce mereu în admin: cererile de pe host-uri publice sunt respinse
+    // în controller (`isAdminHost`). `site` rămâne necesar pentru branding-ul
+    // emailului și pentru expeditor.
     const site = siteId ? await this.sites.findById(siteId) : null;
-    const baseUrl = this.computeLoginBaseUrl(site?.domain, requestHost);
+    const baseUrl = this.computeLoginBaseUrl(requestHost);
     const link = `${baseUrl}/login/verify?token=${token}`;
 
     // DEV ONLY — log link-ul în consolă ca să poți testa local fără email real
@@ -253,34 +253,31 @@ export class AuthService {
     return `https://${domain}`;
   }
 
+  /** Vezi `admin-host.ts` — regula e acolo, ca să fie testabilă fără Nest. */
+  isAdminHost(requestHost: string | null): boolean {
+    return isAdminHost(requestHost, this.config.get<string>('ADMIN_URL'));
+  }
+
   /**
-   * Decide base URL pentru magic link.
-   * Dacă request-ul vine de pe admin host (ex. admin.manelecadou.ro sau localhost:1505) → ADMIN_URL.
-   * Altfel → URL-ul site-ului curent (pentru site-uri multi-tenant).
+   * Base URL pentru magic link. Se apelează doar de pe host-uri de admin
+   * (vezi `isAdminHost`), deci întoarce mereu un URL de admin: ADMIN_URL când
+   * host-ul e chiar acela, altfel chiar host-ul cerut — `admin.<tenant>` e servit
+   * tot de aplicația de admin, iar linkul trebuie să întoarcă omul unde a plecat.
    */
-  private computeLoginBaseUrl(
-    siteDomain: string | undefined,
-    requestHost: string | null,
-  ): string {
+  private computeLoginBaseUrl(requestHost: string | null): string {
     const adminUrl = this.config.get<string>('ADMIN_URL');
     if (adminUrl && requestHost) {
       try {
-        // Comparăm cu hostname (fără port) — în dev request.host = "localhost" iar
-        // ADMIN_URL = "http://localhost:1505" → host = "localhost:1505". Split pe ':'
-        // ca să nu eșueze matchul localhost ↔ localhost:1505.
-        const adminUrlObj = new URL(adminUrl);
-        const adminHost = adminUrlObj.host.toLowerCase();
-        const adminHostname = adminUrlObj.hostname.toLowerCase();
-        const reqHostFull = requestHost.toLowerCase();
-        const reqHostname = reqHostFull.split(':')[0];
-        if (reqHostname === adminHostname || reqHostFull === adminHost) {
+        if (requestHost.toLowerCase() === new URL(adminUrl).host.toLowerCase()) {
           return adminUrl;
         }
       } catch {
-        // ignore — fallback la site URL
+        // ignore — cădem pe host-ul cerut
       }
+      const proto = this.config.get<string>('NODE_ENV') === 'production' ? 'https' : 'http';
+      return `${proto}://${requestHost}`;
     }
-    return this.siteAppUrl(siteDomain);
+    return adminUrl ?? this.siteAppUrl(undefined);
   }
 
   async submitGdprRequest(

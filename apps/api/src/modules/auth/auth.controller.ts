@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Headers,
+  NotFoundException,
   Post,
   Query,
   UseGuards,
@@ -26,6 +27,20 @@ export class AuthController {
     private readonly users: UsersService,
   ) {}
 
+  /**
+   * Login-ul există DOAR pe host-urile de admin.
+   *
+   * Ascunderea butonului din header n-ar fi însemnat nimic: endpoint-ul e public,
+   * deci oricine putea cere un magic link pentru orice email de pe orice domeniu
+   * și primea un JWT de user. Poarta trebuie să fie aici. `404`, nu `403`, ca să
+   * nu confirmăm existența rutei de pe un domeniu public.
+   */
+  private assertAdminHost(host: string | undefined, forwardedHost: string | undefined) {
+    if (!this.auth.isAdminHost(forwardedHost || host || null)) {
+      throw new NotFoundException();
+    }
+  }
+
   @Throttle({ short: { limit: 1, ttl: 10_000 }, medium: { limit: 20, ttl: 3_600_000 } })
   @Post('magic-link/request')
   async request(
@@ -36,6 +51,7 @@ export class AuthController {
     @Headers('x-forwarded-host') forwardedHost: string | undefined,
     @CurrentSiteId() siteId: string | null,
   ) {
+    this.assertAdminHost(host, forwardedHost);
     return this.auth.requestMagicLink(
       body.email,
       guestId ?? null,
@@ -48,8 +64,11 @@ export class AuthController {
   @Get('magic-link/consume')
   async consume(
     @Query('token') token: string,
+    @Headers('host') host: string | undefined,
+    @Headers('x-forwarded-host') forwardedHost: string | undefined,
     @CurrentSiteId() siteId: string | null,
   ) {
+    this.assertAdminHost(host, forwardedHost);
     return this.auth.consumeMagicLink(token, siteId);
   }
 
