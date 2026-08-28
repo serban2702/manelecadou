@@ -5,7 +5,11 @@ RUN apk add --no-cache libc6-compat
 RUN corepack enable && corepack prepare pnpm@9.12.3 --activate
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+# `--prod=false`: instalează ÎNTOTDEAUNA devDependencies, indiferent de NODE_ENV.
+# Fără el, o platformă care injectează `NODE_ENV=production` ca build arg (Coolify
+# o face pentru toate variabilele, în toate stage-urile) face pnpm să sară peste
+# devDeps, iar build-ul pică pe lipsa lui nest/next/typescript.
+RUN pnpm install --frozen-lockfile --prod=false
 
 FROM node:22-alpine AS builder
 RUN corepack enable && corepack prepare pnpm@9.12.3 --activate
