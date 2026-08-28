@@ -169,6 +169,10 @@ export class AdminController {
     const recentRow = await recentQb.getRawOne<{ sum: string }>();
     const revenue7dCents = Number(recentRow?.sum ?? 0);
 
+    // LEGACY. Trialul demo de 30s a fost scos în iunie 2026: `type='demo'` nu mai
+    // primește rânduri noi, iar `paidUnlocked` crește la fiecare comandă — raportul
+    // depășise 900%. Câmpul rămâne doar ca să nu rupă consumatori vechi; dashboard-ul
+    // arată acum checkout → plată (marketing-summary.checkoutConv).
     const conversionRate = demos > 0 ? Math.round((paidUnlocked / demos) * 1000) / 10 : 0;
 
     return {
@@ -327,6 +331,7 @@ export class AdminController {
         running: Number(gk.running) || 0,
         paidUnlocked,
       },
+      // LEGACY — vezi comentariul din `stats`. Nu-l folosi pentru decizii.
       conversionRate: demos > 0 ? Math.round((paidUnlocked / demos) * 1000) / 10 : 0,
       series,
       bySite,

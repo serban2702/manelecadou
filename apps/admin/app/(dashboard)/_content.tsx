@@ -200,13 +200,20 @@ export default function AdminDashboard() {
               big
               sub={`${stats.revenue.failedCount} plăți eșuate · ${stats.revenue.refundedCount} refund`}
             />
+            {/*
+              NU „demo → paid": trialul demo de 30s a fost scos în iunie 2026, deci
+              `generations.type='demo'` a înghețat la câteva zeci de rânduri vechi,
+              în timp ce `paidUnlocked` crește la fiecare comandă. Raportul dintre
+              ele trecuse de 900% — un număr care arată ca o rată de conversie, dar
+              nu măsoară nimic. Pasul real de pâlnie care a rămas e checkout → plată.
+            */}
             <Stat
-              label="Conversie demo → paid"
-              value={`${stats.conversionRate}%`}
+              label="Conversie checkout → plată"
+              value={mkt ? `${mkt.checkoutConv.toLocaleString('ro-RO', { maximumFractionDigits: 2 })}%` : '…'}
               icon={<Activity />}
               tone="info"
               big
-              sub={`${stats.generations.paidUnlocked} unlocks din ${stats.generations.demos} demo`}
+              sub={mkt ? `${mkt.purchases} plăți din ${mkt.checkoutsInitiated} checkout-uri` : 'se calculează'}
             />
           </div>
 
