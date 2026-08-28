@@ -23,6 +23,17 @@
   color: var(--cadou-ink);
   font-family: var(--font-outfit), Satoshi, system-ui, sans-serif;
 }
+
+/* După regula de mai sus — la specificitate egală câștigă ultima declarată. */
+@supports (background-image: image-set(url("x.avif") type("image/avif"))) {
+  .cadou-root {
+    background-image: image-set(
+      url("/cadou/pattern.avif") type("image/avif"),
+      url("/cadou/pattern.webp") type("image/webp"),
+      url("/cadou/pattern.jpg") type("image/jpeg")
+    );
+  }
+}
 .cadou-root h1, .cadou-root h2, .cadou-root h3, .cadou-root .cadou-serif {
   font-family: var(--font-outfit), Satoshi, sans-serif;
   letter-spacing: -0.03em;
@@ -111,6 +122,22 @@
 .cadou-hero-scene {
   position: absolute; inset: 0; z-index: 0;
   background: #1a1a1a center/cover no-repeat;
+  /* Fallback pentru browsere fără image-set(): declarația de mai jos, din
+     @supports, e ignorată în întregime și rămâne asta. */
+  background-image: url("/cadou/hero.jpg");
+}
+
+/* Fundalurile nu pot fi servite prin <picture>, deci negocierea de format se
+   face aici. AVIF taie hero-ul de la 283K la 80K, cardurile de stil de la ~130K
+   la ~31K fiecare. Variantele sunt pregenerate — vezi scripts/optimize-images.mjs. */
+@supports (background-image: image-set(url("x.avif") type("image/avif"))) {
+  .cadou-hero-scene {
+    background-image: image-set(
+      url("/cadou/hero.avif") type("image/avif"),
+      url("/cadou/hero.webp") type("image/webp"),
+      url("/cadou/hero.jpg") type("image/jpeg")
+    );
+  }
 }
 .cadou-hero-scene::after {
   content: ''; position: absolute; inset: 0;
@@ -327,7 +354,16 @@ button.cadou-style, [role='button'].cadou-style {
   position: relative; display: block; border-radius: 18px; overflow: hidden;
   min-height: 220px; text-decoration: none; color: #fff;
   background: #1a1a1a center/cover no-repeat;
+  background-image: var(--art);
   box-shadow: 0 12px 28px rgba(26,26,26,0.12);
+}
+
+/* Trebuie să vină DUPĂ regula de mai sus: aceeași specificitate, deci câștigă
+   ultima declarată. Scrisă mai devreme, `background-image: var(--art)` ar fi
+   suprascris-o și cardurile ar fi servit tăcut JPEG-ul, deși variantele există.
+   `--art-set` vine din StyleCard; `--art` rămâne fallback-ul. */
+@supports (background-image: image-set(url("x.avif") type("image/avif"))) {
+  .cadou-style { background-image: var(--art-set, var(--art)); }
 }
 .cadou-style::after {
   content: ''; position: absolute; inset: 0;

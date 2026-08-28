@@ -10,6 +10,7 @@ import { useExperienceCatalog } from '../use-experience-catalog';
 import { CadouShell } from './Shell';
 import { cadouStyleArt } from './style-art';
 import { useCadouFromName } from './from-name';
+import { Picture } from '@/components/Picture';
 
 const IN_PROGRESS = new Set([
   'pending', 'queued', 'writing_lyrics', 'checking_lyrics', 'generating_audio', 'running',
@@ -121,8 +122,7 @@ function CadouMineCard({ g }: { g: GenerationDto }) {
 
   return (
     <Link href={href} className="cadou-mine-card">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img className="cadou-mine-cover" src={cover} alt="" />
+      <Picture className="cadou-mine-cover" src={cover} alt="" />
       <div className="cadou-mine-body">
         <div className="cadou-mine-top">
           <div className="ttl">{t('cardFor', { name })}</div>

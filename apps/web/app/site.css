@@ -279,6 +279,17 @@ body::before {
   opacity: 0.08;
   mix-blend-mode: overlay;
 }
+
+/* După regula de mai sus — la specificitate egală câștigă ultima declarată. */
+@supports (background-image: image-set(url("x.avif") type("image/avif"))) {
+  body::before {
+    background-image: image-set(
+      url("/background.avif") type("image/avif"),
+      url("/background.webp") type("image/webp"),
+      url("/background.jpg") type("image/jpeg")
+    );
+  }
+}
 body > * { position: relative; z-index: 1; }
 
 /* Cu 12 stiluri, 2 coloane × 6 rânduri devine prea înalt pe tablet — 3 coloane de la 700px */

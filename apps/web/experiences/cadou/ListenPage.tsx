@@ -11,6 +11,7 @@ import { useExperienceCatalog } from '../use-experience-catalog';
 import { CadouShell } from './Shell';
 import { CadouDemoPlayer } from './DemoPlayer';
 import { cadouArtForDemo, cadouStyleIdFromTitle } from './style-art';
+import { Picture } from '@/components/Picture';
 
 export default function CadouListenPage() {
   const site = useSite();
@@ -114,8 +115,7 @@ function CadouDemoCard({ demo }: { demo: SiteDemoDto }) {
   return (
     <article className="cadou-listen-card">
       <div className="cadou-listen-head">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="cadou-listen-cover" src={cover} alt="" />
+        <Picture className="cadou-listen-cover" src={cover} alt="" />
         <div className="cadou-listen-meta">
           <div className="ttl">{demo.title}</div>
           {dedic && <div className="who">{dedic}</div>}

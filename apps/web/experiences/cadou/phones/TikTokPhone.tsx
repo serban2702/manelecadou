@@ -101,7 +101,14 @@ export function TikTokPhone({
         muted
         loop
         playsInline
-        preload={autoPlayMuted ? 'auto' : 'metadata'}
+        preload={
+          /* `none` până când clipul chiar trebuie să ruleze. Înainte era `auto`
+             ori de câte ori telefonul era pe autoplay, adică din primul moment
+             al paginii: două clipuri se descărcau integral înainte ca
+             vizitatorul să fi derulat până la ele. Posterul se vede oricum, iar
+             `+faststart` din scripts/optimize-videos.mjs face pornirea promptă. */
+          playing ? 'auto' : 'none'
+        }
         onPlay={() => setLive(true)}
         onPlaying={() => setLive(true)}
         onPause={() => setLive(false)}
@@ -149,7 +156,7 @@ export function TikTokPhone({
       <div className="tt-rail">
         <div className="tt-av">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={avatar} alt="" />
+          <img src={avatar} alt="" loading="lazy" decoding="async" />
           <span className="tt-av-plus"><IconPlus width={14} height={14} /></span>
         </div>
         <RailBtn
@@ -173,7 +180,7 @@ export function TikTokPhone({
         <div className="tt-disc-wrap">
           <div className={`tt-disc${live ? ' disc-spin' : ''}`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={cover} alt="" />
+            <img src={cover} alt="" loading="lazy" decoding="async" />
           </div>
           <span className="tt-disc-hole" />
         </div>

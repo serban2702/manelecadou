@@ -8,6 +8,7 @@ import { api, ApiError, type GenerationDto } from '@/lib/api';
 import { CadouShell } from './Shell';
 import { useCadouFromName } from './from-name';
 import { cadouClipTracks, useCadouTrackLabels } from './video-tracks';
+import { Picture } from '@/components/Picture';
 
 /** Plafon folosit doar când comanda nu vine cu drepturi în payload. */
 const DEFAULT_MAX_IMAGES = 15;
@@ -219,8 +220,7 @@ function CadouVideoInner() {
                 {previews.length > 0 && (
                   <div className="cadou-video-thumbs">
                     {previews.map((src, i) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img key={src + i} src={src} alt={t('thumbAlt', { index: i + 1 })} />
+                      <Picture key={src + i} src={src} alt={t('thumbAlt', { index: i + 1 })} />
                     ))}
                   </div>
                 )}

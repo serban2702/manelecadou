@@ -756,6 +756,45 @@ cd apps/web && pnpm run check:messages   # iese cu 1 dacă lipsește ceva
 
 Rulează-l după orice cheie nouă.
 
+### 11.6 Imagini și video statice
+
+Media din `public/` **nu** trece prin `next/image`: o parte sunt `background-image`
+în CSS, unde nu ajunge, iar optimizarea la runtime ar costa CPU pe container la
+fiecare vizitator. În schimb, variantele sunt pregenerate și commit-uite.
+
+```bash
+cd apps/web
+pnpm run images         # AVIF + WebP, și recomprimă JPEG-ul sursă
+pnpm run images:check   # doar verifică (exit 1 dacă manifestul nu e la zi)
+pnpm run videos         # recomprimă mp4-urile
+```
+
+**Adaugi o imagine în `public/`? Rulează `pnpm run images` și commit-uiește tot
+ce produce** — sursa recomprimată, variantele și manifestul.
+
+`scripts/optimize-images.mjs` face două lucruri, în ordinea asta:
+
+1. **Variante AVIF + WebP**, pentru locurile unde browserul poate alege:
+   `<picture>` (componenta `components/Picture.tsx`) și `image-set()` în CSS.
+2. **Recomprimă JPEG-ul sursă pe loc** (progresiv, q80). Pasul ăsta există pentru
+   locurile care **nu pot** negocia formatul: `<video poster>`, `og:image`,
+   browsere fără AVIF. De-aia se face după pasul 1 — ca variantele să plece din
+   sursa nealterată.
+
+`lib/optimized-images.json` ține minte, per imagine, dimensiunile intrinseci și
+mărimile. Nu e o optimizare, ci o necesitate: într-un `<picture>`, browserul
+alege `<source>`-ul după `type`, **nu** după existența fișierului. Un AVIF
+declarat dar lipsă nu cade elegant pe JPEG — lasă imaginea ruptă. `Picture` emite
+`<source>` doar pentru ce e în manifest, iar sursele venite din baza de date
+(`style.artUrl`, coperți din admin) devin automat un `<img>` simplu.
+Dimensiunile din manifest completează `width`/`height`, ca layoutul să nu sară.
+
+Mărimea JPEG-ului înregistrată în manifest e și marcajul de idempotență: dacă
+fișierul de pe disc are exact mărimea aceea, e deja procesat. Fără asta, fiecare
+rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
+
+---
+
 ---
 
 ## 12. Gotchas / Lecții
@@ -781,6 +820,9 @@ Rulează-l după orice cheie nouă.
 17. **Pe Coolify nu mai există backup automat pre-deploy.** Era în `deploy.sh`, pe Ionos. Înainte de un deploy cu schimbare de schemă: `deploy/prod.sh dump` (§6.4).
 18. **Adminul e un SPA cu o singură rută** — un `page.tsx` nou sub `(dashboard)` nu se vede niciodată. Se înregistrează în catch-all + meniu (§19.3).
 19. **Când muți infrastructura, verifică skill-urile și comentariile din cod.** La cutover, toate cele 7 skill-uri de operare au rămas să interogheze serverul vechi — continuau să „funcționeze", pe date moarte.
+20. **`background` (proprietatea scurtă) resetează `background-image`.** Dacă scrii `background: #1a1a1a center/cover` și pe urmă `background-image: …`, ordinea contează — iar la specificitate egală câștigă ultima declarație din fișier. Un `@supports` cu `image-set()` scris ÎNAINTE de regula de bază e suprascris tăcut: pagina arată perfect și servește JPEG-ul, deși variantele AVIF există. A fost cazul lui `.cadou-style`; de-aia blocul `@supports` vine acum după regula de bază, cu un comentariu care spune de ce.
+21. **`preload="auto"` pe `<video>` descarcă fișierul întreg imediat.** Telefoanele din hero-ul cadou porneau așa: două clipuri, ~3,5 MB, înainte ca vizitatorul să fi derulat până la ele. Acum `preload` urmează `playing`; posterul se vede oricum. Perechea obligatorie e `+faststart` la encodare (indexul `moov` la început), altfel până și `preload="metadata"` poate trage aproape tot fișierul.
+22. **Când reușești să negociezi formatul într-un loc dar nu în altul, verifică dacă nu descarci ambele.** Imaginile din ramele de telefon folosesc exact fișierul din `<video poster>`. Trecute pe `<picture>` cu AVIF, ar fi adus o a doua descărcare în loc de o economie, fiindcă `poster` rămâne JPEG. Acolo câștigul vine din recomprimarea sursei, nu din format.
 ---
 
 ## 13. Endpoint-uri utile

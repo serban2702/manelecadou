@@ -26,6 +26,7 @@ import { useCadouFromName } from './from-name';
 import { clearCadouWizard, readCadouWizard } from './wizard-storage';
 import { useExperienceCatalog } from '../use-experience-catalog';
 import { usePackage } from '@/experiences/use-packages';
+import { Picture } from '@/components/Picture';
 
 const IN_PROGRESS = new Set([
   'pending', 'queued', 'writing_lyrics', 'checking_lyrics', 'generating_audio', 'running',
@@ -131,8 +132,7 @@ function CadouWaitCard({
           />
         </svg>
         <div className="cadou-wait-disc">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={cover} alt="" />
+          <Picture src={cover} alt="" priority />
         </div>
       </div>
       <div className="cadou-wait-time" aria-label={t('waitRemaining', { time: fmtRemain(remainRound) })}>
@@ -672,8 +672,7 @@ function CadouSongInner() {
                     defaultOpen={last !== 'play'}
                   >
                     <div className="cadou-song-play-head">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={cover} alt="" />
+                      <Picture src={cover} alt="" />
                       <div>
                         <div className="ttl">{t('forName', { name: titleName })}</div>
                         <div className="who">{from ? t('fromName', { from }) : t('personalized')}</div>

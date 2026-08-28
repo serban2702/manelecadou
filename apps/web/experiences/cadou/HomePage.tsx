@@ -15,6 +15,7 @@ import { CadouPackGrid } from './PackCard';
 import { usePackages } from '@/experiences/use-packages';
 import { CadouStyleCard, useCadouStylePreview } from './StyleCard';
 import { useExperienceCatalog } from '../use-experience-catalog';
+import { Picture } from '@/components/Picture';
 
 /** Un rând din banda „Recent generate" (`cadou.home.recent`). */
 type CadouRecent = { name: string; style: string };
@@ -100,11 +101,9 @@ export default function CadouHomePage() {
       <Suspense fallback={null}><CadouStripeCancelBounce /></Suspense>
       <div className="cadou-wrap">
         <section className="cadou-hero-card">
-          <div
-            className="cadou-hero-scene"
-            style={{ backgroundImage: "url('/cadou/hero.jpg')" }}
-            aria-hidden
-          />
+          {/* Imaginea vine din CSS (.cadou-hero-scene), ca să poată fi servită
+              AVIF/WebP prin image-set — un stil inline n-ar permite fallback. */}
+          <div className="cadou-hero-scene" aria-hidden />
           <div className="cadou-hero-left">
             <div className="cadou-kicker">{t('heroKicker')}</div>
             <h1 className="cadou-gold-text">{t('heroTitle')}</h1>
@@ -212,8 +211,7 @@ export default function CadouHomePage() {
         </section>
 
         <section className="cadou-reaction">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/cadou/reaction.jpg" alt="" />
+          <Picture src="/cadou/reaction.jpg" alt="" width={1280} height={720} />
           <div>
             <div className="cadou-kicker">{t('reactionKicker')}</div>
             <h2>{t('reactionTitle')}</h2>

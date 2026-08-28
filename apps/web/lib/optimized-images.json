@@ -1,0 +1,258 @@
+{
+  "/background.jpg": {
+    "w": 500,
+    "h": 500,
+    "bytes": 45527,
+    "avif": 30956,
+    "webp": 36730,
+    "source": 111984
+  },
+  "/cadou/hero.jpg": {
+    "w": 1280,
+    "h": 720,
+    "bytes": 156846,
+    "avif": 81461,
+    "webp": 111890,
+    "source": 289656
+  },
+  "/cadou/pattern.jpg": {
+    "w": 720,
+    "h": 720,
+    "bytes": 138435,
+    "avif": 73573,
+    "webp": 113816,
+    "source": 242856
+  },
+  "/cadou/reaction.jpg": {
+    "w": 1280,
+    "h": 720,
+    "bytes": 139627,
+    "avif": 66542,
+    "webp": 88030,
+    "source": 253346
+  },
+  "/cadou/reactions/stills/birt.jpg": {
+    "w": 506,
+    "h": 900,
+    "bytes": 74588,
+    "avif": 36144,
+    "webp": 46708,
+    "source": 130945
+  },
+  "/cadou/reactions/stills/iubire.jpg": {
+    "w": 506,
+    "h": 900,
+    "bytes": 66784,
+    "avif": 31798,
+    "webp": 40954,
+    "source": 116411
+  },
+  "/cadou/reactions/stills/jale.jpg": {
+    "w": 506,
+    "h": 900,
+    "bytes": 73038,
+    "avif": 37884,
+    "webp": 48622,
+    "source": 130942
+  },
+  "/cadou/reactions/stills/modern.jpg": {
+    "w": 506,
+    "h": 900,
+    "bytes": 53085,
+    "avif": 24626,
+    "webp": 28568,
+    "source": 95173
+  },
+  "/cadou/reactions/stills/nunta.jpg": {
+    "w": 506,
+    "h": 900,
+    "bytes": 74399,
+    "avif": 35662,
+    "webp": 48390,
+    "source": 131712
+  },
+  "/cadou/reactions/stills/opulenta.jpg": {
+    "w": 506,
+    "h": 900,
+    "bytes": 71709,
+    "avif": 33298,
+    "webp": 45140,
+    "source": 125684
+  },
+  "/cadou/reactions/stills/oriental.jpg": {
+    "w": 506,
+    "h": 900,
+    "bytes": 74870,
+    "avif": 36371,
+    "webp": 48542,
+    "source": 130525
+  },
+  "/cadou/reactions/stills/pahar.jpg": {
+    "w": 506,
+    "h": 900,
+    "bytes": 69869,
+    "avif": 33683,
+    "webp": 42424,
+    "source": 122749
+  },
+  "/cadou/reactions/thumbs/v1.jpg": {
+    "w": 400,
+    "h": 736,
+    "bytes": 49834,
+    "avif": 29549,
+    "webp": 38656,
+    "source": 49834
+  },
+  "/cadou/reactions/thumbs/v2.jpg": {
+    "w": 400,
+    "h": 736,
+    "bytes": 39818,
+    "avif": 24730,
+    "webp": 30194,
+    "source": 39818
+  },
+  "/cadou/reactions/thumbs/v3.jpg": {
+    "w": 400,
+    "h": 736,
+    "bytes": 43058,
+    "avif": 26248,
+    "webp": 31560,
+    "source": 43058
+  },
+  "/cadou/reactions/thumbs/v4.jpg": {
+    "w": 400,
+    "h": 736,
+    "bytes": 46243,
+    "avif": 29215,
+    "webp": 35868,
+    "source": 46243
+  },
+  "/cadou/reactions/thumbs/v5.jpg": {
+    "w": 400,
+    "h": 736,
+    "bytes": 47059,
+    "avif": 27701,
+    "webp": 35918,
+    "source": 47059
+  },
+  "/cadou/reactions/thumbs/v6.jpg": {
+    "w": 400,
+    "h": 736,
+    "bytes": 27745,
+    "avif": 18076,
+    "webp": 19682,
+    "source": 27745
+  },
+  "/cadou/reactions/thumbs/v7.jpg": {
+    "w": 400,
+    "h": 736,
+    "bytes": 46168,
+    "avif": 28069,
+    "webp": 34858,
+    "source": 46168
+  },
+  "/cadou/reactions/thumbs/v8.jpg": {
+    "w": 400,
+    "h": 736,
+    "bytes": 44870,
+    "avif": 26318,
+    "webp": 33776,
+    "source": 44870
+  },
+  "/cadou/styles/clasic.jpg": {
+    "w": 760,
+    "h": 506,
+    "bytes": 57480,
+    "avif": 27045,
+    "webp": 36358,
+    "source": 118866
+  },
+  "/cadou/styles/comerciala.jpg": {
+    "w": 760,
+    "h": 506,
+    "bytes": 86168,
+    "avif": 46168,
+    "webp": 66246,
+    "source": 177780
+  },
+  "/cadou/styles/iubire.jpg": {
+    "w": 760,
+    "h": 506,
+    "bytes": 65470,
+    "avif": 32039,
+    "webp": 45954,
+    "source": 136237
+  },
+  "/cadou/styles/kuchek.jpg": {
+    "w": 760,
+    "h": 506,
+    "bytes": 74533,
+    "avif": 41114,
+    "webp": 54096,
+    "source": 158404
+  },
+  "/cadou/styles/modern.jpg": {
+    "w": 760,
+    "h": 506,
+    "bytes": 59475,
+    "avif": 29383,
+    "webp": 39814,
+    "source": 125601
+  },
+  "/cadou/styles/opulenta.jpg": {
+    "w": 760,
+    "h": 506,
+    "bytes": 61254,
+    "avif": 31252,
+    "webp": 42800,
+    "source": 126775
+  },
+  "/cadou/styles/oriental.jpg": {
+    "w": 760,
+    "h": 506,
+    "bytes": 58200,
+    "avif": 30772,
+    "webp": 38852,
+    "source": 124265
+  },
+  "/cadou/styles/pahar.jpg": {
+    "w": 760,
+    "h": 506,
+    "bytes": 75317,
+    "avif": 37917,
+    "webp": 54476,
+    "source": 155517
+  },
+  "/cadou/styles/romantica.jpg": {
+    "w": 760,
+    "h": 506,
+    "bytes": 60823,
+    "avif": 33765,
+    "webp": 41340,
+    "source": 130205
+  },
+  "/cadou/styles/tallava.jpg": {
+    "w": 760,
+    "h": 506,
+    "bytes": 60139,
+    "avif": 32038,
+    "webp": 38868,
+    "source": 128589
+  },
+  "/cadou/styles/trapanele.jpg": {
+    "w": 760,
+    "h": 506,
+    "bytes": 69945,
+    "avif": 36041,
+    "webp": 48466,
+    "source": 145453
+  },
+  "/cadou/styles/trompeta.jpg": {
+    "w": 760,
+    "h": 506,
+    "bytes": 68634,
+    "avif": 34646,
+    "webp": 44784,
+    "source": 141207
+  }
+}

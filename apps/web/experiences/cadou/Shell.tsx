@@ -15,6 +15,7 @@ import { getPagePath } from '@/lib/page-slugs';
 import { useCadouFromPrice } from './from-price';
 import { openDemosModal, useWizardReachedPackage } from '@/lib/wizard';
 import './theme.css';
+import { Picture } from '@/components/Picture';
 
 // Identic cu `components/SiteShell.tsx` (decizie 2026-05-26): marketing cookies
 // active din prima secundă, fără prompt. Pentru re-activare, scoate constanta
@@ -123,8 +124,8 @@ export function CadouShell({ children }: { children: ReactNode }) {
       </div>
       <header className="cadou-header">
         <Link href="/" className="cadou-brand">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={logo} alt="" />
+          {/* Logoul e în primul ecran: se încarcă imediat, nu amânat. */}
+          <Picture src={logo} alt="" priority />
           <span>{site.name}</span>
         </Link>
         <nav className="cadou-nav">{nav.map(renderLink)}</nav>

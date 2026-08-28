@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import type { SiteStyleEntry } from '@/lib/site-shared';
 import { useSamplePreview } from '@/lib/use-sample-preview';
 import { cadouStyleArt } from './style-art';
+import { cssImageSet } from '@/lib/static-image';
 
 export function useCadouStylePreview() {
   const [playing, setPlaying] = useState<string | null>(null);
@@ -80,7 +81,16 @@ export function CadouStyleCard({
     </>
   );
 
-  const bg = { backgroundImage: `url(${cadouStyleArt(style.id, style.artUrl)})` };
+  // Două variabile, fiindcă un stil inline nu poate avea două declarații ale
+  // aceleiași proprietăți: `--art` e fallback-ul (URL simplu), `--art-set` e
+  // varianta cu AVIF/WebP, folosită doar sub @supports. Pentru artUrl venit din
+  // baza de date, `cssImageSet` întoarce tot un url() simplu — nu inventăm
+  // variante pentru fișiere care n-au fost pregenerate.
+  const art = cadouStyleArt(style.id, style.artUrl);
+  const bg = {
+    '--art': `url("${art}")`,
+    '--art-set': cssImageSet(art),
+  } as CSSProperties;
 
   if (href) {
     return (

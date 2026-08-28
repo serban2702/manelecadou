@@ -30,7 +30,6 @@ export function InstagramPhone({
   time,
   playing,
   onToggle,
-  autoPlayMuted = false,
   muted = true,
   onBindVideo,
   onUnmute,
@@ -40,6 +39,8 @@ export function InstagramPhone({
   /** INTENȚIA de redare. Ce se vede vine din evenimentele reale ale `<video>`. */
   playing: boolean;
   onToggle: (video: HTMLVideoElement) => void;
+  /** Acceptat pentru paritate cu TikTokPhone (apelanții îl dau la amândouă),
+   *  dar aici nu mai schimbă nimic de când `preload` urmează `playing`. */
   autoPlayMuted?: boolean;
   muted?: boolean;
   onBindVideo?: (el: HTMLVideoElement | null) => void;
@@ -79,7 +80,14 @@ export function InstagramPhone({
         muted
         loop
         playsInline
-        preload={autoPlayMuted ? 'auto' : 'metadata'}
+        preload={
+          /* `none` până când clipul chiar trebuie să ruleze. Înainte era `auto`
+             ori de câte ori telefonul era pe autoplay, adică din primul moment
+             al paginii: două clipuri se descărcau integral înainte ca
+             vizitatorul să fi derulat până la ele. Posterul se vede oricum, iar
+             `+faststart` din scripts/optimize-videos.mjs face pornirea promptă. */
+          playing ? 'auto' : 'none'
+        }
         onPlay={() => setLive(true)}
         onPlaying={() => setLive(true)}
         onPause={() => setLive(false)}
@@ -141,7 +149,7 @@ export function InstagramPhone({
         </button>
         <div className="ig-thumb">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={cover} alt="" />
+          <img src={cover} alt="" loading="lazy" decoding="async" />
         </div>
       </div>
 
@@ -149,7 +157,7 @@ export function InstagramPhone({
         <div className="ig-user">
           <span className="ig-ring">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={avatar} alt="" />
+            <img src={avatar} alt="" loading="lazy" decoding="async" />
           </span>
           <b>{clip.username}</b>
           {clip.verified ? (
@@ -181,7 +189,7 @@ export function InstagramPhone({
         <span className="on"><IconClapper filled width={28} height={28} /></span>
         <span>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={avatar} alt="" />
+          <img src={avatar} alt="" loading="lazy" decoding="async" />
         </span>
       </nav>
     </PhoneFrame>
