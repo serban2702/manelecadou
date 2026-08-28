@@ -109,7 +109,7 @@ export default function IstoricPage() {
                   onClick={clearFilters}
                   style={{
                     background: 'transparent', border: '1px solid var(--line)',
-                    color: 'rgba(255,245,220,0.6)', padding: '6px 12px',
+                    color: 'var(--fg-muted)', padding: '6px 12px',
                     borderRadius: 999, fontSize: 12, cursor: 'pointer',
                     fontFamily: 'inherit',
                   }}
@@ -120,7 +120,7 @@ export default function IstoricPage() {
             )}
           </div>
 
-          <div style={{ fontSize: 12, color: 'rgba(255,245,220,0.5)', marginBottom: 14 }}>
+          <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginBottom: 14 }}>
             {isLoading
               ? t('loading')
               : total === 1
@@ -153,7 +153,7 @@ export default function IstoricPage() {
                         style={{
                           width: 56, height: 56, borderRadius: '50%', flexShrink: 0,
                           background:
-                            'radial-gradient(circle at 35% 35%, #2a1a04 6%, #1a0a0a 12%, #0a0606 24%, #2a1a04 64%)',
+                            'var(--avatar-fill)',
                           border: '1px solid var(--gold-deep)',
                         }}
                       />
@@ -183,7 +183,7 @@ export default function IstoricPage() {
                         <div
                           style={{
                             fontSize: 10,
-                            color: 'rgba(255,245,220,0.4)',
+                            color: 'var(--fg-muted)',
                             marginTop: 4,
                           }}
                         >
@@ -212,7 +212,7 @@ export default function IstoricPage() {
               >
                 {t('prev')}
               </button>
-              <span style={{ alignSelf: 'center', fontSize: 12, color: 'rgba(255,245,220,0.6)' }}>
+              <span style={{ alignSelf: 'center', fontSize: 12, color: 'var(--fg-muted)' }}>
                 {t('pageOf', { current: page + 1, total: totalPages })}
               </span>
               <button
@@ -244,7 +244,7 @@ function FilterRow({ label, children }: { label: string; children: React.ReactNo
         className="filter-lab"
         style={{
           fontSize: 11,
-          color: 'rgba(255,245,220,0.5)',
+          color: 'var(--fg-muted)',
           marginBottom: 6,
           fontWeight: 700,
           textTransform: 'uppercase',

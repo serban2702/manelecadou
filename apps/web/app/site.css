@@ -241,6 +241,11 @@
   grid-template-columns: 1fr;
   gap: 12px;
 }
+/* Elementele de grilă au implicit `min-width: auto`, deci pista se lărgește
+   până încape conținutul: un titlu lung cu `white-space: nowrap` împingea
+   coloana a treia complet în afara containerului. Cu `min-width: 0`, pista
+   respectă `1fr` și titlul se taie cu elipsă, cum era intenția. */
+.demo-grid > * { min-width: 0; }
 @media (min-width: 700px) {
   .demo-grid { grid-template-columns: 1fr 1fr; }
 }

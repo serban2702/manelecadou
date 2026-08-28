@@ -62,7 +62,7 @@ export default function FaqPage() {
               {open === i && (
                 <div style={{
                   padding: '0 16px 14px', fontSize: 14,
-                  color: 'rgba(255,245,220,0.75)', lineHeight: 1.6,
+                  color: 'var(--fg-soft)', lineHeight: 1.6,
                 }}>
                   {item.a}
                 </div>

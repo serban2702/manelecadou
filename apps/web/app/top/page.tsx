@@ -127,7 +127,7 @@ export default function TopPage() {
               );
             })}
             {useReal && rows.length === 0 && (
-              <div style={{ textAlign: 'center', padding: 24, color: 'rgba(255,245,220,0.5)' }}>
+              <div style={{ textAlign: 'center', padding: 24, color: 'var(--fg-muted)' }}>
                 {t('empty')}
               </div>
             )}

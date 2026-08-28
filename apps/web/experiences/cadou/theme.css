@@ -2,6 +2,60 @@
    request către fonts.googleapis.com. Referim variabila, nu numele literal. */
 @import './phones/phones.css';
 
+/* Outfit acoperă doar latin + latin-ext. Pe greacă și chirilic n-are niciun
+   glif, deci textul ar cădea în întregime pe system-ui. Acolo folosim Manrope,
+   care acoperă ambele — vezi comentariul din app/layout.tsx.
+   Selectorul merge pe `lang` de pe <html>, setat per site din locale. */
+:root { --font-cadou: var(--font-outfit); }
+/* Doar limbile care chiar au nevoie: `bg` e chirilic, `el` e grec. Celelalte
+   locale livrate (sr, bs, hr, sl, tr) sunt în alfabet latin — verificat pe
+   conținutul din messages/ — și `latin-ext` din Outfit le acoperă diacriticele.
+   Dacă adaugi un locale cu alt script, treci-l aici. */
+:root:lang(bg), :root:lang(el) {
+  --font-cadou: var(--font-cadou-intl);
+}
+
+/* Paginile fără variantă proprie (istoric, top, faq, contact, legale) sunt
+   randate cu markup-ul `classic` ÎN INTERIORUL shell-ului cadou — vezi
+   `SiteShell`, care deleagă către `exp.Shell`. Markup-ul acela e gândit pentru
+   fundal închis: nume în auriu pal, text secundar aproape alb. Pe crem devenea
+   ilizibil.
+
+   Remapăm jetoanele temei `classic` la echivalentele deschise, o singură dată,
+   în loc să rescriem fiecare pagină. Ce nu se putea repara așa — culorile
+   scrise direct în stiluri inline — a devenit `var(--fg-muted)` / `--fg-soft`. */
+.cadou-root {
+  --gold: var(--cadou-gold);
+  --gold-2: var(--cadou-gold-deep);
+  --gold-deep: var(--cadou-gold-deep);
+  --cream: var(--cadou-ink);
+  --line: var(--cadou-line);
+  --bg: var(--cadou-cream);
+  --bg-2: #ffffff;
+  --bg-3: #ffffff;
+  --fg-muted: var(--cadou-muted);
+  --fg-soft: var(--cadou-ink);
+  --avatar-fill: linear-gradient(160deg, #f0e6d2 0%, #e2d3b6 100%);
+  --wave-idle: rgba(138, 112, 20, 0.35);
+  --wave-progress: #8a7014;
+  --wave-cursor: #c9a227;
+}
+
+/* Cardurile și etichetele din markup-ul `classic`, pe suprafață deschisă. */
+.cadou-root .card,
+.cadou-root .demo-card {
+  background: var(--cadou-card);
+  border-color: var(--cadou-line);
+  color: var(--cadou-ink);
+}
+.cadou-root .lb-tag {
+  background: rgba(201, 162, 39, 0.12);
+  color: var(--cadou-gold-deep);
+  border-color: rgba(201, 162, 39, 0.30);
+}
+.cadou-root .nm { color: var(--cadou-ink); }
+.cadou-root .by { color: var(--cadou-muted); }
+
 .cadou-root {
   --cadou-ink: #1a1a1a;
   --cadou-cream: #f6efe3;
@@ -21,7 +75,7 @@
   background-size: 420px auto;
   background-repeat: repeat;
   color: var(--cadou-ink);
-  font-family: var(--font-outfit), Satoshi, system-ui, sans-serif;
+  font-family: var(--font-cadou), Satoshi, system-ui, sans-serif;
 }
 
 /* După regula de mai sus — la specificitate egală câștigă ultima declarată. */
@@ -35,7 +89,7 @@
   }
 }
 .cadou-root h1, .cadou-root h2, .cadou-root h3, .cadou-root .cadou-serif {
-  font-family: var(--font-outfit), Satoshi, sans-serif;
+  font-family: var(--font-cadou), Satoshi, sans-serif;
   letter-spacing: -0.03em;
 }
 .cadou-ticker {
@@ -1614,7 +1668,14 @@ button.cadou-pack { cursor: pointer; }
   background: #fff;
   border-color: var(--cadou-line);
 }
-.cadou-root .gold-text { filter: none; }
+/* Degradeul din `classic` pornește de la #fff5cc — pe crem, jumătatea de sus a
+   literelor dispărea. Aceleași trepte, coborâte în auriu închis. */
+.cadou-root .gold-text {
+  filter: none;
+  background: linear-gradient(180deg, #c9a227 0%, #a8861c 45%, #6f5a10 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
 .cadou-root {
   --chip-fg: #3a342c;
   --chip-bg: #ffffff;

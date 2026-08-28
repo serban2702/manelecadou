@@ -153,7 +153,7 @@ export default async function ArticolePage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
       <main style={{ maxWidth: 760, margin: '40px auto', padding: '0 20px' }}>
-        <nav style={{ fontSize: 12, color: 'rgba(255,245,220,0.5)', marginBottom: 16 }}>
+        <nav style={{ fontSize: 12, color: 'var(--fg-muted)', marginBottom: 16 }}>
           <Link href="/" style={{ color: 'inherit' }}>{t('breadcrumbHome')}</Link>
           <span style={{ margin: '0 6px' }}>›</span>
           <Link href={getPagePath(site.locale, 'articole')} style={{ color: 'inherit' }}>{t('breadcrumbAll')}</Link>
@@ -170,7 +170,7 @@ export default async function ArticolePage({
         {page.excerpt && (
           <p
             className="ld"
-            style={{ fontSize: 17, lineHeight: 1.55, marginBottom: 24, color: 'rgba(255,245,220,0.75)' }}
+            style={{ fontSize: 17, lineHeight: 1.55, marginBottom: 24, color: 'var(--fg-soft)' }}
           >
             {page.excerpt}
           </p>
@@ -194,7 +194,7 @@ export default async function ArticolePage({
           <div className="gold-text serif" style={{ fontSize: 22, marginBottom: 8 }}>
             {t('articleCtaTitle')}
           </div>
-          <p style={{ fontSize: 14, color: 'rgba(255,245,220,0.7)', marginBottom: 18 }}>
+          <p style={{ fontSize: 14, color: 'var(--fg-soft)', marginBottom: 18 }}>
             {t('articleCtaSub')}
           </p>
           <Link href={getPagePath(site.locale, 'studio')} className="btn btn-gold btn-lg" style={{ textDecoration: 'none' }}>

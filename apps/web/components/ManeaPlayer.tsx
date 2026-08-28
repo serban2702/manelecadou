@@ -44,19 +44,33 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
   const [duration, setDuration] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // WaveSurfer descarcă și decodează fișierul ÎNTREG ca să deseneze unda, la
+  // montare. Pe /istoric sunt 30 de carduri: 30 de MP3-uri, ~14 MB, înainte ca
+  // vizitatorul să apese ceva. Așa că nu-l creăm decât când chiar e nevoie —
+  // până atunci desenăm o undă decorativă. `autoPlay` înseamnă că player-ul a
+  // fost montat exact la gestul userului, deci pornim direct.
+  const [armed, setArmed] = useState(!!autoPlay);
+  const playOnReadyRef = useRef(!!autoPlay);
 
   useEffect(() => {
+    if (!armed) return undefined;
     let cancelled = false;
     let ws: any = null;
     (async () => {
       try {
         const WaveSurferModule = await import('wavesurfer.js');
         if (cancelled || !containerRef.current) return;
+        // Culorile erau fixe, gândite pentru fundal închis — pe crema
+        // interfeței `cadou` unda ieșea aproape invizibilă. Le citim din
+        // variabile CSS, deci fiecare temă își pune propriile valori.
+        const cs = getComputedStyle(containerRef.current);
+        const pick = (name: string, fallback: string) =>
+          cs.getPropertyValue(name).trim() || fallback;
         ws = WaveSurferModule.default.create({
           container: containerRef.current,
-          waveColor: 'rgba(241,200,77,0.35)',
-          progressColor: '#f1c84d',
-          cursorColor: '#ffe28a',
+          waveColor: pick('--wave-idle', 'rgba(241,200,77,0.35)'),
+          progressColor: pick('--wave-progress', '#f1c84d'),
+          cursorColor: pick('--wave-cursor', '#ffe28a'),
           height: compact ? 32 : 48,
           barWidth: 2,
           barGap: 1.5,
@@ -77,7 +91,8 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
               } catch {}
             }
           }
-          if (autoPlay) {
+          if (playOnReadyRef.current) {
+            playOnReadyRef.current = false;
             try {
               ws.play();
             } catch {}
@@ -139,10 +154,33 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
         ws?.destroy();
       } catch {}
     };
-  }, [audioUrl, compact]);
+  }, [audioUrl, compact, armed]);
 
   function toggle() {
+    // Primul click doar montează player-ul; redarea pornește la `ready`.
+    // Contează că e tot în interiorul gestului userului, deci browserele nu
+    // tratează pornirea ca autoplay nesolicitat.
+    if (!armed) {
+      playOnReadyRef.current = true;
+      setArmed(true);
+      return;
+    }
     wsRef.current?.playPause();
+  }
+
+  /** Undă decorativă cât timp fișierul nu e descărcat.
+   *  Înălțimile se derivă din URL, nu din `Math.random()`: trebuie să iasă la
+   *  fel pe server și pe client, altfel React semnalează hydration mismatch. */
+  function placeholderBars() {
+    let h = 0;
+    for (let i = 0; i < audioUrl.length; i++) h = (h * 31 + audioUrl.charCodeAt(i)) >>> 0;
+    const n = compact ? 48 : 64;
+    const bars = [];
+    for (let i = 0; i < n; i++) {
+      h = (h * 1103515245 + 12345) >>> 0;
+      bars.push(18 + ((h >>> 16) % 82));
+    }
+    return bars;
   }
 
   // Stopper stabil pentru fallback-ul nativ (înregistrat în audio-registry).
@@ -175,7 +213,7 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
         {(title || subtitle) && !compact && (
           <div style={{ marginBottom: 6 }}>
             {title && <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gold-2)' }}>{title}</div>}
-            {subtitle && <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.55)' }}>{subtitle}</div>}
+            {subtitle && <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{subtitle}</div>}
           </div>
         )}
         <audio
@@ -218,7 +256,7 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
       <button
         type="button"
         onClick={toggle}
-        disabled={!loaded}
+        disabled={armed && !loaded}
         aria-label={isPlaying ? 'Pause' : 'Play'}
         style={{
           width: compact ? 36 : 44,
@@ -228,11 +266,11 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
           background: 'linear-gradient(180deg,#fff5cc 0%,#ffe28a 30%,#f1c84d 60%,#b07c1e 100%)',
           color: '#2a1a04',
           border: 'none',
-          cursor: loaded ? 'pointer' : 'wait',
+          cursor: !armed || loaded ? 'pointer' : 'wait',
           display: 'grid',
           placeItems: 'center',
           boxShadow: '0 4px 12px rgba(241,200,77,0.3)',
-          opacity: loaded ? 1 : 0.5,
+          opacity: !armed || loaded ? 1 : 0.5,
           transition: 'transform 0.1s',
         }}
         onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.95)')}
@@ -258,18 +296,37 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
               </div>
             )}
             {subtitle && (
-              <div style={{ fontSize: 11, color: 'rgba(255,245,220,0.55)' }}>{subtitle}</div>
+              <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{subtitle}</div>
             )}
           </div>
         )}
-        <div ref={containerRef} style={{ width: '100%', minWidth: 0 }} />
+        <div ref={containerRef} style={{ width: '100%', minWidth: 0, display: armed ? undefined : 'none' }} />
+        {!armed && (
+          <div
+            aria-hidden
+            style={{
+              display: 'flex', alignItems: 'center', gap: 1.5,
+              height: compact ? 32 : 48, width: '100%', minWidth: 0, overflow: 'hidden',
+            }}
+          >
+            {placeholderBars().map((v, i) => (
+              <span
+                key={i}
+                style={{
+                  flex: 1, minWidth: 0, height: `${v}%`, borderRadius: 1,
+                  background: 'var(--wave-idle, rgba(241,200,77,0.35))',
+                }}
+              />
+            ))}
+          </div>
+        )}
         {!error && loaded && (
           <div
             style={{
               display: 'flex',
               justifyContent: 'space-between',
               fontSize: 10,
-              color: 'rgba(255,245,220,0.5)',
+              color: 'var(--fg-muted)',
               marginTop: 2,
               fontFamily: 'ui-monospace, monospace',
             }}
@@ -293,7 +350,7 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
             if (ctx) trackEvent({ type: 'song_download', props: { generationId: ctx.generationId, variant: ctx.variant } });
           }}
           style={{
-            color: 'rgba(255,245,220,0.6)',
+            color: 'var(--fg-muted)',
             padding: 6,
             borderRadius: 6,
             textDecoration: 'none',

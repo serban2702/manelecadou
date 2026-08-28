@@ -116,7 +116,7 @@ export default async function ArticoleHubPage() {
                       {p.title}
                     </div>
                     {p.excerpt && (
-                      <p style={{ fontSize: 12, color: 'rgba(255,245,220,0.6)', lineHeight: 1.5 }}>
+                      <p style={{ fontSize: 12, color: 'var(--fg-muted)', lineHeight: 1.5 }}>
                         {p.excerpt}
                       </p>
                     )}

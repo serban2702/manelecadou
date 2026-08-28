@@ -13,6 +13,15 @@
   --green: #3ee07e;
   --cream: #fff5dc;
   --line: rgba(241,200,77,0.18);
+  /* Text secundar. Existau doar ca `rgba(255,245,220,…)` scris direct în stiluri
+     inline, deci nicio temă nu le putea schimba — pe fundalul deschis al
+     interfeței `cadou` ieșea crem pe crem. */
+  --fg-muted: rgba(255,245,220,0.55);
+  --fg-soft: rgba(255,245,220,0.75);
+  --avatar-fill: radial-gradient(circle at 35% 35%, #2a1a04 6%, #1a0a0a 12%, #0a0606 24%, #2a1a04 64%);
+  --wave-idle: rgba(241,200,77,0.35);
+  --wave-progress: #f1c84d;
+  --wave-cursor: #ffe28a;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }

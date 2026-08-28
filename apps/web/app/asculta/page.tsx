@@ -206,7 +206,7 @@ function DemoCard({
               borderRadius: '50%',
               flexShrink: 0,
               background:
-                'radial-gradient(circle at 35% 35%, #2a1a04 6%, #1a0a0a 12%, #0a0606 24%, #2a1a04 64%)',
+                'var(--avatar-fill)',
               border: '1px solid var(--gold-deep)',
             }}
           />
