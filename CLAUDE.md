@@ -998,6 +998,38 @@ loghează cu motiv.
 Prețul acceptat conștient: pe un dispozitiv nou, același om pornește cu sesiune
 nouă și își recuperează comenzile prin login. E preferabil alternativei.
 
+### 18.3.3 Fără cont de client — login-ul există doar în admin
+
+Site-urile publice nu mai au autentificare (28 aug 2026). Nu există buton „Intră",
+nu există `/login`, `/login/verify` sau `/cont`, iar clientul SDK din web nu mai
+are `requestMagicLink` / `consumeMagicLink` / `gdprRequest`.
+
+Enforcement-ul e în API, nu în UI: `POST /api/auth/magic-link/request` și
+`GET /api/auth/magic-link/consume` răspund **404** dacă request-ul nu vine de pe
+un host de admin. Fără asta, ascunderea butonului n-ar fi însemnat nimic —
+endpoint-ul e public, deci oricine putea cere un magic link pentru orice adresă,
+de pe orice domeniu, și primea un JWT de user.
+
+Regula de host stă în `apps/api/src/modules/auth/admin-host.ts` și e **identică**
+cu cea după care routerul decide ce aplicație servește (`server_name ~^admin\.`
+în `deploy/router/nginx.conf`, plus host-ul din `ADMIN_URL`). Ținute la fel,
+„unde se servește admin-ul" și „unde se poate face login" nu pot să divergă.
+Comparația e pe host complet, **cu port**: în dev site-ul e `localhost:1500` și
+admin-ul `localhost:1505`, iar pe hostname ar fi ieșit egale — adică login-ul ar
+fi rămas deschis pe site exact în mediul în care testăm că e închis.
+Acoperit de `admin-host.spec.ts`.
+
+Ce ține locul contului:
+- **„Manelele mele"** — link în header, apare automat când vizitatorul are cel
+  puțin o comandă (`MyGenerationsCounter`), pe baza identității de vizitator.
+- **Linkul din emailul de livrare**, care duce direct la `/m/<id>`.
+
+Consecință asumată: `/cont` era și calea de self-service GDPR (export/ștergere).
+Rămâne adresa din politica de confidențialitate (`legal.privacy.sec1.p`), care e
+deja publicată exact pentru asta. Dacă vreodată reintroducem self-service-ul,
+trebuie gândit pentru guest — adică fără să poți cere ștergerea datelor altcuiva
+scriindu-i adresa (vezi capcana din §18.3.2).
+
 ### 18.4 Cum compari două interfețe
 
 Fără măsurare, rularea a două design-uri în paralel nu răspunde la nimic.
