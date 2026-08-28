@@ -93,15 +93,13 @@ restart:
 #   COOLIFY_TOKEN=...            (Coolify → Keys & Tokens → API tokens)
 #   COOLIFY_RESOURCE_UUID=...    (din URL-ul resursei)
 
+# Scriptul se descurcă în ambele cazuri: cu COOLIFY_TOKEN merge prin API și
+# așteaptă verdictul, fără token pornește deploy-ul prin SSH. Makefile-ul cerea
+# înainte token și, în lipsa lui, doar făcea push și anunța că n-a deployat
+# nimic — adică exact capcana pe care CLAUDE.md o avertizează (§6.1).
 deploy-coolify:
 	@git push origin main
-	@if [ -n "$$COOLIFY_TOKEN" ]; then \
-		./deploy/coolify-deploy.sh; \
-	else \
-		echo "→ push făcut, DAR nu s-a deployat nimic: fără COOLIFY_TOKEN"; \
-		echo "  trebuie să apeși Actions → Deploy în UI-ul Coolify."; \
-		echo "  Pentru deploy forțat din terminal, setează COOLIFY_URL/TOKEN/RESOURCE_UUID."; \
-	fi
+	@./deploy/coolify-deploy.sh
 
 # Lista de domenii pentru câmpul „Domains" al serviciului `router`.
 coolify-domains:
