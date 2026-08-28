@@ -51,6 +51,12 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
   // fost montat exact la gestul userului, deci pornim direct.
   const [armed, setArmed] = useState(!!autoPlay);
   const playOnReadyRef = useRef(!!autoPlay);
+  // Elementul de redare, creat ȘI pornit sincron în handler-ul de click.
+  // iOS Safari deblochează redarea doar pentru elemente pe care `play()` a fost
+  // apelat în interiorul gestului; un `play()` dintr-un callback `ready` de mai
+  // târziu e respins. Îl dăm apoi lui WaveSurfer prin opțiunea `media`, ca să
+  // nu-și creeze el altul (pe care iOS l-ar bloca).
+  const mediaRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (!armed) return undefined;
@@ -68,6 +74,7 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
           cs.getPropertyValue(name).trim() || fallback;
         ws = WaveSurferModule.default.create({
           container: containerRef.current,
+          ...(mediaRef.current ? { media: mediaRef.current } : {}),
           waveColor: pick('--wave-idle', 'rgba(241,200,77,0.35)'),
           progressColor: pick('--wave-progress', '#f1c84d'),
           cursorColor: pick('--wave-cursor', '#ffe28a'),
@@ -93,9 +100,16 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
           }
           if (playOnReadyRef.current) {
             playOnReadyRef.current = false;
-            try {
-              ws.play();
-            } catch {}
+            // Dacă elementul pornise deja din gest, îl lăsăm în pace — un
+            // `play()` în plus ar reporni de la zero.
+            const el = mediaRef.current;
+            if (!el || el.paused) {
+              try {
+                ws.play();
+              } catch {}
+            } else {
+              setIsPlaying(true);
+            }
           }
         });
         ws.on('audioprocess', () => {
@@ -153,6 +167,9 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
       try {
         ws?.destroy();
       } catch {}
+      try {
+        mediaRef.current?.pause();
+      } catch {}
     };
   }, [audioUrl, compact, armed]);
 
@@ -161,6 +178,21 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
     // Contează că e tot în interiorul gestului userului, deci browserele nu
     // tratează pornirea ca autoplay nesolicitat.
     if (!armed) {
+      // Ordinea contează: creăm și pornim elementul CÂT SUNTEM ÎNCĂ în gestul
+      // userului, altfel iOS refuză. WaveSurfer îl preia apoi ca `media`.
+      try {
+        const el = new Audio(audioUrl);
+        el.preload = 'auto';
+        // Fără `crossOrigin`: redarea simplă n-are nevoie de CORS, iar setarea
+        // lui ar lega pornirea piesei de antetele lui files.manelecadou.ro.
+        // Azi le trimite (`vary: Origin` + `access-control-allow-origin: *`),
+        // dar dacă s-ar schimba, butonul de play ar muri tăcut. WaveSurfer își
+        // face oricum fetch-ul lui pentru desenarea undei, ca și până acum.
+        mediaRef.current = el;
+        void el.play().catch(() => undefined);
+      } catch {
+        mediaRef.current = null;
+      }
       playOnReadyRef.current = true;
       setArmed(true);
       return;
