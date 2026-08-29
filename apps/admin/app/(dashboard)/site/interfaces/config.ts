@@ -369,3 +369,15 @@ export function adsUiUrl(domain: string, slug: string): string {
   const host = domain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
   return `https://${host}/?ui=${slug}`;
 }
+
+/**
+ * URL-ul la care se vede interfața asta.
+ *
+ * Pentru cea implicită e chiar homepage-ul: `?ui=` ar fi redundant și ar sugera
+ * greșit că vizitatorii au nevoie de link special. Pentru celelalte e linkul cu
+ * `?ui=`, singurul mod de a le deschide cât timp nu sunt implicite.
+ */
+export function experienceUrl(domain: string, slug: string, isDefault: boolean): string {
+  const host = (domain || 'example.com').replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  return isDefault ? `https://${host}/` : `https://${host}/?ui=${slug}`;
+}

@@ -5,8 +5,10 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/cn';
 import type { SiteDto } from '@/lib/api/sites.api';
+import { useToast } from '@/components/ui/use-toast';
 import {
   defaultSlugOf,
+  experienceUrl,
   hasOwnCatalog,
   humanExperienceLabel,
   isEnabled,
@@ -36,6 +38,8 @@ export function InterfaceCard({
   const own = hasOwnCatalog(item.catalog);
   const pkgCount = packageOverrideCount(item.packages);
   const title = humanExperienceLabel(slug, apiLabel);
+  const url = experienceUrl(form.domain, slug, isDefault);
+  const { toast } = useToast();
 
   return (
     <Card
@@ -61,6 +65,40 @@ export function InterfaceCard({
             <span className="text-[10px] text-muted-foreground">
               {slug === 'classic' ? 'Generator clasic' : slug === 'cadou' ? 'Landing cadou' : 'Mini-website'}
             </span>
+            {/* Adresa la care se vede interfața. Pentru cea implicită e chiar
+                homepage-ul; pentru restul, linkul cu `?ui=` — singurul mod de a
+                le deschide cât timp nu sunt implicite. Oprită de tot, linkul nu
+                face nimic: `?ui=` trece prin aceeași verificare de activare. */}
+            <div
+              className="mt-1 flex items-center gap-1 min-w-0"
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <a
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                title={enabled ? url : `${url} — interfața e oprită, linkul nu o deschide`}
+                className={cn(
+                  'text-[11px] font-mono truncate underline decoration-dotted underline-offset-2',
+                  enabled ? 'text-muted-foreground hover:text-primary' : 'text-muted-foreground/50',
+                )}
+              >
+                {url.replace(/^https:\/\//, '')}
+              </a>
+              <button
+                type="button"
+                title="Copiază linkul"
+                aria-label="Copiază linkul"
+                className="shrink-0 text-[11px] text-muted-foreground hover:text-primary px-1"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(url);
+                  toast({ title: 'Link copiat', description: url });
+                }}
+              >
+                ⧉
+              </button>
+            </div>
           </div>
           <div
             className="shrink-0 flex flex-col items-end gap-1.5"
