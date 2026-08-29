@@ -114,17 +114,12 @@ export function SampleToolbar({
   const styleOverride = sd.style ?? '';
   const occasionOverride = sd.occasion ?? (site.occasions?.[0]?.id ?? '');
   const messageDraft = sd.message ?? '';
-  const tipAmountDraft = sd.tipAmount != null ? String(sd.tipAmount) : '';
   const premiumDraft = sd.premium ?? false;
   const genderOverride: '' | 'm' | 'f' = sd.gender ?? '';
   const aiHint = sd.aiHint ?? lyricsHint ?? '';
   const sunoPromptDraft = sd.sunoPromptDraft ?? sunoPrompt ?? '';
   const lyrics = sd.lyrics ?? '';
 
-  function parseTipAmount(): number | undefined {
-    if (typeof sd.tipAmount === 'number' && sd.tipAmount > 0) return Math.floor(sd.tipAmount);
-    return undefined;
-  }
 
   function buildOverrides(): GenerateOverrides | undefined {
     const overrides: GenerateOverrides = {};
@@ -139,8 +134,6 @@ export function SampleToolbar({
     if (styleOverride) overrides.style = styleOverride;
     if (occasionOverride) overrides.occasion = occasionOverride;
     if (messageDraft.trim()) overrides.message = messageDraft.trim();
-    const tip = parseTipAmount();
-    if (typeof tip === 'number') overrides.tipAmount = tip;
     if (premiumDraft) overrides.premium = true;
     if (genderOverride) overrides.vocalGender = genderOverride;
     return Object.keys(overrides).length > 0 ? overrides : undefined;
@@ -163,7 +156,6 @@ export function SampleToolbar({
         style: styleOverride || undefined,
         occasion: occasionOverride || undefined,
         message: messageDraft.trim() || undefined,
-        tipAmount: parseTipAmount(),
       });
       onUpdateDefaults({ lyrics: res.lyrics });
       toast({ variant: 'success', title: 'Lyrics generate', description: 'Editează apoi „Generează audio".' });
@@ -279,29 +271,6 @@ export function SampleToolbar({
                   </option>
                 ))}
               </select>
-            </Field>
-            <Field
-              label={`Sumă dedicație (${site.currency || 'RON'})`}
-              description="Ajunge în prompt ca {{tipAmount}} {{currency}} — AI-ul îl țese în lyrics."
-            >
-              <Input
-                type="number"
-                min={0}
-                step={100}
-                value={tipAmountDraft}
-                onChange={(e) => {
-                  const v = e.target.value.trim();
-                  if (!v) {
-                    onUpdateDefaults({ tipAmount: undefined });
-                    return;
-                  }
-                  const n = Number(v);
-                  onUpdateDefaults({
-                    tipAmount: Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined,
-                  });
-                }}
-                placeholder="Ex: 1500"
-              />
             </Field>
             <Field label="Registru vocal">
               <select

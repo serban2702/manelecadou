@@ -8,6 +8,7 @@ import { api, ApiError, resolveMediaUrl, type GenerationDto, type CollageAspect,
 import type { PackageTier } from '@/lib/packages';
 import { track } from '@/lib/tracking';
 import { track as trackEvent } from '@/lib/tracker';
+import { usePackage } from '@/experiences/use-packages';
 import { ManeaPlayer } from '@/components/ManeaPlayer';
 import { VideoPlayer } from '@/components/VideoPlayer';
 import { ChorusClipsSection } from '@/components/ChorusClipsSection';
@@ -79,6 +80,14 @@ function ShareGenerationViewInner() {
     return () => clearInterval(id);
   }, [g?.status, g?.deliverablesReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Valoarea raportată la Meta e prețul PACHETULUI comenzii, nu `basePriceCents`
+  // — un câmp dinaintea pachetelor, care nu taxează nimic. Cu el, un Premium de
+  // 99,99 lei se raporta ca 29,99, iar pe bg/gr TOT traficul se raporta la 5,99 €
+  // în loc de 7,99–29,99. Meta optimizează pe valoarea primită, deci era bani
+  // aruncați pe licitații calibrate greșit.
+  const trackedPack = usePackage(g?.packageTier);
+  const trackedValue = (trackedPack?.priceCents ?? site.basePriceCents) / 100;
+
   useEffect(() => {
     if (!g || viewTrackedRef.current) return;
     viewTrackedRef.current = true;
@@ -86,10 +95,10 @@ function ShareGenerationViewInner() {
       content_id: g.id,
       content_name: `Manea pentru ${g.recipientName}`,
       content_type: 'product',
-      value: site.basePriceCents / 100,
+      value: trackedValue,
       currency: site.currency,
     });
-  }, [g, site.basePriceCents, site.currency]);
+  }, [g, trackedValue, site.currency]);
 
   useEffect(() => {
     const paymentId = search.get('paymentId');
@@ -332,7 +341,7 @@ function ShareGenerationViewInner() {
       })()}
 
       {!isPaid && g.status === 'succeeded' && g.audioUrl && (
-        <PaywallSection generationId={g.id} />
+        <PaywallSection generationId={g.id} tier={g.packageTier ?? null} />
       )}
 
       {/* Videoclipurile sunt clipuri SCURTE verticale (refren, stil TikTok).
@@ -529,7 +538,7 @@ function GenerationProgress({
   );
 }
 
-function PaywallSection({ generationId }: { generationId: string }) {
+function PaywallSection({ generationId, tier }: { generationId: string; tier: string | null }) {
   const t = useTranslations('mViewPage');
   const tg = useTranslations('generator');
   const site = useSite();
@@ -542,7 +551,11 @@ function PaywallSection({ generationId }: { generationId: string }) {
   const [promoError, setPromoError] = useState<string | null>(null);
   const [validatingPromo, setValidatingPromo] = useState(false);
 
-  const basePrice = site.basePriceCents;
+  // Prețul pachetului comenzii; `basePriceCents` rămâne doar ca plasă dacă
+  // pachetul nu s-a încărcat încă. (Secțiunea asta e din fluxul cu demo, care
+  // nu mai rulează pe niciun site — toate sunt pay-first.)
+  const paywallPack = usePackage(tier);
+  const basePrice = paywallPack?.priceCents ?? site.basePriceCents;
   const finalTotal = Math.max(0, basePrice - (promoApplied?.discountCents ?? 0));
 
   function translatePromoReason(reason: string | undefined): string {
@@ -583,7 +596,7 @@ function PaywallSection({ generationId }: { generationId: string }) {
         content_id: generationId,
         content_name: 'Manea Cadou',
         content_type: 'product',
-        value: site.basePriceCents / 100,
+        value: basePrice / 100,
         currency: site.currency,
         // event_id stabil pe generație — dacă userul apasă de 2x, Meta dedup-uiește
         // și contează un singur intent (nu 2 InitiateCheckout fake).

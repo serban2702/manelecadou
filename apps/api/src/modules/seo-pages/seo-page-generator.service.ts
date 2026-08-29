@@ -3,6 +3,24 @@ import { SettingsService } from '../settings/settings.service';
 import { buildChatParams } from '../../openai/openai-params.helper';
 import type { Site } from '../sites/site.entity';
 import type { SeoSlugTemplate } from './seo-page-templates';
+import { resolveSitePackage } from '../experiences/package-resolve';
+import { PACKAGE_TIERS } from '../payments/packages';
+
+/**
+ * Prețul „de la" pe care îl scriem în articole: cel mai ieftin pachet ACTIV.
+ *
+ * Era `site.basePriceCents` — un câmp dinaintea pachetelor, care nu mai taxează
+ * nimic. Pe bg și gr era 5,99 €, iar cel mai ieftin pachet real 7,99: toate cele
+ * 570 de articole publicate promiteau un preț care nu există.
+ */
+function fromPriceText(site: Site): string {
+  const prices = PACKAGE_TIERS
+    .map((tier) => resolveSitePackage(site, tier))
+    .filter((p) => p.enabled)
+    .map((p) => p.priceCents);
+  const cents = prices.length ? Math.min(...prices) : site.basePriceCents;
+  return `${(cents / 100).toFixed(2)} ${site.currency}`;
+}
 
 const LOCALE_NAME: Record<string, string> = {
   ro: 'Romanian',
@@ -85,7 +103,7 @@ export class SeoPageGeneratorService {
   private systemPrompt(site: Site, template: SeoSlugTemplate): string {
     const ctx = {
       brand: site.name || 'Manele Cadou',
-      priceText: `${(site.basePriceCents / 100).toFixed(2)} ${site.currency}`,
+      priceText: fromPriceText(site),
       currency: site.currency,
       lang: LOCALE_NAME[site.locale] ?? 'English',
       music: MUSIC_VOCAB[site.locale] ?? MUSIC_VOCAB.en,
@@ -103,7 +121,7 @@ export class SeoPageGeneratorService {
       brand: site.name,
       locale: site.locale,
       langName: lang,
-      priceText: `${(site.basePriceCents / 100).toFixed(2)} ${site.currency}`,
+      priceText: fromPriceText(site),
     });
     // Cerință SLUG: trebuie inclus în JSON-ul de output, în limba site-ului,
     // kebab-case, ASCII (fără diacritice / caractere ne-latine pentru bg/el/sr/mk

@@ -30,7 +30,10 @@ const EMPTY_CREATE = {
   name: '',
   locale: 'ro',
   currency: 'RON',
-  basePriceCents: 4900,
+  // Prețurile pachetelor — astea sunt ce plătește clientul. Fără ele, un site
+  // nou moștenește default-urile din cod (29,99 / 49,99 / 99,99), care sunt
+  // gândite în LEI: pe un site în EUR ar taxa 29,99 € în loc de ~8.
+  packagePricesCents: { basic: 2999, plus: 4999, premium: 9999 },
   active: true,
   sslEnabled: true,
   isDefault: false,
@@ -175,7 +178,7 @@ export default function SitesListPage() {
                 </div>
                 <div className="text-xs text-muted-foreground truncate">
                   <code>{s.domain}</code> · {s.locale.toUpperCase()} · {s.currency}{' '}
-                  {(s.basePriceCents / 100).toFixed(2)} · {s.active ? 'activ' : 'inactiv'} · HTTPS{' '}
+                  {((s.packagePricesCents?.basic ?? s.basePriceCents) / 100).toFixed(2)} · {s.active ? 'activ' : 'inactiv'} · HTTPS{' '}
                   {s.sslEnabled ? 'pornit' : 'oprit'} · {(s.styles ?? []).length} stiluri ·{' '}
                   {(s.voices ?? []).length} voci · {(s.occasions ?? []).length} ocazii
                 </div>
@@ -265,14 +268,28 @@ export default function SitesListPage() {
                 </select>
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Field label="Preț bază">
-                <MoneyInput
-                  cents={form.basePriceCents}
-                  currency={form.currency}
-                  onChange={(cents) => setForm({ ...form, basePriceCents: cents ?? 0 })}
-                />
-              </Field>
+            <div>
+              <div className="text-xs font-medium mb-1">Prețuri pachete</div>
+              <p className="text-[11px] text-muted-foreground mb-2 leading-snug">
+                Astea sunt sumele pe care le plătește clientul. Dacă le lași pe cele de mai jos,
+                site-ul pornește cu prețurile din România — verifică-le dacă valuta nu e RON.
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {(['basic', 'plus', 'premium'] as const).map((tier) => (
+                  <Field key={tier} label={tier === 'basic' ? 'Standard' : tier === 'plus' ? 'Plus' : 'Premium'}>
+                    <MoneyInput
+                      cents={form.packagePricesCents?.[tier] ?? 0}
+                      currency={form.currency}
+                      onChange={(cents) =>
+                        setForm({
+                          ...form,
+                          packagePricesCents: { ...form.packagePricesCents, [tier]: cents ?? 0 },
+                        })
+                      }
+                    />
+                  </Field>
+                ))}
+              </div>
             </div>
             <p className="text-xs text-muted-foreground">
               După creare, vei fi redirectat la pagina de configurare detaliată unde poți seta stiluri, voci, ocazii, branding, mostre audio etc.

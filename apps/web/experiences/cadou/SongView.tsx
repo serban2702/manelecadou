@@ -387,6 +387,10 @@ function CadouSongInner() {
   const [g, setG] = useState<GenerationDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
+  // Valoarea pentru Meta = prețul PACHETULUI comenzii. `basePriceCents` e câmpul
+  // dinaintea pachetelor și nu taxează nimic: pe bg/gr raporta 5,99 € pentru
+  // comenzi de 7,99–29,99 €. Meta optimizează pe valoarea primită.
+  const trackedValue = (usePackage(g?.packageTier)?.priceCents ?? site.basePriceCents) / 100;
   const [upsellOpen, setUpsellOpen] = useState(false);
   // Câte cicluri de polling am ars pe o generare picată. Vezi `FAILED_POLL_MAX`.
   const [failedPolls, setFailedPolls] = useState(0);
@@ -453,10 +457,10 @@ function CadouSongInner() {
       content_id: g.id,
       content_name: `Manea pentru ${g.recipientName}`,
       content_type: 'product',
-      value: site.basePriceCents / 100,
+      value: trackedValue,
       currency: site.currency,
     });
-  }, [g, site.basePriceCents, site.currency]);
+  }, [g, trackedValue, site.currency]);
 
   // ── Confirmarea plății după Stripe ──────────────────────────────────────
   // Webhook-ul poate întârzia câteva secunde. Întâi AȘTEPTĂM ca plata să devină
