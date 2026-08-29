@@ -2,7 +2,6 @@
   "common": {
     "currency": "€",
     "ctaMakeManea": "🎤 Naredi pesem — {price}",
-    "ctaMakeManeaShort": "Naredi pesem",
     "ctaListen": "Poslušaj primere",
     "loading": "Nalaganje…",
     "close": "Zapri",
@@ -22,7 +21,6 @@
     "asculta": "Poslušaj",
     "studio": "Naredi pesem",
     "top": "Top",
-    "cadou": "Darilo",
     "cont": "Moj račun",
     "istoric": "Zgodovina"
   },
@@ -341,8 +339,7 @@
       "howStep2Title": "Skladamo + pojemo",
       "howStep2Body": "Skladamo besedilo in posnamemo 2 pesmi z izbranim glasom.",
       "howStep3Title": "Plačaš in prejmeš",
-      "howStep3Body": "Plačaš samo enkrat in v nekaj minutah prejmeš 2 polni različici na e-pošto.",
-      "giftSomeone": "🎁 Darilo nekomu"
+      "howStep3Body": "Plačaš samo enkrat in v nekaj minutah prejmeš 2 polni različici na e-pošto."
     },
     "top": {
       "badge": "★ Top tedna",
@@ -413,11 +410,7 @@
       "dedicLabel": "Posvetilo po želji (od koga)",
       "dedicPlaceholder": "od Andreja in ekipe",
       "lyricsLabel": "📝 Želiš sam napisati besedilo?",
-      "lyricsActive": "✓ aktivno",
-      "lyricsActivate": "Aktiviraj",
-      "lyricsPlaceholder": "Napiši besedilo tukaj, če želiš. Pusti prazno = mi napišemo besedilo na podlagi sporočila.\n\nRefren:\n...\nKitica:\n...",
       "voicesTitle": "🎤 Kateri izvajalec ti zapoje?",
-      "voiceHint": "Poslušaj glas",
       "errCompleteFirst": "Najprej izpolni slog, priložnost in ime.",
       "errTooManySuggestions": "Preveč predlogov. Poskusi čez minuto.",
       "errAiFallback": "Nisem uspel generirati samodejno, dal sem rezervni predlog.",
@@ -446,7 +439,6 @@
       "regenCta": "Predelaj z AI",
       "regenerating": "Se predeluje...",
       "validating": "Preverjamo besedilo...",
-      "acceptCta": "Sprejmi besedilo in nadaljuj",
       "acceptHint": "Sprejmi in nadaljuj",
       "errGenerate": "Besedila nismo mogli generirati. Poskusi še enkrat.",
       "errValidate": "Besedila nismo mogli preveriti. Poskusi znova.",
@@ -454,7 +446,6 @@
       "errEmpty": "Besedilo ne sme biti prazno.",
       "likeCta": "Všeč so mi",
       "dislikeCta": "Niso mi všeč",
-      "backCta": "Nazaj",
       "rejected": {
         "artist_name": "Besedilo vsebuje ime resničnega izvajalca. Prosimo, odstrani ga — ne moremo uporabljati imen znanih izvajalcev.",
         "public_figure": "Besedilo vsebuje ime javne osebe. Prosimo, odstrani ga.",
@@ -466,15 +457,6 @@
     "step4": {
       "title": "4. Darilo in Premium",
       "sub": "Koliko damo v besedilo, da ga prevzameš? (Doplačilo 5%, zgornja meja 50 €.)",
-      "tipNone": "Brez",
-      "tipUnit": "{amount} €",
-      "customLabel": "Ali daj koliko želiš (do 1.000.000.000 € 😅)",
-      "customActive": "✓ aktivno",
-      "customBtn": "Po meri",
-      "customPlaceholder": "npr. 1500",
-      "customSurcharge": "Doplačilo: +{amount} € (5%, zgornja meja 50 €).",
-      "tipSurchargeLine": "Doplačilo posvetilo ({amount} € × 5%, zgornja meja 50)",
-      "totalUnlock": "Skupaj za odklepanje",
       "recommended": "PRIPOROČENO",
       "discountBadge": "−{pct} % POPUSTA",
       "offerEnds": "Znižana cena poteče čez"
@@ -485,16 +467,13 @@
       "emailPlaceholder": "ti@email.si",
       "emailHint": "Uporablja se samo za dostavo. Brez spama.",
       "emailSentTo": "✓ Pošljemo pesem na",
-      "submitting": "Pošilja se...",
-      "submitCta": "🎁 Generiraj brezplačen demo 30s",
-      "submitHint": "Generiraj brezplačen demo"
+      "submitting": "Pošilja se..."
     },
     "step5PayFirst": {
       "title": "5. Plačaj, da se generira pesem",
       "sub": "Tvoja pesem ({minutes} min × 2 različici) se generira V TRENUTKU, ko je plačilo potrjeno. Rezultat pošljemo na email in ga vidiš tudi tukaj, takoj ko je pripravljen.",
       "emailLabel": "📧 Tvoj email (obvezno)",
       "emailSentTo": "✓ Pošljemo pesem na",
-      "tipLine": "Doplačilo posvetilo {amount} {currency}",
       "promoLine": "Promo:",
       "totalLabel": "Skupaj",
       "promoPlaceholder": "Promo koda?",
@@ -507,17 +486,11 @@
       "payHint": "Plačaj zdaj"
     },
     "live": {
-      "succeededTitle": "🎉 Demo pripravljen!",
       "failedTitle": "Nekaj je šlo narobe...",
       "workingTitle": "Zdaj skladamo in ti pošljemo pesem...",
-      "techDetails": "Tehnične podrobnosti (za podporo)",
       "lyricsVerified": "✓ Besedilo preverjeno s strani urednika",
       "lyricsDraft": "✏️ Osnutek (preverja se...)",
-      "twoVersionsTitle": "🎤 Naredil sem ti 2 različici — obe darilo zate:",
       "version1": "Različica 1",
-      "version2Gift": "Različica 2 🎁",
-      "listenWhileWaiting": "🎧 Poslušaj pesmi drugih, medtem ko čakaš",
-      "noPublicYet": "Še ni javnih pesmi.",
       "forSomeone": "Za {name}",
       "status": {
         "pending": "Pripravljamo vse...",
@@ -543,39 +516,23 @@
       },
       "humanizeFail": {
         "default": "Generiranje ni uspelo. Poskusi znova — če se nadaljuje, nam piši na klepetu.",
-        "noMessage": "Generiranje ni uspelo brez sporočila o napaki. Poskusi znova čez nekaj minut.",
         "sensitive": "Tvoje sporočilo vsebuje besede, ki jih ponudnik glasbe zavrača. Preoblikuj ga brez občutljivih besed in poskusi znova.",
         "timeout": "Generiranje je preseglo največji čas. Glasbeni studio je trenutno zelo zaseden — poskusi znova čez nekaj minut.",
-        "notConfigured": "Storitev za generiranje zvoka ni konfigurirana. Ekipa je obveščena.",
-        "credit": "Glasbeni studio je ostal brez kreditov. Ekipa je obveščena — takoj se ukvarjamo.",
         "rate": "Preveč zahtevkov v glasbeni studio. Poskusi znova čez minuto.",
-        "network": "Povezava z glasbenim studijem je padla. Poskusi znova čez minuto.",
-        "sunoFailed": "Glasbeni studio je zavrnil generiranje. Preoblikuj sporočilo (krajše, brez resničnih znanih imen) in poskusi znova."
+        "network": "Povezava z glasbenim studijem je padla. Poskusi znova čez minuto."
       }
     },
     "step6": {
       "waiting": "Čakamo demo...",
       "failedTitle": "Nekaj je šlo narobe...",
-      "techDetails": "Tehnične podrobnosti (za podporo)",
-      "againBtnGhost": "← Začni novo",
-      "unlockedTitle": "✓ Celotna pesem odklenjena!",
-      "unlockedSub": "Polne različice (3 min) prihajajo na tvoj email.",
-      "version1Full": "Različica 1 (polna)",
-      "version2Full": "Različica 2 (polna)",
-      "againCta": "+ Naredi še eno pesem",
       "title": "6. Odkleni celotno pesem",
       "sub": "Demo si slišal. Zdaj dobiš 2 polni različici (po 3 min) poslani na email.",
-      "replayTitle": "🔊 Poslušaj demo znova (30s)",
-      "tipLine": "Doplačilo posvetilo {amount} €",
       "payingCta": "Odpiranje plačila...",
       "unlockCta": "🔓 Odkleni — {amount}",
-      "payHint": "Plačaj zdaj",
-      "laterCta": "Kasneje — naredim še en demo"
+      "payHint": "Plačaj zdaj"
     },
     "gift": {
-      "openCta": "🎟️ Imaš darilno kodo? Pritisni, da jo uporabiš",
       "placeholder": "GIFT-XXXXXXXX",
-      "applyCta": "Uporabi",
       "applying": "...",
       "errInvalid": "Neveljavna ali deaktivirana koda.",
       "errExpired": "Koda je potekla.",
@@ -583,10 +540,7 @@
       "errGeneric": "Neveljavna koda."
     },
     "retry": {
-      "retrying": "🔄 Ponavljam generiranje...",
       "cta": "🔄 Poskusi znova",
-      "limitReached": "Dosegel si omejitev 3 poskusov za ta demo. Začni novo pesem.",
-      "alreadyRunning": "Generiranje že poteka — počakaj nekaj sekund.",
       "generic": "Neznana napaka. Poskusi znova."
     },
     "promo": {
@@ -599,14 +553,10 @@
       "errGeneric": "Neveljavna koda."
     },
     "humanError": {
-      "duplicate": "Podvojen zahtevek — poskusi znova čez nekaj sekund.",
-      "emailRequired": "Vnesi email, da ti pošljemo pesem.",
-      "paymentRequired": "Za celotno pesem (3 min) je potrebno plačilo.",
       "unknown": "Neznana napaka.",
       "emailInvalid": "Vnesi veljaven email, da ti pošljemo pesem.",
       "emailSaveFailed": "Nisem mogel shraniti emaila. Poskusi znova.",
       "generic": "Napaka pri generiranju. Poskusi znova.",
-      "stripeNotConfigured": "Plačila še niso aktivirana. Nastavi STRIPE_SECRET_KEY v .env.",
       "stripeShort": "Plačila še niso aktivirana.",
       "checkoutFailed": "Nisem mogel odpreti plačila. Poskusi znova.",
       "paymentCanceled": "Plačilo je bilo preklicano. Vaši podatki so shranjeni — poskusite znova, ko boste pripravljeni."
@@ -614,9 +564,7 @@
   },
   "metadata": {
     "title": "Manele Cadou — Naredi mu pesem z imenom v 90 sek",
-    "description": "Generator personaliziranih balkanskih pesmi. Izbereš stil, priložnost, glas — 2 verziji na e-pošto. 1+1 BREZPLAČNO.",
-    "ogTitle": "Manele Cadou — Pesem z imenom v 90 sek",
-    "ogDescription": "Generator pesmi. 2 profi verziji na e-pošto. 1+1 BREZPLAČNO."
+    "description": "Generator personaliziranih balkanskih pesmi. Izbereš stil, priložnost, glas — 2 verziji na e-pošto. 1+1 BREZPLAČNO."
   },
   "studio": {
     "heroFlag": "🎤 Profi studio · 6 preprostih korakov",
@@ -625,7 +573,6 @@
     "giftBadge": "🎁 1+1 BREZPLAČNO",
     "noSubBadge": "🛡️ Enkratno plačilo, brez naročnine.",
     "sideOfferTitle": "Ponudba",
-    "sideGiftTitle": "🎁 Darilo za nekoga",
     "whyTryTitle": "Zakaj poskusiti?",
     "whyBullet1": "🎯 Besedilo piše naša ekipa, preveri urednik",
     "whyBullet2": "🎤 2 zvočni različici, izbereš najboljšo",
@@ -948,7 +895,6 @@
     "statusLabel": "Status:",
     "confirmingPayment": "✨ Potrjujemo plačilo...",
     "version1": "Različica 1",
-    "version2": "Različica 2 🎁 (darilo)",
     "full": "polna",
     "demo30": "demo 30s",
     "unlockFailed": "Nisem mogel odkleniti po plačilu:",

@@ -2,7 +2,6 @@
   "common": {
     "currency": "lei",
     "ctaMakeManea": "🎤 Fă o manea — de la {price}",
-    "ctaMakeManeaShort": "Fă o manea",
     "ctaListen": "Ascultă exemple",
     "loading": "Se încarcă…",
     "close": "Închide",
@@ -411,11 +410,7 @@
       "dedicLabel": "Dedicație opțională (de la cine)",
       "dedicPlaceholder": "cumnatu Dani și familia Popescu",
       "lyricsLabel": "📝 Vrei să scrii tu versurile?",
-      "lyricsActive": "✓ activ",
-      "lyricsActivate": "Activează",
-      "lyricsPlaceholder": "Scrie aici versurile tale dacă vrei. Lasă gol = scriem noi versurile pe baza mesajului.\n\nRefren:\n...\nCuplet:\n...",
       "voicesTitle": "🎤 Ce voce să fie?",
-      "voiceHint": "Ascultă vocea",
       "errCompleteFirst": "Completează stilul, ocazia și numele întâi.",
       "errTooManySuggestions": "Prea multe sugestii. Încearcă peste un minut.",
       "errAiFallback": "Nu am putut genera automat, am pus o sugestie de rezervă.",
@@ -444,7 +439,6 @@
       "regenCta": "Refă cu AI",
       "regenerating": "Se reface...",
       "validating": "Verificăm versurile...",
-      "acceptCta": "Acceptă versurile și continuă",
       "acceptHint": "Acceptă și continuă",
       "errGenerate": "Nu am putut genera versurile. Mai încearcă o dată.",
       "errValidate": "Nu am putut verifica versurile. Mai încearcă.",
@@ -452,7 +446,6 @@
       "errEmpty": "Versurile nu pot fi goale.",
       "likeCta": "Îmi plac",
       "dislikeCta": "Nu îmi plac",
-      "backCta": "Înapoi",
       "rejected": {
         "artist_name": "Versurile conțin numele unui artist real. Te rugăm să-l scoți — nu putem folosi nume de artiști celebri.",
         "public_figure": "Versurile conțin numele unei persoane publice. Te rugăm să-l scoți.",
@@ -464,15 +457,6 @@
     "step4": {
       "title": "4. Alege pachetul",
       "sub": "Alege ce vrei să primești. Poți schimba oricând până la plată.",
-      "tipNone": "Fără",
-      "tipUnit": "{amount} lei",
-      "customLabel": "Sau pune cât vrei tu (până la 1.000.000.000 lei 😅)",
-      "customActive": "✓ activ",
-      "customBtn": "Custom",
-      "customPlaceholder": "ex. 1500",
-      "customSurcharge": "Suprataxă: +{amount} lei (5% capped la 50 lei).",
-      "tipSurchargeLine": "Suprataxă dedicație ({amount} lei × 5%, plafon 50)",
-      "totalUnlock": "Total la deblocare",
       "recommended": "RECOMANDAT",
       "discountBadge": "−{pct}% REDUCERE",
       "offerEnds": "Prețul redus se termină în"
@@ -483,16 +467,13 @@
       "emailPlaceholder": "tu@email.ro",
       "emailHint": "Folosit doar pentru livrare. Fără spam.",
       "emailSentTo": "✓ Trimitem maneaua la",
-      "submitting": "Se trimite...",
-      "submitCta": "🎁 Generează demo gratis 30s",
-      "submitHint": "Generează demo gratis"
+      "submitting": "Se trimite..."
     },
     "step5PayFirst": {
       "title": "5. Plătește pentru a genera maneaua",
       "sub": "Maneaua ta ({minutes} min × 2 versiuni) se generează ÎN MOMENTUL în care plata e confirmată. Trimitem rezultatul pe email și-l vezi și aici imediat ce e gata.",
       "emailLabel": "📧 Email-ul tău (obligatoriu)",
       "emailSentTo": "✓ Trimitem maneaua la",
-      "tipLine": "Suprataxă dedicație {amount} {currency}",
       "promoLine": "Promo:",
       "totalLabel": "Total",
       "promoPlaceholder": "Cod promo?",
@@ -505,17 +486,11 @@
       "payHint": "Plătește acum"
     },
     "live": {
-      "succeededTitle": "🎉 Demo gata!",
       "failedTitle": "Ceva n-a mers...",
       "workingTitle": "Acum compunem și-ți trimitem melodia...",
-      "techDetails": "Detalii tehnice (pentru suport)",
       "lyricsVerified": "✓ Versuri verificate de editor",
       "lyricsDraft": "✏️ Ciornă (se verifică...)",
-      "twoVersionsTitle": "🎤 Ți-am făcut 2 versiuni — ambele cadou pentru tine:",
       "version1": "Versiunea 1",
-      "version2Gift": "Versiunea 2 🎁",
-      "listenWhileWaiting": "🎧 Ascultă manele generate de alții cât timp aștepți",
-      "noPublicYet": "Nu s-au generat încă manele publice.",
       "forSomeone": "Pentru {name}",
       "status": {
         "pending": "Pregătim totul...",
@@ -541,39 +516,23 @@
       },
       "humanizeFail": {
         "default": "Generarea a eșuat. Încearcă din nou — dacă persistă, scrie-ne pe chat.",
-        "noMessage": "Generarea a eșuat fără un mesaj de eroare. Încearcă din nou peste câteva minute.",
         "sensitive": "Mesajul tău conține cuvinte pe care providerul de muzică le respinge. Reformulează-l fără cuvinte sensibile și încearcă din nou.",
         "timeout": "Generarea a depășit timpul maxim. Studio-ul de muzică e foarte aglomerat acum — mai încearcă peste câteva minute.",
-        "notConfigured": "Serviciul de generare audio nu este configurat. Echipa a fost notificată.",
-        "credit": "Studio-ul de muzică a rămas fără credite. Echipa a fost notificată — ne ocupăm imediat.",
         "rate": "Prea multe cereri spre studio-ul de muzică acum. Mai încearcă peste un minut.",
-        "network": "Conexiunea cu studio-ul de muzică a căzut. Mai încearcă peste un minut.",
-        "sunoFailed": "Studio-ul de muzică a respins generarea. Reformulează mesajul (mai scurt, fără nume reale celebre) și încearcă din nou."
+        "network": "Conexiunea cu studio-ul de muzică a căzut. Mai încearcă peste un minut."
       }
     },
     "step6": {
       "waiting": "Se așteaptă demo-ul...",
       "failedTitle": "Ceva n-a mers...",
-      "techDetails": "Detalii tehnice (pentru suport)",
-      "againBtnGhost": "← Pornește unul nou",
-      "unlockedTitle": "✓ Manea completă deblocată!",
-      "unlockedSub": "Versiunile complete (3 min) îți sosesc pe email.",
-      "version1Full": "Versiunea 1 (completă)",
-      "version2Full": "Versiunea 2 (completă)",
-      "againCta": "+ Fă încă o manea",
       "title": "6. Deblochează maneaua completă",
       "sub": "Demo-ul l-ai ascultat. Acum primești 2 versiuni complete (3 min fiecare) trimise pe email.",
-      "replayTitle": "🔊 Reascultă demo-ul (30s)",
-      "tipLine": "Suprataxă dedicație {amount} lei",
       "payingCta": "Se deschide plata...",
       "unlockCta": "🔓 Deblochează — {amount}",
-      "payHint": "Plătește acum",
-      "laterCta": "Mai târziu — fac încă un demo"
+      "payHint": "Plătește acum"
     },
     "gift": {
-      "openCta": "🎟️ Ai cod cadou? Apasă să-l folosești",
       "placeholder": "GIFT-XXXXXXXX",
-      "applyCta": "Folosește",
       "applying": "...",
       "errInvalid": "Cod invalid sau dezactivat.",
       "errExpired": "Cod expirat.",
@@ -581,10 +540,7 @@
       "errGeneric": "Cod nevalid."
     },
     "retry": {
-      "retrying": "🔄 Reîncerc generarea...",
       "cta": "🔄 Încearcă din nou",
-      "limitReached": "Ai atins limita de 3 reîncercări pentru acest demo. Pornește unul nou.",
-      "alreadyRunning": "Generarea e deja în curs — așteaptă câteva secunde.",
       "generic": "Eroare necunoscută. Încearcă din nou."
     },
     "promo": {
@@ -597,14 +553,10 @@
       "errGeneric": "Cod nevalid."
     },
     "humanError": {
-      "duplicate": "Cerere duplicat — încearcă din nou peste câteva secunde.",
-      "emailRequired": "Introdu email-ul ca să-ți trimitem maneaua.",
-      "paymentRequired": "Pentru manea completă (3 min) e nevoie de plată.",
       "unknown": "Eroare necunoscută.",
       "emailInvalid": "Introdu un email valid ca să-ți trimitem maneaua.",
       "emailSaveFailed": "Nu am putut salva email-ul. Încearcă din nou.",
       "generic": "Eroare la generare. Încearcă din nou.",
-      "stripeNotConfigured": "Plățile nu sunt încă activate. Setează STRIPE_SECRET_KEY în .env.",
       "stripeShort": "Plățile nu sunt încă activate.",
       "checkoutFailed": "Nu s-a putut deschide plata. Încearcă din nou.",
       "paymentCanceled": "Plata a fost anulată. Datele tale sunt salvate — încearcă din nou când ești gata."
@@ -612,9 +564,7 @@
   },
   "metadata": {
     "title": "Manele Cadou — Fă-i o manea cu numele lui în 90 de secunde",
-    "description": "Generator de manele personalizate. Alegi stilul, ocazia, vocea — primești 2 versiuni pe email. 1+1 GRATIS, plată unică.",
-    "ogTitle": "Manele Cadou — Fă-i o manea cu numele lui în 90 de secunde",
-    "ogDescription": "Generator de manele. 2 versiuni profi pe email. 1+1 GRATIS."
+    "description": "Generator de manele personalizate. Alegi stilul, ocazia, vocea — primești 2 versiuni pe email. 1+1 GRATIS, plată unică."
   },
   "studio": {
     "heroFlag": "🎤 Studio profi · 6 pași simpli",
@@ -623,7 +573,6 @@
     "giftBadge": "🎁 1+1 GRATIS",
     "noSubBadge": "🛡️ Plată unică, fără abonament.",
     "sideOfferTitle": "Ofertă",
-    "sideGiftTitle": "🎁 Cadou pentru cineva",
     "whyTryTitle": "De ce să încerci?",
     "whyBullet1": "🎯 Versuri scrise de echipa noastră, verificate de editor",
     "whyBullet2": "🎤 2 versiuni audio, alegi pe cea mai tare",
@@ -946,7 +895,6 @@
     "statusLabel": "Status:",
     "confirmingPayment": "✨ Confirmăm plata...",
     "version1": "Versiunea 1",
-    "version2": "Versiunea 2 🎁 (cadou)",
     "full": "completă",
     "demo30": "demo 30s",
     "unlockFailed": "Nu am putut debloca după plată:",

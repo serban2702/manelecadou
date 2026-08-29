@@ -2,7 +2,6 @@
   "common": {
     "currency": "₺",
     "ctaMakeManea": "🎤 Şarkı yap — {price}",
-    "ctaMakeManeaShort": "Şarkı yap",
     "ctaListen": "Örnekleri dinle",
     "loading": "Yükleniyor…",
     "close": "Kapat",
@@ -22,7 +21,6 @@
     "asculta": "Dinle",
     "studio": "Şarkı yap",
     "top": "En iyiler",
-    "cadou": "Hediye",
     "cont": "Hesabım",
     "istoric": "Geçmiş"
   },
@@ -341,8 +339,7 @@
       "howStep2Title": "Besteliyoruz + söylüyoruz",
       "howStep2Body": "Sözleri besteliyor ve seçilen sesle 2 parça kaydediyoruz.",
       "howStep3Title": "Öde ve al",
-      "howStep3Body": "Tek seferlik ödüyorsun ve 2 tam versiyonu birkaç dakikada e-postayla alıyorsun.",
-      "giftSomeone": "🎁 Birine hediye"
+      "howStep3Body": "Tek seferlik ödüyorsun ve 2 tam versiyonu birkaç dakikada e-postayla alıyorsun."
     },
     "top": {
       "badge": "★ Haftanın en iyileri",
@@ -413,11 +410,7 @@
       "dedicLabel": "İsteğe bağlı ithaf (kimden)",
       "dedicPlaceholder": "Ahmet ve ekipten",
       "lyricsLabel": "📝 Sözleri sen mi yazmak istiyorsun?",
-      "lyricsActive": "✓ aktif",
-      "lyricsActivate": "Aktifleştir",
-      "lyricsPlaceholder": "İstersen sözleri buraya yaz. Boş bırak = sözleri biz yazarız, mesaja göre.\n\nNakarat:\n...\nKıta:\n...",
       "voicesTitle": "🎤 Hangi sanatçı sana şarkı söylesin?",
-      "voiceHint": "Sesi dinle",
       "errCompleteFirst": "Önce stil, vesile ve ismi doldur.",
       "errTooManySuggestions": "Çok fazla öneri. Bir dakika sonra dene.",
       "errAiFallback": "Otomatik üretemedim, yedek bir öneri koydum.",
@@ -446,7 +439,6 @@
       "regenCta": "AI ile yeniden yaz",
       "regenerating": "Yeniden yazılıyor...",
       "validating": "Sözleri kontrol ediyoruz...",
-      "acceptCta": "Sözleri kabul et ve devam et",
       "acceptHint": "Kabul et ve devam et",
       "errGenerate": "Sözleri üretemedim. Bir daha dene.",
       "errValidate": "Sözleri kontrol edemedim. Tekrar dene.",
@@ -454,7 +446,6 @@
       "errEmpty": "Sözler boş olamaz.",
       "likeCta": "Beğendim",
       "dislikeCta": "Beğenmedim",
-      "backCta": "Geri",
       "rejected": {
         "artist_name": "Sözler gerçek bir sanatçının adını içeriyor. Lütfen çıkar — ünlü sanatçı isimleri kullanamayız.",
         "public_figure": "Sözler tanınmış bir kişinin adını içeriyor. Lütfen çıkar.",
@@ -466,15 +457,6 @@
     "step4": {
       "title": "4. Hediye ve Premium",
       "sub": "Onu deviresin diye sözlere ne kadar koyalım? (%5 ek ücret, üst sınır 50 TL.)",
-      "tipNone": "Yok",
-      "tipUnit": "{amount} TL",
-      "customLabel": "Ya da istediğin kadar koy (1.000.000.000 TL'ye kadar 😅)",
-      "customActive": "✓ aktif",
-      "customBtn": "Özel",
-      "customPlaceholder": "örn. 1500",
-      "customSurcharge": "Ek ücret: +{amount} TL (%5, üst sınır 50 TL).",
-      "tipSurchargeLine": "İthaf ek ücreti ({amount} TL × %5, üst sınır 50)",
-      "totalUnlock": "Kilidi açma toplam",
       "recommended": "ÖNERİLEN",
       "discountBadge": "−%{pct} İNDİRİM",
       "offerEnds": "İndirimli fiyat şu sürede bitiyor"
@@ -485,16 +467,13 @@
       "emailPlaceholder": "sen@email.com",
       "emailHint": "Sadece teslimat için kullanılır. Spam yok.",
       "emailSentTo": "✓ Şarkıyı şu adrese gönderiyoruz:",
-      "submitting": "Gönderiliyor...",
-      "submitCta": "🎁 30s ücretsiz demo üret",
-      "submitHint": "Ücretsiz demo üret"
+      "submitting": "Gönderiliyor..."
     },
     "step5PayFirst": {
       "title": "5. Şarkıyı üretmek için öde",
       "sub": "Şarkın ({minutes} dk × 2 versiyon) ödeme onaylandığı ANDA üretilir. Sonucu e-postaya göndeririz, hazır olur olmaz burada da görürsün.",
       "emailLabel": "📧 E-posta adresin (zorunlu)",
       "emailSentTo": "✓ Şarkıyı şu adrese gönderiyoruz:",
-      "tipLine": "İthaf ek ücreti {amount} {currency}",
       "promoLine": "Promo:",
       "totalLabel": "Toplam",
       "promoPlaceholder": "Promo kodu?",
@@ -507,17 +486,11 @@
       "payHint": "Şimdi öde"
     },
     "live": {
-      "succeededTitle": "🎉 Demo hazır!",
       "failedTitle": "Bir şeyler ters gitti...",
       "workingTitle": "Şimdi besteliyor ve şarkını sana gönderiyoruz...",
-      "techDetails": "Teknik detaylar (destek için)",
       "lyricsVerified": "✓ Sözler editör tarafından doğrulandı",
       "lyricsDraft": "✏️ Taslak (kontrol ediliyor...)",
-      "twoVersionsTitle": "🎤 Sana 2 versiyon yaptım — ikisi de hediye:",
       "version1": "Versiyon 1",
-      "version2Gift": "Versiyon 2 🎁",
-      "listenWhileWaiting": "🎧 Beklerken başkalarının ürettiği şarkıları dinle",
-      "noPublicYet": "Henüz herkese açık şarkı üretilmedi.",
       "forSomeone": "{name} için",
       "status": {
         "pending": "Her şeyi hazırlıyoruz...",
@@ -543,39 +516,23 @@
       },
       "humanizeFail": {
         "default": "Üretim başarısız oldu. Tekrar dene — sorun devam ederse sohbette bize yaz.",
-        "noMessage": "Üretim hata mesajı olmadan başarısız oldu. Birkaç dakika sonra tekrar dene.",
         "sensitive": "Mesajın, müzik sağlayıcının reddettiği kelimeler içeriyor. Hassas kelimeler olmadan yeniden yaz ve tekrar dene.",
         "timeout": "Üretim maksimum süreyi aştı. Müzik stüdyosu şu an çok yoğun — birkaç dakika sonra tekrar dene.",
-        "notConfigured": "Ses üretim servisi yapılandırılmamış. Ekip bilgilendirildi.",
-        "credit": "Müzik stüdyosunun kredisi bitti. Ekip bilgilendirildi — hemen ilgileniyoruz.",
         "rate": "Şu an müzik stüdyosuna çok fazla istek var. Bir dakika sonra tekrar dene.",
-        "network": "Müzik stüdyosuyla bağlantı koptu. Bir dakika sonra tekrar dene.",
-        "sunoFailed": "Müzik stüdyosu üretimi reddetti. Mesajı yeniden yaz (daha kısa, gerçek ünlü isim olmadan) ve tekrar dene."
+        "network": "Müzik stüdyosuyla bağlantı koptu. Bir dakika sonra tekrar dene."
       }
     },
     "step6": {
       "waiting": "Demo bekleniyor...",
       "failedTitle": "Bir şeyler ters gitti...",
-      "techDetails": "Teknik detaylar (destek için)",
-      "againBtnGhost": "← Yeni başlat",
-      "unlockedTitle": "✓ Tam şarkı açıldı!",
-      "unlockedSub": "Tam versiyonlar (3 min) e-postana geliyor.",
-      "version1Full": "Versiyon 1 (tam)",
-      "version2Full": "Versiyon 2 (tam)",
-      "againCta": "+ Bir şarkı daha yap",
       "title": "6. Tam şarkıyı aç",
       "sub": "Demoyu dinledin. Şimdi e-postaya gönderilen 2 tam versiyon (her biri 3 min) alıyorsun.",
-      "replayTitle": "🔊 Demoyu tekrar dinle (30s)",
-      "tipLine": "İthaf ek ücreti {amount} TL",
       "payingCta": "Ödeme açılıyor...",
       "unlockCta": "🔓 Aç — {amount}",
-      "payHint": "Şimdi öde",
-      "laterCta": "Sonra — bir demo daha yapıyorum"
+      "payHint": "Şimdi öde"
     },
     "gift": {
-      "openCta": "🎟️ Hediye kodun var mı? Kullanmak için bas",
       "placeholder": "GIFT-XXXXXXXX",
-      "applyCta": "Kullan",
       "applying": "...",
       "errInvalid": "Geçersiz veya devre dışı kod.",
       "errExpired": "Kodun süresi dolmuş.",
@@ -583,10 +540,7 @@
       "errGeneric": "Geçersiz kod."
     },
     "retry": {
-      "retrying": "🔄 Üretimi yeniden deniyorum...",
       "cta": "🔄 Tekrar dene",
-      "limitReached": "Bu demo için 3 yeniden deneme sınırına ulaştın. Yeni bir şarkı başlat.",
-      "alreadyRunning": "Üretim zaten devam ediyor — birkaç saniye bekle.",
       "generic": "Bilinmeyen hata. Tekrar dene."
     },
     "promo": {
@@ -599,14 +553,10 @@
       "errGeneric": "Geçersiz kod."
     },
     "humanError": {
-      "duplicate": "Yinelenen istek — birkaç saniye sonra tekrar dene.",
-      "emailRequired": "Şarkıyı göndermemiz için e-posta gir.",
-      "paymentRequired": "Tam şarkı (3 min) için ödeme gerekli.",
       "unknown": "Bilinmeyen hata.",
       "emailInvalid": "Şarkıyı göndermemiz için geçerli bir e-posta gir.",
       "emailSaveFailed": "E-postayı kaydedemedim. Tekrar dene.",
       "generic": "Üretim hatası. Tekrar dene.",
-      "stripeNotConfigured": "Ödemeler henüz aktif değil. .env'de STRIPE_SECRET_KEY ayarla.",
       "stripeShort": "Ödemeler henüz aktif değil.",
       "checkoutFailed": "Ödemeyi açamadım. Tekrar dene.",
       "paymentCanceled": "Ödeme iptal edildi. Verileriniz kaydedildi — hazır olduğunuzda tekrar deneyin."
@@ -614,9 +564,7 @@
   },
   "metadata": {
     "title": "Manele Cadou — Onun ismiyle 90 saniyede şarkı",
-    "description": "Kişiselleştirilmiş arabesk/manele üreticisi. Stil, vesile, ses seç — e-postaya 2 versiyon. 1+1 BEDAVA, tek ödeme.",
-    "ogTitle": "Manele Cadou — 90 saniyede ismiyle şarkı",
-    "ogDescription": "Şarkı üretici. E-postaya 2 profi versiyon. 1+1 BEDAVA."
+    "description": "Kişiselleştirilmiş arabesk/manele üreticisi. Stil, vesile, ses seç — e-postaya 2 versiyon. 1+1 BEDAVA, tek ödeme."
   },
   "studio": {
     "heroFlag": "🎤 Profi stüdyo · 6 kolay adım",
@@ -625,7 +573,6 @@
     "giftBadge": "🎁 1+1 BEDAVA",
     "noSubBadge": "🛡️ Tek seferlik ödeme, abonelik yok.",
     "sideOfferTitle": "Teklif",
-    "sideGiftTitle": "🎁 Birine hediye",
     "whyTryTitle": "Neden denemeli?",
     "whyBullet1": "🎯 Ekibimiz tarafından yazılan sözler, editör tarafından doğrulanmış",
     "whyBullet2": "🎤 2 ses versiyonu, en iyisini seçiyorsun",
@@ -948,7 +895,6 @@
     "statusLabel": "Durum:",
     "confirmingPayment": "✨ Ödemeyi onaylıyoruz...",
     "version1": "Versiyon 1",
-    "version2": "Versiyon 2 🎁 (hediye)",
     "full": "tam",
     "demo30": "demo 30s",
     "unlockFailed": "Ödemeden sonra açamadım:",
