@@ -10,6 +10,9 @@ import type {
   SiteStyleEntry,
   SiteVoiceEntry,
 } from '@/lib/api/sites.api';
+
+/** Interfața care nu poate fi oprită — plasa de siguranță a site-ului. */
+const DEFAULT_EXPERIENCE_SLUG = 'classic';
 import { GLOBAL_VOICE_IDS, PACKAGE_TIERS, type PackageTier } from '../studio-constants';
 
 export const FALLBACK_EXPERIENCES: Array<{ slug: string; label: string }> = [
@@ -48,10 +51,11 @@ export function itemOf(form: SiteDto, slug: string): ExperienceItemConfig {
  * — cel mai prost fel de a greși, fiindcă te face să cauți defectul în altă parte.
  */
 export function isEnabled(form: SiteDto, slug: string): boolean {
-  if (slug === 'classic') return true;
-  if (slug === form.experienceConfig?.defaultSlug) return true;
+  if (slug === DEFAULT_EXPERIENCE_SLUG) return true;
   const item = form.experienceConfig?.items?.[slug];
   // Lipsa configurării înseamnă „nu e activată pe site-ul ăsta", nu „e liberă".
+  // `defaultSlug` nu e o scutire: oprită înseamnă oprită, chiar dacă a rămas
+  // marcată implicită (atunci site-ul cade pe classic).
   if (!item) return false;
   return item.enabled !== false;
 }
@@ -148,10 +152,18 @@ export function patchItem(
   const current = ensureConfig(form);
   const prev = current.items[slug] ?? emptyItem();
   const nextItem = typeof updater === 'function' ? updater(prev) : { ...prev, ...updater };
+  // Oprirea interfeței care e implicită ar lăsa o stare contradictorie
+  // („Implicită" + „Oprită"), pe care runtime-ul o rezolvă oricum căzând pe
+  // classic. O rezolvăm aici, ca ecranul să arate ce se întâmplă de fapt.
+  const nextDefault =
+    nextItem.enabled === false && current.defaultSlug === slug
+      ? DEFAULT_EXPERIENCE_SLUG
+      : current.defaultSlug;
   return {
     ...form,
     experienceConfig: {
       ...current,
+      defaultSlug: nextDefault,
       items: { ...current.items, [slug]: nextItem },
     },
   };

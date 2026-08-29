@@ -278,3 +278,38 @@ describe('nextSongDiscountPercent', () => {
     assert.equal(nextSongDiscountPercent(null, resolveSitePackage(site, 'premium', 'cadou')), 50);
   });
 });
+
+describe('effectiveExperienceSlug — o interfață oprită nu poate fi cotată', () => {
+  const off = {
+    experienceConfig: {
+      defaultSlug: 'classic',
+      items: { cadou: { enabled: false, utmRules: [], packages: { basic: { priceCents: 1 } } } },
+    },
+  } as never;
+
+  it('ignoră slug-ul cerut prin antet dacă interfața e oprită', () => {
+    assert.equal(effectiveExperienceSlug(off, 'cadou'), 'classic');
+  });
+
+  it('acceptă slug-ul când interfața e pornită', () => {
+    const on = {
+      experienceConfig: { defaultSlug: 'classic', items: { cadou: { enabled: true, utmRules: [] } } },
+    } as never;
+    assert.equal(effectiveExperienceSlug(on, 'cadou'), 'cadou');
+  });
+
+  it('cade pe classic dacă implicitul însuși e oprit', () => {
+    const brokenDefault = {
+      experienceConfig: { defaultSlug: 'cadou', items: { cadou: { enabled: false, utmRules: [] } } },
+    } as never;
+    assert.equal(effectiveExperienceSlug(brokenDefault, null), 'classic');
+  });
+
+  it('prețul cotat pe o interfață oprită e cel de pe classic, nu override-ul ei', () => {
+    assert.notEqual(resolveSitePackage(off, 'basic', 'cadou').priceCents, 1);
+    assert.equal(
+      resolveSitePackage(off, 'basic', 'cadou').priceCents,
+      resolveSitePackage(off, 'basic', 'classic').priceCents,
+    );
+  });
+});

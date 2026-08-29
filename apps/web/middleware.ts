@@ -102,9 +102,10 @@ export async function middleware(req: NextRequest) {
   // Rewrite slug localizat (ex. /slushai pe site BG) → ruta canonică Next (/asculta).
   // Acoperă toate paginile principale + paginile legale. Acceptăm și slug-ul
   // canonic RO pe orice site (link-uri vechi nu se sparg).
+  const cookieSlug = req.cookies.get('mc_ui')?.value ?? null;
   const assigned = resolveExperienceSlug({
     uiParam: req.nextUrl.searchParams.get('ui'),
-    cookieSlug: req.cookies.get('mc_ui')?.value ?? null,
+    cookieSlug,
     utm: {
       source: req.nextUrl.searchParams.get('utm_source'),
       campaign: req.nextUrl.searchParams.get('utm_campaign'),
@@ -134,6 +135,12 @@ export async function middleware(req: NextRequest) {
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 365,
     });
+  } else if (cookieSlug && cookieSlug !== assigned.slug) {
+    // Cookie-ul arată spre o interfață pe care n-o mai poate deschide (oprită
+    // din admin, sau slug necunoscut). Îl ștergem, nu-l lăsăm doar ignorat:
+    // altfel stă un an și reînvie tăcut dacă interfața e repornită, iar
+    // `lib/api.ts` îl trimite mai departe ca antet `x-mc-experience`.
+    res.cookies.delete('mc_ui');
   }
   return res;
 }

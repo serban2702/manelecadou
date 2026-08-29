@@ -14,6 +14,7 @@ import type {
   SiteExperienceConfig,
 } from './types';
 import { DEFAULT_EXPERIENCE_SLUG } from './catalog';
+import { isExperienceEnabled } from './assign';
 
 /** Per-experience code defaults. Both start as global flags so admin can A/B without a deploy. */
 export const EXPERIENCE_PACKAGE_DEFAULTS: Record<string, Partial<Record<PackageTier, ExperiencePackageOverride>>> = {
@@ -235,7 +236,15 @@ export function effectiveExperienceSlug(
   site: SitePackageSource | null | undefined,
   experienceSlug?: string | null,
 ): string {
-  return experienceSlug || site?.experienceConfig?.defaultSlug || DEFAULT_EXPERIENCE_SLUG;
+  const cfg = site?.experienceConfig ?? null;
+  // Slug-ul cerut vine din antetul `x-mc-experience` sau din `?ui=` — ambele
+  // controlate de client. Dacă interfața nu e activată pe site-ul ăsta, îl
+  // ignorăm: altfel un pachet cu preț propriu pe o interfață OPRITĂ putea fi
+  // cotat și cumpărat trimițând antetul de mână, fără să treci vreodată pe ea.
+  if (experienceSlug && isExperienceEnabled(experienceSlug, cfg)) return experienceSlug;
+  const fallback = cfg?.defaultSlug;
+  if (fallback && isExperienceEnabled(fallback, cfg)) return fallback;
+  return DEFAULT_EXPERIENCE_SLUG;
 }
 
 /**

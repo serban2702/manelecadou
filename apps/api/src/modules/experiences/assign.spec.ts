@@ -42,8 +42,24 @@ describe('isExperienceEnabled', () => {
     assert.equal(isExperienceEnabled('cadou', { defaultSlug: 'classic', items: {} }), false);
   });
 
-  it('the site default slug is enabled even without an items entry', () => {
-    assert.equal(isExperienceEnabled('cadou', { defaultSlug: 'cadou', items: {} }), true);
+  it('being the default does NOT keep a turned-off experience alive', () => {
+    // Altfel „oprită" n-ar însemna nimic exact în cazul în care interfața e cea
+    // mai vizibilă. Site-ul nu se blochează: `resolveExperienceSlug` cade pe
+    // classic, care nu poate fi oprită.
+    const off = { defaultSlug: 'cadou', items: { cadou: { enabled: false, utmRules: [] } } };
+    assert.equal(isExperienceEnabled('cadou', off), false);
+    assert.equal(isExperienceEnabled('classic', off), true);
+    assert.deepEqual(resolveExperienceSlug({ config: off }), { slug: 'classic', reason: 'default' });
+    assert.deepEqual(resolveExperienceSlug({ cookieSlug: 'cadou', config: off }), {
+      slug: 'classic',
+      reason: 'default',
+    });
+  });
+
+  it('a default that is enabled still works', () => {
+    const on = { defaultSlug: 'cadou', items: { cadou: { enabled: true, utmRules: [] } } };
+    assert.equal(isExperienceEnabled('cadou', on), true);
+    assert.deepEqual(resolveExperienceSlug({ config: on }), { slug: 'cadou', reason: 'default' });
   });
 });
 
@@ -132,25 +148,27 @@ describe('resolveExperienceSlug', () => {
     assert.deepEqual(noItem, { slug: 'classic', reason: 'default' });
   });
 
-  it('a visitor already on an experience stays on it after it is turned off (spec §13)', () => {
-    // Sticky beats enabled=false so we do not swap someone's UI mid-order.
-    // The entry still exists in items — that is what separates this from a
-    // stale cookie for an experience the site never configured.
+  it('turned off means unreachable — cookie and fingerprint included', () => {
+    // Până pe 29 aug 2026 exista o excepție „sticky": pe cine intrase deja pe o
+    // interfață îl lăsam pe ea și după ce operatorul o oprea, ca să nu-i schimbăm
+    // UI-ul în mijlocul comenzii. Consecința: „oprită" nu însemna oprită —
+    // oricine avea cookie-ul de la un test rămânea pe ea încă un an, iar
+    // operatorul n-avea cum s-o închidă cu adevărat. Acum toate căile trec prin
+    // aceeași verificare.
     const off = { defaultSlug: 'classic', items: { cadou: { enabled: false, utmRules: [] } } };
-    assert.deepEqual(resolveExperienceSlug({ cookieSlug: 'cadou', config: off }), {
-      slug: 'cadou',
-      reason: 'cookie',
-    });
-    assert.deepEqual(resolveExperienceSlug({ personSlug: 'cadou', config: off }), {
-      slug: 'cadou',
-      reason: 'fingerprint',
-    });
-    // …but a fresh visitor is not sent there.
-    assert.deepEqual(resolveExperienceSlug({ config: off }), { slug: 'classic', reason: 'default' });
-    assert.deepEqual(resolveExperienceSlug({ uiParam: 'cadou', config: off }), {
-      slug: 'classic',
-      reason: 'default',
-    });
+    for (const input of [
+      { cookieSlug: 'cadou' },
+      { personSlug: 'cadou' },
+      { uiParam: 'cadou' },
+      { utm: { source: 'facebook' } },
+      {},
+    ]) {
+      assert.deepEqual(
+        resolveExperienceSlug({ ...input, config: off }),
+        { slug: 'classic', reason: 'default' },
+        `intrare neașteptată pe cadou prin ${JSON.stringify(input)}`,
+      );
+    }
   });
 
   it('empty config falls back to classic', () => {

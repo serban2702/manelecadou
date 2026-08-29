@@ -20,25 +20,12 @@ function norm(v: string | null | undefined): string {
 export function isExperienceEnabled(slug: string, config?: SiteExperienceConfig | null): boolean {
   if (!isKnownExperienceSlug(slug)) return false;
   if (slug === DEFAULT_EXPERIENCE_SLUG) return true;
-  if (slug === config?.defaultSlug) return true;
+  // `defaultSlug` NU mai ține în viață o interfață oprită: dacă operatorul o
+  // oprește cât timp e implicită, site-ul cade pe classic. Altfel „oprită"
+  // n-ar însemna nimic exact în cazul în care e cel mai vizibilă.
   const item = config?.items?.[slug];
   if (!item) return false;
   return item.enabled !== false;
-}
-
-/**
- * Sticky: interfața pe care vizitatorul o are deja (cookie / person). Dacă
- * operatorul o oprește (`enabled: false`) după ce omul a intrat pe ea, îl lăsăm
- * pe ea — altfel i-am schimba UI-ul în mijlocul comenzii (spec §13).
- * Diferența față de `isExperienceEnabled`: aici contează că interfața E
- * CONFIGURATĂ pe site, chiar dacă e oprită. Un slug fără nicio intrare (sau cu
- * config null pentru că API-ul a picat) tot nu trece — altfel un cookie vechi
- * ar prelua un site care n-a activat-o niciodată.
- */
-function isExperienceSticky(slug: string, config?: SiteExperienceConfig | null): boolean {
-  if (isExperienceEnabled(slug, config)) return true;
-  if (!isKnownExperienceSlug(slug)) return false;
-  return !!config?.items?.[slug];
 }
 
 function pickIfUsable(slug: string | null | undefined, config?: SiteExperienceConfig | null): string | null {
@@ -48,13 +35,6 @@ function pickIfUsable(slug: string | null | undefined, config?: SiteExperienceCo
   return trimmed;
 }
 
-/** Ca `pickIfUsable`, dar acceptă și o interfață oprită pe care userul e deja. */
-function pickIfSticky(slug: string | null | undefined, config?: SiteExperienceConfig | null): string | null {
-  if (!slug) return null;
-  const trimmed = slug.trim();
-  if (!isExperienceSticky(trimmed, config)) return null;
-  return trimmed;
-}
 
 function utmMatches(
   rule: ExperienceUtmRule,
@@ -107,11 +87,17 @@ export function resolveExperienceSlug(input: ResolveExperienceInput): ResolveExp
   // year through the cookie.
   const ui = pickIfUsable(input.uiParam, cfg);
   if (ui) return { slug: ui, reason: 'url' };
+  // Cookie-ul și amprenta trec prin ACEEAȘI poartă ca `?ui=`. A existat o
+  // excepție („sticky"): pe cine intrase deja pe o interfață îl lăsam pe ea
+  // chiar după ce operatorul o oprea, ca să nu-i schimbăm UI-ul în mijlocul
+  // comenzii. Consecința era că „oprită" nu însemna oprită: oricine avea
+  // cookie-ul de la un test rămânea pe ea încă un an. Decizie 29 aug 2026:
+  // oprit înseamnă inaccesibil, pentru toată lumea, imediat.
 
-  const fromCookie = pickIfSticky(input.cookieSlug, cfg);
+  const fromCookie = pickIfUsable(input.cookieSlug, cfg);
   if (fromCookie) return { slug: fromCookie, reason: 'cookie' };
 
-  const fromPerson = pickIfSticky(input.personSlug, cfg);
+  const fromPerson = pickIfUsable(input.personSlug, cfg);
   if (fromPerson) return { slug: fromPerson, reason: 'fingerprint' };
 
   const fromUtm = matchUtm(input);

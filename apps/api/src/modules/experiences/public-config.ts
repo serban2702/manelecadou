@@ -92,10 +92,10 @@ export function toPublicExperienceConfig(
   }> = {};
   for (const { slug } of EXPERIENCE_CATALOG) {
     const item = config?.items?.[slug];
-    const enabled =
-      slug === 'classic' ||
-      slug === defaultSlug ||
-      (item?.enabled !== false && !!item);
+    // Trebuie să dea ACELAȘI verdict ca `isExperienceEnabled` din assign.ts.
+    // `defaultSlug` nu mai e o scutire: o interfață oprită e oprită, chiar dacă
+    // a rămas marcată implicită (atunci site-ul cade pe classic).
+    const enabled = slug === 'classic' || (item?.enabled !== false && !!item);
     items[slug] = {
       enabled,
       utmRules: item?.utmRules ?? [],
