@@ -68,7 +68,7 @@ manelecadou/
 ├── apps/
 │   ├── api/                  NestJS — toate modulele backend
 │   │   ├── src/modules/      auth, sites, payments, suno, lyria, lyrics, mail,
-│   │   │                     chat, analytics, generations, gift-codes,
+│   │   │                     chat, analytics, generations,
 │   │   │                     promo, roulette, kb, errors, ai-assistant,
 │   │   │                     guest-sessions, users, settings, suggestions,
 │   │   │                     experiences, identity, collage, invoices,
@@ -94,7 +94,7 @@ manelecadou/
 │   │   └── Dockerfile        prod build (Next.js standalone-NU folosim, pnpm start)
 │   └── admin/                Next.js — dashboard (Radix UI, Tanstack Query)
 │       ├── app/(dashboard)/  sites, users, payments, generations, suno, mail
-│       │                     chat, gift-codes, promo, analytics, errors,
+│       │                     chat, promo, analytics, errors,
 │       │                     guests, settings, database
 │       ├── app/login/        magic link flow
 │       └── lib/api/          client SDK către NestJS API
@@ -501,7 +501,7 @@ requestul pleacă cu `fetch` nativ spre `127.0.0.1:3000`. `AdminGuard` cere doar
 restaurează backup-uri (aia e UI-ul Coolify).
 ## 8. Multi-tenant model
 
-Tabel `sites` are tot ce ține de tenant. `siteId` e index pe toate tabelele cu date (users, generations, payments, magic_links, gift_codes, promo_codes, conversations, chat_messages, analytics_*, suno_logs, errors, mail_*, app_settings, etc.).
+Tabel `sites` are tot ce ține de tenant. `siteId` e index pe toate tabelele cu date (users, generations, payments, magic_links, promo_codes, conversations, chat_messages, analytics_*, suno_logs, errors, mail_*, app_settings, etc.).
 
 **Rezolvare site per request**:
 - `SiteContextMiddleware` (în API) rulează înaintea guards.
@@ -724,7 +724,7 @@ export default function Page() {
 }
 function PageInner() { /* original logic cu useSearchParams */ }
 ```
-Aplicabil deja la: `/cadou/redeem`, `/cadou/success`, `/login/verify`, `/m/[id]/view`, `Generator.tsx`, `Tracker.tsx` (în layout root).
+Aplicabil deja la: `/m/[id]/view`, `Generator.tsx`, `Tracker.tsx` (în layout root).
 
 ### 11.2 Server-only vs client-safe
 
@@ -844,6 +844,8 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
 23. **Pe `cadou`, TOATE paginile capătă shell-ul cadou, dar doar 6 au componente proprii.** `SiteShell` deleagă către `exp.Shell`, deci `/istoric`, `/top`, `/faq`, contact, articole și legalele randează markup `classic` — gândit pentru fundal închis — pe crem. Remaparea jetoanelor sub `.cadou-root` rezolvă majoritatea; culorile scrise direct în stiluri inline **nu pot fi suprascrise din CSS** și trebuie transformate în variabile (`--fg-muted`, `--fg-soft`, `--avatar-fill`). Dacă adaugi o pagină nouă, verific-o pe ambele interfețe.
 24. **Elementele de grilă au implicit `min-width: auto`.** Un titlu lung cu `white-space: nowrap` lărgește pista până iese din container, în loc să se taie cu elipsă — pe `/istoric` ieșea toată coloana a treia din panou. `.demo-grid > * { min-width: 0 }`.
 25. **WaveSurfer descarcă și decodează fișierul ÎNTREG ca să deseneze unda**, la montare, pentru fiecare instanță. 30 de carduri = 30 de MP3-uri înainte de orice click. Player-ul se montează acum la primul click; până atunci unda e decorativă. Iar `play()` trebuie apelat pe elementul de media **în interiorul gestului** — altfel iOS Safari îl refuză, și primul tap n-ar porni nimic.
+26. **Prețul vine ÎNTOTDEAUNA din pachet.** Modelul dinaintea lor — preț de bază + supliment premium + procent din suma dedicației — a fost scos (29 aug 2026): toate cele 838 de comenzi din producție aveau `packageTier`, deci nu taxase niciodată pe nimeni. `sites.basePriceCents` și `standardPriceCents` **au rămas** și se mai citesc în locuri secundare (textul de preț din articolele SEO, valoarea trimisă la Meta) — pot să difere de prețul real, deci nu le folosi ca sursă de adevăr. Prețul corect: `resolveSitePackage(site, tier, experienceSlug).priceCents`.
+27. **O funcționalitate scoasă de pe site lasă urme în cinci locuri.** Codurile cadou aveau: modul de API cu rute publice, metode în SDK-ul web fără apelanți, un tabel gol în producție, o coloană de configurare în admin și — cel mai grav — o clauză în termeni, publicată în 8 limbi, despre o taxă inexistentă. Când scoți ceva, urmărește-l până la capăt: `apps/api/src/modules/`, `apps/web/lib/api.ts`, `apps/web/messages/*.json`, ecranele din admin, `app_settings` și schema.
 ---
 
 ## 13. Endpoint-uri utile
@@ -961,9 +963,7 @@ Refactor masiv al chat-ului live (decizie 2026-05-25). Înlocuiește chat-ul sim
 | `AI_CHAT_SYSTEM_PROMPT` | (gol) | Override prompt | Lasă gol pentru default brand-aware |
 | `AI_CHAT_MODE_DEFAULT` | `manual` | Mode pentru conversații noi | `manual` (safe) / `suggest` / `auto` |
 | `AI_CHAT_REQUIRE_APPROVAL_FOR_PAYMENT` | `true` | Gate plată în mod auto | **NU schimba pe false** în prod |
-| `AI_CHAT_REQUIRE_APPROVAL_FOR_GENERATION` | `true` | Gate generare în mod auto | Pentru viitoare tool submit_generation |
 | `AI_CHAT_LEARN_NIGHTLY` | `false` | Cron extragere memory | Setează `true` după ~50 conversații reale |
-| `AI_CHAT_PROACTIVE_ENABLED` | `false` | (rezervat) — proactive engagement | Nu folosit încă în Faza 5 |
 | `VAPID_PUBLIC_KEY` | (gol) | Web Push admin | Generate: `npx web-push generate-vapid-keys` |
 | `VAPID_PRIVATE_KEY` | (gol, encrypted) | Web Push admin | După salvare → admin `Activează notificări` |
 | `VAPID_SUBJECT` | (gol) | Web Push admin | `mailto:serban2702@gmail.com` |
