@@ -725,8 +725,7 @@
         "h": "3. Prețuri și plăți",
         "b1": "Plata se face înainte de generare; maneaua se creează după confirmarea plății.",
         "b2": "Manea personalizată: de la <b>{fromPrice}</b> (TVA inclus), în funcție de pachetul ales.",
-        "b3": "Suprataxă dedicație: {pct}% din suma menționată în versuri, plafonată la {cap}.",
-        "b4": "Plățile se procesează prin Stripe — nu stocăm datele cardului."
+        "b3": "Plățile se procesează prin Stripe — nu stocăm datele cardului."
       },
       "sec4": {
         "h": "4. Drepturi de utilizare",

@@ -71,57 +71,6 @@ export function PricesScreen({
       </StudioSection>
 
       <StudioSection
-        title="Dedicație și cadou"
-        help="Suprataxa pe suma dedicației și prețul unui cod cadou single."
-      >
-        <Card>
-          <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field
-              label="Dedicație — procent"
-              fieldId="price.tip"
-              description="Procent din suma dedicației. Default 5%."
-            >
-              <div className="relative">
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={form.tipSurchargePercent ?? 5}
-                  onChange={(e) => setForm({ ...form, tipSurchargePercent: Number(e.target.value) })}
-                  className="pr-10 tabular-nums"
-                />
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                  %
-                </span>
-              </div>
-            </Field>
-            <Field
-              label="Dedicație — plafon"
-              description="Suprataxă maximă, indiferent de sumă. Default 50,00."
-            >
-              <MoneyInput
-                cents={form.tipSurchargeCapCents ?? 5000}
-                currency={currency}
-                placeholder="50,00"
-                onChange={(cents) => setForm({ ...form, tipSurchargeCapCents: cents ?? 0 })}
-              />
-            </Field>
-            <Field
-              label="Preț cadou"
-              fieldId="price.gift"
-              description="Un singur cod cadou. Folosit pe /cadou."
-            >
-              <MoneyInput
-                cents={form.giftPriceCents}
-                currency={currency}
-                onChange={(cents) => setForm({ ...form, giftPriceCents: cents ?? 0 })}
-              />
-            </Field>
-          </CardContent>
-        </Card>
-      </StudioSection>
-
-      <StudioSection
         title="Stripe pe extrasul de card"
         help="Un singur cont Stripe pentru toate site-urile. Astea sunt textele de pe factură / extras."
       >
@@ -169,8 +118,9 @@ export function PricesScreen({
         </summary>
         <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-border pt-4">
           <p className="sm:col-span-2 text-[11px] text-muted-foreground leading-snug">
-            Încă folosite pe interfața classic (CTA), termeni și upgrade-ul Premium vechi. Pachetele de
-            mai sus sunt modelul nou. HUF e tot /100 — nu e zero-decimal Stripe.
+            Rămășițe dinaintea pachetelor. Prețul pe care îl plătește clientul vine ÎNTOTDEAUNA din
+            pachetele de mai sus. Astea două se mai citesc doar în locuri secundare (textul de preț din
+            articolele SEO, valoarea trimisă la Meta) și pot să difere de prețul real — vezi CLAUDE.md.
           </p>
           <Field
             label="Preț bază"
@@ -192,17 +142,6 @@ export function PricesScreen({
               currency={currency}
               placeholder="fără tăiere"
               onChange={(cents) => setForm({ ...form, standardPriceCents: cents ?? 0 })}
-            />
-          </Field>
-          <Field
-            label="Upgrade Premium — extra"
-            description="Cât costă în plus opțiunea Manea Premium pe modelul vechi. Default 20,00."
-          >
-            <MoneyInput
-              cents={form.premiumExtraCents ?? 2000}
-              currency={currency}
-              placeholder="20,00"
-              onChange={(cents) => setForm({ ...form, premiumExtraCents: cents ?? 0 })}
             />
           </Field>
           <Field

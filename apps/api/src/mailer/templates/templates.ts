@@ -333,38 +333,6 @@ export function paymentSuccessTemplate(v: PaymentSuccessVars): { subject: string
   };
 }
 
-export interface GiftCodeVars {
-  code: string;
-  redeemUrl: string;
-  validUntil: string;
-  tier: string;
-  locale?: string;
-  branding?: EmailBranding;
-}
-export function giftCodeTemplate(v: GiftCodeVars): { subject: string; html: string; text: string } {
-  const d = dict(v.locale).giftCode;
-  return {
-    subject: d.subject(v.code),
-    html: layout({
-      title: d.title, locale: v.locale, branding: v.branding,
-      preheader: `${v.code} · ${v.validUntil}`,
-      bodyHtml: `
-        <div style="text-align:center;margin-bottom:18px;">
-          <div style="font-size:48px;">🎁</div>
-          <h2 style="margin:8px 0;font-family:'Times New Roman',serif;color:${COLORS.goldMid};font-size:22px;">${d.title}</h2>
-        </div>
-        <div style="text-align:center;background:rgba(241,200,77,0.08);border:2px dashed rgba(241,200,77,0.5);border-radius:12px;padding:24px;margin:16px 0;">
-          <p style="margin:0 0 6px;font-size:11px;letter-spacing:0.15em;text-transform:uppercase;color:rgba(255,245,220,0.5);">${d.yourCode}</p>
-          <p style="margin:0;font-family:'Courier New',monospace;font-size:32px;font-weight:900;color:${COLORS.goldMid};letter-spacing:0.1em;">${escape(v.code)}</p>
-          <p style="margin:8px 0 0;font-size:12px;color:rgba(255,245,220,0.55);">${d.package}: <b>${escape(v.tier)}</b> · ${d.validUntil} ${escape(v.validUntil)}</p>
-        </div>
-        <p style="margin:0 0 18px;color:${COLORS.cream};line-height:1.55;">${d.body}</p>
-        <div style="text-align:center;margin: 22px 0;">${buttonGold(v.redeemUrl, d.button)}</div>
-      `,
-    }),
-    text: d.text(v.code, v.validUntil, v.redeemUrl),
-  };
-}
 
 export interface AdminGdprRequestVars {
   userEmail: string;

@@ -25,7 +25,6 @@ import { SocialImageUploadService } from './social-image-upload.service';
 import { CreateGenerationDto } from './dto/create-generation.dto';
 import { generationEntitlements } from './entitlements';
 import { experienceSlugFromRequest } from '../experiences/request-slug';
-import { GiftCodesService } from '../gift-codes/gift-codes.service';
 import {
   CurrentGuestId,
   CurrentSite,
@@ -175,7 +174,6 @@ function formatPlays(n: number): string {
 export class GenerationsController {
   constructor(
     private readonly svc: GenerationsService,
-    private readonly giftCodes: GiftCodesService,
     private readonly socialUpload: SocialImageUploadService,
     @Inject(forwardRef(() => PaymentsService))
     private readonly payments: PaymentsService,
@@ -475,30 +473,6 @@ export class GenerationsController {
       userId: user?.id ?? null,
       guestId: user ? null : guestId,
     });
-  }
-
-  @UseGuards(OptionalJwtAuthGuard)
-  @Post(':id/unlock-with-gift')
-  async unlockWithGift(
-    @Param('id') id: string,
-    @Body() body: { code: string },
-    @CurrentUser() user: AuthedRequestUser | null,
-    @CurrentGuestId() guestId: string | null,
-    @CurrentSiteId() siteId: string | null,
-  ) {
-    return this.svc.unlockWithGift(
-      id,
-      () =>
-        this.giftCodes.consume(body.code, {
-          userId: user?.id ?? null,
-          guestId: user ? null : guestId,
-          siteId,
-        }),
-      {
-        userId: user?.id ?? null,
-        guestId: user ? null : guestId,
-      },
-    );
   }
 
   @UseGuards(OptionalJwtAuthGuard)

@@ -18,8 +18,6 @@ export default async function TermeniPage() {
   // pragul „de la", nu `basePriceCents` — care e câmpul legacy și diverge.
   const fromCents = await getFromPriceCents();
   const fromPrice = fromCents !== null ? formatPrice(site, fromCents) : null;
-  const tipPct = String(site.tipSurchargePercent ?? 5);
-  const tipCap = formatPrice(site, site.tipSurchargeCapCents ?? 5000);
   const businessEmail = `business@${site.domain}`;
   const regSuffix = (company.regCom || company.cui)
     ? t('sec1.regSuffix', { regCom: company.regCom || '—', cui: company.cui || '—' })
@@ -54,8 +52,7 @@ export default async function TermeniPage() {
           {fromPrice !== null && (
             <li>{t.rich('sec3.b2', { b: (chunks) => <b>{chunks}</b>, fromPrice })}</li>
           )}
-          <li>{t('sec3.b3', { pct: tipPct, cap: tipCap })}</li>
-          <li>{t('sec3.b4')}</li>
+          <li>{t('sec3.b3')}</li>
         </ul>
 
         <h2>{t('sec4.h')}</h2>

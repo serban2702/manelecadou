@@ -727,8 +727,7 @@
         "h": "3. Cene i plaćanja",
         "b1": "Plaćanje se vrši pre generisanja; pesma se kreira nakon što se plaćanje potvrdi.",
         "b2": "Personalizovana pesma: od <b>{fromPrice}</b> (PDV uključen), u zavisnosti od izabranog paketa.",
-        "b3": "Doplata za posvetu: {pct}% od iznosa pomenutog u tekstu, ograničeno na {cap}.",
-        "b4": "Plaćanja se obrađuju preko Stripe-a — ne čuvamo podatke o kartici."
+        "b3": "Plaćanja se obrađuju preko Stripe-a — ne čuvamo podatke o kartici."
       },
       "sec4": {
         "h": "4. Prava korišćenja",

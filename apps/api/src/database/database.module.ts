@@ -10,7 +10,6 @@ import { Payment } from '../modules/payments/payment.entity';
 import { Conversation } from '../modules/chat/conversation.entity';
 import { ChatMessage } from '../modules/chat/message.entity';
 import { PromoCode, PromoRedemption } from '../modules/promo/promo-code.entity';
-import { GiftCode } from '../modules/gift-codes/gift-code.entity';
 import { RouletteSpin } from '../modules/roulette/roulette-spin.entity';
 import { ErrorLog } from '../modules/errors/error-log.entity';
 import { AnalyticsEvent } from '../modules/analytics/analytics-event.entity';
@@ -34,7 +33,7 @@ import { IdentityVisitor } from '../modules/identity/identity-visitor.entity';
         username: config.get<string>('POSTGRES_USER'),
         password: config.get<string>('POSTGRES_PASSWORD'),
         database: config.get<string>('POSTGRES_DB'),
-        entities: [User, GuestSession, MagicLink, Generation, Payment, Conversation, ChatMessage, PromoCode, PromoRedemption, GiftCode, RouletteSpin, ErrorLog, AnalyticsEvent, AnalyticsSession, AdSpend, SunoLog, SunoCreditPurchase, LyricsLog, Site, IdentityPerson, IdentityVisitor],
+        entities: [User, GuestSession, MagicLink, Generation, Payment, Conversation, ChatMessage, PromoCode, PromoRedemption, RouletteSpin, ErrorLog, AnalyticsEvent, AnalyticsSession, AdSpend, SunoLog, SunoCreditPurchase, LyricsLog, Site, IdentityPerson, IdentityVisitor],
         // synchronize: TypeORM aliniază schema cu entitățile la fiecare boot.
         // În prod e ON intenționat (decizie 2026-05-11): schimbările de schemă
         // se fac doar prin modificare de @Entity + deploy normal.

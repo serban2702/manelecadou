@@ -12,7 +12,6 @@ import {
   magicLinkTemplate,
   generationReadyTemplate,
   paymentSuccessTemplate,
-  giftCodeTemplate,
   adminGdprRequestTemplate,
   type EmailBranding,
 } from './templates';
@@ -76,12 +75,6 @@ const TRANSACTIONAL: TransactionalDef[] = [
     name: 'Plată confirmată',
     description: 'Chitanță după o plată reușită, cu suma și butonul de ascultare.',
     render: (c) => paymentSuccessTemplate({ amountRON: 99, currency: 'lei', recipientName: 'Andrei', generationLink: 'https://manelecadou.ro/m/demo/view', durationSec: 150, locale: c.locale, branding: c.branding }),
-  },
-  {
-    id: 'tx_gift_code',
-    name: 'Cod cadou',
-    description: 'Codul cadou trimis cumpărătorului/destinatarului.',
-    render: (c) => giftCodeTemplate({ code: 'CADOU-1234-ABCD', redeemUrl: 'https://manelecadou.ro/cadou/redeem', validUntil: '31.12.2026', tier: 'Pachet 3', locale: c.locale, branding: c.branding }),
   },
   {
     id: 'tx_gdpr_admin',

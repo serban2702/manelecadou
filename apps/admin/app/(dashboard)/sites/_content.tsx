@@ -31,7 +31,6 @@ const EMPTY_CREATE = {
   locale: 'ro',
   currency: 'RON',
   basePriceCents: 4900,
-  giftPriceCents: 4900,
   active: true,
   sslEnabled: true,
   isDefault: false,
@@ -272,13 +271,6 @@ export default function SitesListPage() {
                   cents={form.basePriceCents}
                   currency={form.currency}
                   onChange={(cents) => setForm({ ...form, basePriceCents: cents ?? 0 })}
-                />
-              </Field>
-              <Field label="Preț cadou">
-                <MoneyInput
-                  cents={form.giftPriceCents}
-                  currency={form.currency}
-                  onChange={(cents) => setForm({ ...form, giftPriceCents: cents ?? 0 })}
                 />
               </Field>
             </div>

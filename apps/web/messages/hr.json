@@ -727,8 +727,7 @@
         "h": "3. Cijene i plaćanja",
         "b1": "Plaćanje se vrši prije generiranja; pjesma se izrađuje nakon potvrde plaćanja.",
         "b2": "Personalizirana pjesma: od <b>{fromPrice}</b> (PDV uključen), ovisno o odabranom paketu.",
-        "b3": "Dodatna naknada za posvetu: {pct}% od iznosa spomenutog u stihovima, ograničeno na {cap}.",
-        "b4": "Plaćanja se obrađuju putem Stripea — ne pohranjujemo podatke o kartici."
+        "b3": "Plaćanja se obrađuju putem Stripea — ne pohranjujemo podatke o kartici."
       },
       "sec4": {
         "h": "4. Prava korištenja",

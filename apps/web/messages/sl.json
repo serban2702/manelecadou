@@ -727,8 +727,7 @@
         "h": "3. Cene in plačila",
         "b1": "Plačilo se izvede pred generiranjem; pesem se ustvari po potrditvi plačila.",
         "b2": "Prilagojena pesem: od <b>{fromPrice}</b> (DDV vključen), odvisno od izbranega paketa.",
-        "b3": "Doplačilo za posvetilo: {pct} % zneska, omenjenega v besedilu, omejeno na {cap}.",
-        "b4": "Plačila se obdelujejo prek Stripe — podatkov o kartici ne shranjujemo."
+        "b3": "Plačila se obdelujejo prek Stripe — podatkov o kartici ne shranjujemo."
       },
       "sec4": {
         "h": "4. Pravice uporabe",

@@ -7,7 +7,6 @@ import { PaymentsService } from './payments.service';
 import { PaymentsController } from './payments.controller';
 import { AuthModule } from '../auth/auth.module';
 import { PromoModule } from '../promo/promo.module';
-import { GiftCodesModule } from '../gift-codes/gift-codes.module';
 import { SitesModule } from '../sites/sites.module';
 import { GenerationsModule } from '../generations/generations.module';
 import { TiktokModule } from '../tiktok/tiktok.module';
@@ -22,7 +21,6 @@ import { FxModule } from '../fx/fx.module';
     ConfigModule,
     AuthModule,
     PromoModule,
-    forwardRef(() => GiftCodesModule),
     SitesModule,
     forwardRef(() => GenerationsModule),
     TiktokModule,

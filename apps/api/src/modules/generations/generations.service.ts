@@ -1304,29 +1304,6 @@ export class GenerationsService {
     );
   }
 
-  async unlockWithGift(
-    generationId: string,
-    consumeFn: () => Promise<{ ok: boolean; reason?: string }>,
-    ctx: { userId: string | null; guestId: string | null },
-  ): Promise<Generation> {
-    return this.dataSource.transaction(async (mgr) => {
-      const gen = await mgr.getRepository(Generation).findOne({ where: { id: generationId } });
-      if (!gen) throw new NotFoundException('Generation not found');
-      const ownerOk =
-        (gen.ownerUserId && gen.ownerUserId === ctx.userId) ||
-        (gen.ownerGuestId && gen.ownerGuestId === ctx.guestId);
-      if (!ownerOk) throw new ForbiddenException('Not your generation');
-      if (gen.paidUnlocked) return gen;
-
-      const consume = await consumeFn();
-      if (!consume.ok) {
-        throw new ForbiddenException(consume.reason ?? 'gift_invalid');
-      }
-      gen.paidUnlocked = true;
-      return mgr.getRepository(Generation).save(gen);
-    });
-  }
-
   /**
    * Creează o generation type='full' în starea „pending payment" — fără să o
    * pună la coadă. Folosit de flow-ul „pay-first" (site.demoEnabled=false):

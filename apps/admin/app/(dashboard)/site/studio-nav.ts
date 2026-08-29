@@ -77,8 +77,6 @@ export const STUDIO_SEARCH: StudioSearchItem[] = [
   { id: 'price.premium', label: 'Preț Premium', href: '/site/interfaces', keywords: ['premium', 'pachet', '69'], group: 'interfaces', interfaceScoped: true },
   { id: 'price.compare', label: 'Preț tăiat pachet', href: '/site/interfaces', keywords: ['compare', 'strikethrough', 'tăiat'], group: 'interfaces', interfaceScoped: true },
   { id: 'price.demo', label: 'Demo 30s gratuit', href: '/site/prices', keywords: ['demo', 'pay-first', 'plată'], group: 'prices' },
-  { id: 'price.gift', label: 'Preț cadou', href: '/site/prices', keywords: ['gift', 'cadou', 'cod'], group: 'prices' },
-  { id: 'price.tip', label: 'Dedicație', href: '/site/prices', keywords: ['tip', 'dedicație', 'surcharge'], group: 'prices' },
   { id: 'price.legacy', label: 'Preț bază (model vechi)', href: '/site/prices', keywords: ['basePrice', 'strikethrough', 'bază', 'legacy'], group: 'prices' },
   { id: 'price.stripe', label: 'Stripe pe extras', href: '/site/prices', keywords: ['statement', 'productName', 'descriptor'], group: 'prices' },
   { id: 'price.priceId', label: 'Stripe price ID', href: '/site/prices', keywords: ['priceId', 'stripe'], group: 'prices' },

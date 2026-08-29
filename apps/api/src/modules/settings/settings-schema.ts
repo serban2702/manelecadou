@@ -562,7 +562,7 @@ export const SETTINGS_SCHEMA: SettingCategory[] = [
         helpWhat:
           'Listă CSV. Gol = destinatarii default din cod (serban2702@gmail.com, alexandru.tihon70@gmail.com). Se folosește și la alerta de plată dublă, cu fallback pe ADMIN_EMAILS.',
       },
-      {
+     {
         key: 'AI_CHAT_PROACTIVE_ENABLED',
         label: 'Abordare automată',
         description: 'AI scanează userii inactivi și inițiază conversația. Doar în suggest sau auto.',
@@ -572,7 +572,7 @@ export const SETTINGS_SCHEMA: SettingCategory[] = [
         helpWhat:
           'NU E ÎNCĂ FOLOSITĂ de API — rezervată. Pentru follow-up-ul care chiar funcționează, vezi „Follow-up automat în chat".',
       },
-      {
+     {
         key: 'AI_CHAT_PROACTIVE_IDLE_MIN',
         label: 'Minute idle înainte de abordare',
         kind: 'number',
@@ -598,7 +598,7 @@ export const SETTINGS_SCHEMA: SettingCategory[] = [
         hotReload: true,
         helpWhat: 'Nu trece pe off în producție.',
       },
-      {
+     {
         key: 'AI_CHAT_REQUIRE_APPROVAL_FOR_GENERATION',
         label: 'Aprobare pentru generare',
         description: 'Gate pentru un viitor tool de generare pornită din chat.',

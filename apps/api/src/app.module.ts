@@ -22,7 +22,6 @@ import { AdminModule } from './modules/admin/admin.module';
 import { DatabaseAdminModule } from './modules/database-admin/database-admin.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { PromoModule } from './modules/promo/promo.module';
-import { GiftCodesModule } from './modules/gift-codes/gift-codes.module';
 import { RouletteModule } from './modules/roulette/roulette.module';
 import { ErrorsModule } from './modules/errors/errors.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
@@ -92,7 +91,6 @@ import { StorageModule } from './storage/storage.module';
     DatabaseAdminModule,
     ChatModule,
     PromoModule,
-    GiftCodesModule,
     RouletteModule,
     ErrorsModule,
     AnalyticsModule,

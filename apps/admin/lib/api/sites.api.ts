@@ -11,12 +11,8 @@ export interface SiteDto {
   /** Prețul „standard" (strikethrough în vitrine, marketing). 0 = nu se afișează. */
   standardPriceCents?: number;
   /** Suprataxă fixă Manea Premium (cents). Default 2000 = 20 lei. */
-  premiumExtraCents?: number;
   /** Plafonul de suprataxă dedicație (cents). Default 5000 = 50 lei. */
-  tipSurchargeCapCents?: number;
   /** Procent de suprataxă din dedicație (0–100). Default 5. */
-  tipSurchargePercent?: number;
-  giftPriceCents: number;
   /** Override prețuri pachete (cents). Null = default PACKAGES (29,99 / 49,99 / 69,99). */
   packagePricesCents?: Partial<Record<'basic' | 'plus' | 'premium', number>> | null;
   /** Derivat din packagePricesCents + default. NU se trimite în PATCH. */

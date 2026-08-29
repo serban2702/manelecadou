@@ -55,21 +55,6 @@ type Dict = {
     invoiceNote: string;
     text: (amount: string, currency: string, link: string) => string;
   };
-  giftCode: {
-    subject: (code: string) => string;
-    title: string;
-    yourCode: string;
-    package: string;
-    validUntil: string;
-    body: string;
-    button: string;
-    text: (code: string, until: string, url: string) => string;
-  };
-  giftTiers: {
-    single: string;
-    pack3: string;
-    pack10: string;
-  };
   /** Cod de localizare pentru `Date.toLocaleDateString(...)` (ex. 'ro-RO', 'bg-BG'). */
   dateLocale: string;
   gdpr: {
@@ -136,16 +121,6 @@ const RO: Dict = {
     invoiceNote: 'Factura fiscală o vei primi separat în următoarele 24h.',
     text: (amount, currency, link) => `Plata ${amount} ${currency} confirmată. Maneaua: ${link}`,
   },
-  giftCode: {
-    subject: (code) => `🎁 Codul tău cadou Manele Cadou — ${code}`,
-    title: 'Codul tău cadou e gata!',
-    yourCode: 'Codul tău cadou',
-    package: 'Pachet',
-    validUntil: 'valabil până la',
-    body: 'Trimite codul către cine vrei — prin SMS, WhatsApp, email. Persoana care îl primește îl introduce pe site la pasul de plată.',
-    button: '🎤 Folosește codul acum',
-    text: (code, until, url) => `Cod cadou: ${code} (valabil până la ${until}). Folosește la ${url}`,
-  },
   gdpr: {
     subject: (action, email) => `[GDPR] ${action} — ${email}`,
     title: (action) => `⚖️ Cerere GDPR — ${action}`,
@@ -160,7 +135,6 @@ const RO: Dict = {
     text: (action, email, id, type, reason) =>
       `Cerere GDPR ${action} de la ${email} (${id}). Tip: ${type}.${reason ? ' Motiv: ' + reason : ''}`,
   },
-  giftTiers: { single: '1 manea', pack3: '3 manele', pack10: '10 manele' },
   dateLocale: 'ro-RO',
 };
 
@@ -219,18 +193,7 @@ const BG: Dict = {
     invoiceNote: 'Данъчната фактура ще получиш отделно в следващите 24 часа.',
     text: (amount, currency, link) => `Плащане ${amount} ${currency} потвърдено. Манеле: ${link}`,
   },
-  giftCode: {
-    subject: (code) => `🎁 Твоят подаръчен код Manele Cadou — ${code}`,
-    title: 'Подаръчният ти код е готов!',
-    yourCode: 'Твоят подаръчен код',
-    package: 'Пакет',
-    validUntil: 'валиден до',
-    body: 'Изпрати кода на когото искаш — чрез SMS, WhatsApp, имейл. Получателят го въвежда на сайта при плащане.',
-    button: '🎤 Използвай кода сега',
-    text: (code, until, url) => `Подаръчен код: ${code} (валиден до ${until}). Използвай на ${url}`,
-  },
   gdpr: RO.gdpr,
-  giftTiers: { single: '1 манеле', pack3: '3 манелета', pack10: '10 манелета' },
   dateLocale: 'bg-BG',
 };
 
@@ -284,18 +247,7 @@ const TR: Dict = {
     invoiceNote: 'Fatura 24 saat içinde ayrı bir e-postayla gelir.',
     text: (amount, currency, link) => `${amount} ${currency} ödemesi onaylandı. Şarkı: ${link}`,
   },
-  giftCode: {
-    subject: (code) => `🎁 Manele Cadou hediye kodun — ${code}`,
-    title: 'Hediye kodun hazır!',
-    yourCode: 'Hediye kodun',
-    package: 'Paket',
-    validUntil: 'son kullanma',
-    body: 'Kodu istediğine gönder — SMS, WhatsApp, e-posta. Alan kişi siteye ödeme adımında girer.',
-    button: '🎤 Kodu kullan',
-    text: (code, until, url) => `Hediye kodu: ${code} (${until} tarihine kadar). Kullanım: ${url}`,
-  },
   gdpr: RO.gdpr,
-  giftTiers: { single: '1 şarkı', pack3: '3 şarkı', pack10: '10 şarkı' },
   dateLocale: 'tr-TR',
 };
 
@@ -349,18 +301,7 @@ const EL: Dict = {
     invoiceNote: 'Το τιμολόγιο θα έρθει χωριστά μέσα σε 24 ώρες.',
     text: (amount, currency, link) => `Πληρωμή ${amount} ${currency} επιβεβαιώθηκε. Τραγούδι: ${link}`,
   },
-  giftCode: {
-    subject: (code) => `🎁 Ο κωδικός δώρου σου Manele Cadou — ${code}`,
-    title: 'Ο κωδικός δώρου σου είναι έτοιμος!',
-    yourCode: 'Κωδικός δώρου',
-    package: 'Πακέτο',
-    validUntil: 'ισχύει έως',
-    body: 'Στείλε τον κωδικό σε όποιον θέλεις — SMS, WhatsApp, email. Ο παραλήπτης τον εισάγει στην ιστοσελίδα στο βήμα της πληρωμής.',
-    button: '🎤 Χρησιμοποίησε τον κωδικό',
-    text: (code, until, url) => `Κωδικός δώρου: ${code} (έως ${until}). Χρήση στο ${url}`,
-  },
   gdpr: RO.gdpr,
-  giftTiers: { single: '1 τραγούδι', pack3: '3 τραγούδια', pack10: '10 τραγούδια' },
   dateLocale: 'el-GR',
 };
 
@@ -414,25 +355,13 @@ const SR: Dict = {
     invoiceNote: 'Račun stiže odvojeno u narednih 24h.',
     text: (amount, currency, link) => `Plaćanje ${amount} ${currency} potvrđeno. Pesma: ${link}`,
   },
-  giftCode: {
-    subject: (code) => `🎁 Tvoj poklon kod Manele Cadou — ${code}`,
-    title: 'Poklon kod je spreman!',
-    yourCode: 'Poklon kod',
-    package: 'Paket',
-    validUntil: 'važi do',
-    body: 'Pošalji kod kome god želiš — SMS, WhatsApp, mejl. Primalac ga unese na sajtu u koraku plaćanja.',
-    button: '🎤 Iskoristi kod',
-    text: (code, until, url) => `Poklon kod: ${code} (važi do ${until}). Iskoristi na ${url}`,
-  },
   gdpr: RO.gdpr,
-  giftTiers: { single: '1 pesma', pack3: '3 pesme', pack10: '10 pesama' },
   dateLocale: 'sr-RS',
 };
 
 const HR: Dict = {
   ...SR,
   footer: { ...SR.footer, termsLink: 'Uvjeti', privacyLink: 'Privatnost', contactLink: 'Kontakt' },
-  giftTiers: { single: '1 pjesma', pack3: '3 pjesme', pack10: '10 pjesama' },
   dateLocale: 'hr-HR',
 };
 const SL: Dict = {
@@ -455,14 +384,11 @@ const SL: Dict = {
   },
   generationReady: SR.generationReady,
   paymentSuccess: SR.paymentSuccess,
-  giftCode: SR.giftCode,
   gdpr: RO.gdpr,
-  giftTiers: { single: '1 pesem', pack3: '3 pesmi', pack10: '10 pesmi' },
   dateLocale: 'sl-SI',
 };
 const BS: Dict = {
   ...SR,
-  giftTiers: { single: '1 pjesma', pack3: '3 pjesme', pack10: '10 pjesama' },
   dateLocale: 'bs-BA',
 };
 

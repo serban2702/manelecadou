@@ -603,11 +603,6 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ paymentId }),
     }),
-  unlockGenerationWithGift: (id: string, code: string) =>
-    request<GenerationDto>(`/generations/${id}/unlock-with-gift`, {
-      method: 'POST',
-      body: JSON.stringify({ code }),
-    }),
   priceQuote: (packageTier: PackageTier) =>
     request<PriceQuote>(`/payments/quote?packageTier=${packageTier}`),
   getPayment: (id: string) =>
@@ -624,8 +619,6 @@ export const api = {
     /** Pachetul ales — necesar ca backend-ul să calculeze prețul corect
      *  (premium ≠ basic) la reluarea plății pentru o generație existentă. */
     packageTier?: PackageTier;
-    tipAmount?: number;
-    premium?: boolean;
     promoCode?: string;
     /** Override email destinație. Dacă lipsește, backend-ul îl rezolvă din
      *  contul logat / guest-ul curent. */
@@ -890,26 +883,6 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(email ? { email } : {}),
       },
-    ),
-
-  validateGift: (code: string) =>
-    request<{ ok: boolean; reason?: string; tier?: 'single' | 'pack3' | 'pack10'; usesLeft?: number; validUntil?: string }>(
-      '/gift-codes/validate',
-      { method: 'POST', body: JSON.stringify({ code }) },
-    ),
-  purchaseGift: (tier: 'single' | 'pack3' | 'pack10', email: string) =>
-    request<{ url: string; paymentId: string }>('/gift-codes/purchase', {
-      method: 'POST',
-      body: JSON.stringify({ tier, email }),
-    }),
-  redeemGift: (code: string) =>
-    request<{ ok: boolean; reason?: string; usesLeft?: number }>('/gift-codes/redeem', {
-      method: 'POST',
-      body: JSON.stringify({ code }),
-    }),
-  myGifts: () =>
-    request<Array<{ id: string; code: string; tier: string; usesLeft: number; totalUses: number; validUntil: string; active: boolean; createdAt: string }>>(
-      '/gift-codes/mine',
     ),
 
   validatePromo: (code: string, email?: string, baseAmountCents?: number) =>

@@ -16,7 +16,6 @@ import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { User } from '../users/user.entity';
 import { MailerModule } from '../../mailer/mailer.module';
 import { LyricsModule } from '../lyrics/lyrics.module';
-import { GiftCodesModule } from '../gift-codes/gift-codes.module';
 import { PromoModule } from '../promo/promo.module';
 import { SitesModule } from '../sites/sites.module';
 import { MediaModule } from '../media/media.module';
@@ -32,7 +31,6 @@ import { SiteDemosModule } from '../site-demos/site-demos.module';
     forwardRef(() => PaymentsModule),
     MailerModule,
     LyricsModule,
-    GiftCodesModule,
     PromoModule,
     SitesModule,
     MediaModule,

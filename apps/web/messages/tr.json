@@ -727,8 +727,7 @@
         "h": "3. Fiyatlar ve ödemeler",
         "b1": "Ödeme üretimden önce yapılır; şarkı, ödeme onaylandıktan sonra oluşturulur.",
         "b2": "Kişiye özel şarkı: <b>{fromPrice}</b> fiyatından başlar (KDV dahil), seçilen pakete göre değişir.",
-        "b3": "İthaf ek ücreti: sözlerde geçen tutarın %{pct} kadarı, üst sınır {cap}.",
-        "b4": "Ödemeler Stripe üzerinden işlenir — kart bilgilerini saklamıyoruz."
+        "b3": "Ödemeler Stripe üzerinden işlenir — kart bilgilerini saklamıyoruz."
       },
       "sec4": {
         "h": "4. Kullanım hakları",

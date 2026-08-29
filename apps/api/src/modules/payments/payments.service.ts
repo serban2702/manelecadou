@@ -13,13 +13,10 @@ import { Repository } from 'typeorm';
 import Stripe from 'stripe';
 
 import { Payment } from './payment.entity';
-import { PREMIUM_EXTRA_CENTS } from './pricing';
 import { normalizeTier, PackageTier } from './packages';
 import { resolveSitePackage } from '../experiences/package-resolve';
 import type { ResolvedExperiencePackage } from '../experiences/types';
 import { PromoService } from '../promo/promo.service';
-import { GiftCodesService } from '../gift-codes/gift-codes.service';
-import { GiftTier, TIER_PRICES_RON } from '../gift-codes/gift-code.entity';
 import { Site } from '../sites/site.entity';
 import { SitesService } from '../sites/sites.service';
 import { SettingsService } from '../settings/settings.service';
@@ -33,9 +30,6 @@ import { MetaCapiService } from '../meta-capi/meta-capi.service';
 import { FxRateService } from '../fx/fx-rate.service';
 import {
   productName as i18nProductName,
-  dedicationDescription as i18nDedicDesc,
-  giftProductName as i18nGiftProductName,
-  giftDescription as i18nGiftDesc,
   stripeUiLocale,
 } from './stripe-i18n';
 
@@ -43,11 +37,9 @@ interface CheckoutInput {
   userId: string | null;
   guestId: string | null;
   generationId?: string;
-  tipAmount?: number;
-  premium?: boolean;
   /**
    * Tier-ul pachetului (model nou). Când e setat, totalul = prețul pachetului
-   * (`resolvedPackage`, cu override per-site și per-interfață) și se IGNORĂ tip/premium.
+   * (`resolvedPackage`, cu override per-site și per-interfață).
    */
   packageTier?: PackageTier;
   promoCode?: string;
@@ -56,7 +48,7 @@ interface CheckoutInput {
   /**
    * Suprascrie suma calculată din site pricing. Folosit de chat admin payment
    * links unde admin alege liber prețul (ex. 5 RON pentru un caz special).
-   * În cents. Dacă e setat, NU se aplică tipSurcharge sau premiumExtra.
+   * În cents. Dacă e setat, înlocuiește prețul pachetului.
    * Min 50 cents (limita Stripe).
    */
   overrideAmount?: number;
@@ -107,8 +99,6 @@ export class PaymentsService {
     @InjectRepository(Payment) private readonly repo: Repository<Payment>,
     private readonly config: ConfigService,
     private readonly promo: PromoService,
-    @Inject(forwardRef(() => GiftCodesService))
-    private readonly giftCodes: GiftCodesService,
     private readonly sites: SitesService,
     private readonly settings: SettingsService,
     @Inject(forwardRef(() => GenerationsService))
@@ -205,32 +195,6 @@ export class PaymentsService {
     return e ? e.slice(0, 320) : null;
   }
 
-  /** Suprataxă pe dedicație. Folosește valorile DIN site config
-   *  (tipSurchargePercent + cap) cu fallback la constantele globale dacă DB
-   *  nu are valori setate. Se aplică pentru orice monedă — fiecare site își
-   *  setează propriile valori (sau le pune 0 dacă nu vrea suprataxă). */
-  private siteTipSurcharge(site: Site, tipAmount: number): number {
-    if (!tipAmount || tipAmount < 0) return 0;
-    const percent = site.tipSurchargePercent ?? 5;
-    const cap = site.tipSurchargeCapCents ?? 5000;
-    if (percent <= 0) return 0;
-    const surchargeCents = Math.round(tipAmount * 100 * (percent / 100));
-    return Math.min(cap, surchargeCents);
-  }
-
-  private sitePremiumExtra(site: Site, premium: boolean): number {
-    if (!premium) return 0;
-    return site.premiumExtraCents ?? PREMIUM_EXTRA_CENTS;
-  }
-
-  private siteTotal(site: Site, tipAmount: number, premium: boolean): number {
-    return (
-      site.basePriceCents +
-      this.sitePremiumExtra(site, premium) +
-      this.siteTipSurcharge(site, tipAmount)
-    );
-  }
-
   /**
    * Pachetul EFECTIV (preț, preț tăiat, livrabile, `enabled`) pentru un site + tier +
    * interfață. SINGURUL loc din serviciu care are voie să calculeze un preț de pachet:
@@ -260,34 +224,19 @@ export class PaymentsService {
     }
   }
 
-  /** Returnează prețul calculat (nu apelează Stripe). Suportă AMBELE modele:
-   *  - PACHETE (input.packageTier setat) → total = prețul pachetului,
-   *  - LEGACY (tip + premium) → comportamentul vechi, păstrat pentru compat. */
-  quote(site: Site, input: { tipAmount?: number; premium?: boolean; packageTier?: PackageTier; experienceSlug?: string | null }) {
-    if (input.packageTier) {
-      const tier = normalizeTier(input.packageTier);
-      const pkg = this.resolvedPackage(site, tier, input.experienceSlug);
-      return {
-        packageTier: tier,
-        total: pkg.priceCents,
-        currency: site.currency,
-        compareAtCents: pkg.compareAtCents,
-        // Vitrina trebuie să știe dacă pachetul mai e cumpărabil — checkout-ul îl refuză.
-        enabled: pkg.enabled,
-      };
-    }
-    const tip = input.tipAmount ?? 0;
-    const premium = !!input.premium;
-    const surcharge = this.siteTipSurcharge(site, tip);
-    const premiumExtra = this.sitePremiumExtra(site, premium);
-    const total = this.siteTotal(site, tip, premium);
+  /** Prețul unui pachet (nu apelează Stripe). Sursa e `resolvedPackage`, cu
+   *  override per-site și per-interfață — aceeași folosită la checkout, ca
+   *  prețul afișat și cel taxat să nu poată diverge. */
+  quote(site: Site, input: { packageTier: PackageTier; experienceSlug?: string | null }) {
+    const tier = normalizeTier(input.packageTier);
+    const pkg = this.resolvedPackage(site, tier, input.experienceSlug);
     return {
-      base: site.basePriceCents,
-      tipAmount: tip,
-      tipSurcharge: surcharge,
-      premiumExtra,
-      total,
+      packageTier: tier,
+      total: pkg.priceCents,
       currency: site.currency,
+      compareAtCents: pkg.compareAtCents,
+      // Vitrina trebuie să știe dacă pachetul mai e cumpărabil — checkout-ul îl refuză.
+      enabled: pkg.enabled,
     };
   }
 
@@ -413,12 +362,16 @@ export class PaymentsService {
 
     // Admin chat poate suprascrie suma calculată cu un custom. Min 50 cents = limita Stripe.
     const hasOverride = typeof input.overrideAmount === 'number' && input.overrideAmount > 0;
+    // Prețul vine DOAR din pachet (sau din suma pe care o suprascrie adminul din
+    // chat). Modelul vechi — preț de bază + supliment premium + suprataxă pe
+    // dedicație — a fost scos: toate cele 838 de comenzi din producție aveau
+    // pachet, deci calea aia nu s-a folosit niciodată.
+    if (!hasOverride && !pkg) {
+      throw new BadRequestException('packageTier este obligatoriu');
+    }
     const baseTotal = hasOverride
       ? Math.max(50, Math.round(input.overrideAmount!))
-      : pkg
-        ? // Model PACHETE: total = prețul pachetului (ignorăm tip/premium).
-          pkg.priceCents
-        : this.siteTotal(site, input.tipAmount ?? 0, !!input.premium);
+      : pkg!.priceCents;
     const effectiveCurrency = (input.overrideCurrency ?? site.currency).toUpperCase();
     let promoCodeId: string | undefined;
     let appliedDiscountCents = 0;
@@ -525,10 +478,7 @@ export class PaymentsService {
           currency: effectiveCurrency.toLowerCase(),
           unit_amount: baseTotal,
           product_data: {
-            name: input.overrideProductName ?? i18nProductName(site.locale, brand, !!input.premium),
-            description: input.tipAmount && !hasOverride
-              ? i18nDedicDesc(site.locale, input.tipAmount, site.currency)
-              : undefined,
+            name: input.overrideProductName ?? i18nProductName(site.locale, brand),
           },
         },
       },
@@ -610,8 +560,6 @@ export class PaymentsService {
     userId: string | null;
     guestId: string | null;
     generation: Omit<CreateGenerationDto, 'type' | 'paymentId'>;
-    tipAmount?: number;
-    premium?: boolean;
     promoCode?: string;
     email?: string;
     site: Site;
@@ -634,8 +582,6 @@ export class PaymentsService {
       {
         ...input.generation,
         packageTier: tier,
-        tipAmount: input.tipAmount ?? input.generation.tipAmount ?? 0,
-        premium: input.premium ?? input.generation.premium ?? false,
       },
       {
         userId: input.userId,
@@ -650,11 +596,7 @@ export class PaymentsService {
       guestId: input.guestId,
       generationId: gen.id,
       experienceSlug: input.experienceSlug ?? gen.experienceSlug,
-      // Pachetul determină totalul; tip/premium rămân pentru audit/compat dar
-      // sunt ignorate de calcul când packageTier e setat.
       packageTier: tier,
-      tipAmount: input.tipAmount ?? 0,
-      premium: input.premium ?? false,
       promoCode: input.promoCode,
       email: input.email,
       site,
@@ -748,114 +690,6 @@ export class PaymentsService {
     return `https://${site.domain}`;
   }
 
-  /** Prețul tier-ului pentru un site dat. Pentru RON folosim TIER_PRICES_RON (compat).
-   *  Pentru alte valute, folosim site.giftPriceCents pentru "single" și un multiplicator
-   *  derivat din raportul tier-urilor RON pentru pack3/pack10. */
-  private tierPriceForSite(site: Site, tier: GiftTier): number {
-    if (site.currency.toUpperCase() === 'RON') return TIER_PRICES_RON[tier];
-    const single = site.giftPriceCents || site.basePriceCents;
-    if (tier === 'single') return single;
-    if (tier === 'pack3') return Math.round((single * TIER_PRICES_RON.pack3) / TIER_PRICES_RON.single);
-    return Math.round((single * TIER_PRICES_RON.pack10) / TIER_PRICES_RON.single);
-  }
-
-  /**
-   * Stripe Checkout pentru CUMPĂRARE COD CADOU.
-   * La paid → webhook-ul emite gift code și-l trimite pe email.
-   */
-  async createGiftCheckoutSession(input: {
-    userId: string | null;
-    guestId: string | null;
-    tier: GiftTier;
-    email: string;
-    site: Site;
-    // Meta Pixel attribution (opțional)
-    fbp?: string | null;
-    fbc?: string | null;
-    userAgent?: string | null;
-    ipAddress?: string | null;
-    sessionKey?: string | null;
-    visitorId?: string | null;
-  }): Promise<{ url: string; paymentId: string }> {
-    const stripe = await this.getStripe();
-    if (!stripe) throw new ServiceUnavailableException('Stripe not configured');
-    const site = input.site;
-    const total = this.tierPriceForSite(site, input.tier);
-
-    const attr = await this.attributionFields({
-      siteId: site.id,
-      userId: input.userId,
-      guestId: input.guestId,
-      ipAddress: input.ipAddress,
-      sessionKey: input.sessionKey,
-      visitorId: input.visitorId,
-    });
-    const payment = await this.repo.save(
-      this.repo.create({
-        provider: 'stripe',
-        amount: total,
-        currency: site.currency,
-        status: 'pending',
-        userId: input.userId,
-        guestId: input.guestId,
-        siteId: site.id,
-        customerEmail: PaymentsService.customerEmailValue(input.email),
-        // Meta Pixel attribution — persistăm la create ca să fie disponibile în
-        // webhook-ul Purchase (server→server, fără cookies de browser).
-        fbp: input.fbp ?? null,
-        fbc: input.fbc ?? null,
-        userAgent: input.userAgent ?? null,
-        ipAddress: input.ipAddress ?? null,
-        sessionKey: input.sessionKey ?? null,
-        visitorId: input.visitorId ?? null,
-        ...attr,
-      }),
-    );
-
-    const siteUrl = this.siteAppUrl(site);
-    const brand = site.stripe?.productName ?? site.name;
-
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      locale: stripeUiLocale(site.locale),
-      customer_email: input.email,
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: site.currency.toLowerCase(),
-            unit_amount: total,
-            product_data: {
-              name: i18nGiftProductName(site.locale, brand, input.tier),
-              description: i18nGiftDesc(site.locale),
-            },
-          },
-        },
-      ],
-      success_url: `${siteUrl}/cadou/success?paymentId=${payment.id}`,
-      cancel_url: `${siteUrl}/cadou?paymentId=${payment.id}&cancel=1`,
-      expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
-      phone_number_collection: { enabled: true },
-      billing_address_collection: 'required',
-      metadata: {
-        paymentId: payment.id,
-        giftPurchase: 'true',
-        giftTier: input.tier,
-        giftEmail: input.email,
-        siteId: site.id,
-        siteSlug: site.slug,
-        siteDomain: site.domain,
-      },
-      payment_intent_data: site.stripe?.statementDescriptor
-        ? { statement_descriptor_suffix: site.stripe.statementDescriptor }
-        : undefined,
-    });
-
-    payment.providerSessionId = session.id;
-    await this.repo.save(payment);
-    if (!session.url) throw new BadRequestException('Stripe did not return a URL');
-    return { url: session.url, paymentId: payment.id };
-  }
 
   async handleWebhook(rawBody: Buffer, signature: string): Promise<void> {
     const stripe = await this.getStripe();
@@ -1211,19 +1045,6 @@ export class PaymentsService {
           .catch((err) =>
             this.logger.warn(`Meta CAPI Purchase event failed: ${(err as Error).message}`),
           );
-      }
-
-      // Cod cadou: emite codul + email
-      if (isPaid && session.metadata?.giftPurchase === 'true' && session.metadata?.giftTier) {
-        const payment = await this.repo.findOne({ where: { id: paymentId } });
-        await this.giftCodes.issueAfterPayment({
-          paymentId,
-          tier: session.metadata.giftTier as GiftTier,
-          purchasedByUserId: payment?.userId ?? null,
-          purchasedByGuestId: payment?.guestId ?? null,
-          purchasedByEmail: session.metadata.giftEmail ?? session.customer_email ?? null,
-          siteId: metaSiteId,
-        });
       }
     }
 

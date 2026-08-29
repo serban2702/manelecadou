@@ -1,7 +1,7 @@
 /**
  * Convertește un `Site` în obiectul `EmailBranding` consumat de template-uri.
  * Folosit de toate call-site-urile care trimit email-uri (auth, generations,
- * gift-codes, payments) ca să propage logo/contact/firma per tenant.
+ * payments, generations) ca să propage logo/contact/firma per tenant.
  *
  * Pentru un câmp gol pe site, templates.ts cade pe defaults Manele Cadou —
  * deci nu trebuie să completezi toate câmpurile pentru un site nou, doar pe

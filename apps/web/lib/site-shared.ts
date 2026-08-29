@@ -81,13 +81,6 @@ export interface SiteConfig {
   basePriceCents: number;
   /** @deprecated anchor legacy pentru `basePriceCents`. Vezi `SitePackage.compareAtCents`. */
   standardPriceCents?: number;
-  /** Suprataxă Manea Premium (cents). Default 2000. */
-  premiumExtraCents?: number;
-  /** Plafon de suprataxă pentru dedicație (cents). Default 5000. */
-  tipSurchargeCapCents?: number;
-  /** Procent de suprataxă din dedicație (0–100). Default 5. */
-  tipSurchargePercent?: number;
-  giftPriceCents: number;
   /**
    * Override-urile BRUTE de preț per tenant. API-ul le-a aplicat deja peste
    * pachetele din `experienceConfig` — sunt aici doar pentru completitudinea

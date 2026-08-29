@@ -26,7 +26,6 @@ export const getSiteConfig = cache(async (): Promise<SiteConfig> => {
     locale: process.env.NEXT_PUBLIC_DEFAULT_LOCALE ?? 'ro',
     currency: 'RON',
     basePriceCents: 4900,
-    giftPriceCents: 4900,
     brand: { primaryColor: '#d4af37', tagline: 'Maneaua ta cadou' },
     seo: {},
     analytics: { ga4Id: process.env.NEXT_PUBLIC_GA_ID },

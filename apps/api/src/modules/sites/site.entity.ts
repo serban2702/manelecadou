@@ -443,21 +443,6 @@ export class Site {
   @Column({ type: 'integer', default: 4999 })
   standardPriceCents!: number;
 
-  /** Suprataxă fixă pentru Manea Premium (audio mai bun). Default 20 lei. */
-  @Column({ type: 'integer', default: 2000 })
-  premiumExtraCents!: number;
-
-  /** Plafonul de suprataxă pentru dedicație (cap). Default 50 lei. */
-  @Column({ type: 'integer', default: 5000 })
-  tipSurchargeCapCents!: number;
-
-  /** Procentul de suprataxă din suma dedicației (0–100). Default 5. */
-  @Column({ type: 'integer', default: 5 })
-  tipSurchargePercent!: number;
-
-  @Column({ type: 'integer', default: 0 })
-  giftPriceCents!: number; // preț cod cadou single
-
   /**
    * Override per-site al prețurilor de pachet (cents, în valuta site-ului).
    * Cheie = tier ('basic'|'plus'|'premium'). Lipsa unei chei → fallback la
