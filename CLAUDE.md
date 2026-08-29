@@ -570,13 +570,43 @@ Ordinea (identică în `apps/api/src/modules/experiences/assign.ts` și
 
 `?ui=` → cookie `mc_ui` → person (fingerprint/device) → UTM → `defaultSlug` → `classic`
 
-**Fiecare pas trece prin `isExperienceEnabled`**, inclusiv `?ui=`. Un slug fără
-intrare în `items` NU e activat. Fără garda asta, un link `?ui=cadou` scăpat pe
-social ar lipi interfața pe vizitatori 365 de zile prin cookie, iar când API-ul
-pică și configul vine `null`, orice cookie vechi ar prelua site-ul.
+**Fiecare pas trece prin `isExperienceEnabled`** — `?ui=`, cookie, amprentă, UTM.
+Un slug fără intrare în `items` NU e activat. Fără garda asta, un link
+`?ui=cadou` scăpat pe social ar lipi interfața pe vizitatori 365 de zile prin
+cookie, iar când API-ul pică și configul vine `null`, orice cookie vechi ar
+prelua site-ul.
+
+**Oprită înseamnă inaccesibilă** (decizie 29 aug 2026). A existat o excepție —
+„sticky": pe cine intrase deja pe o interfață îl lăsam pe ea și după ce
+operatorul o oprea, ca să nu-i schimbăm UI-ul în mijlocul comenzii. Consecința
+era că „oprită" nu însemna nimic: oricine avea cookie-ul de la un test rămânea
+pe ea încă un an. Acum comutatorul chiar închide, imediat și pe toate căile;
+cine e în mijlocul unei comenzi trece pe classic (comanda e pe server, nu se
+pierde). Sunt **patru** locuri care trebuie să dea același verdict:
+
+| Loc | Rol |
+|---|---|
+| `apps/web/experiences/assign.ts` | randarea pe site |
+| `apps/api/src/modules/experiences/assign.ts` | copia din API — **ține-le sincronizate** |
+| `experiences/public-config.ts` (`toPublicExperienceConfig`) | ce vede clientul în configul public |
+| `experiences/package-resolve.ts` (`effectiveExperienceSlug`) | **prețul** — vezi mai jos |
+
+`defaultSlug` **nu** e o scutire: o interfață oprită cât timp e implicită rămâne
+inaccesibilă, iar site-ul cade pe `classic`, care nu poate fi oprită. Adminul
+mută singur implicitul înapoi pe classic când o oprești, ca să nu existe starea
+contradictorie „Implicită + Oprită".
+
+⚠️ **Prețul se validează separat.** `x-mc-experience` (și `?ui=`) sunt controlate
+de client, iar `effectiveExperienceSlug` le lua la valoarea nominală: un pachet
+cu preț propriu pe o interfață OPRITĂ putea fi cotat și cumpărat trimițând
+antetul de mână, fără să treci vreodată pe ea. Acum se verifică activarea acolo.
+Dacă adaugi un loc care alege interfața dintr-un input de client, treci-l prin
+`isExperienceEnabled`.
 
 Ca să testezi o interfață pe un site: `enabled: true`, dar **fără** s-o pui
 `defaultSlug`. Atunci `?ui=` merge pentru tine, iar restul lumii vede classic.
+Cookie-ul care arată spre o interfață devenită inaccesibilă e **șters** de
+middleware, nu doar ignorat — altfel ar reînvia tăcut la o reactivare.
 
 Middleware-ul pune header-ul `x-mc-experience`; `app/layout.tsx` retrece
 cookie-ul prin `resolveExperienceSlug` (rutele excluse din `matcher` nu văd
