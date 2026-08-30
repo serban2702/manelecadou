@@ -5,17 +5,24 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  Circle,
   Copy,
   Info,
   Lightbulb,
+  Loader2,
+  MinusCircle,
   RotateCcw,
+  Search,
   ShieldAlert,
+  XCircle,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { SpaLink } from '@/lib/spa-router';
+import { Input } from '@/components/ui/input';
+import { SitesApi, setSelectedSiteId, type DomainCheckResult, type DomainCheckStatus } from '@/lib/api/sites.api';
+import { SpaLink, useSpaNavigate } from '@/lib/spa-router';
 import { cn } from '@/lib/cn';
 
 /**
@@ -47,6 +54,10 @@ const STORAGE_KEY = 'mc_ghid_site_nou';
 export default function SiteNouGuidePage() {
   const [done, setDone] = useState<Record<string, boolean>>({});
   const [hydrated, setHydrated] = useState(false);
+  const [domain, setDomain] = useState('');
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState<DomainCheckResult | null>(null);
+  const [checkError, setCheckError] = useState('');
 
   useEffect(() => {
     try {
@@ -87,6 +98,21 @@ export default function SiteNouGuidePage() {
     onToggle: () => toggle(id),
   });
 
+  async function runCheck() {
+    const d = domain.trim();
+    if (!d) return;
+    setChecking(true);
+    setCheckError('');
+    try {
+      setResult(await SitesApi.domainCheck(d));
+    } catch (e) {
+      setResult(null);
+      setCheckError((e as Error).message || 'Verificarea a eșuat.');
+    } finally {
+      setChecking(false);
+    }
+  }
+
   return (
     <div className="max-w-4xl">
       <PageHeader
@@ -103,6 +129,38 @@ export default function SiteNouGuidePage() {
       />
 
       {/* ------------------------------------------------------------------ */}
+      <Card className="mb-6">
+        <CardContent className="py-4 space-y-3">
+          <div>
+            <div className="text-sm font-semibold">Unde am rămas cu un domeniu?</div>
+            <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+              Scrie domeniul și îți spun ce e deja făcut: DNS, certificat, dacă există site în
+              platformă și cât e configurat. Merge și pe un domeniu pe care încă n-ai făcut nimic.
+            </p>
+          </div>
+          <form
+            className="flex flex-wrap gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void runCheck();
+            }}
+          >
+            <Input
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              placeholder="domeniul-nou.ro"
+              className="flex-1 min-w-[220px]"
+            />
+            <Button type="submit" disabled={checking || !domain.trim()}>
+              {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              {checking ? 'Verific…' : 'Verifică'}
+            </Button>
+          </form>
+          {checkError && <p className="text-sm text-destructive">{checkError}</p>}
+          {result && <DomainReport result={result} />}
+        </CardContent>
+      </Card>
+
       <Card className="mb-6 border-primary/30 bg-primary/5">
         <CardContent className="py-4 space-y-3">
           <div className="text-sm font-semibold">Trei lucruri de știut înainte să începi</div>
@@ -174,34 +232,13 @@ export default function SiteNouGuidePage() {
           câmpul <strong>Domains</strong>.
         </p>
         <p>
-          Câmpul e o listă CSV pe un singur rând, cu fiecare domeniu scris ca{' '}
-          <Code>https://domeniu:80</Code> (portul e al containerului nginx). Conține domeniile
-          tuturor site-urilor — <strong>nu-l goli</strong>. Ai două variante:
+          Câmpul e o listă CSV pe un singur rând, comună tuturor site-urilor, cu fiecare domeniu
+          scris ca <Code>https://domeniu:80</Code> (portul e al containerului nginx).{' '}
+          <strong>Nu-l goli</strong> — te duci la capătul rândului și lipești, cu virgulă în față:
         </p>
-        <div className="rounded-lg border border-border p-3 space-y-2">
-          <div className="text-xs font-semibold text-foreground">A. Adaugi de mână (30 de secunde)</div>
-          <p>Te duci la capătul rândului existent și lipești, cu virgulă în față:</p>
-          <Cmd>{`,https://domeniul-nou.ro:80,https://www.domeniul-nou.ro:80`}</Cmd>
-        </div>
-        <div className="rounded-lg border border-border p-3 space-y-2">
-          <div className="text-xs font-semibold text-foreground">
-            B. Generezi lista completă (verifică și restul site-urilor)
-          </div>
-          <p>
-            Din terminal, în folderul proiectului. Comanda se conectează la producție, citește
-            site-urile active din baza de date și îți afișează la final un rând gata de copiat.
-            Nu scrie nimic, nici în bază, nici în Coolify:
-          </p>
-          <Cmd>{`make coolify-domains`}</Cmd>
-          <p>
-            Ultimul bloc din ieșire („gata de lipit”) se selectează întreg și se lipește{' '}
-            <em>peste</em> conținutul câmpului — conține deja toate domeniile, nu doar pe cel nou.
-            Varianta asta merge doar după ce ai creat site-ul în admin (pasul 3), fiindcă de acolo
-            își ia lista.
-          </p>
-        </div>
+        <Cmd>{`,https://domeniul-nou.ro:80,https://www.domeniul-nou.ro:80`}</Cmd>
         <p>
-          Apoi <strong>Save</strong>, și după el <strong>Actions → Deploy</strong> (sau{' '}
+          Apoi <strong>Save</strong>, și după el <strong>Actions → Redeploy</strong> (sau{' '}
           <Code>make deploy-coolify</Code> din terminal). Coolify scrie etichetele pentru Traefik
           doar la deploy — până atunci, domeniul salvat nu înseamnă nimic pentru proxy.
         </p>
@@ -632,6 +669,177 @@ export default function SiteNouGuidePage() {
 }
 
 /* -------------------------------------------------------------------------- */
+
+function DomainReport({ result }: { result: DomainCheckResult }) {
+  const navigate = useSpaNavigate();
+  const { dns, tls, http, site, checks } = result;
+
+  const missing = checks.filter((c) => c.status === 'missing');
+  const partial = checks.filter((c) => c.status === 'partial');
+
+  // Verdictul e „la ce pas din ghid ai rămas", nu o listă de simptome.
+  const verdict = !dns.apex.pointsHere
+    ? { tone: 'danger' as const, text: `Pasul 1 — DNS. ${dns.apex.host} nu arată spre ${result.expectedIp ?? 'serverul nostru'}.` }
+    : tls.isDefaultCert
+      ? { tone: 'danger' as const, text: 'Pasul 2 — Traefik servește certificatul implicit: domeniul lipsește din Coolify sau proxy-ul e în backoff.' }
+      : !tls.ok
+        ? { tone: 'warn' as const, text: `Pasul 2 — certificatul nu e valid${tls.error ? ` (${tls.error})` : ''}.` }
+        : !site
+          ? { tone: 'warn' as const, text: 'Pasul 3 — infrastructura e gata, dar nu există niciun site pe domeniul ăsta în platformă.' }
+          : missing.length
+            ? { tone: 'warn' as const, text: `Pașii 4-11 — site-ul există, dar mai are ${missing.length} ${missing.length === 1 ? 'lipsă' : 'lipsuri'}${partial.length ? ` și ${partial.length} parțial` : ''}.` }
+            : partial.length
+              ? { tone: 'tip' as const, text: `Aproape gata — ${partial.length} ${partial.length === 1 ? 'lucru' : 'lucruri'} configurate parțial.` }
+              : { tone: 'tip' as const, text: 'Totul e la locul lui. Domeniul e live și complet configurat.' };
+
+  return (
+    <div className="space-y-3 pt-1">
+      <Note tone={verdict.tone} title={result.domain}>
+        {verdict.text}
+      </Note>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-lg border border-border p-3 space-y-2">
+          <div className="text-xs font-semibold text-foreground">Infrastructură</div>
+          <CheckRow
+            status={dns.apex.pointsHere ? 'ok' : 'missing'}
+            label="DNS (apex)"
+            detail={
+              dns.apex.addresses.length
+                ? `${dns.apex.addresses.join(', ')}${dns.apex.pointsHere ? '' : ` — așteptat ${result.expectedIp ?? '?'}`}`
+                : `fără A record${dns.apex.error ? ` (${dns.apex.error})` : ''}`
+            }
+          />
+          <CheckRow
+            status={dns.www.pointsHere ? 'ok' : dns.www.addresses.length ? 'partial' : 'missing'}
+            label="DNS (www)"
+            detail={
+              dns.www.addresses.length
+                ? dns.www.addresses.join(', ')
+                : `fără A record${dns.www.error ? ` (${dns.www.error})` : ''}`
+            }
+          />
+          <CheckRow
+            status={tls.ok ? 'ok' : 'missing'}
+            label="Certificat"
+            detail={
+              tls.isDefaultCert
+                ? 'TRAEFIK DEFAULT CERT — vezi pasul 2'
+                : tls.issuer
+                  ? `${tls.issuer}${tls.validTo ? ` · până la ${tls.validTo}` : ''}`
+                  : tls.error || 'necunoscut'
+            }
+          />
+          <CheckRow
+            status={http.status && http.status < 500 ? 'ok' : 'missing'}
+            label="Răspuns HTTPS"
+            detail={http.status ? `HTTP ${http.status}` : http.error || 'fără răspuns'}
+          />
+          {tls.isDefaultCert && (
+            <Cmd className="mt-1">{`ssh ovh 'docker restart coolify-proxy'`}</Cmd>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-border p-3 space-y-2">
+          <div className="text-xs font-semibold text-foreground">Site în platformă</div>
+          {site ? (
+            <>
+              <CheckRow status="ok" label={site.name} detail={`cod ${site.slug} · ${site.locale} · ${site.currency}`} />
+              <CheckRow
+                status={site.active && !site.hiddenMode && !site.maintenanceMode ? 'ok' : 'partial'}
+                label="Stare"
+                detail={
+                  !site.active
+                    ? 'inactiv'
+                    : site.hiddenMode
+                      ? 'ascuns'
+                      : site.maintenanceMode
+                        ? 'mentenanță'
+                        : 'live'
+                }
+              />
+              <CheckRow
+                status="info"
+                label="Creat"
+                detail={site.createdAt ? new Date(site.createdAt).toLocaleDateString('ro-RO') : '—'}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSelectedSiteId(site.id);
+                  navigate('/site');
+                }}
+              >
+                Deschide configul acestui site
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Niciun site pe domeniul ăsta. Îl creezi la pasul 3 — domeniul se scrie fără{' '}
+                <Code>www</Code>.
+              </p>
+              <SpaLink href="/sites" className="text-sm text-primary hover:underline">
+                Toate site-urile → Adaugă site
+              </SpaLink>
+            </>
+          )}
+        </div>
+      </div>
+
+      {checks.length > 0 && (
+        <div className="rounded-lg border border-border p-3 space-y-2">
+          <div className="text-xs font-semibold text-foreground">Configurare</div>
+          <div className="grid gap-1.5 md:grid-cols-2">
+            {checks.map((c) => (
+              <div key={c.id} className="flex items-start gap-2">
+                <StatusIcon status={c.status} />
+                <div className="min-w-0 flex-1">
+                  {c.href ? (
+                    <SpaLink href={c.href} className="text-sm hover:text-primary">
+                      {c.label}
+                    </SpaLink>
+                  ) : (
+                    <span className="text-sm">{c.label}</span>
+                  )}
+                  <div className="text-[11px] text-muted-foreground leading-snug">{c.detail}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusIcon({ status }: { status: DomainCheckStatus }) {
+  if (status === 'ok') return <CheckCircle2 className="h-4 w-4 shrink-0 text-success mt-0.5" />;
+  if (status === 'missing') return <XCircle className="h-4 w-4 shrink-0 text-destructive mt-0.5" />;
+  if (status === 'partial') return <MinusCircle className="h-4 w-4 shrink-0 text-warning mt-0.5" />;
+  return <Circle className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />;
+}
+
+function CheckRow({
+  status,
+  label,
+  detail,
+}: {
+  status: DomainCheckStatus;
+  label: string;
+  detail: string;
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <StatusIcon status={status} />
+      <div className="min-w-0 flex-1">
+        <span className="text-sm">{label}</span>
+        <div className="text-[11px] text-muted-foreground leading-snug break-words">{detail}</div>
+      </div>
+    </div>
+  );
+}
 
 function SectionTitle({
   letter,

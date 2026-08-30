@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/jwt.guard';
 import { AdminGuard } from '../../common/admin.guard';
+import { DomainCheckService } from './domain-check.service';
 import { SiteRolloutService } from './site-rollout.service';
 
 /**
@@ -12,11 +13,25 @@ import { SiteRolloutService } from './site-rollout.service';
 @UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('admin/rollout')
 export class AdminSiteRolloutController {
-  constructor(private readonly rollout: SiteRolloutService) {}
+  constructor(
+    private readonly rollout: SiteRolloutService,
+    private readonly domains: DomainCheckService,
+  ) {}
 
   @Get()
   overview() {
     return this.rollout.overview();
+  }
+
+  /** „Ce e făcut pe domeniul X?" — DNS, certificat, site, configurare.
+   *  Declarat înaintea lui `:siteId`, altfel ruta parametrizată îl înghite. */
+  @Get('domain-check')
+  domainCheck(@Query('domain') domain: string) {
+    try {
+      return this.domains.check(domain);
+    } catch (err) {
+      throw new BadRequestException((err as Error).message);
+    }
   }
 
   @Get(':siteId')

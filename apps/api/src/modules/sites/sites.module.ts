@@ -10,6 +10,7 @@ import { SiteSamplesService } from './site-samples.service';
 import { SiteBrandUploadService } from './site-brand-upload.service';
 import { ExperienceAssetUploadService } from './experience-asset-upload.service';
 import { SiteRolloutService } from './site-rollout.service';
+import { DomainCheckService } from './domain-check.service';
 import { AdminSiteRolloutController } from './site-rollout.controller';
 import { SunoModule } from '../suno/suno.module';
 import { LyricsModule } from '../lyrics/lyrics.module';
@@ -33,7 +34,14 @@ import { LyricsModule } from '../lyrics/lyrics.module';
       }),
     }),
   ],
-  providers: [SitesService, SiteSamplesService, SiteBrandUploadService, ExperienceAssetUploadService, SiteRolloutService],
+  providers: [
+    SitesService,
+    SiteSamplesService,
+    SiteBrandUploadService,
+    ExperienceAssetUploadService,
+    SiteRolloutService,
+    DomainCheckService,
+  ],
   controllers: [PublicSiteController, AdminSitesController, AdminSiteSamplesController, CaddyAskController, AdminSiteRolloutController],
   exports: [SitesService, TypeOrmModule],
 })

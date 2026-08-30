@@ -192,7 +192,7 @@ față de `docker-compose.prod.yml`), `deploy/coolify-deploy.sh`, target
 ⚠️ **`git push` singur NU deployează.** Repo-ul e legat prin deploy key, iar
 pentru sursele de tip deploy key Coolify nu poate crea singur webhook-ul în
 GitHub — toate deploy-urile apar în istoric ca „Manual". Deploy-ul se pornește
-fie din UI (**Actions → Deploy / Redeploy**), fie din terminal cu
+fie din UI (**Actions → Redeploy**), fie din terminal cu
 `make deploy-coolify` având `COOLIFY_URL` / `COOLIFY_TOKEN` / `COOLIFY_RESOURCE_UUID`
 în env. Dacă vrei totuși push-to-deploy, ia URL-ul și secretul din resursă →
 **Webhooks → Manual Git webhooks → GitHub** și adaugă-le ca webhook în GitHub;

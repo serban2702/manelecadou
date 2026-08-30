@@ -438,6 +438,53 @@ export type GenerateSampleResponse =
 
 export type RolloutStatus = 'ok' | 'missing' | 'partial' | 'info';
 
+export type DomainCheckStatus = 'ok' | 'missing' | 'partial' | 'info';
+
+export interface DomainCheckItem {
+  id: string;
+  label: string;
+  status: DomainCheckStatus;
+  detail: string;
+  href?: string;
+}
+
+export interface DomainCheckHost {
+  host: string;
+  addresses: string[];
+  pointsHere: boolean;
+  error?: string;
+}
+
+export interface DomainCheckResult {
+  domain: string;
+  expectedIp: string | null;
+  expectedFrom: string;
+  dns: { apex: DomainCheckHost; www: DomainCheckHost };
+  tls: {
+    ok: boolean;
+    issuer: string | null;
+    subject: string | null;
+    validTo: string | null;
+    isDefaultCert: boolean;
+    error?: string;
+  };
+  http: { status: number | null; error?: string };
+  site: {
+    id: string;
+    slug: string;
+    name: string;
+    locale: string;
+    currency: string;
+    active: boolean;
+    sslEnabled: boolean;
+    hiddenMode: boolean;
+    maintenanceMode: boolean;
+    isDefault: boolean;
+    createdAt: string;
+  } | null;
+  checks: DomainCheckItem[];
+}
+
 export interface SiteRolloutCheck {
   id: string;
   title: string;
@@ -479,6 +526,11 @@ export const SitesApi = {
 
   /** Registru de lansare: ce lipsește pe fiecare site față de seed-ul curent (Lyria, Cadou, etc.). */
   rolloutOverview: () => http.get<SiteRolloutOverview>(`/admin/rollout`),
+  /** DNS + certificat + site + configurare, pentru un domeniu (chiar inexistent). */
+  domainCheck: (domain: string) =>
+    http.get<DomainCheckResult>(`/admin/rollout/domain-check?domain=${encodeURIComponent(domain)}`, {
+      timeout: 30_000,
+    }),
   rolloutApplySite: (siteId: string, checkIds?: string[]) =>
     http.post<{ applied: string[]; skipped: string[]; site: SiteRolloutSiteRow | null }>(
       `/admin/rollout/${siteId}/apply`,
