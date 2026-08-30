@@ -56,6 +56,7 @@ const SiteDemos       = dynamic(() => import('../site-demos/_content'),      { s
 const OpsTerminal     = dynamic(() => import('../terminal/_content'),        { ssr: false, loading: Loading });
 const SeoPages        = dynamic(() => import('../seo-pages/_content'),       { ssr: false, loading: Loading });
 const Rollout         = dynamic(() => import('../rollout/_content'),         { ssr: false, loading: Loading });
+const SiteNouGuide    = dynamic(() => import('../site-nou/_content'),        { ssr: false, loading: Loading });
 
 const ROUTES: Record<string, ComponentType> = {
   '/':                   Dashboard,
@@ -86,6 +87,7 @@ const ROUTES: Record<string, ComponentType> = {
   '/terminal':           OpsTerminal,
   '/seo-pages':          SeoPages,
   '/rollout':            Rollout,
+  '/site-nou':           SiteNouGuide,
 };
 
 export default function CatchAll() {

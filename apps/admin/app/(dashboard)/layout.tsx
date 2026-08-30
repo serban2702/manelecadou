@@ -26,6 +26,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Receipt,
+  Rocket,
   Send,
   Settings as SettingsIcon,
   ShieldCheck,
@@ -113,6 +114,7 @@ const DESKTOP_NAV: NavEntry[] = [
       { href: '/lyrics', label: 'Lyrics (AI)', icon: Mic2, scope: 'global' },
       { href: '/settings', label: 'Settings', icon: SettingsIcon, scope: 'global' },
       { href: '/rollout', label: 'Lansare producție', icon: ClipboardList, scope: 'both' },
+      { href: '/site-nou', label: 'Ghid: site nou', icon: Rocket, scope: 'both' },
     ],
   },
   {
