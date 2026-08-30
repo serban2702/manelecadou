@@ -72,6 +72,19 @@ export class AuthController {
     return this.auth.consumeMagicLink(token, siteId);
   }
 
+  /**
+   * Prelungește sesiunea curentă. Clientul de admin o cheamă singur când mai are
+   * puțin din token — așa nu te mai trezești la login în mijlocul lucrului.
+   * Tokenul deja expirat NU se poate reînnoi: acolo chiar te reautentifici.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ short: { limit: 6, ttl: 60_000 } })
+  @Post('refresh')
+  async refresh(@Headers('authorization') authorization?: string) {
+    const raw = typeof authorization === 'string' ? authorization.split(' ')[1] ?? null : null;
+    return this.auth.refreshSession(raw);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('me')
   async me(@CurrentUser() user: AuthedRequestUser) {

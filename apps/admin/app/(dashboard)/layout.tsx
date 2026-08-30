@@ -41,7 +41,7 @@ import { SiteSelector } from '@/components/site-selector';
 import { ScopeBanner } from '@/components/scope-banner';
 import { AuthApi, ChatApi, ErrorsApi, MailApi } from '@/lib/api';
 import { ALL_SITES, getSelectedSiteId } from '@/lib/api/sites.api';
-import { getAdminToken, setAdminToken } from '@/lib/http/client';
+import { getAdminToken, http, noteLogoutReason, setAdminToken } from '@/lib/http/client';
 import { useAsync } from '@/lib/hooks/use-async';
 import { SpaLink, SpaRouter, useSpaPathname } from '@/lib/spa-router';
 import { cn } from '@/lib/cn';
@@ -210,6 +210,23 @@ function DashboardShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     setAuthed(getAdminToken() ? true : false);
   }, []);
+
+  /**
+   * Sliding session. Tokenul trăiește 7 zile și NU se putea prelungi, deci te
+   * arunca la login în mijlocul lucrului — pe producție s-a văzut un interval
+   * de fix 7 zile și 4 ore între două autentificări, adică plafonul atins.
+   *
+   * Îl reînnoim la deschiderea adminului și apoi la fiecare 6 ore cât tabul
+   * stă deschis, dar numai când chiar se apropie de expirare (vezi pragul din
+   * `ensureFreshToken`). Serverul refuză prelungirea peste limita absolută de
+   * la ultima autentificare reală, deci sesiunea nu devine eternă.
+   */
+  useEffect(() => {
+    if (authed !== true) return;
+    void http.ensureFreshToken();
+    const id = setInterval(() => void http.ensureFreshToken(), 6 * 60 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [authed]);
 
   useEffect(() => {
     if (authed === false && typeof window !== 'undefined') {
@@ -447,6 +464,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
             size="sm"
             className="w-full justify-start"
             onClick={() => {
+              noteLogoutReason('manual');
               setAdminToken(null);
               window.location.href = '/login';
             }}

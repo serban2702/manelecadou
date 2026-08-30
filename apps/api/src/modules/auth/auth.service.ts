@@ -21,6 +21,7 @@ import { MailerService } from '../../mailer/mailer.module';
 import { magicLinkTemplate, adminGdprRequestTemplate } from '../../mailer/templates/templates';
 import { brandingFromSite } from '../../mailer/branding';
 import { SitesService } from '../sites/sites.service';
+import { isWithinAbsoluteWindow, sessionAnchor } from './session-window';
 
 @Injectable()
 export class AuthService {
@@ -233,9 +234,62 @@ export class AuthService {
         email: user.email,
         role: user.role,
         siteId: user.siteId,
+        // Momentul autentificării REALE (magic link). Se transportă neschimbat
+        // prin toate reînnoirile, ca sesiunea să aibă și o limită absolută —
+        // altfel un token furat s-ar putea prelungi la nesfârșit.
+        authAt: Math.floor(Date.now() / 1000),
       });
       return { accessToken, userId: user.id };
     });
+  }
+
+
+  /**
+   * Prelungește sesiunea („sliding session").
+   *
+   * Fără asta, tokenul de 7 zile te dă afară în mijlocul lucrului, oricât de
+   * activ ai fi — pe producție s-a văzut un interval de exact 7 zile și 4 ore
+   * între două autentificări, adică plafonul atins fix.
+   *
+   * Trei condiții, toate necesare:
+   *   1. tokenul curent e încă valid (expirat = te reautentifici, nu există
+   *      refresh token separat);
+   *   2. autentificarea reală nu e mai veche de ABSOLUTE_SESSION_DAYS;
+   *   3. userul încă există, iar rolul se ia din baza de date, NU din token.
+   *
+   * A treia condiție e și singura formă de revocare pe care o avem: scos din
+   * ADMIN_EMAILS și degradat în DB, omul pierde adminul la prima reînnoire, nu
+   * după ce expiră tokenul.
+   */
+  async refreshSession(rawToken: string | null): Promise<{ accessToken: string; expiresAt: string }> {
+    if (!rawToken) throw new UnauthorizedException('Missing token');
+    let payload: { sub: string; authAt?: number; iat?: number };
+    try {
+      payload = this.jwt.verify(rawToken);
+    } catch {
+      throw new UnauthorizedException('Invalid token');
+    }
+
+    const authAt = sessionAnchor(payload);
+    if (!isWithinAbsoluteWindow(authAt, Math.floor(Date.now() / 1000))) {
+      throw new UnauthorizedException('Session too old, sign in again');
+    }
+
+    const user = await this.users.findById(payload.sub);
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const accessToken = this.jwt.sign({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      siteId: user.siteId,
+      authAt,
+    });
+    const decoded = this.jwt.decode(accessToken) as { exp?: number } | null;
+    return {
+      accessToken,
+      expiresAt: new Date((decoded?.exp ?? 0) * 1000).toISOString(),
+    };
   }
 
   /** URL de bază pentru link-uri trimise prin email (fallback APP_URL pe localhost / dev). */

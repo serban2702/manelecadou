@@ -12,4 +12,9 @@ export class AuthApi {
   static me(): Promise<{ id: string; email: string; freeDemoUsed: boolean; name: string | null }> {
     return http.get('/auth/me');
   }
+
+  /** Prelungește sesiunea. Cere un token încă valid. */
+  static refresh(): Promise<{ accessToken: string; expiresAt: string }> {
+    return http.post('/auth/refresh', {});
+  }
 }

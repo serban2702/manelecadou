@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { Crown, Mail, MailCheck } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Crown, Info, Mail, MailCheck } from 'lucide-react';
 import { AuthApi, ApiError } from '@/lib/api';
+import { clearLogoutDiagnosis, logoutDiagnosis } from '@/lib/http/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,6 +14,24 @@ export default function AdminLoginPage() {
   const [sent, setSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [why, setWhy] = useState<string | null>(null);
+
+  /**
+   * De ce a ajuns omul aici. Fără mesajul ăsta, „expirat" și „browserul mi-a
+   * șters datele site-ului" arată identic — și se repară complet diferit.
+   */
+  useEffect(() => {
+    const d = logoutDiagnosis();
+    clearLogoutDiagnosis();
+    if (!d) return;
+    if (d.reason === 'signed-out') return; // ai apăsat tu Logout, nu-ți mai explic
+    const when = d.at ? new Date(d.at * 1000).toLocaleString('ro-RO') : '';
+    setWhy(
+      d.reason === 'expired'
+        ? `Sesiunea a expirat${when ? ` (${when})` : ''}. Reînnoirea automată merge doar dacă deschizi adminul înainte să expire tokenul.`
+        : `Datele site-ului au fost șterse din browser înainte ca sesiunea să expire${when ? ` (expira ${when})` : ''}. Verifică setările de confidențialitate ale browserului — ștergerea la închidere taie sesiunea indiferent ce facem noi.`,
+    );
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,6 +68,12 @@ export default function AdminLoginPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {why && (
+              <div className="mb-4 flex items-start gap-2.5 rounded-md border border-info/30 bg-info/10 p-3 text-xs leading-relaxed text-muted-foreground">
+                <Info className="h-4 w-4 text-info mt-0.5 shrink-0" />
+                <span>{why}</span>
+              </div>
+            )}
             {sent ? (
               <div className="flex items-start gap-3 rounded-md border border-success/40 bg-success/5 p-4 text-sm">
                 <MailCheck className="h-5 w-5 text-success mt-0.5 shrink-0" />
