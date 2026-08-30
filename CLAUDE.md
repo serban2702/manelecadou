@@ -925,6 +925,10 @@ din `ro.json` și tradu — cheile lipsă cad pe română (§11.5), deci un gol 
 ca o propoziție în altă limbă, nu ca eroare.
 
 Skill-ul `/add-site` face pașii 3 și verificările; 1 și 2 rămân manuale.
+
+Procedura completă, pentru om, e și în admin: **`/site-nou`** (meniu → Platformă →
+„Ghid: site nou") — aceiași pași, plus emailul, conținutul, capcanele și ce se
+schimbă când limba nu e printre cele opt livrate. Sursa: `apps/admin/app/(dashboard)/site-nou/_content.tsx`.
 ## 15. Chat live + agentul AI (Irina)
 
 Refactor masiv al chat-ului live (decizie 2026-05-25). Înlocuiește chat-ul simplu text-only cu un sistem realtime cu presence, rich messages, atașamente, plată din chat, AI agent cu tool calling. Vezi commit history pentru detalii incrementale (Faza 1 → Faza 5).
@@ -1330,6 +1334,7 @@ mai jos.
 | text pe site | `apps/web/messages/ro.json` + traduceri (§11.5) |
 | pagină pe site public | `apps/web/app/` |
 | design alternativ | `apps/web/experiences/` (§10) |
+| să testez prompturi (versuri / Suno / Lyria) | admin `/site/playground` — trei laboratoare separate |
 | ceva ce scrie fișiere | `StorageService` — niciodată `fs` direct (§19.5) |
 
 ### 19.1 Modul nou de API
