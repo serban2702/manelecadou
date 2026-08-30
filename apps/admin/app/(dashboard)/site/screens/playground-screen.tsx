@@ -1054,7 +1054,10 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
               <button
                 key={r.id}
                 type="button"
-                onClick={() => setActive(r)}
+                onClick={() => {
+                  setActive(r);
+                  setTab(r.engine === 'google' ? 'lyria' : 'suno');
+                }}
                 className={cn(
                   'w-full text-left rounded-lg border px-3 py-2 transition-colors',
                   active?.id === r.id ? 'border-primary/40 bg-primary/5' : 'border-border hover:border-primary/30',
@@ -1110,14 +1113,17 @@ function RunColumn({
   onGenerate: () => void;
   costHint: string;
 }) {
-  const tracks = active?.tracks ?? [];
+  // O rulare de Suno n-are ce căuta în coloana Lyria și invers — altfel pare
+  // că tocmai ai generat pe motorul pe care te uiți.
+  const mine = active?.engine === engine ? active : null;
+  const tracks = mine?.tracks ?? [];
   const showPreview = preview && preview.engine === engine;
   return (
     <div className="lg:col-span-2 lg:sticky lg:top-4 grid gap-3">
       <div className="flex gap-2">
         <Button className="flex-1" onClick={onGenerate} disabled={busy || pending}>
           {busy || pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          {busy || pending ? statusLabel(active?.status ?? 'queued') : 'Generează'}
+          {busy || pending ? statusLabel(mine?.status ?? 'queued') : 'Generează'}
         </Button>
         <Button variant="outline" onClick={onPreview} title="Ce se trimite exact">
           <Eye className="h-4 w-4" />
@@ -1125,19 +1131,19 @@ function RunColumn({
       </div>
       <p className="text-[11px] text-muted-foreground -mt-1">Cost estimat: {costHint}</p>
 
-      {active && (
+      {mine && (
         <div className="rounded-xl border border-border bg-card p-3 space-y-3">
           <div className="flex items-center gap-2">
             <Badge
               variant={
-                active.status === 'succeeded' ? 'success' : active.status === 'failed' ? 'destructive' : 'warning'
+                mine.status === 'succeeded' ? 'success' : mine.status === 'failed' ? 'destructive' : 'warning'
               }
             >
-              {statusLabel(active.status)}
+              {statusLabel(mine.status)}
             </Badge>
-            <span className="text-xs text-muted-foreground">{active.audioModel ?? ''}</span>
+            <span className="text-xs text-muted-foreground">{mine.audioModel ?? ''}</span>
           </div>
-          {active.errorMessage && <p className="text-sm text-destructive">{active.errorMessage}</p>}
+          {mine.errorMessage && <p className="text-sm text-destructive">{mine.errorMessage}</p>}
           {tracks.map((t, i) => (
             <div key={i} className="space-y-1">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -1155,13 +1161,13 @@ function RunColumn({
               <audio controls preload="none" src={absUrl(t.audioUrl)} className="w-full h-9" />
             </div>
           ))}
-          {active.lyrics && (
+          {mine.lyrics && (
             <details className="text-xs">
               <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
                 Versurile cântate
               </summary>
               <pre className="mt-2 whitespace-pre-wrap font-mono text-[11px] text-muted-foreground">
-                {active.lyricsPhonetic || active.lyrics}
+                {mine.lyricsPhonetic || mine.lyrics}
               </pre>
             </details>
           )}
