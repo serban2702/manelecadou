@@ -170,18 +170,40 @@ export default function SiteNouGuidePage() {
           >
             coolify.freevox.ro
           </a>{' '}
-          → resursa aplicației → serviciul <Code>router</Code> → câmpul <strong>Domains</strong>.
-          Adaugi la lista existentă (nu o înlocui):
+          → resursa aplicației → tab-ul serviciului <Code>router</Code> → secțiunea General →
+          câmpul <strong>Domains</strong>.
         </p>
-        <Cmd>{`https://domeniul-nou.ro:80,https://www.domeniul-nou.ro:80`}</Cmd>
         <p>
-          Lista completă, gata de lipit, o generezi local (comandă read-only, nu schimbă nimic):
+          Câmpul e o listă CSV pe un singur rând, cu fiecare domeniu scris ca{' '}
+          <Code>https://domeniu:80</Code> (portul e al containerului nginx). Conține domeniile
+          tuturor site-urilor — <strong>nu-l goli</strong>. Ai două variante:
         </p>
-        <Cmd>{`make coolify-domains`}</Cmd>
+        <div className="rounded-lg border border-border p-3 space-y-2">
+          <div className="text-xs font-semibold text-foreground">A. Adaugi de mână (30 de secunde)</div>
+          <p>Te duci la capătul rândului existent și lipești, cu virgulă în față:</p>
+          <Cmd>{`,https://domeniul-nou.ro:80,https://www.domeniul-nou.ro:80`}</Cmd>
+        </div>
+        <div className="rounded-lg border border-border p-3 space-y-2">
+          <div className="text-xs font-semibold text-foreground">
+            B. Generezi lista completă (verifică și restul site-urilor)
+          </div>
+          <p>
+            Din terminal, în folderul proiectului. Comanda se conectează la producție, citește
+            site-urile active din baza de date și îți afișează la final un rând gata de copiat.
+            Nu scrie nimic, nici în bază, nici în Coolify:
+          </p>
+          <Cmd>{`make coolify-domains`}</Cmd>
+          <p>
+            Ultimul bloc din ieșire („gata de lipit”) se selectează întreg și se lipește{' '}
+            <em>peste</em> conținutul câmpului — conține deja toate domeniile, nu doar pe cel nou.
+            Varianta asta merge doar după ce ai creat site-ul în admin (pasul 3), fiindcă de acolo
+            își ia lista.
+          </p>
+        </div>
         <p>
-          Apoi pornește un deploy, ca Traefik să primească etichetele noi:{' '}
-          <strong>Actions → Deploy</strong> în Coolify, sau <Code>make deploy-coolify</Code> din
-          terminal.
+          Apoi <strong>Save</strong>, și după el <strong>Actions → Deploy</strong> (sau{' '}
+          <Code>make deploy-coolify</Code> din terminal). Coolify scrie etichetele pentru Traefik
+          doar la deploy — până atunci, domeniul salvat nu înseamnă nimic pentru proxy.
         </p>
         <p>Verifică certificatul:</p>
         <Cmd>{`curl -sI https://domeniul-nou.ro | head -1\necho | openssl s_client -connect domeniul-nou.ro:443 -servername domeniul-nou.ro 2>/dev/null | openssl x509 -noout -issuer -dates`}</Cmd>

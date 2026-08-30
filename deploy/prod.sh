@@ -17,6 +17,7 @@
 #   deploy/prod.sh logs api 200
 #   deploy/prod.sh shell api
 #   deploy/prod.sh ps
+#   deploy/prod.sh domains         # lista pentru câmpul Domains al lui `router`
 #   deploy/prod.sh dump            # dump gzip descărcat local
 #
 # Merge de pe Mac (prin `ssh ovh`) și de pe server (detectează singur).
@@ -124,6 +125,7 @@ case "$cmd" in
   shell)    ssh -t "$SSH_HOST" "docker exec -it \$(docker ps -q \
                 --filter label=com.docker.compose.project=$PROJECT \
                 --filter label=com.docker.compose.service=${1:?serviciu lipsă} | head -1) sh" ;;
+  domains)  run_remote "docker exec \$(svc api) sh -c 'ADMIN_DOMAIN=\$(printf \"%s\" \"\$ADMIN_URL\" | sed -E \"s#^https?://##; s#/.*##\") node scripts/coolify-domains.mjs'" ;;
   ps)       run_remote 'docker ps --filter "label=coolify.projectName=manelecadou" \
                 --format "table {{.Label \"com.docker.compose.service\"}}\t{{.Status}}\t{{.Names}}"' ;;
   dump)     out="${1:-prod_$(date +%Y%m%d_%H%M%S).sql.gz}"

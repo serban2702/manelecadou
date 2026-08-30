@@ -98,6 +98,13 @@ const noDns = checks.filter(([, ok]) => !ok).map(([d]) => d);
 console.log(`\n${list.length} domenii pentru serviciul \`router\`:\n`);
 console.log(list.map((d) => `https://${d}`).join(',\n'));
 
+// Câmpul „Domains" din Coolify vrea CSV pe un singur rând. Portul e al
+// containerului `router` (nginx pe 80) — fără el, Coolify îl ghicește, iar pe
+// un stack cu mai multe servicii ghicitul e o loterie.
+console.log('\n--- gata de lipit în câmpul Domains (selectează tot rândul) ---\n');
+console.log(list.map((d) => `https://${d}:80`).join(','));
+console.log('');
+
 if (noDns.length) {
   console.log(
     `\nFără DNS acum (${noDns.length}) — LĂSATE PE DINAFARĂ, ca Traefik să nu ceară\n` +

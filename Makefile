@@ -103,5 +103,4 @@ deploy-coolify:
 
 # Lista de domenii pentru câmpul „Domains" al serviciului `router`.
 coolify-domains:
-	@echo "Rulează în containerul api al stack-ului:"
-	@echo "  docker compose -f docker-compose.coolify.yml exec api node scripts/coolify-domains.mjs"
+	@./deploy/prod.sh domains
