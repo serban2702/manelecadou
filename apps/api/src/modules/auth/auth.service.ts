@@ -275,7 +275,16 @@ export class AuthService {
       throw new UnauthorizedException('Session too old, sign in again');
     }
 
-    const user = await this.users.findById(payload.sub);
+    // `sub` vine din token, deci e input pe care nu-l controlăm noi: un token de
+    // serviciu (sau fabricat) cu un `sub` care nu e UUID face Postgres să arunce,
+    // iar clientul primea 500 — adică nici nu reînnoia, nici nu-l trimitea la
+    // login, fiindcă doar 401 declanșează reautentificarea.
+    let user: Awaited<ReturnType<UsersService['findById']>> = null;
+    try {
+      user = await this.users.findById(payload.sub);
+    } catch {
+      throw new UnauthorizedException('Invalid token subject');
+    }
     if (!user) throw new UnauthorizedException('User not found');
 
     const accessToken = this.jwt.sign({
