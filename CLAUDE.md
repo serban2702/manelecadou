@@ -150,7 +150,7 @@ verificările: **`docs/COOLIFY_R2.md`**.
 
 | | |
 |---|---|
-| Coolify | <https://coolify.freevox.ro> (v4.3.10) |
+| Coolify | <https://coolify.freevox.ro> (v4.3.14 — se auto-actualizează, vezi §12 pct. 29) |
 | Server | OVH `37.187.159.41`, alias SSH `ovh` — 16 vCPU / 62 GB RAM / 387 GB liberi |
 | Proxy | Traefik v3.6 (`coolify-proxy`), HTTP-01 pe resolver-ul `letsencrypt` |
 | Vecini pe server | Wingo CRM + mailul Stalwart — nu se ating, tot ce publicăm trece prin Traefik |
@@ -222,7 +222,7 @@ descoperite citindu-i sursa, nu documentația:
 Stack-ul de Coolify are deci **5 servicii**: `redis`, `api`, `web`, `admin`,
 `router`.
 
-⚠️ **Nu căuta bifa „Build Variable" în Coolify** — nu există în v4.3.10
+⚠️ **Nu căuta bifa „Build Variable" în Coolify** — nu există (verificat pe v4.3.10)
 (`is_build_time` nu apare nici în model, nici în interfață). Nici nu e nevoie:
 pentru build pack-ul Docker Compose, Coolify scrie un `.env` în directorul
 proiectului (`$service['env_file'] = ['.env']`) și rulează
@@ -909,7 +909,27 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
     eliminați statusul e `suppressed` — tot 202. Un cod care se uită doar la
     `res.ok` raportează „trimis" pentru un mail care n-a ajuns nicăieri. Vezi
     §16.9.2.
-28. **O funcționalitate scoasă de pe site lasă urme în cinci locuri.** Codurile cadou aveau: modul de API cu rute publice, metode în SDK-ul web fără apelanți, un tabel gol în producție, o coloană de configurare în admin și — cel mai grav — o clauză în termeni, publicată în 8 limbi, despre o taxă inexistentă. Când scoți ceva, urmărește-l până la capăt: `apps/api/src/modules/`, `apps/web/lib/api.ts`, `apps/web/messages/*.json`, ecranele din admin, `app_settings` și schema.
+28. **Coolify se auto-actualizează și îți poate omorî deploy-ul la fix cel mai
+    prost moment.** Pățit pe 31 august 2026: update 4.3.10 → 4.3.14 pornit
+    singur în timpul unui deploy, exact după pasul „Removing old containers" și
+    înainte de recreare. Build-ul reușise, toate imaginile erau gata, dar
+    repornirea stack-ului Coolify a lăsat `router` în `Exited (137)` și **nimeni
+    n-a recreat containerele**: toate domeniile au dat 404 (răspunsul lui Traefik
+    fără backend), pe timp nedeterminat, iar în coadă deploy-ul apare doar ca
+    `failed`. Nu e o eroare de build — de aceea logurile arată perfect până la
+    ultima linie.
+
+    Repunerea traficului e imediată, cu **containerul vechi**, fără să aștepți
+    un rebuild:
+    ```bash
+    ssh ovh 'docker ps -a --filter "name=router-<UUID>" --format "{{.Names}}\t{{.Status}}"'
+    ssh ovh 'docker start router-<UUID>-<hash>'
+    ```
+    Apoi verifici că Coolify e iar `healthy` (`docker ps --filter name=coolify`)
+    **înainte** de a relua deploy-ul — altfel intri în aceeași groapă. Un deploy
+    eșuat merită întotdeauna un `curl` pe domenii, nu doar o privire în loguri:
+    starea „failed" nu spune dacă producția a rămas sus sau nu.
+29. **O funcționalitate scoasă de pe site lasă urme în cinci locuri.** Codurile cadou aveau: modul de API cu rute publice, metode în SDK-ul web fără apelanți, un tabel gol în producție, o coloană de configurare în admin și — cel mai grav — o clauză în termeni, publicată în 8 limbi, despre o taxă inexistentă. Când scoți ceva, urmărește-l până la capăt: `apps/api/src/modules/`, `apps/web/lib/api.ts`, `apps/web/messages/*.json`, ecranele din admin, `app_settings` și schema.
 ---
 
 ## 13. Endpoint-uri utile
