@@ -20,7 +20,8 @@ domeniul, limba, moneda, prețurile, brandul și prompturile lui.
 
 Tenantul se rezolvă din header-ul `Host`; toate tabelele cu date au `siteId`.
 Generarea audio merge prin Suno sau Lyria, versurile prin OpenAI, plățile prin
-Stripe (un singur cont pentru toate site-urile), emailurile prin Mailgun/SMTP.
+Stripe (un singur cont pentru toate site-urile), emailurile prin PowerMail
+(platforma proprie peste Amazon SES), cu SMTP ca alternativă.
 Chatul are un agent AI care vinde și rezolvă comenzi.
 
 ## Local

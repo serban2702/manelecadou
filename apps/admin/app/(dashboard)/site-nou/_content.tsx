@@ -468,9 +468,11 @@ export default function SiteNouGuidePage() {
             unde există și un test de conexiune.
           </li>
         </ol>
-        <Note tone="info" title="Mailgun e doar pe domeniul principal">
-          Celelalte site-uri trimit prin SMTP. Contul Mailgun care apare global aparține altui
-          proiect — nu-l lega la un site nou.
+        <Note tone="info" title="PowerMail cere o identitate pentru domeniul nou">
+          Toate site-urile trimit prin PowerMail, cu o singură cheie de proiect. Ca site-ul nou să
+          poată trimite de pe adresa lui, adaugă mai întâi identitatea în panoul PowerMail și
+          verifică-i DNS-ul (DKIM); altfel API-ul răspunde „expeditor neautorizat" și niciun mail
+          nu pleacă.
         </Note>
         <p>
           Verificarea reală: plasezi o comandă de test pe site și te uiți în{' '}

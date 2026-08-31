@@ -22,7 +22,7 @@ Nav internă, un singur form, **Salvează** sus.
 Pachetele Standard/Plus/Premium se editează **doar** pe Interfețe → un design.
 
 ### Setări (`/settings`)
-Aceleași chei env, alt grupaj: Acces · Chei (OpenAI / Suno / **Gemini** / **Cloudflare R2** / Stripe / Mailgun / VAPID / Wingo) · Email · AI Chat · Marketing · Advanced. Search sus.
+Aceleași chei env, alt grupaj: Acces · Chei (OpenAI / Suno / **Gemini** / **Cloudflare R2** / Stripe / **PowerMail** / VAPID / Wingo) · Email · AI Chat · Marketing · Advanced. Search sus.
 
 Ce s-a schimbat la chei:
 - **R2 se citește efectiv din DB.** `StorageService` ia `STORAGE_DRIVER` și
@@ -36,8 +36,11 @@ Ce s-a schimbat la chei:
   `AI_CHAT_REASONING_EFFORT`, `AI_FOLLOWUP_ENABLED`, `RECOVERY_EMAIL_ENABLED`,
   `RECOVERY_EXCLUDE_EMAILS`.
 - Cele rezervate, fără consumator încă (`AI_CHAT_PROACTIVE_*`,
-  `AI_CHAT_REQUIRE_APPROVAL_FOR_GENERATION`, `MAILGUN_WEBHOOK_SIGNING_KEY`) o
-  spun în text, ca să nu pară că schimbă ceva.
+  `AI_CHAT_REQUIRE_APPROVAL_FOR_GENERATION`) o spun în text, ca să nu pară că
+  schimbă ceva.
+- **Mailgun a fost scos** (31 aug 2026). În locul lui: `POWERMAIL_API_KEY` la
+  Chei, plus `POWERMAIL_API_URL` și `POWERMAIL_UNSUBSCRIBE_GROUP` la Email
+  sistem. Vezi §16.9 din CLAUDE.md.
 
 ### Lansare producție (`/rollout`)
 Checklist per site: Gata / Lipsește / Parțial. **Umple golurile** = doar câmpuri

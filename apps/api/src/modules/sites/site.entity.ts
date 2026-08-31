@@ -90,32 +90,31 @@ export interface SiteSocial {
 }
 
 /**
- * Configurare email per-site: din ce provider (Mailgun / SMTP) se trimit
- * mailurile (login, gift, confirmări, etc.) și cu ce credențiale. Câmpurile
- * sensibile (`mailgun.apiKey`, `smtp.pass`) sunt stocate criptate cu
- * `encryptSecret()` (AES-256-GCM, cheia din env `MAIL_CRED_KEY`).
+ * Configurare email per-site: identitatea expeditorului și, opțional, pe ce
+ * transport ies mailurile (login, confirmări, livrare, etc.). Câmpul sensibil
+ * (`smtp.pass`) e stocat criptat cu `encryptSecret()` (AES-256-GCM, cheia din
+ * env `MAIL_CRED_KEY`).
  *
- * Dacă `provider` e null/undefined, mailerul cade pe configul GLOBAL din
- * SettingsService (env / settings table) — comportamentul anterior, pentru
- * compatibilitate.
+ * `fromEmail` / `fromName` / `replyTo` se aplică INDIFERENT de `provider` —
+ * sunt identitate, nu transport. Pe PowerMail, `fromEmail` e chiar cel care
+ * alege identitatea verificată din proiect.
+ *
+ * Dacă `provider` e null/undefined, transportul e cel GLOBAL din
+ * SettingsService (`MAIL_PROVIDER`).
  */
 export interface SiteMailConfig {
-  /** 'mailgun' | 'smtp' | null. Null = folosește configul global. */
-  provider?: 'mailgun' | 'smtp' | null;
+  /**
+   * 'powermail' | 'smtp' | null. Null = folosește transportul global.
+   * PowerMail nu are credențiale per-site: o singură cheie de proiect, la
+   * global, cu câte o identitate verificată per domeniu.
+   */
+  provider?: 'powermail' | 'smtp' | null;
   /** Adresa expeditor (ex. `noreply@chalgapodarok.bg`). */
   fromEmail?: string;
   /** Numele afișat lângă adresă (ex. „ЧалгаПодарък"). */
   fromName?: string;
   /** Reply-To opțional. */
   replyTo?: string;
-  /** Configurare Mailgun. */
-  mailgun?: {
-    /** CRIPTAT cu encryptSecret(). */
-    apiKey?: string;
-    domain?: string;
-    region?: 'eu' | 'us';
-    apiUrl?: string;
-  };
   /** Configurare SMTP. */
   smtp?: {
     host?: string;

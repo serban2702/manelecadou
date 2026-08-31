@@ -107,23 +107,21 @@ export interface SiteDto {
   supportEmail: string | null;
   adminEmails: string[];
   /**
-   * Configurare email per-site: provider (mailgun / smtp / null) + credențiale.
-   * Secretele (mailgun.apiKey, smtp.pass) vin întotdeauna mascate de la API ca
-   * `__MASKED__` dacă există valoare salvată, sau `''` dacă nu. La PATCH:
-   * trimite valoarea nouă pentru a o seta, `''` pentru a o șterge, sau
-   * `__MASKED__` (sau lipsa câmpului) pentru a păstra valoarea curentă.
+   * Configurare email per-site: identitatea expeditorului + transportul
+   * (powermail / smtp / null = cel global). PowerMail n-are credențiale
+   * per-site — o singură cheie de proiect, la global, cu câte o identitate
+   * verificată per domeniu.
+   *
+   * Secretul (smtp.pass) vine întotdeauna mascat de la API ca `__MASKED__` dacă
+   * există valoare salvată, sau `''` dacă nu. La PATCH: trimite valoarea nouă
+   * pentru a o seta, `''` pentru a o șterge, sau `__MASKED__` (sau lipsa
+   * câmpului) pentru a păstra valoarea curentă.
    */
   mailConfig?: {
-    provider?: 'mailgun' | 'smtp' | null;
+    provider?: 'powermail' | 'smtp' | null;
     fromEmail?: string;
     fromName?: string;
     replyTo?: string;
-    mailgun?: {
-      apiKey?: string;
-      domain?: string;
-      region?: 'eu' | 'us';
-      apiUrl?: string;
-    };
     smtp?: {
       host?: string;
       port?: number;

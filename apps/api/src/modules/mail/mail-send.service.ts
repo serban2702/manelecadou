@@ -72,13 +72,12 @@ export class MailSendService {
    * Trimite un mail din căsuța `acc` și îl persistă local ca mesaj `out`.
    *
    * Toate trimiterile din inbox trec pe aici, prin `MailerService` — adică prin
-   * pipeline-ul de mail al platformei (Mailgun pentru site-urile care îl au
-   * configurat), nu prin SMTP-ul contului IMAP. Câștigăm deliverability, audit în
-   * `outbound_emails` și copia automată în `Sent` (coada `mail-append`).
+   * pipeline-ul de mail al platformei (PowerMail), nu prin SMTP-ul contului
+   * IMAP. Câștigăm deliverability, audit în `outbound_emails`, protecția listei
+   * negre și copia automată în `Sent` (coada `mail-append`).
    *
-   * Nu forțăm Mailgun: site-urile fără credențiale Mailgun proprii (bg, gr) ar
-   * cădea pe cele globale, care aparțin altui proiect — clientul ar primi mail
-   * de la un expeditor străin. Providerul site-ului e sursa de adevăr.
+   * Nu forțăm un provider anume: transportul rămâne cel al site-ului contului,
+   * ca expeditorul să fie mereu identitatea lui, nu una străină.
    */
   private async deliver(p: DeliverParams): Promise<MailMessage> {
     const to = clean(p.to);
@@ -125,6 +124,16 @@ export class MailSendService {
     if (!result.sent) {
       throw new BadRequestException(
         `Email-ul nu a putut fi trimis: ${result.notes ?? 'provider neconfigurat'}`,
+      );
+    }
+    // Aici, spre deosebire de fluxurile automate, trimiterea e pornită de un om
+    // care se uită la ecran. Un mesaj suprimat integral a fost acceptat de API
+    // (202), dar n-a plecat nicăieri — dacă îl lăsăm să apară în „Trimise",
+    // operatorul crede că a răspuns clientului.
+    if (result.suppressed) {
+      const why = result.blocked?.map((b) => `${b.email} (${b.reason})`).join(', ') || 'listă neagră';
+      throw new BadRequestException(
+        `Mesajul nu a plecat: toți destinatarii sunt blocați — ${why}. Verifică lista neagră din PowerMail.`,
       );
     }
 

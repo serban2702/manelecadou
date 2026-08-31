@@ -17,12 +17,7 @@ type DraftMap = Record<string, DraftEntry>;
 
 const DEFAULT_TAB = 'keys';
 const SMTP_KEYS = new Set(['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_SECURE']);
-const MAILGUN_SITE_KEYS = new Set([
-  'MAILGUN_DOMAIN',
-  'MAILGUN_REGION',
-  'MAILGUN_API_URL',
-  'MAILGUN_FROM_EMAIL',
-]);
+const POWERMAIL_KEYS = new Set(['POWERMAIL_API_URL', 'POWERMAIL_UNSUBSCRIBE_GROUP']);
 
 type SearchHit = {
   key: string;
@@ -84,12 +79,12 @@ function visibleSettings(
   if (cat.id !== 'mail-system') return cat.settings;
   const provider = effectiveValue(cats, draft, 'MAIL_PROVIDER');
   const smtpDirty = cat.settings.some((s) => SMTP_KEYS.has(s.key) && draft[s.key]);
-  const mgDirty = cat.settings.some((s) => MAILGUN_SITE_KEYS.has(s.key) && draft[s.key]);
+  const pmDirty = cat.settings.some((s) => POWERMAIL_KEYS.has(s.key) && draft[s.key]);
   const showSmtp = provider === 'smtp' || smtpDirty || forceKeys.some((k) => SMTP_KEYS.has(k));
-  const showMg = provider === 'mailgun' || mgDirty || forceKeys.some((k) => MAILGUN_SITE_KEYS.has(k));
+  const showPm = provider === 'powermail' || pmDirty || forceKeys.some((k) => POWERMAIL_KEYS.has(k));
   return cat.settings.filter((s) => {
     if (SMTP_KEYS.has(s.key)) return showSmtp;
-    if (MAILGUN_SITE_KEYS.has(s.key)) return showMg;
+    if (POWERMAIL_KEYS.has(s.key)) return showPm;
     return true;
   });
 }

@@ -256,7 +256,7 @@ export class AdminSitesController {
         voiceSamples: current?.suno?.voiceSamples ?? {},
       };
     }
-    // Mail config: secretele (mailgun.apiKey, smtp.pass) sunt criptate la repaus.
+    // Mail config: secretul (smtp.pass) e criptat la repaus.
     // Adminul UI le primește mascate (MASKED_SECRET) → nu trebuie suprascrise
     // accidental cu placeholder. Dacă userul a editat câmpul, criptăm valoarea.
     if (body.mailConfig && typeof body.mailConfig === 'object') {
@@ -281,21 +281,11 @@ export class AdminSitesController {
     current?: Site['mailConfig'],
   ): Site['mailConfig'] {
     const out: Site['mailConfig'] = {
-      provider: incoming.provider ?? current?.provider ?? null,
+      provider: normalizeProvider(incoming.provider ?? current?.provider),
       fromEmail: incoming.fromEmail ?? current?.fromEmail,
       fromName: incoming.fromName ?? current?.fromName,
       replyTo: incoming.replyTo ?? current?.replyTo,
     };
-    if (incoming.mailgun || current?.mailgun) {
-      const mg = incoming.mailgun ?? {};
-      const curMg = current?.mailgun ?? {};
-      out.mailgun = {
-        domain: mg.domain ?? curMg.domain,
-        region: mg.region ?? curMg.region,
-        apiUrl: mg.apiUrl ?? curMg.apiUrl,
-        apiKey: this.handleSecret(mg.apiKey, curMg.apiKey),
-      };
-    }
     if (incoming.smtp || current?.smtp) {
       const s = incoming.smtp ?? {};
       const curS = current?.smtp ?? {};
@@ -361,19 +351,11 @@ export class AdminSitesController {
   private serializeMailConfig(mc: Site['mailConfig'] | null | undefined): Site['mailConfig'] {
     const m = mc ?? {};
     const out: Site['mailConfig'] = {
-      provider: m.provider ?? null,
+      provider: normalizeProvider(m.provider),
       fromEmail: m.fromEmail,
       fromName: m.fromName,
       replyTo: m.replyTo,
     };
-    if (m.mailgun) {
-      out.mailgun = {
-        domain: m.mailgun.domain,
-        region: m.mailgun.region,
-        apiUrl: m.mailgun.apiUrl,
-        apiKey: m.mailgun.apiKey ? MASKED_SECRET : '',
-      };
-    }
     if (m.smtp) {
       out.smtp = {
         host: m.smtp.host,
@@ -695,4 +677,14 @@ export class CaddyAskController {
     }
     return { ok: true, domain: site.domain };
   }
+}
+
+/**
+ * Curăță valorile de provider rămase din trecut. Rândurile scrise înainte de
+ * 31 august 2026 pot avea încă `'mailgun'` în jsonb; providerul nu mai există,
+ * iar o valoare necunoscută trebuie să însemne „transportul global", nu o
+ * configurație pe jumătate.
+ */
+function normalizeProvider(v: unknown): 'powermail' | 'smtp' | null {
+  return v === 'powermail' || v === 'smtp' ? v : null;
 }

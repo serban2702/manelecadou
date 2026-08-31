@@ -127,7 +127,7 @@ export const STUDIO_SEARCH: StudioSearchItem[] = [
   { id: 'operations.maintenance', label: 'Mentenanță', href: '/site/operations', keywords: ['maintenance', 'ascuns', 'hidden'], group: 'operations' },
   { id: 'operations.hidden', label: 'Site ascuns', href: '/site/operations', keywords: ['hidden', 'ascuns', 'offline'], group: 'operations' },
   { id: 'operations.ip', label: 'IP-uri scutite', href: '/site/operations', keywords: ['ip', 'whitelist', 'scutite'], group: 'operations' },
-  { id: 'operations.mail', label: 'Mail per-site', href: '/site/operations', keywords: ['mailgun', 'smtp', 'from'], group: 'operations' },
+  { id: 'operations.mail', label: 'Mail per-site', href: '/site/operations', keywords: ['powermail', 'smtp', 'from', 'expeditor'], group: 'operations' },
   { id: 'operations.company', label: 'Date firmă', href: '/site/operations', keywords: ['cui', 'iban', 'legal', 'firmă'], group: 'operations' },
   { id: 'operations.smartbill', label: 'SmartBill', href: '/site/operations', keywords: ['factură', 'cif', 'tva'], group: 'operations' },
   // Aceeași casetă ca `price.stripe` — ancora de acolo, nu una proprie.

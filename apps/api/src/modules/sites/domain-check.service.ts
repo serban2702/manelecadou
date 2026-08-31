@@ -263,16 +263,19 @@ export class DomainCheckService {
 
     // — email
     const fromEmail = (site.fromEmail || site.mailConfig?.fromEmail || '').trim();
+    const provider = site.mailConfig?.provider;
     const smtpHost = site.mailConfig?.smtp?.host || '';
-    const mailgun = site.mailConfig?.mailgun?.domain || '';
+    // PowerMail nu are credențiale per-site (o singură cheie globală, cu câte o
+    // identitate verificată per domeniu), deci „ales explicit" e suficient.
+    const transport = provider === 'powermail' ? 'PowerMail' : provider === 'smtp' ? smtpHost : '';
     push({
       id: 'email',
       label: 'Expeditor de email',
-      status: fromEmail ? (smtpHost || mailgun ? 'ok' : 'partial') : 'missing',
+      status: fromEmail ? (transport ? 'ok' : 'partial') : 'missing',
       detail: fromEmail
-        ? smtpHost || mailgun
-          ? `${fromEmail} prin ${mailgun ? `Mailgun (${mailgun})` : smtpHost}`
-          : `${fromEmail}, dar fără server de trimitere (cade pe configul global)`
+        ? transport
+          ? `${fromEmail} prin ${transport}`
+          : `${fromEmail}, pe transportul global (nimic ales pentru site)`
         : 'lipsește',
       href: '/site/operations',
     });

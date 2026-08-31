@@ -19,7 +19,6 @@ function shouldIgnore(path: string): boolean {
 function isSecretPath(path: string): boolean {
   return (
     path === 'smartbill.token' ||
-    path === 'mailConfig.mailgun.apiKey' ||
     path === 'mailConfig.smtp.pass' ||
     path.startsWith('analyticsSecrets.')
   );

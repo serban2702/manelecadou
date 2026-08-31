@@ -15,12 +15,14 @@ import { recoveryEmailTemplate } from '../../mailer/templates/recovery';
 
 /** Fereastra în care căutăm evenimente de abandon. */
 const LOOKBACK_DAYS = 14;
-/** Plafonul de emailuri trimise per rulare de cron (anti-burst pe Mailgun).
- *  Observat la prima rulare pe prod (2026-06-10): Mailgun a întors 420
- *  „recipient limit exceeded" după ~29 de mesaje în burst — ținem plafonul jos
- *  ca recovery-ul să NU consume cota în detrimentul emailurilor tranzacționale
- *  (magic link, livrare melodie). Backlog-ul se drenează oricum: candidații cu
- *  eroare sunt reîncercați la fiecare tick de 10 min. */
+/** Plafonul de emailuri trimise per rulare de cron (anti-burst).
+ *  Observat la prima rulare pe prod (2026-06-10), pe vremea Mailgun: providerul
+ *  a întors 420 „recipient limit exceeded" după ~29 de mesaje în burst. Pe
+ *  PowerMail limita e `maxSendRate` al contului SES, dar motivul de a ține
+ *  plafonul jos e același: recovery-ul să NU consume cota în detrimentul
+ *  emailurilor tranzacționale (magic link, livrare melodie). Backlog-ul se
+ *  drenează oricum — candidații cu eroare sunt reîncercați la fiecare tick de
+ *  10 min. */
 const MAX_SENDS_PER_RUN = 12;
 
 /** Câte trimiteri eșuate tolerăm per etapă înainte să renunțăm definitiv.

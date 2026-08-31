@@ -5,24 +5,29 @@ import addressparser from 'nodemailer/lib/addressparser';
 import type { BuiltMime, ResolvedMailContext, SendMailOptions } from './mail.types';
 
 /**
- * Construiește mesajul MIME o singură dată, central. Rezultatul e folosit atât
- * pentru trimitere (Mailgun `/messages.mime` sau SMTP raw), cât și pentru copia
- * salvată prin IMAP APPEND în `Sent`. Un singur MIME = zero divergență între ce
- * primește clientul și ce vezi în webmail.
+ * Construiește mesajul MIME o singură dată, central. Rezultatul e folosit
+ * pentru trimiterea prin SMTP (raw) și pentru copia salvată prin IMAP APPEND în
+ * `Sent`.
+ *
+ * ⚠️ PowerMail primește câmpuri structurate, nu MIME brut (n-are endpoint de
+ * raw). Pe traseul ăla, MIME-ul de aici rămâne doar copia din `Sent`: aceleași
+ * conținut, expeditor și destinatari, dar nu octeții exacți compuși de SES.
+ * `resolveFromHeader` e exportat tocmai ca `From`-ul să fie identic pe ambele
+ * trasee.
  *
  * `Message-ID` e generat aici, nu de provider, ca să putem lega rândul din
  * `mail_messages` de mesajul pe care sync-ul îl aduce înapoi din folderul Sent
  * (dedupe pe `messageId`).
  */
 export async function buildMime(opts: SendMailOptions, ctx: ResolvedMailContext): Promise<BuiltMime> {
-  const fromHeader = resolveFrom(opts, ctx);
+  const fromHeader = resolveFromHeader(opts, ctx);
   const envelopeFrom = extractAddress(fromHeader);
   const messageId = `${randomUUID()}@${domainOf(envelopeFrom)}`;
 
   const recipients = [
-    ...parseAddrs(opts.to),
-    ...parseAddrs(opts.cc),
-    ...parseAddrs(opts.bcc),
+    ...splitAddresses(opts.to),
+    ...splitAddresses(opts.cc),
+    ...splitAddresses(opts.bcc),
   ];
 
   const composer = new MailComposer({
@@ -56,11 +61,16 @@ export async function buildMime(opts: SendMailOptions, ctx: ResolvedMailContext)
   return { raw, messageId, envelopeFrom, recipients };
 }
 
-/** Header-ul From complet (cu display name), în ordinea de precedență a MailerService. */
-function resolveFrom(opts: SendMailOptions, ctx: ResolvedMailContext): string {
+/**
+ * Header-ul From complet (cu display name), în ordinea de precedență a
+ * MailerService. Exportat pentru că PowerMail primește `from` ca String separat,
+ * nu în MIME — și cele două trebuie să dea aceeași adresă, altfel identitatea
+ * declarată la trimitere n-ar fi cea din copia salvată în `Sent`.
+ */
+export function resolveFromHeader(opts: SendMailOptions, ctx: ResolvedMailContext): string {
   if (opts.from) return opts.from;
-  const addr = ctx.mailgun?.fromEmail || ctx.fromEmail || 'no-reply@manelecadou.ro';
-  // `MAILGUN_FROM_EMAIL` poate fi deja de forma `Nume <a@b.ro>` — nu-l mai împacheta.
+  const addr = ctx.fromEmail || 'no-reply@manelecadou.ro';
+  // Valoarea poate fi deja de forma `Nume <a@b.ro>` — nu o mai împacheta.
   if (/</.test(addr)) return addr;
   return ctx.fromName ? `"${ctx.fromName}" <${addr}>` : addr;
 }
@@ -86,7 +96,7 @@ function domainOf(addr: string): string {
  * nodemailer. Un split pe virgulă ar rupe `"Popescu, Ion" <ion@ex.ro>` în două,
  * iar jumătatea invalidă ar ajunge destinatar în envelope.
  */
-function parseAddrs(v?: string): string[] {
+export function splitAddresses(v?: string): string[] {
   if (!v) return [];
   // Parserul poate întoarce și grupuri („echipa: a@x.ro, b@x.ro;") — le aplatizăm.
   const flatten = (entries: ReturnType<typeof addressparser>): string[] =>

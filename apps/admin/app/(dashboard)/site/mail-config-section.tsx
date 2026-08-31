@@ -20,9 +20,6 @@ export function MailConfigSection({
   function patch(next: Partial<NonNullable<SiteDto['mailConfig']>>) {
     setForm({ ...form, mailConfig: { ...mc, ...next } });
   }
-  function patchMailgun(next: Partial<NonNullable<NonNullable<SiteDto['mailConfig']>['mailgun']>>) {
-    setForm({ ...form, mailConfig: { ...mc, mailgun: { ...(mc.mailgun ?? {}), ...next } } });
-  }
   function patchSmtp(next: Partial<NonNullable<NonNullable<SiteDto['mailConfig']>['smtp']>>) {
     setForm({ ...form, mailConfig: { ...mc, smtp: { ...(mc.smtp ?? {}), ...next } } });
   }
@@ -33,15 +30,15 @@ export function MailConfigSection({
         <div>
           <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Server de email</div>
           <p className="text-[11px] text-muted-foreground leading-snug">
-            Alege de unde se trimit mailurile pentru acest site (login, gift code, melodie gata, etc.).
-            Lasă pe „Implicit (global)" ca să folosești configul comun din .env.
+            Alege pe unde se trimit mailurile pentru acest site (login, melodie gata, chitanță, recovery).
+            Lasă pe „Implicit (global)" ca să folosești transportul comun din Setări.
           </p>
         </div>
 
         <div className="grid grid-cols-3 gap-2">
           {([
             { v: null, label: 'Implicit (global)' },
-            { v: 'mailgun' as const, label: 'Mailgun' },
+            { v: 'powermail' as const, label: 'PowerMail' },
             { v: 'smtp' as const, label: 'SMTP' },
           ]).map((opt) => {
             const active = provider === opt.v;
@@ -62,69 +59,39 @@ export function MailConfigSection({
           })}
         </div>
 
-        {provider && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Expeditor (override)" description={'Dacă e gol, folosește „Expeditor" de mai sus.'}>
-              <Input
-                value={mc.fromEmail ?? ''}
-                onChange={(e) => patch({ fromEmail: e.target.value })}
-                placeholder="noreply@domeniul-tau.com"
-              />
-            </Field>
-            <Field label="Nume expeditor">
-              <Input
-                value={mc.fromName ?? ''}
-                onChange={(e) => patch({ fromName: e.target.value })}
-                placeholder="ЧалгаПодарък / ManeleCadou"
-              />
-            </Field>
-            <Field label="Răspunde la (opțional)">
-              <Input
-                value={mc.replyTo ?? ''}
-                onChange={(e) => patch({ replyTo: e.target.value })}
-                placeholder="support@..."
-              />
-            </Field>
-          </div>
-        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field
+            label="Expeditor (override)"
+            description={'Dacă e gol, folosește „Expeditor" de mai sus. Pe PowerMail, adresa asta alege identitatea verificată din proiect.'}
+          >
+            <Input
+              value={mc.fromEmail ?? ''}
+              onChange={(e) => patch({ fromEmail: e.target.value })}
+              placeholder="noreply@domeniul-tau.com"
+            />
+          </Field>
+          <Field label="Nume expeditor">
+            <Input
+              value={mc.fromName ?? ''}
+              onChange={(e) => patch({ fromName: e.target.value })}
+              placeholder="ЧалгаПодарък / ManeleCadou"
+            />
+          </Field>
+          <Field label="Răspunde la (opțional)">
+            <Input
+              value={mc.replyTo ?? ''}
+              onChange={(e) => patch({ replyTo: e.target.value })}
+              placeholder="support@..."
+            />
+          </Field>
+        </div>
 
-        {provider === 'mailgun' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-border pt-3">
-            <div className="col-span-full text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Credențiale Mailgun
-            </div>
-            <Field label="Domeniu Mailgun" description="ex. mg.chalgapodarok.bg (domeniul verificat în Mailgun).">
-              <Input
-                value={mc.mailgun?.domain ?? ''}
-                onChange={(e) => patchMailgun({ domain: e.target.value })}
-                placeholder="mg.example.com"
-              />
-            </Field>
-            <Field label="Cheie API" description="Lasă necompletat pentru a păstra cheia existentă.">
-              <Input
-                type="password"
-                value={mc.mailgun?.apiKey ?? ''}
-                onChange={(e) => patchMailgun({ apiKey: e.target.value })}
-                placeholder={mc.mailgun?.apiKey === MASKED_SECRET ? '••••••••' : 'key-...'}
-              />
-            </Field>
-            <Field label="Regiune">
-              <select
-                value={mc.mailgun?.region ?? 'us'}
-                onChange={(e) => patchMailgun({ region: e.target.value as 'eu' | 'us' })}
-                className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
-              >
-                <option value="us">US</option>
-                <option value="eu">EU</option>
-              </select>
-            </Field>
-            <Field label="Adresă API (opțional)" description="Lasă gol pentru endpoint-ul standard.">
-              <Input
-                value={mc.mailgun?.apiUrl ?? ''}
-                onChange={(e) => patchMailgun({ apiUrl: e.target.value })}
-                placeholder="https://api.eu.mailgun.net"
-              />
-            </Field>
+        {provider === 'powermail' && (
+          <div className="border-t border-border pt-3 text-[11px] text-muted-foreground leading-snug">
+            PowerMail n-are credențiale per-site: cheia de proiect e una singură, în{' '}
+            <span className="text-foreground">Setări → Chei</span>. Aici alegi doar identitatea de mai
+            sus — și ea trebuie să existe verificată în proiectul PowerMail, altfel trimiterea
+            întoarce „expeditor neautorizat".
           </div>
         )}
 

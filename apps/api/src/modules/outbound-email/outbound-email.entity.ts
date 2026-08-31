@@ -54,11 +54,11 @@ export class OutboundEmail {
   @Column({ type: 'text', nullable: true })
   text!: string | null;
 
-  /** smtp | mailgun | noop — numele provider-ului care a procesat mesajul. */
+  /** smtp | powermail | noop — numele provider-ului care a procesat mesajul. */
   @Column({ type: 'varchar', length: 16, nullable: true })
   provider!: string | null;
 
-  /** ID-ul întors de provider (Message-Id SMTP, id Mailgun, etc.). */
+  /** Referința provider-ului: Message-ID RFC la SMTP, UUID-ul mesajului la PowerMail. */
   @Index()
   @Column({ type: 'varchar', length: 255, nullable: true })
   providerMessageId!: string | null;

@@ -473,7 +473,7 @@ export class MailController {
 
   /**
    * Compune și trimite un email NOU (nu un răspuns) către un destinatar arbitrar.
-   * Trimitere prin pipeline-ul de mail al platformei (Mailgun în prod), NU prin
+   * Trimitere prin pipeline-ul de mail al platformei (PowerMail în prod), NU prin
    * SMTP-ul contului. Corpul e împachetat în șablonul brandat al site-ului contului.
    */
   @Post('compose')

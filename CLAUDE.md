@@ -33,7 +33,7 @@ domeniul în Coolify + un site în admin (§14).
 - locale, valută, preț
 - branding (logo, culori, tagline, OG image)
 - prompt-uri Suno + lyrics writer (OpenAI)
-- email config (Mailgun/SMTP), date firmă, social, support
+- email config (PowerMail/SMTP), date firmă, social, support
 - mod de afișare: **normal | maintenanceMode | hiddenMode** (vezi §8)
 
 ---
@@ -53,7 +53,7 @@ domeniul în Coolify + un site în admin (§14).
 | Fișiere       | disc local / Cloudflare R2            | disc         | R2 + `files.manelecadou.ro`|
 
 **Externals**: OpenAI (versuri + agentul de chat), sunoapi.org și Lyria (audio),
-Stripe (un singur cont pentru toate site-urile), Mailgun + SMTP (email),
+Stripe (un singur cont pentru toate site-urile), PowerMail peste Amazon SES (email),
 Cloudflare (DNS **only**, fără proxy — vezi §12), Cloudflare R2 (fișiere).
 
 **Repo-ul NU e pnpm workspace.** Fiecare app (`apps/api`, `apps/web`,
@@ -76,7 +76,7 @@ manelecadou/
 │   │   ├── src/storage/      disc local sau Cloudflare R2 (§5.3)
 │   │   ├── scripts/          migrare R2 + date prod + domenii Coolify (§5.5)
 │   │   ├── src/database/     TypeORM datasource + migrations runtime
-│   │   ├── src/mailer/       templates (i18n) + Mailgun/SMTP providers
+│   │   ├── src/mailer/       templates (i18n) + PowerMail/SMTP providers
 │   │   ├── src/openai/       lyrics writer/critic + translation
 │   │   ├── src/common/       JwtAuthGuard, AdminGuard, decorators
 │   │   ├── Dockerfile        prod multi-stage (nest build → node dist/main.js)
@@ -904,7 +904,12 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
     englezesc se citește ca o limitare asumată, unul românesc pe un site grecesc
     ca o eroare.
 
-27. **O funcționalitate scoasă de pe site lasă urme în cinci locuri.** Codurile cadou aveau: modul de API cu rute publice, metode în SDK-ul web fără apelanți, un tabel gol în producție, o coloană de configurare în admin și — cel mai grav — o clauză în termeni, publicată în 8 limbi, despre o taxă inexistentă. Când scoți ceva, urmărește-l până la capăt: `apps/api/src/modules/`, `apps/web/lib/api.ts`, `apps/web/messages/*.json`, ecranele din admin, `app_settings` și schema.
+27. **PowerMail răspunde 202 și pentru mailul care n-a plecat.** Destinatarii de
+    pe lista neagră sunt eliminați tăcut (`blocked`), iar când toți sunt
+    eliminați statusul e `suppressed` — tot 202. Un cod care se uită doar la
+    `res.ok` raportează „trimis" pentru un mail care n-a ajuns nicăieri. Vezi
+    §16.9.2.
+28. **O funcționalitate scoasă de pe site lasă urme în cinci locuri.** Codurile cadou aveau: modul de API cu rute publice, metode în SDK-ul web fără apelanți, un tabel gol în producție, o coloană de configurare în admin și — cel mai grav — o clauză în termeni, publicată în 8 limbi, despre o taxă inexistentă. Când scoți ceva, urmărește-l până la capăt: `apps/api/src/modules/`, `apps/web/lib/api.ts`, `apps/web/messages/*.json`, ecranele din admin, `app_settings` și schema.
 ---
 
 ## 13. Endpoint-uri utile
@@ -945,7 +950,12 @@ la primul request — inversează pașii 1 și 2 și site-ul rămâne pe
    lipit: `make coolify-domains`.
 3. **Site-ul în admin** (`/sites`): domain, slug, locale, currency, prețuri,
    brand, prompturi Suno.
-4. **Verifică**: `curl -sI https://<domeniu> | head -1`. Dacă certificatul nu
+4. **Identitatea de email în PowerMail** (<https://powermail.wingo.ro> → proiect
+   → Identități): adaugi adresa sau domeniul de expediere și îi verifici DNS-ul
+   (DKIM, din consola AWS). Fără pasul ăsta, prima trimitere întoarce
+   `403 forbidden — expeditor neautorizat` și **niciun** mail nu pleacă de pe
+   site-ul nou: nici magic link, nici confirmarea de plată. Vezi §16.9.
+5. **Verifică**: `curl -sI https://<domeniu> | head -1`. Dacă certificatul nu
    vine în ~3 minute, Traefik e în backoff după o validare eșuată:
    `ssh ovh 'docker restart coolify-proxy'`.
 
@@ -953,7 +963,7 @@ Pentru un locale nou: trebuie să existe `apps/web/messages/<locale>.json`. Copi
 din `ro.json` și tradu — cheile lipsă cad pe română (§11.5), deci un gol se vede
 ca o propoziție în altă limbă, nu ca eroare.
 
-Skill-ul `/add-site` face pașii 3 și verificările; 1 și 2 rămân manuale.
+Skill-ul `/add-site` face pasul 3 și verificările; 1, 2 și 4 rămân manuale.
 
 Procedura completă, pentru om, e și în admin: **`/site-nou`** (meniu → Platformă →
 „Ghid: site nou") — aceiași pași, plus emailul, conținutul, capcanele și ce se
@@ -1313,6 +1323,83 @@ Smoke test rapid din browser real:
 
 ---
 
+## 16.9 Email — PowerMail (Amazon SES)
+
+Din **31 august 2026** tot mailul care pleacă din platformă trece prin
+**PowerMail** (`https://api.powermail.wingo.ro`), platforma proprie peste Amazon
+SES. **Mailgun a fost scos definitiv** — contul e închis, providerul șters din
+cod, cheile scoase din setări.
+
+Inventarul complet al locurilor de unde pleacă mail (14 `kind`-uri, de la
+`magic_link` la `inbox_forward`) e în `apps/api/src/mailer/` + tabelul de audit
+`outbound_emails`; fiecare trimitere trece obligatoriu prin
+`MailerService.send()`.
+
+### 16.9.1 Ce e de știut
+
+| | |
+|---|---|
+| Provider | `apps/api/src/mailer/providers/powermail.provider.ts` |
+| Endpoint | `POST /v1/emails`, răspuns **202** |
+| Cheie | **una singură pentru toate site-urile**, `POWERMAIL_API_KEY` (admin `/settings` → Chei; env doar ca rezervă) |
+| Identitate | se alege prin `From` → `site.mailConfig.fromEmail` → `site.fromEmail` → `MAIL_FROM` |
+| Panou | <https://powermail.wingo.ro> |
+| Skill | `.claude/skills/powermail/SKILL.md` · docs live: `https://api.powermail.wingo.ro/api/docs/llm` |
+
+**Un site nou trebuie să aibă identitatea verificată în PowerMail** (DKIM în
+AWS) înainte de prima trimitere, altfel API-ul răspunde `403 forbidden —
+expeditor neautorizat` și niciun mail nu pleacă. E pasul care lipsește cel mai
+ușor la §14.
+
+### 16.9.2 Capcane
+
+1. **`blocked` NU e eroare.** Răspunsul 202 poate conține destinatari eliminați
+   (listă neagră, dezabonare, adresă invalidă); restul mesajului a plecat
+   normal. Se loghează ca avertisment. Doar când **toți** sunt eliminați
+   statusul devine `suppressed` — tot 202. Fluxurile automate doar loghează;
+   `MailSendService` (compose din Inbox, pornit de un om) aruncă, ca operatorul
+   să nu creadă că a răspuns clientului.
+2. **Categoria de dezabonare contează mai mult decât pare.** PowerMail pune
+   `List-Unsubscribe` pe **toate** mesajele, iar o dezabonare **fără**
+   `unsubscribeGroup` trece adresa pe lista neagră a întregului proiect — adică
+   ar bloca și magic link-ul, și mailul cu melodia gata. De aceea doar
+   `marketing_campaign`, `marketing_rule` și `recovery` primesc grupul din
+   `POWERMAIL_UNSUBSCRIBE_GROUP`; dacă setarea e goală, nu se trimite deloc.
+   **Creează grupul în panou și pune-i slug-ul în setări.**
+3. **PowerMail nu acceptă MIME brut** (n-are endpoint de raw, spre deosebire de
+   `messages.mime` al lui Mailgun). Primește câmpuri structurate, iar SES compune
+   MIME-ul. MIME-ul construit de `buildMime` rămâne folosit pentru SMTP și
+   pentru copia din `Sent` (IMAP APPEND). Consecința: `Message-ID`-ul mesajului
+   livrat e al lui SES, deci **un răspuns al clientului nu se lipește automat de
+   firul din Inbox Hub**. Dacă devine deranjant, soluția e un endpoint de raw
+   MIME în PowerMail — e produsul nostru.
+4. **`idempotencyKey` = Message-ID-ul nostru.** Stabil pe durata reîncercărilor
+   (429/5xx, backoff 1-8s, max 5 încercări), diferit la fiecare apel nou — deci
+   un retry nu dublează mailul, dar butonul „Retrimite mailul" chiar retrimite.
+   Nu-l lega de `kind`+`relatedId`: fereastra de idempotență e de 24h și ar
+   înghiți tăcut retrimiterile voite.
+5. **Nu există fallback automat pe SMTP.** Dacă PowerMail e jos, mailul eșuează
+   și rămâne `failed` în `outbound_emails` (recovery-ul reîncearcă singur la
+   următorul tick). Comutarea manuală: admin `/settings` → Email sistem →
+   Provider → `SMTP`, hot-reload, fără redeploy.
+6. **Praguri de urmărit** (`GET /v1/stats`): bounce peste **5%** e problemă,
+   peste **10%** AWS suspendă contul; complaint peste **0,1%** e îngrijorător,
+   peste **0,5%** suspendare.
+
+### 16.9.3 Config per tenant
+
+`sites.mailConfig` păstrează **identitatea** (`fromEmail`, `fromName`,
+`replyTo`) și, opțional, transportul (`provider: 'powermail' | 'smtp' | null`).
+Identitatea se aplică **indiferent** de provider — inclusiv când `provider` e
+null și site-ul folosește transportul global; înainte se citea doar pe ramura
+per-site, deci un site fără provider își pierdea tăcut numele de expeditor.
+
+PowerMail **nu are credențiale per-site**: o singură cheie de proiect, cu câte o
+identitate verificată per domeniu. Ecranul din admin (`/site` → Operațiuni →
+Mail) arată doar identitatea când e ales PowerMail.
+
+---
+
 ## 17. Stripe
 
 Un singur cont Stripe pentru toate site-urile; site-ul curent se ia din
@@ -1521,7 +1608,7 @@ www.manelecadou.ro       /*                          → web:1500
 - **Bootstrap (generate pe VPS)**: `JWT_SECRET`, `SETTINGS_ENCRYPTION_KEY`, `POSTGRES_PASSWORD`, `MAIL_CRED_KEY`
 - **URL-uri**: `APP_URL=https://manelecadou.ro`, `ADMIN_URL=https://admin.manelecadou.ro`, `API_URL=https://manelecadou.ro` (same-origin), `DEFAULT_SITE_DOMAIN=manelecadou.ro`
 - **DB**: `POSTGRES_HOST=postgres`, `POSTGRES_USER=manelecadou`, `POSTGRES_DB=manelecadou`, etc.
-- **External**: `STRIPE_*`, `OPENAI_*`, `SUNO_*`, `MAILGUN_*`, `SMTP_*`, `NEXT_PUBLIC_GA_ID`, `NEXT_PUBLIC_META_PIXEL_ID`
+- **External**: `STRIPE_*`, `OPENAI_*`, `SUNO_*`, `MAILGUN_*` (istoric — azi `POWERMAIL_*`), `SMTP_*`, `NEXT_PUBLIC_GA_ID`, `NEXT_PUBLIC_META_PIXEL_ID`
 - **Runtime**: `NODE_ENV=production`, `ADMIN_EMAILS=serban2702@gmail.com` (comma-separated)
 
 `docker-compose.prod.yml` are `NODE_ENV: ${NODE_ENV:-production}` (overridable din `.env`) și `DB_SYNCHRONIZE` controlabil similar. Vezi §6.4 pentru workflow schema changes.

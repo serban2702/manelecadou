@@ -161,7 +161,7 @@ export function OperationsScreen({
 
       <StudioSection
         title="Mail"
-        help="Adresele de pe acest site. Serverul (Mailgun/SMTP) e mai jos; gol = configul global din /settings."
+        help="Adresele de pe acest site. Transportul (PowerMail/SMTP) e mai jos; gol = configul global din /settings."
       >
         <Card>
           <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -42,15 +42,41 @@ export interface BuiltMime {
   recipients: string[];
 }
 
+/** Un destinatar eliminat de PowerMail înainte de trimitere (listă neagră, dezabonare, validare). */
+export interface BlockedRecipient {
+  email: string;
+  reason: string;
+  scope?: string;
+  detail?: string;
+  suggestion?: string;
+}
+
 export interface SendMailResult {
   /** True dacă a fost trimis (sau acceptat de provider). */
   sent: boolean;
-  /** ID-ul mesajului întors de provider (când e disponibil). */
+  /** Message-ID RFC 5322 al mesajului (cel din MIME-ul nostru). */
   messageId?: string;
+  /**
+   * Referința internă a provider-ului (ex. UUID-ul PowerMail), cu care mesajul
+   * poate fi căutat în panoul lui. Se salvează în `outbound_emails.providerMessageId`;
+   * `messageId` rămâne cel RFC, folosit la corelarea cu copia din `Sent`.
+   */
+  providerRef?: string;
   /** Numele provider-ului care a procesat mesajul. */
-  provider: 'smtp' | 'mailgun' | 'noop';
+  provider: 'smtp' | 'powermail' | 'noop';
   /** Note tehnice (ex: "logged in console" în dev). */
   notes?: string;
+  /**
+   * Destinatari eliminați de provider (listă neagră / dezabonare / adresă invalidă).
+   * NU e o eroare: restul mesajului a plecat normal. Se loghează ca avertisment.
+   */
+  blocked?: BlockedRecipient[];
+  /**
+   * True când TOȚI destinatarii au fost eliminați, deci mesajul n-a plecat nicăieri.
+   * Fluxurile automate doar loghează; cele pornite de un om (compose din Inbox)
+   * trebuie să-i spună operatorului, altfel crede că a trimis.
+   */
+  suppressed?: boolean;
 }
 
 /**
@@ -62,16 +88,25 @@ export interface ResolvedMailContext {
   source: 'site' | 'global';
   /** Slug-ul site-ului, dacă există. */
   siteSlug?: string;
+  /**
+   * Categoria funcțională a mesajului (`magic_link`, `recovery`, …), propagată
+   * din `SendMailExtra.kind`. Provider-ele o folosesc pentru etichete și pentru
+   * a decide dacă mesajul e de marketing (categorie de dezabonare) sau nu.
+   */
+  kind?: string;
   fromEmail?: string;
   fromName?: string;
   replyTo?: string;
-  mailgun?: {
+  powermail?: {
+    /** Cheia de proiect (`pm_live_…`). Una singură pentru toate site-urile. */
     apiKey?: string;
-    domain?: string;
-    region?: 'eu' | 'us';
+    /** Baza API-ului. Gol = `https://api.powermail.wingo.ro`. */
     apiUrl?: string;
-    /** From-email specific Mailgun (override) — folosit dacă e setat. */
-    fromEmail?: string;
+    /**
+     * Categoria de dezabonare trimisă pe mailurile de marketing și recovery.
+     * Gol = nu se trimite deloc (vezi comentariul din `powermail.provider.ts`).
+     */
+    unsubscribeGroup?: string;
   };
   smtp?: {
     host?: string;
@@ -83,6 +118,6 @@ export interface ResolvedMailContext {
 }
 
 export abstract class MailProvider {
-  abstract readonly name: 'smtp' | 'mailgun' | 'noop';
+  abstract readonly name: 'smtp' | 'powermail' | 'noop';
   abstract send(opts: SendMailOptions, ctx: ResolvedMailContext, mime: BuiltMime): Promise<SendMailResult>;
 }

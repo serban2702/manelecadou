@@ -23,7 +23,7 @@ const schema = z.object({
   JWT_EXPIRES_IN: z.string().default('7d'),
   MAGIC_LINK_TTL_MIN: z.coerce.number().default(15),
 
-  MAIL_PROVIDER: z.enum(['smtp', 'mailgun']).default('smtp'),
+  MAIL_PROVIDER: z.enum(['powermail', 'smtp']).default('powermail'),
   MAIL_FROM: z.string().default('no-reply@manelecadou.ro'),
   MAIL_FROM_NAME: z.string().optional().default(''),
 
@@ -33,12 +33,11 @@ const schema = z.object({
   SMTP_PASS: z.string().optional().default(''),
   SMTP_SECURE: z.string().optional().default(''),
 
-  MAILGUN_API_KEY: z.string().optional().default(''),
-  MAILGUN_DOMAIN: z.string().optional().default(''),
-  MAILGUN_REGION: z.enum(['us', 'eu']).optional().default('us'),
-  MAILGUN_API_URL: z.string().optional().default(''),
-  MAILGUN_FROM_EMAIL: z.string().optional().default(''),
-  MAILGUN_WEBHOOK_SIGNING_KEY: z.string().optional().default(''),
+  // PowerMail (Wingo) — platforma proprie peste Amazon SES. O singură cheie de
+  // proiect pentru toate site-urile; identitatea se alege prin `From`.
+  POWERMAIL_API_KEY: z.string().optional().default(''),
+  POWERMAIL_API_URL: z.string().optional().default(''),
+  POWERMAIL_UNSUBSCRIBE_GROUP: z.string().optional().default(''),
 
   SUNO_PROVIDER: z.enum(['mock', 'real']).default('mock'),
   SUNO_API_BASE_URL: z.string().optional().default('https://api.sunoapi.org'),

@@ -20,7 +20,7 @@ const LEGACY_STAGING_DIR = path.join(LEGACY_MAIL_ATTACH_DIR, 'staging');
 const META_NAME = 'meta.json';
 const LEGACY_META_NAME = '.meta.json';
 
-/** Limita per fișier. Mailgun refuză mailurile peste ~25MB, deci n-are rost mai mult. */
+/** Limita per fișier. PowerMail acceptă maximum 25 MB de atașamente per mesaj. */
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 /** Limita pe tot mailul (suma atașamentelor), din același motiv. */
 export const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;

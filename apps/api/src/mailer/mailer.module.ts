@@ -4,7 +4,7 @@ import { BullModule, InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { BuiltMime, MailProvider, ResolvedMailContext, SendMailOptions, SendMailResult } from './mail.types';
 import { SmtpMailProvider } from './providers/smtp.provider';
-import { MailgunMailProvider } from './providers/mailgun.provider';
+import { PowerMailProvider } from './providers/powermail.provider';
 import { buildMime } from './mime.builder';
 import { MAIL_APPEND_QUEUE, MailAppendJob, stashMime } from './mail-append.queue';
 import { SettingsService } from '../modules/settings/settings.service';
@@ -31,12 +31,11 @@ export interface SendMailExtra {
   /** ID-ul entității asociate (paymentId, generationId, giftCodeId etc.). */
   relatedId?: string | null;
   /**
-   * Forțează un provider anume, indiferent de configul global/site. Folosit la
-   * compunerea din Inbox („trimite cu mail, nu prin SMTP") → mereu Mailgun, chiar
-   * dacă `MAIL_PROVIDER` global e setat pe `smtp`. Dacă site-ul are credențiale
-   * proprii pentru providerul cerut le folosește pe alea, altfel cade pe cele globale.
+   * Forțează un provider anume, indiferent de configul global/site. Dacă site-ul
+   * are credențiale proprii pentru providerul cerut le folosește pe alea, altfel
+   * cade pe cele globale.
    */
-  forceProvider?: 'smtp' | 'mailgun';
+  forceProvider?: 'smtp' | 'powermail';
   /**
    * Sare peste copierea în `Sent` (IMAP APPEND). Folosit pentru mailurile care
    * nu au ce căuta în căsuță (ex. testul de config din admin).
@@ -50,7 +49,7 @@ export class MailerService {
 
   constructor(
     private readonly smtp: SmtpMailProvider,
-    private readonly mailgun: MailgunMailProvider,
+    private readonly powermail: PowerMailProvider,
     private readonly settings: SettingsService,
     private readonly outboundLog: OutboundEmailService,
     // Global (StorageModule) — MIME-ul copiat în `Sent` merge pe disc + R2.
@@ -64,41 +63,37 @@ export class MailerService {
    */
   private async resolveContext(
     site?: MailSiteRef,
-    force?: 'smtp' | 'mailgun',
+    force?: 'smtp' | 'powermail',
   ): Promise<{ provider: MailProvider; ctx: ResolvedMailContext }> {
     const mc = site?.mailConfig;
     // Folosește configul per-site doar dacă există ȘI nu intră în conflict cu providerul forțat.
-    if (mc?.provider && (!force || mc.provider === force)) {
-      const ctx: ResolvedMailContext = {
-        source: 'site',
-        siteSlug: site?.slug,
-        fromEmail: mc.fromEmail || site?.fromEmail || undefined,
-        fromName: mc.fromName || undefined,
-        replyTo: mc.replyTo || undefined,
+    if (mc?.provider === 'smtp' && (!force || force === 'smtp')) {
+      return {
+        provider: this.smtp,
+        ctx: {
+          ...this.identityFrom(site),
+          source: 'site',
+          smtp: {
+            host: mc.smtp?.host,
+            port: mc.smtp?.port,
+            secure: mc.smtp?.secure,
+            user: mc.smtp?.user,
+            pass: safeDecrypt(mc.smtp?.pass),
+          },
+        },
       };
-      if (mc.provider === 'mailgun') {
-        ctx.mailgun = {
-          apiKey: safeDecrypt(mc.mailgun?.apiKey),
-          domain: mc.mailgun?.domain,
-          region: mc.mailgun?.region,
-          apiUrl: mc.mailgun?.apiUrl,
-        };
-        return { provider: this.mailgun, ctx };
-      }
-      if (mc.provider === 'smtp') {
-        ctx.smtp = {
-          host: mc.smtp?.host,
-          port: mc.smtp?.port,
-          secure: mc.smtp?.secure,
-          user: mc.smtp?.user,
-          pass: safeDecrypt(mc.smtp?.pass),
-        };
-        return { provider: this.smtp, ctx };
-      }
     }
-    // Provider forțat fără config per-site potrivit → folosește credențialele globale ale acelui provider.
-    if (force === 'mailgun') {
-      return { provider: this.mailgun, ctx: await this.buildGlobalMailgunCtx(site) };
+    if (mc?.provider === 'powermail' && (!force || force === 'powermail')) {
+      // Cheia PowerMail e una singură, la nivel global: un proiect cu mai multe
+      // identități verificate. Site-ul alege doar identitatea, prin `fromEmail`.
+      return {
+        provider: this.powermail,
+        ctx: { ...(await this.buildGlobalPowerMailCtx(site)), source: 'site' },
+      };
+    }
+    // Provider forțat fără config per-site potrivit → credențialele globale ale acelui provider.
+    if (force === 'powermail') {
+      return { provider: this.powermail, ctx: await this.buildGlobalPowerMailCtx(site) };
     }
     if (force === 'smtp') {
       return { provider: this.smtp, ctx: await this.buildGlobalSmtpCtx(site) };
@@ -108,35 +103,54 @@ export class MailerService {
   }
 
   private async resolveGlobalContext(site?: MailSiteRef): Promise<{ provider: MailProvider; ctx: ResolvedMailContext }> {
-    const which = ((await this.settings.get('MAIL_PROVIDER')) || 'smtp').toLowerCase();
-    if (which === 'mailgun') {
-      return { provider: this.mailgun, ctx: await this.buildGlobalMailgunCtx(site) };
+    const which = ((await this.settings.get('MAIL_PROVIDER')) || 'powermail').toLowerCase();
+    if (which === 'smtp') {
+      return { provider: this.smtp, ctx: await this.buildGlobalSmtpCtx(site) };
     }
-    return { provider: this.smtp, ctx: await this.buildGlobalSmtpCtx(site) };
+    return { provider: this.powermail, ctx: await this.buildGlobalPowerMailCtx(site) };
   }
 
-  private async buildGlobalMailgunCtx(site?: MailSiteRef): Promise<ResolvedMailContext> {
+  /**
+   * Identitatea expeditorului — cine apare în `From`, cu ce nume, unde se
+   * răspunde. E independentă de transport: aceleași valori se aplică fie că
+   * mailul iese prin PowerMail, fie prin SMTP. De aceea se citește din
+   * `mailConfig` chiar și când `mailConfig.provider` e null (site-ul folosește
+   * transportul global); altfel un site cu provider gol ar pierde tăcut numele
+   * de expeditor și Reply-To-ul configurate în admin.
+   */
+  private identityFrom(site?: MailSiteRef): Pick<ResolvedMailContext, 'source' | 'siteSlug' | 'fromEmail' | 'fromName' | 'replyTo'> {
+    const mc = site?.mailConfig;
     return {
-      source: 'global',
+      source: 'site',
       siteSlug: site?.slug,
-      fromEmail: (site?.fromEmail || (await this.settings.get('MAIL_FROM'))) || undefined,
-      fromName: (await this.settings.get('MAIL_FROM_NAME')) || undefined,
-      mailgun: {
-        apiKey: await this.settings.get('MAILGUN_API_KEY'),
-        domain: await this.settings.get('MAILGUN_DOMAIN'),
-        region: (((await this.settings.get('MAILGUN_REGION')) || 'us').toLowerCase() as 'eu' | 'us'),
-        apiUrl: (await this.settings.get('MAILGUN_API_URL')) || undefined,
-        fromEmail: (await this.settings.get('MAILGUN_FROM_EMAIL')) || undefined,
+      fromEmail: mc?.fromEmail || site?.fromEmail || undefined,
+      fromName: mc?.fromName || undefined,
+      replyTo: mc?.replyTo || undefined,
+    };
+  }
+
+  private async buildGlobalPowerMailCtx(site?: MailSiteRef): Promise<ResolvedMailContext> {
+    const identity = this.identityFrom(site);
+    return {
+      ...identity,
+      source: 'global',
+      fromEmail: identity.fromEmail || (await this.settings.get('MAIL_FROM')) || undefined,
+      fromName: identity.fromName || (await this.settings.get('MAIL_FROM_NAME')) || undefined,
+      powermail: {
+        apiKey: await this.settings.get('POWERMAIL_API_KEY'),
+        apiUrl: (await this.settings.get('POWERMAIL_API_URL')) || undefined,
+        unsubscribeGroup: (await this.settings.get('POWERMAIL_UNSUBSCRIBE_GROUP')) || undefined,
       },
     };
   }
 
   private async buildGlobalSmtpCtx(site?: MailSiteRef): Promise<ResolvedMailContext> {
+    const identity = this.identityFrom(site);
     const ctx: ResolvedMailContext = {
+      ...identity,
       source: 'global',
-      siteSlug: site?.slug,
-      fromEmail: (site?.fromEmail || (await this.settings.get('MAIL_FROM'))) || undefined,
-      fromName: (await this.settings.get('MAIL_FROM_NAME')) || undefined,
+      fromEmail: identity.fromEmail || (await this.settings.get('MAIL_FROM')) || undefined,
+      fromName: identity.fromName || (await this.settings.get('MAIL_FROM_NAME')) || undefined,
       smtp: {
         host: (await this.settings.get('SMTP_HOST')) || undefined,
         port: Number(await this.settings.get('SMTP_PORT')) || undefined,
@@ -165,6 +179,7 @@ export class MailerService {
   /** Trimite și întoarce rezultatul detaliat al provider-ului. */
   async sendDetailed(opts: SendMailOptions, extra?: SendMailExtra): Promise<SendMailResult> {
     const { provider, ctx } = await this.resolveContext(extra?.site, extra?.forceProvider);
+    ctx.kind = extra?.kind ?? undefined;
     // Audit row creat ÎNAINTE de send — prinde și crash-urile provider-elor.
     // Failure-urile la insert (DB down) nu trebuie să blocheze trimiterea mail-ului.
     const siteId = (extra?.site as { id?: string } | undefined)?.id ?? null;
@@ -195,14 +210,18 @@ export class MailerService {
       const result = await provider.send(opts, ctx, mime);
       if (result.sent) {
         this.logger.log(
-          `mail sent via ${result.provider} src=${ctx.source}${ctx.siteSlug ? ' site=' + ctx.siteSlug : ''} to=${opts.to} id=${result.messageId ?? '-'}`,
+          `mail ${result.suppressed ? 'SUPPRESSED (toți destinatarii blocați)' : 'sent'} via ${result.provider} src=${ctx.source}${ctx.siteSlug ? ' site=' + ctx.siteSlug : ''} to=${opts.to} id=${result.providerRef ?? result.messageId ?? '-'}`,
         );
-        if (!extra?.skipSentCopy) await this.queueSentCopy(mime, opts, siteId);
+        // Copia în `Sent` doar pentru ce a plecat efectiv. Un mesaj suprimat
+        // integral n-a ajuns la nimeni — în căsuță ar arăta ca trimis.
+        if (!extra?.skipSentCopy && !result.suppressed) await this.queueSentCopy(mime, opts, siteId);
         if (logId) {
           await this.outboundLog
             .markSent(logId, {
               provider: result.provider,
-              providerMessageId: result.messageId,
+              // Referința provider-ului (UUID PowerMail) — cu ea se caută
+              // mesajul în panou. La SMTP e chiar Message-ID-ul RFC.
+              providerMessageId: result.providerRef ?? result.messageId,
               providerNotes: result.notes,
             })
             .catch((e) => this.logger.warn(`outbound-email markSent failed: ${(e as Error).message}`));
@@ -287,7 +306,7 @@ function safeDecrypt(value: string | undefined | null): string | undefined {
 
 @Module({
   imports: [ConfigModule, OutboundEmailModule, BullModule.registerQueue({ name: MAIL_APPEND_QUEUE })],
-  providers: [SmtpMailProvider, MailgunMailProvider, MailerService],
+  providers: [SmtpMailProvider, PowerMailProvider, MailerService],
   exports: [MailerService],
 })
 export class MailerModule {}
