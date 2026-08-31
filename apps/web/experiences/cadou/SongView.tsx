@@ -202,6 +202,29 @@ function CadouFailedCard({ stalled }: { stalled: boolean }) {
 }
 
 /**
+ * Contact pe pagina piesei — aceeași nevoie ca pe `classic`: cine deschide
+ * pagina din emailul de livrare, pe alt dispozitiv sau după zile, trebuie să
+ * aibă unde să scrie fără să caute prin site.
+ *
+ * Adresa e a TENANTULUI (`site.supportEmail`, fallback pe domeniu), nu una
+ * hardcodată. Card simplu, nu `CadouFold`: dacă ar fi pliabil, pe un card
+ * închis emailul n-ar mai fi pe pagină — exact ce trebuia rezolvat.
+ */
+function CadouContactCard() {
+  const t = useTranslations('cadou.song');
+  const site = useSite();
+  const email = siteSupportEmail(site);
+
+  return (
+    <div className="cadou-song-card cadou-song-contact">
+      <strong>{t('contactTitle')}</strong>
+      <p>{t('contactLead')}</p>
+      <a className="cadou-cta" href={`mailto:${email}`}>✉️ {email}</a>
+    </div>
+  );
+}
+
+/**
  * Share pe piesa livrată — produsul e un CADOU, clientul trebuie să-l poată
  * trimite cuiva fără să treacă prin colaj. Fiecare canal raportează
  * `song_share` (panoul Engagement din admin), cu aceleași nume de canal ca pe
@@ -779,6 +802,8 @@ function CadouSongInner() {
                 {showOrder && (
                   <CadouOrderCard generation={g} />
                 )}
+
+                <CadouContactCard />
               </div>
             </>
           )}

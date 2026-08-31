@@ -932,6 +932,8 @@
     "shareInstagramHint": "💡 Pentru Instagram: copiază linkul, deschide app-ul și lipește-l în story sau bio.",
     "shareText": "🎵 Ascultă maneaua personalizată pentru {name}",
     "shareNativeTitle": "Maneaua mea",
+    "contactTitle": "Contact",
+    "contactSub": "Ai nevoie de informații suplimentare? Scrie-ne pe adresa de mai jos și îți răspundem cât mai repede.",
     "ivCta": "🎬 Fă videoclip cu imaginea asta",
     "ivErrStart": "Nu am putut porni videoclipul. Încearcă din nou.",
     "ivDoneTitle": "🎬 Videoclipul tău",
@@ -1130,7 +1132,9 @@
       "shareCopy": "Copiază linkul",
       "shareCopied": "Copiat ✓",
       "shareText": "🎵 Ascultă maneaua pentru {name}",
-      "shareHintInstagram": "Pentru Instagram: copiază linkul și lipește-l în story sau în bio."
+      "shareHintInstagram": "Pentru Instagram: copiază linkul și lipește-l în story sau în bio.",
+      "contactTitle": "Contact",
+      "contactLead": "Ai nevoie de informații suplimentare? Scrie-ne pe adresa de mai jos și îți răspundem cât mai repede."
     },
     "video": {
       "section": {

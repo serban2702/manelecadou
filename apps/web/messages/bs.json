@@ -932,6 +932,8 @@
     "shareInstagramHint": "💡 Za Instagram: kopiraj link, otvori aplikaciju i zalijepi ga u story ili bio.",
     "shareText": "🎵 Poslušaj personalizovanu pjesmu za {name}",
     "shareNativeTitle": "Moja pjesma",
+    "contactTitle": "Kontakt",
+    "contactSub": "Trebaju ti dodatne informacije? Piši nam na adresu ispod i odgovorit ćemo ti u najkraćem roku.",
     "ivCta": "🎬 Napravi video sa ovom slikom",
     "ivErrStart": "Nismo uspjeli pokrenuti video. Pokušaj ponovo.",
     "ivDoneTitle": "🎬 Tvoj video",
@@ -1130,7 +1132,9 @@
       "shareCopy": "Kopiraj link",
       "shareCopied": "Kopirano ✓",
       "shareText": "🎵 Poslušaj pjesmu za {name}",
-      "shareHintInstagram": "Za Instagram: kopiraj link i zalijepi ga u story ili u bio."
+      "shareHintInstagram": "Za Instagram: kopiraj link i zalijepi ga u story ili u bio.",
+      "contactTitle": "Kontakt",
+      "contactLead": "Trebaju ti dodatne informacije? Piši nam na adresu ispod i odgovorit ćemo ti u najkraćem roku."
     },
     "video": {
       "section": {

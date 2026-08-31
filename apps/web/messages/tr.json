@@ -932,6 +932,8 @@
     "shareInstagramHint": "💡 Instagram için: bağlantıyı kopyala, uygulamayı aç ve story ya da bio'ya yapıştır.",
     "shareText": "🎵 {name} için kişiye özel şarkıyı dinle",
     "shareNativeTitle": "Şarkım",
+    "contactTitle": "İletişim",
+    "contactSub": "Ek bilgiye mi ihtiyacın var? Aşağıdaki adrese yaz, en kısa sürede sana dönelim.",
     "ivCta": "🎬 Bu fotoğrafla video yap",
     "ivErrStart": "Videoyu başlatamadık. Tekrar dene.",
     "ivDoneTitle": "🎬 Videon",
@@ -1130,7 +1132,9 @@
       "shareCopy": "Bağlantıyı kopyala",
       "shareCopied": "Kopyalandı ✓",
       "shareText": "🎵 {name} için yapılan şarkıyı dinle",
-      "shareHintInstagram": "Instagram için: bağlantıyı kopyala ve story'ne ya da biyografine yapıştır."
+      "shareHintInstagram": "Instagram için: bağlantıyı kopyala ve story'ne ya da biyografine yapıştır.",
+      "contactTitle": "İletişim",
+      "contactLead": "Ek bilgiye mi ihtiyacın var? Aşağıdaki adrese yaz, en kısa sürede sana dönelim."
     },
     "video": {
       "section": {

@@ -1271,6 +1271,25 @@ button.cadou-pack { cursor: pointer; }
   font-size: 12.5px; line-height: 1.45; color: var(--cadou-muted);
 }
 
+/* Contact — emailul tenantului pe pagina piesei. Card mereu deschis (nu fold),
+   ca adresa să fie vizibilă fără niciun click. */
+.cadou-song-contact { text-align: center; }
+.cadou-song-contact strong {
+  display: block;
+  font-size: 13px; font-weight: 800; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--cadou-gold-deep);
+}
+.cadou-song-contact p {
+  margin: 8px 0 14px;
+  color: var(--cadou-muted); font-size: 14px; line-height: 1.45;
+}
+.cadou-song-contact .cadou-cta {
+  max-width: 100%;
+  /* Adresa e textul butonului — pe ecran îngust trebuie să se poată rupe. */
+  padding: 13px 22px; font-size: 13.5px; letter-spacing: 0.02em;
+  white-space: normal; word-break: break-word;
+}
+
 .cadou-wait {
   margin-top: 18px; padding: 18px 16px 16px;
   background: #fff;

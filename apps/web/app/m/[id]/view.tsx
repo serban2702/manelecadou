@@ -17,7 +17,7 @@ import { OwnerPasswordControl, UnlockPrompt, useUnlockPassword } from '@/compone
 import { STYLES, VOICES, OCC } from '@/lib/seed-data';
 import { useSite } from '@/lib/site-context';
 import { useSession } from '@/lib/providers';
-import { formatPrice } from '@/lib/site-shared';
+import { formatPrice, siteSupportEmail } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
 import { prettifyLyrics } from '@/lib/lyrics-display';
 import { RotatingStatus } from '@/components/RotatingStatus';
@@ -412,6 +412,8 @@ function ShareGenerationViewInner() {
           imageUrl={resolveMediaUrl(g.socialImageUploaded ?? g.socialImageSelected ?? g.coverUrl)}
         />
       )}
+
+      <ContactSection />
 
       {g.lyrics && (
         <details style={{ marginTop: 18 }}>
@@ -967,6 +969,45 @@ function ShareSection({ generationId, recipientName, imageUrl }: { generationId:
       <div style={{ fontSize: 11, opacity: 0.6, marginTop: 10, lineHeight: 1.4 }}>
         {t('shareInstagramHint')}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Contact — cardul de sub share. Pagina piesei era singurul loc din flux fără
+ * niciun drum spre noi în afara chatului: cine o deschide din emailul de
+ * livrare, pe alt dispozitiv sau la zile după comandă, n-avea unde să scrie.
+ *
+ * Adresa vine din TENANT (`site.supportEmail`, cu fallback pe domeniu prin
+ * `siteSupportEmail`) — nu e hardcodată, deci fiecare site își arată propriul
+ * email, exact ca footerul și pagina de contact.
+ */
+function ContactSection() {
+  const t = useTranslations('mViewPage');
+  const site = useSite();
+  const email = siteSupportEmail(site);
+
+  return (
+    <div style={{
+      marginTop: 20, padding: 16, borderRadius: 12,
+      background: 'rgba(241,200,77,0.06)',
+      border: '1px solid rgba(241,200,77,0.2)',
+    }}>
+      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
+        {t('contactTitle')}
+      </div>
+      <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
+        {t('contactSub')}
+      </div>
+      {/* `.btn` are `white-space: nowrap` — pe un ecran îngust o adresă lungă ar
+          ieși din card. Aici textul E adresa, deci lăsăm rândul să se rupă. */}
+      <a
+        href={`mailto:${email}`}
+        className="btn btn-gold"
+        style={{ width: '100%', whiteSpace: 'normal', wordBreak: 'break-word', textDecoration: 'none' }}
+      >
+        ✉️ {email}
+      </a>
     </div>
   );
 }
