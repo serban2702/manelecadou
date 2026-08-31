@@ -888,6 +888,22 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
 24. **Elementele de grilă au implicit `min-width: auto`.** Un titlu lung cu `white-space: nowrap` lărgește pista până iese din container, în loc să se taie cu elipsă — pe `/istoric` ieșea toată coloana a treia din panou. `.demo-grid > * { min-width: 0 }`.
 25. **WaveSurfer descarcă și decodează fișierul ÎNTREG ca să deseneze unda**, la montare, pentru fiecare instanță. 30 de carduri = 30 de MP3-uri înainte de orice click. Player-ul se montează acum la primul click; până atunci unda e decorativă. Iar `play()` trebuie apelat pe elementul de media **în interiorul gestului** — altfel iOS Safari îl refuză, și primul tap n-ar porni nimic.
 26. **Prețul vine ÎNTOTDEAUNA din pachet.** Modelul dinaintea lor — preț de bază + supliment premium + procent din suma dedicației — a fost scos (29 aug 2026): toate cele 838 de comenzi din producție aveau `packageTier`, deci nu taxase niciodată pe nimeni. `sites.basePriceCents` și `standardPriceCents` **au rămas** și se mai citesc în locuri secundare (textul de preț din articolele SEO, valoarea trimisă la Meta) — pot să difere de prețul real, deci nu le folosi ca sursă de adevăr. Prețul corect: `resolveSitePackage(site, tier, experienceSlug).priceCents`.
+27bis. **Un text în altă limbă decât cea a site-ului aproape niciodată nu e în
+    `messages/`.** Auditul din 31 aug 2026 pe bg/el a găsit româna în cinci feluri,
+    niciunul vizibil dintr-un `check:messages` verde: scrisă direct în JSX
+    (`app/m/[id]/view.tsx`, `/unsubscribe`, playerele), în metadata SSR
+    (`og:description`), în cod de backend (mesajele automate de chat, `recovery.ts`),
+    într-un câmp care își spunea limba în nume (`PACKAGES[tier].featuresRo`, servit
+    tuturor tenanților) și — cel mai insidios — ca **fallback de seed randat până
+    vine răspunsul API-ului** (`TOP` din `lib/seed-data.ts`, în leaderboard și pe
+    `/top`): API-ul răspundea corect în bulgară, dar HTML-ul SERVIT conținea
+    umplutura românească, deci exact ce citesc crawlerele.
+    Verificarea care le prinde pe toate nu e în cod, e pe producție:
+    `curl` pe pagină, apoi caută caractere `ăâîșț` în HTML-ul primit. Un fallback
+    de limbă necunoscută trebuie să cadă pe **engleză**, nu pe română — un text
+    englezesc se citește ca o limitare asumată, unul românesc pe un site grecesc
+    ca o eroare.
+
 27. **O funcționalitate scoasă de pe site lasă urme în cinci locuri.** Codurile cadou aveau: modul de API cu rute publice, metode în SDK-ul web fără apelanți, un tabel gol în producție, o coloană de configurare în admin și — cel mai grav — o clauză în termeni, publicată în 8 limbi, despre o taxă inexistentă. Când scoți ceva, urmărește-l până la capăt: `apps/api/src/modules/`, `apps/web/lib/api.ts`, `apps/web/messages/*.json`, ecranele din admin, `app_settings` și schema.
 ---
 
