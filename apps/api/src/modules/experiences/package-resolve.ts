@@ -6,6 +6,7 @@ import {
   type PackageDef,
   type PackageTier,
 } from '../payments/packages';
+import { packageCopy } from '../payments/packages-i18n';
 import type {
   ExperiencePackageOverride,
   ExperienceUpsellConfig,
@@ -155,11 +156,16 @@ export function resolvePackageDef(
   experienceSlug: string | null | undefined,
   adminOverride?: ExperiencePackageOverride | null,
   sitePricing?: SitePackagePricing | null,
+  locale?: string | null,
 ): ResolvedExperiencePackage {
   // Pasul 2 din precedență: prețul de bază devine cel al tenantului (dacă are).
+  // Livrabilele se traduc AICI, pe pachetul de bază, ca un `features` scris de
+  // admin pe interfață să rămână prioritar (l-a scris în limba pe care o vrea).
+  const copy = packageCopy(tier, locale);
   const base: PackageDef = {
     ...PACKAGES[tier],
     priceCents: packagePriceCents(tier, sitePricing?.prices ?? null),
+    ...(copy ? { featuresRo: copy.features, deliveryLabel: copy.deliveryLabel } : {}),
   };
   const siteCompare = packageCompareAtCents(
     tier,
@@ -191,11 +197,12 @@ export function resolveExperiencePackages(
   experienceSlug: string | null | undefined,
   adminPackages?: Partial<Record<PackageTier, ExperiencePackageOverride>> | null,
   sitePricing?: SitePackagePricing | null,
+  locale?: string | null,
 ): Record<PackageTier, ResolvedExperiencePackage> {
   return {
-    basic: resolvePackageDef('basic', experienceSlug, adminPackages?.basic, sitePricing),
-    plus: resolvePackageDef('plus', experienceSlug, adminPackages?.plus, sitePricing),
-    premium: resolvePackageDef('premium', experienceSlug, adminPackages?.premium, sitePricing),
+    basic: resolvePackageDef('basic', experienceSlug, adminPackages?.basic, sitePricing, locale),
+    plus: resolvePackageDef('plus', experienceSlug, adminPackages?.plus, sitePricing, locale),
+    premium: resolvePackageDef('premium', experienceSlug, adminPackages?.premium, sitePricing, locale),
   };
 }
 
@@ -225,6 +232,9 @@ export interface SitePackageSource {
   packagePricesCents?: Partial<Record<PackageTier, number>> | null;
   packageCompareAtCents?: Partial<Record<PackageTier, number>> | null;
   experienceConfig?: SiteExperienceConfig | null;
+  /** Limba tenantului — decide în ce limbă ies `features` și `deliveryLabel`
+   *  când adminul nu le-a scris el (vezi payments/packages-i18n.ts). */
+  locale?: string | null;
 }
 
 /**
@@ -260,7 +270,7 @@ export function resolveSitePackage(
 ): ResolvedExperiencePackage {
   const slug = effectiveExperienceSlug(site, experienceSlug);
   const adminOverride = site?.experienceConfig?.items?.[slug]?.packages?.[tier] ?? null;
-  return resolvePackageDef(tier, slug, adminOverride, sitePricingOf(site));
+  return resolvePackageDef(tier, slug, adminOverride, sitePricingOf(site), site?.locale);
 }
 
 /** Toate cele 3 pachete efective ale unui site pe o interfață. */

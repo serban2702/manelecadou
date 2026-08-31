@@ -176,7 +176,7 @@ export class GenerationsService {
       const site = ctx.siteId ? await this.sites.findById(ctx.siteId) : null;
       const expSlug = ctx.experienceSlug || DEFAULT_EXPERIENCE_SLUG;
       const adminPkg = site?.experienceConfig?.items?.[expSlug]?.packages?.[tier] ?? null;
-      const resolved = resolvePackageDef(tier, expSlug, adminPkg, sitePricingOf(site));
+      const resolved = resolvePackageDef(tier, expSlug, adminPkg, sitePricingOf(site), site?.locale);
       const snap = snapshotFromDef(resolved);
       const guest = ctx.guestId
         ? await mgr.getRepository(GuestSession).findOne({ where: { id: ctx.guestId } })
@@ -1333,7 +1333,7 @@ export class GenerationsService {
     const site = ctx.siteId ? await this.sites.findById(ctx.siteId) : null;
     const expSlug = ctx.experienceSlug || DEFAULT_EXPERIENCE_SLUG;
     const adminPkg = site?.experienceConfig?.items?.[expSlug]?.packages?.[tier] ?? null;
-    const snap = snapshotFromDef(resolvePackageDef(tier, expSlug, adminPkg, sitePricingOf(site)));
+    const snap = snapshotFromDef(resolvePackageDef(tier, expSlug, adminPkg, sitePricingOf(site), site?.locale));
     const gen = this.repo.create({
       ownerUserId: ctx.userId,
       ownerGuestId: ctx.userId ? null : ctx.guestId,
@@ -1373,7 +1373,7 @@ export class GenerationsService {
     const slug = experienceSlug || gen.experienceSlug || DEFAULT_EXPERIENCE_SLUG;
     const site = gen.siteId ? await this.sites.findById(gen.siteId) : null;
     const adminPkg = site?.experienceConfig?.items?.[slug]?.packages?.[target] ?? null;
-    const resolved = resolvePackageDef(target, slug, adminPkg, sitePricingOf(site));
+    const resolved = resolvePackageDef(target, slug, adminPkg, sitePricingOf(site), site?.locale);
     gen.packageTier = target;
     gen.experienceSlug = slug;
     // Upgrade-ul nu poate ȘTERGE ce s-a promis deja: dacă la cumpărare pachetul

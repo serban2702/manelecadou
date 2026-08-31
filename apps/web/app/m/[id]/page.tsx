@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { getTranslations } from 'next-intl/server';
 import { ExperienceSongView } from '@/components/ExperiencePage';
 import { getSiteConfig, siteUrl } from '@/lib/site-config';
 import { apiInternalUrl } from '@/lib/api-internal';
@@ -45,12 +46,19 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const [gen, site] = await Promise.all([fetchGen(id), getSiteConfig()]);
-  const recipient = gen?.recipientName ?? 'cadou';
-  const title = `Manea pentru ${recipient} — ${site.name}`;
+  const [gen, site, t] = await Promise.all([fetchGen(id), getSiteConfig(), getTranslations('metadata')]);
+  // Titlul și descrierea ajung în og:/twitter: — adică în preview-ul de share.
+  // Erau scrise în română pe toate site-urile, deci un link de pe chalgapodarok.bg
+  // partajat pe Facebook se anunța „Ascultă maneaua personalizată pentru …".
+  const recipient = gen?.recipientName ?? t('songFallbackRecipient');
+  const title = t('songTitle', { name: recipient, site: site.name });
   const description = gen
-    ? `Ascultă maneaua personalizată pentru ${recipient}. Stil ${gen.style ?? '-'}, voce ${gen.voiceArtist ?? '-'}.`
-    : site.seo?.description ?? 'Generator de manele AI personalizate. Fă o manea în 90 de secunde.';
+    ? t('songDescription', {
+        name: recipient,
+        style: gen.style ?? '-',
+        voice: gen.voiceArtist ?? '-',
+      })
+    : site.seo?.description ?? t('description');
   const appUrl = siteUrl(site);
   // OG image: poza de share aleasă (sau încărcată) → cover → OG site → icon.
   // URL-urile media vin relative din API (`/uploads/...`); pentru OG e nevoie

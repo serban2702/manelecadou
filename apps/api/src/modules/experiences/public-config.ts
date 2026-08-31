@@ -81,6 +81,7 @@ function toPublicCatalog(catalog?: ExperienceCatalogConfig | null) {
 export function toPublicExperienceConfig(
   config?: SiteExperienceConfig | null,
   sitePricing?: SitePackagePricing | null,
+  locale?: string | null,
 ) {
   const defaultSlug = config?.defaultSlug && isKnownExperienceSlug(config.defaultSlug)
     ? config.defaultSlug
@@ -101,7 +102,7 @@ export function toPublicExperienceConfig(
     items[slug] = {
       enabled,
       utmRules: item?.utmRules ?? [],
-      packages: resolveExperiencePackages(slug, item?.packages ?? null, sitePricing ?? null),
+      packages: resolveExperiencePackages(slug, item?.packages ?? null, sitePricing ?? null, locale),
       catalog: toPublicCatalog(item?.catalog),
     };
   }

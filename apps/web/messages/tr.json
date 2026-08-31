@@ -567,7 +567,10 @@
   },
   "metadata": {
     "title": "Manele Cadou — Onun ismiyle 90 saniyede şarkı",
-    "description": "Kişiselleştirilmiş arabesk/manele üreticisi. Stil, vesile, ses seç — e-postaya 2 versiyon. 1+1 BEDAVA, tek ödeme."
+    "description": "Kişiselleştirilmiş arabesk/manele üreticisi. Stil, vesile, ses seç — e-postaya 2 versiyon. 1+1 BEDAVA, tek ödeme.",
+    "songTitle": "{name} için şarkı — {site}",
+    "songDescription": "{name} için kişiye özel şarkıyı dinle. Tarz {style}, ses {voice}.",
+    "songFallbackRecipient": "hediye"
   },
   "studio": {
     "heroFlag": "🎤 Profi stüdyo · 6 kolay adım",

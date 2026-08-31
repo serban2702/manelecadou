@@ -78,7 +78,7 @@ export class PublicSiteController {
       packageCompareAtCents: site.packageCompareAtCents ?? null,
       // Prețurile per-site trebuie să ajungă și în pachetele de interfață:
       // altfel vitrina ar afișa default-urile din cod, iar Stripe ar taxa altceva.
-      experienceConfig: toPublicExperienceConfig(site.experienceConfig, sitePricingOf(site)),
+      experienceConfig: toPublicExperienceConfig(site.experienceConfig, sitePricingOf(site), site.locale),
       brand: site.brand,
       seo: site.seo,
       analytics: site.analytics,

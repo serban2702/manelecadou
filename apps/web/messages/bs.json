@@ -567,7 +567,10 @@
   },
   "metadata": {
     "title": "Manele Cadou — Napravi mu pjesmu sa imenom za 90 sek",
-    "description": "Generator personalizovanih balkanskih pjesama. Biraš stil, povod, glas — 2 verzije na mail. 1+1 GRATIS."
+    "description": "Generator personalizovanih balkanskih pjesama. Biraš stil, povod, glas — 2 verzije na mail. 1+1 GRATIS.",
+    "songTitle": "Pjesma za {name} — {site}",
+    "songDescription": "Poslušaj personalizovanu pjesmu za {name}. Stil {style}, glas {voice}.",
+    "songFallbackRecipient": "poklon"
   },
   "studio": {
     "heroFlag": "🎤 Profi studio · 6 jednostavnih koraka",

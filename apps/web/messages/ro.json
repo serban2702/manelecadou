@@ -567,7 +567,10 @@
   },
   "metadata": {
     "title": "Manele Cadou — Fă-i o manea cu numele lui în 90 de secunde",
-    "description": "Generator de manele personalizate. Alegi stilul, ocazia, vocea — primești 2 versiuni pe email. 1+1 GRATIS, plată unică."
+    "description": "Generator de manele personalizate. Alegi stilul, ocazia, vocea — primești 2 versiuni pe email. 1+1 GRATIS, plată unică.",
+    "songTitle": "Manea pentru {name} — {site}",
+    "songDescription": "Ascultă maneaua personalizată pentru {name}. Stil {style}, voce {voice}.",
+    "songFallbackRecipient": "cadou"
   },
   "studio": {
     "heroFlag": "🎤 Studio profi · 6 pași simpli",
