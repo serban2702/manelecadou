@@ -103,10 +103,17 @@ export interface ResolvedMailContext {
     /** Baza API-ului. Gol = `https://api.powermail.wingo.ro`. */
     apiUrl?: string;
     /**
-     * Categoria de dezabonare trimisă pe mailurile de marketing și recovery.
+     * Categoria de dezabonare pentru mailurile bulk (marketing, recovery).
      * Gol = nu se trimite deloc (vezi comentariul din `powermail.provider.ts`).
      */
     unsubscribeGroup?: string;
+    /**
+     * Categoria pentru restul mailurilor — cele de sistem. Trebuie să fie una
+     * marcată „tranzacțională" în panou, adică din care destinatarul NU se poate
+     * dezabona: nimeni nu trebuie să piardă magic link-ul sau melodia plătită
+     * apăsând „Unsubscribe" în Gmail.
+     */
+    transactionalGroup?: string;
   };
   smtp?: {
     host?: string;

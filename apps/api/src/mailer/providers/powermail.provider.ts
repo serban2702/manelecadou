@@ -20,13 +20,16 @@ const MAX_ATTEMPTS = 5;
 
 /**
  * Mailurile care sunt „bulk" în sensul RFC 8058: destinatarul are dreptul să le
- * oprească fără să piardă și confirmările de comandă. Doar acestea primesc
- * `unsubscribeGroup`.
+ * oprească fără să piardă și confirmările de comandă.
  *
- * Contează mai mult decât pare: PowerMail pune `List-Unsubscribe` pe TOATE
- * mesajele, iar o dezabonare FĂRĂ categorie trece adresa pe lista neagră a
- * proiectului — adică ar bloca și magic link-ul, și mailul cu melodia gata.
- * Cu o categorie, se oprește doar tipul ăsta de mesaj.
+ * Împărțirea contează mai mult decât pare. PowerMail pune `List-Unsubscribe` pe
+ * TOATE mesajele, iar unul trimis fără categorie cade în categoria implicită a
+ * proiectului. Dacă aceea e dezabonabilă, un click pe „Unsubscribe" în Gmail —
+ * dat pe un mail de recuperare — taie și magic link-ul, și mailul cu melodia
+ * plătită. De aceea fiecare mesaj pleacă cu o categorie explicită: cele bulk cu
+ * `POWERMAIL_UNSUBSCRIBE_GROUP`, restul cu `POWERMAIL_TRANSACTIONAL_GROUP`,
+ * care în panou trebuie bifată „tranzacțională" (nu se poate dezabona nimeni de
+ * la ea).
  */
 const BULK_KINDS = new Set(['marketing_campaign', 'marketing_rule', 'recovery']);
 
@@ -180,7 +183,7 @@ export class PowerMailProvider extends MailProvider {
       // producă un al doilea mail, dar o retrimitere voită (butonul „Retrimite
       // mailul") să producă unul nou.
       idempotencyKey: mime.messageId,
-      unsubscribeGroup: kind && BULK_KINDS.has(kind) ? unsubscribeGroupOf(ctx) : undefined,
+      unsubscribeGroup: groupFor(ctx, kind),
     };
   }
 
@@ -234,10 +237,16 @@ export class PowerMailProvider extends MailProvider {
   }
 }
 
-/** Categoria de dezabonare configurată, dacă există. */
-function unsubscribeGroupOf(ctx: ResolvedMailContext): string | undefined {
-  const g = ctx.powermail?.unsubscribeGroup?.trim();
-  return g || undefined;
+/**
+ * Categoria potrivită pentru mesaj. Un `kind` necunoscut (sau lipsă) e tratat ca
+ * tranzacțional — asta acoperă testul din admin și orice trimitere nouă care ar
+ * uita să-și declare categoria: mai bine nedezabonabil din greșeală decât
+ * dezabonabil din greșeală.
+ */
+function groupFor(ctx: ResolvedMailContext, kind?: string): string | undefined {
+  const pm = ctx.powermail;
+  const g = kind && BULK_KINDS.has(kind) ? pm?.unsubscribeGroup : pm?.transactionalGroup;
+  return g?.trim() || undefined;
 }
 
 function backoffMs(attempt: number): number {

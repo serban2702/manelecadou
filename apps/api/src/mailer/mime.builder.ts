@@ -68,11 +68,23 @@ export async function buildMime(opts: SendMailOptions, ctx: ResolvedMailContext)
  * declarată la trimitere n-ar fi cea din copia salvată în `Sent`.
  */
 export function resolveFromHeader(opts: SendMailOptions, ctx: ResolvedMailContext): string {
-  if (opts.from) return opts.from;
-  const addr = ctx.fromEmail || 'no-reply@manelecadou.ro';
-  // Valoarea poate fi deja de forma `Nume <a@b.ro>` — nu o mai împacheta.
-  if (/</.test(addr)) return addr;
-  return ctx.fromName ? `"${ctx.fromName}" <${addr}>` : addr;
+  const raw = (opts.from || ctx.fromEmail || 'no-reply@manelecadou.ro').trim();
+  // Deja are nume afișat (`Nume <a@b.ro>`) — îl respectăm, e mai specific.
+  if (raw.includes('<')) return raw;
+  // Aproape toate call-site-urile pasează `site.fromEmail`, adică o adresă
+  // simplă. Fără pasul ăsta, clientul primea mailul de la „contact@…" în loc de
+  // „Manele Cadou" — brandul se pierdea exact în inbox, unde contează cel mai
+  // mult. Numele nu depinde de cine a chemat trimiterea, ci de site.
+  return ctx.fromName ? `${quoteDisplayName(ctx.fromName)} <${raw}>` : raw;
+}
+
+/**
+ * Numele afișat, ca `quoted-string` RFC 5322. Ghilimelele și backslash-urile din
+ * nume trebuie escapate, altfel un nume ca `Manele "Cadou"` ar rupe headerul
+ * From și mesajul ar fi respins.
+ */
+function quoteDisplayName(name: string): string {
+  return `"${name.trim().replace(/([\\"])/g, '\\$1')}"`;
 }
 
 function wrap(id: string): string {

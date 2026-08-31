@@ -35,7 +35,7 @@ function ctx(extra: Partial<ResolvedMailContext> = {}): ResolvedMailContext {
     siteSlug: 'default',
     fromEmail: 'contact@manelecadou.ro',
     fromName: 'Manele Cadou',
-    powermail: { apiKey: 'pm_live_test', unsubscribeGroup: 'marketing' },
+    powermail: { apiKey: 'pm_live_test', unsubscribeGroup: 'marketing', transactionalGroup: 'tranzactionale' },
     ...extra,
   };
 }
@@ -90,14 +90,35 @@ describe('PowerMailProvider', () => {
     assert.equal(res.messageId, 'abc-123@manelecadou.ro');
   });
 
-  test('categoria de dezabonare merge doar pe mailurile bulk', async () => {
-    let calls = stubFetch([{ status: 202, body: { id: 'x', status: 'queued' } }]);
-    await new PowerMailProvider().send(opts, ctx({ kind: 'recovery' }), mime());
-    assert.equal(calls[0].unsubscribeGroup, 'marketing');
+  test('bulk primește categoria de marketing, restul pe cea tranzacțională', async () => {
+    for (const kind of ['recovery', 'marketing_campaign', 'marketing_rule']) {
+      const calls = stubFetch([{ status: 202, body: { id: 'x', status: 'queued' } }]);
+      await new PowerMailProvider().send(opts, ctx({ kind }), mime());
+      assert.equal(calls[0].unsubscribeGroup, 'marketing', kind);
+    }
+    // Un „Unsubscribe" în Gmail nu are voie să taie livrarea unei melodii
+    // plătite — de-aia astea merg pe categoria din care nu te poți dezabona.
+    for (const kind of ['magic_link', 'generation_ready', 'payment_success', 'inbox_reply']) {
+      const calls = stubFetch([{ status: 202, body: { id: 'x', status: 'queued' } }]);
+      await new PowerMailProvider().send(opts, ctx({ kind }), mime());
+      assert.equal(calls[0].unsubscribeGroup, 'tranzactionale', kind);
+    }
+  });
 
-    calls = stubFetch([{ status: 202, body: { id: 'x', status: 'queued' } }]);
-    await new PowerMailProvider().send(opts, ctx({ kind: 'magic_link' }), mime());
-    assert.equal(calls[0].unsubscribeGroup, undefined);
+  test('un kind necunoscut e tratat ca tranzacțional, nu lăsat fără categorie', async () => {
+    const calls = stubFetch([{ status: 202, body: { id: 'x', status: 'queued' } }]);
+    await new PowerMailProvider().send(opts, ctx({ kind: undefined }), mime());
+    assert.equal(calls[0].unsubscribeGroup, 'tranzactionale');
+  });
+
+  test('numele site-ului ajunge în From chiar dacă apelantul dă doar adresa', async () => {
+    const calls = stubFetch([{ status: 202, body: { id: 'x', status: 'queued' } }]);
+    await new PowerMailProvider().send(
+      { ...opts, from: 'contact@manelecadou.ro' },
+      ctx({ fromName: 'Manele Cadou' }),
+      mime(),
+    );
+    assert.equal(calls[0].from, '"Manele Cadou" <contact@manelecadou.ro>');
   });
 
   test('destinatarii blocați nu sunt eroare — restul mesajului a plecat', async () => {

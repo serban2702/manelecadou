@@ -14,7 +14,7 @@ import { OutboundEmailModule } from '../modules/outbound-email/outbound-email.mo
 import { OutboundEmailService } from '../modules/outbound-email/outbound-email.service';
 import { StorageService } from '../storage/storage.service';
 
-export type MailSiteRef = Site | { id?: string; slug?: string; mailConfig?: SiteMailConfig; fromEmail?: string | null; supportEmail?: string | null } | null | undefined;
+export type MailSiteRef = Site | { id?: string; slug?: string; name?: string; mailConfig?: SiteMailConfig; fromEmail?: string | null; supportEmail?: string | null } | null | undefined;
 
 /**
  * Extra context care poate fi trimis la send() ca să rezolve providerul + credențialele.
@@ -124,7 +124,10 @@ export class MailerService {
       source: 'site',
       siteSlug: site?.slug,
       fromEmail: mc?.fromEmail || site?.fromEmail || undefined,
-      fromName: mc?.fromName || undefined,
+      // `site.name` ca rezervă: un tenant nou capătă automat numele lui ca
+      // expeditor, fără să depindă de cineva care ține minte să completeze
+      // `mailConfig.fromName`.
+      fromName: mc?.fromName || site?.name || undefined,
       replyTo: mc?.replyTo || undefined,
     };
   }
@@ -140,6 +143,7 @@ export class MailerService {
         apiKey: await this.settings.get('POWERMAIL_API_KEY'),
         apiUrl: (await this.settings.get('POWERMAIL_API_URL')) || undefined,
         unsubscribeGroup: (await this.settings.get('POWERMAIL_UNSUBSCRIBE_GROUP')) || undefined,
+        transactionalGroup: (await this.settings.get('POWERMAIL_TRANSACTIONAL_GROUP')) || undefined,
       },
     };
   }

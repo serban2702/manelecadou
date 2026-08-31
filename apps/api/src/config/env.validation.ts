@@ -38,6 +38,7 @@ const schema = z.object({
   POWERMAIL_API_KEY: z.string().optional().default(''),
   POWERMAIL_API_URL: z.string().optional().default(''),
   POWERMAIL_UNSUBSCRIBE_GROUP: z.string().optional().default(''),
+  POWERMAIL_TRANSACTIONAL_GROUP: z.string().optional().default(''),
 
   SUNO_PROVIDER: z.enum(['mock', 'real']).default('mock'),
   SUNO_API_BASE_URL: z.string().optional().default('https://api.sunoapi.org'),

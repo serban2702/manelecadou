@@ -422,13 +422,24 @@ export const SETTINGS_SCHEMA: SettingCategory[] = [
       },
       {
         key: 'POWERMAIL_UNSUBSCRIBE_GROUP',
-        label: 'Categorie de dezabonare',
+        label: 'Categorie marketing',
         kind: 'string',
         hotReload: true,
         group: 'PowerMail',
         placeholder: 'marketing',
         helpWhat:
-          'Slug-ul categoriei pusă pe mailurile de marketing și recovery. Fără ea, o dezabonare trece adresa pe lista neagră a întregului proiect — deci ar bloca și magic link-ul sau mailul cu melodia gata.',
+          'Slug-ul categoriei pusă pe mailurile de marketing și de recuperare comenzi. De la ea clientul chiar are voie să se dezaboneze.',
+        helpWhere: 'powermail.wingo.ro → proiect → Dezabonări → categorii',
+      },
+      {
+        key: 'POWERMAIL_TRANSACTIONAL_GROUP',
+        label: 'Categorie tranzacțională',
+        kind: 'string',
+        hotReload: true,
+        group: 'PowerMail',
+        placeholder: 'tranzactionale',
+        helpWhat:
+          'Slug-ul categoriei pusă pe restul mailurilor (magic link, plată, melodie gata). În panou trebuie bifată „tranzacțională", ca nimeni să nu-și taie livrarea apăsând „Unsubscribe" în Gmail. Gol = mesajele cad în categoria implicită a proiectului, care e dezabonabilă.',
         helpWhere: 'powermail.wingo.ro → proiect → Dezabonări → categorii',
       },
     ],

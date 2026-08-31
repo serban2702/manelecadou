@@ -17,7 +17,11 @@ type DraftMap = Record<string, DraftEntry>;
 
 const DEFAULT_TAB = 'keys';
 const SMTP_KEYS = new Set(['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_SECURE']);
-const POWERMAIL_KEYS = new Set(['POWERMAIL_API_URL', 'POWERMAIL_UNSUBSCRIBE_GROUP']);
+const POWERMAIL_KEYS = new Set([
+  'POWERMAIL_API_URL',
+  'POWERMAIL_UNSUBSCRIBE_GROUP',
+  'POWERMAIL_TRANSACTIONAL_GROUP',
+]);
 
 type SearchHit = {
   key: string;

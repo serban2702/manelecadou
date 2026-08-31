@@ -1389,13 +1389,22 @@ ușor la §14.
    statusul devine `suppressed` — tot 202. Fluxurile automate doar loghează;
    `MailSendService` (compose din Inbox, pornit de un om) aruncă, ca operatorul
    să nu creadă că a răspuns clientului.
-2. **Categoria de dezabonare contează mai mult decât pare.** PowerMail pune
-   `List-Unsubscribe` pe **toate** mesajele, iar o dezabonare **fără**
-   `unsubscribeGroup` trece adresa pe lista neagră a întregului proiect — adică
-   ar bloca și magic link-ul, și mailul cu melodia gata. De aceea doar
-   `marketing_campaign`, `marketing_rule` și `recovery` primesc grupul din
-   `POWERMAIL_UNSUBSCRIBE_GROUP`; dacă setarea e goală, nu se trimite deloc.
-   **Creează grupul în panou și pune-i slug-ul în setări.**
+2. **Fiecare mesaj pleacă cu o categorie de dezabonare explicită.** PowerMail
+   pune `List-Unsubscribe` pe **toate** mesajele, iar unul trimis fără categorie
+   cade în categoria implicită a proiectului — care e dezabonabilă. Un client
+   care apasă „Unsubscribe" în Gmail pe un mail de recuperare și-ar tăia și
+   magic link-ul, și livrarea melodiei plătite. Deci:
+
+   | Mesaj | Categorie |
+   |---|---|
+   | `marketing_campaign`, `marketing_rule`, `recovery` | `POWERMAIL_UNSUBSCRIBE_GROUP` (= `marketing`) |
+   | tot restul, inclusiv un `kind` necunoscut | `POWERMAIL_TRANSACTIONAL_GROUP` (= `tranzactionale`) |
+
+   Categoria tranzacțională trebuie bifată **„tranzacțională"** în panou, ca
+   nimeni să nu se poată dezabona de la ea. Categoriile se creează **doar din
+   panou** — `POST /v1/unsubscribe-groups` nu există. Împărțirea e în
+   `BULK_KINDS` din `powermail.provider.ts`; un `kind` nou nedeclarat acolo e
+   tratat ca tranzacțional, adică nedezabonabil — greșeala mai puțin costisitoare.
 3. **PowerMail nu acceptă MIME brut** (n-are endpoint de raw, spre deosebire de
    `messages.mime` al lui Mailgun). Primește câmpuri structurate, iar SES compune
    MIME-ul. MIME-ul construit de `buildMime` rămâne folosit pentru SMTP și
@@ -1427,6 +1436,15 @@ per-site, deci un site fără provider își pierdea tăcut numele de expeditor.
 PowerMail **nu are credențiale per-site**: o singură cheie de proiect, cu câte o
 identitate verificată per domeniu. Ecranul din admin (`/site` → Operațiuni →
 Mail) arată doar identitatea când e ales PowerMail.
+
+**Numele de expeditor se pune într-un singur loc**, `resolveFromHeader`. Aproape
+toate call-site-urile pasează `from: site.fromEmail`, adică o adresă simplă;
+înainte era returnată ca atare, deci mailurile tranzacționale ajungeau la client
+de la „contact@manelecadou.ro", fără brand — pe canalul cel mai citit. Acum
+numele se atașează acolo, din `mailConfig.fromName` → `site.name`, iar un `from`
+care are deja nume afișat (composeul din Inbox) e respectat ca atare. Un tenant
+nou capătă automat numele lui, fără să depindă de cineva care completează
+`fromName`.
 
 ---
 
