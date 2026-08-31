@@ -12,6 +12,7 @@ import {
   SunoSeparateResult,
   SunoTimestampedLyrics,
 } from '../suno.types';
+import { sunoTitle, occasionThemeEn, dedicationOpeningLines, introSkeletonTag } from '../suno-i18n';
 import { SunoLogService } from '../suno-log.service';
 
 /**
@@ -123,9 +124,9 @@ export class SunoRealProvider extends SunoProvider {
           : this.buildStyleTag(cleanInput),
         limits.style,
       );
-      const titleBase = cleanDedication
-        ? `Pentru ${cleanRecipient}, de la ${cleanDedication}`
-        : `Pentru ${cleanRecipient}`;
+      // Titlul urmează limba site-ului: pe chalgapodarok.bg pleca „Pentru Никола
+      // Недялков, de la От Калоян" — formulă românească peste nume bulgărești.
+      const titleBase = sunoTitle(cleanInput.site?.locale, cleanRecipient, cleanDedication);
       body.title = truncate(cleanInput.titleOverride?.trim() || titleBase, limits.title);
     } else {
       // Non-custom: Suno generează versurile pe baza prompt-ului. Limita e 500.
@@ -795,10 +796,8 @@ export class SunoRealProvider extends SunoProvider {
     const dedication = i.dedication.trim();
     const messageHook = condenseForOpening(i.message ?? '');
 
-    const openingLines = [
-      `De la ${dedication}, pentru ${recipient}, cu drag,`,
-      messageHook ? `${messageHook}.` : `Astăzi e o zi mare, vine inima cu mine.`,
-    ];
+    // Versuri, nu tag de stil: se CÂNTĂ. Urmează limba site-ului (vezi suno-i18n.ts).
+    const openingLines = dedicationOpeningLines(i.site?.locale, recipient, dedication, messageHook);
 
     // Verificăm dacă deschiderea cântată conține deja numele. Ne uităm la primele
     // rânduri sung din ÎNTREAGA piesă ([Spoken Intro] e și el rostit de voce, nu
@@ -845,7 +844,7 @@ export class SunoRealProvider extends SunoProvider {
     }
 
     // Lyrics-ul nu are [Verse 1]: construim un schelet minim valid pentru Suno.
-    return `[Intro: oriental synth taksim, accordion doina]\n[Verse 1]\n${openingLines.join('\n')}\n\n${lyrics}`;
+    return `${introSkeletonTag(i.site?.locale)}\n[Verse 1]\n${openingLines.join('\n')}\n\n${lyrics}`;
   }
 }
 
@@ -885,7 +884,13 @@ function modelLimits(model: string): {
 function occasionStyleHint(i: SunoGenerateInput): string {
   const extra = i.occasionPrompt?.trim();
   if (extra) return `, ${extra}`;
-  return i.occasion ? `, themed for ${i.occasion}` : '';
+  // Fără `sunoPrompt` configurat pe ocazie, aici ajungea IDENTIFICATORUL intern:
+  // „themed for zi" pe bulgară, „themed for genethlia" pe greacă — cuvinte fără
+  // sens pentru model, într-un tag altfel integral în engleză. Pe producție
+  // niciuna dintre cele 24 de ocazii bg/el nu are `sunoPrompt`, deci era cazul
+  // obișnuit, nu excepția. Traducem în engleză; ce nu putem traduce, omitem.
+  const theme = occasionThemeEn(i.occasion);
+  return theme ? `, themed for ${theme}` : '';
 }
 
 /** Style tag WYSIWYG (playground): păstrăm textul dat, doar aliniem genul vocal. */
