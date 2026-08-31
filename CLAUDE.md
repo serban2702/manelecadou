@@ -940,6 +940,8 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
 | `https://admin.manelecadou.ro`                | admin dashboard                          |
 | `https://manelecadou.ro/health`               | health check API (JSON)                  |
 | `https://manelecadou.ro/api/public/site`      | configul site-ului (rezolvat din `Host`) |
+| `https://manelecadou.ro/llms.txt`             | fișierul pentru asistenți AI, în limba site-ului |
+| `https://manelecadou.ro/llms/<locale>.txt`    | același fișier, în oricare din cele 8 limbi |
 | `https://manelecadou.ro/api/payments/webhook` | Stripe webhook (un singur cont)          |
 | `https://manelecadou.ro/uploads/<cale>`       | fișiere: disc → 302 spre R2 → proxy (§5.3)|
 | `https://files.manelecadou.ro/<cale>`         | R2 public, servit direct                 |
@@ -949,6 +951,14 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
 API-ul e expus **same-origin** pe orice domeniu de tenant: `/api/*`,
 `/socket.io/*`, `/health`, `/uploads/*`. **Nu există `api.manelecadou.ro`** —
 nu-l hardcoda nicăieri (§11.3).
+
+`llms.txt` se compune la fiecare cerere din configul tenantului (`lib/llms-txt.ts`
++ `lib/llms-response.ts`), deci prețurile și pachetele din el sunt cele din
+admin, fără deploy. Textul de cadru stă în `messages/<locale>.json` → cheia
+`llms`. ⚠️ Rutele au punct în cale, deci **nu trec prin `middleware.ts`**
+(matcher-ul exclude `.*\..*`): garda de `hiddenMode` / `maintenanceMode` e în
+`llmsTxtResponse`, nu în middleware. Orice altă rută-fișier adăugată de acum
+încolo are aceeași problemă.
 
 Endpoint-ul `/api/internal/caddy/ask` a rămas în cod, dar **nu mai e folosit**:
 era pentru TLS on-demand în Caddy. Pe Traefik certificatele se cer când domeniul
