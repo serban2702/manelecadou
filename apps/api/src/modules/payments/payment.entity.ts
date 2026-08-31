@@ -103,6 +103,16 @@ export class Payment {
   @Column({ type: 'timestamptz', nullable: true })
   capiPurchaseSentAt!: Date | null;
 
+  /**
+   * Idempotency lock pentru notificarea push trimisă owner-ului la plată
+   * (Wingo, același canal ca alertele de credite Suno). Stripe retrimite
+   * webhook-uri, iar fără lock owner-ul ar primi 2-3 notificări pentru aceeași
+   * plată. Setat atomic prin UPDATE ... WHERE ownerNotifiedAt IS NULL, exact ca
+   * `capiPurchaseSentAt` de mai sus.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  ownerNotifiedAt!: Date | null;
+
   // ============== Atribuire trafic (capturate la checkout creation) ==============
   // Leagă plata DIRECT de sesiunea de analytics care a generat-o, pentru atribuire
   // 100% precisă pe surse/campanii/device. Fără ele, atribuirea cade pe IP+fereastră

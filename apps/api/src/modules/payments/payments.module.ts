@@ -14,6 +14,7 @@ import { GuestSessionsModule } from '../guest-sessions/guest-sessions.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { MetaCapiModule } from '../meta-capi/meta-capi.module';
 import { FxModule } from '../fx/fx.module';
+import { WingoNotifyService } from '../suno/wingo-notify.service';
 
 @Module({
   imports: [
@@ -29,7 +30,14 @@ import { FxModule } from '../fx/fx.module';
     MetaCapiModule,
     FxModule,
   ],
-  providers: [PaymentsService],
+  providers: [
+    PaymentsService,
+    // Client HTTP fără stare (citește cheia din settings la fiecare trimitere),
+    // declarat local intenționat: importul lui SunoModule ar aduce controllerele
+    // Suno + JwtModule pentru un fișier de 80 de linii, iar SitesModule — pe care
+    // PaymentsModule îl importă deja — importă la rândul lui SunoModule.
+    WingoNotifyService,
+  ],
   controllers: [PaymentsController],
   exports: [PaymentsService, TypeOrmModule],
 })

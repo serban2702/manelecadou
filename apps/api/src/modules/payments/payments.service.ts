@@ -21,6 +21,7 @@ import { Site } from '../sites/site.entity';
 import { SitesService } from '../sites/sites.service';
 import { SettingsService } from '../settings/settings.service';
 import { GenerationsService } from '../generations/generations.service';
+import { Generation } from '../generations/generation.entity';
 import { CreateGenerationDto } from '../generations/dto/create-generation.dto';
 import { TiktokEventsService } from '../tiktok/tiktok-events.service';
 import { AnalyticsService } from '../analytics/analytics.service';
@@ -28,6 +29,8 @@ import { PaymentAttributionService } from '../analytics/payment-attribution.serv
 import { inferBuyerGender } from '../analytics/gender-infer';
 import { MetaCapiService } from '../meta-capi/meta-capi.service';
 import { FxRateService } from '../fx/fx-rate.service';
+import { WingoNotifyService } from '../suno/wingo-notify.service';
+import { buildPaymentTitle, buildPaymentBody } from './payment-notification';
 import {
   productName as i18nProductName,
   stripeUiLocale,
@@ -109,7 +112,108 @@ export class PaymentsService {
     private readonly moduleRef: ModuleRef,
     private readonly metaCapi: MetaCapiService,
     private readonly fx: FxRateService,
+    private readonly wingo: WingoNotifyService,
   ) {}
+
+  /**
+   * Notificare push către owner la fiecare plată reușită (Wingo — același canal
+   * și aceeași cheie ca alertele de credite Suno).
+   *
+   * Best-effort și idempotentă: Stripe retrimite webhook-uri, deci lock-ul
+   * atomic pe `ownerNotifiedAt` garantează O SINGURĂ notificare per plată. Nu
+   * aruncă niciodată — o notificare pierdută nu are voie să rupă webhook-ul,
+   * altfel Stripe reîncearcă și comanda s-ar putea procesa de două ori.
+   */
+  async notifyOwnerOfPayment(paymentId: string): Promise<void> {
+    try {
+      const lock = await this.repo
+        .createQueryBuilder()
+        .update(Payment)
+        .set({ ownerNotifiedAt: () => 'NOW()' })
+        .where('id = :id AND "ownerNotifiedAt" IS NULL', { id: paymentId })
+        .execute();
+      if (!lock.affected || lock.affected === 0) return; // deja notificat
+
+      const payment = await this.repo.findOne({ where: { id: paymentId } });
+      if (!payment) return;
+
+      const site = payment.siteId ? await this.sites.findById(payment.siteId).catch(() => null) : null;
+      // Comanda se leagă de plată prin `paymentId`; poate lipsi (refacere, upgrade).
+      const gen = await this.repo.manager
+        .getRepository(Generation)
+        .findOne({ where: { paymentId }, order: { createdAt: 'DESC' } })
+        .catch(() => null);
+
+      const tier = gen?.packageTier ?? null;
+      const packageLabel = tier
+        ? resolveSitePackage(site, tier as never, gen?.experienceSlug ?? null).label
+        : null;
+
+      const input = {
+        amountCents: payment.amount,
+        currency: payment.currency,
+        siteDomain: site?.domain ?? null,
+        siteName: site?.name ?? null,
+        customerEmail: payment.customerEmail ?? (gen ? await this.ownerEmailOf(gen) : null),
+        customerName: payment.customerName ?? null,
+        packageTier: tier,
+        packageLabel,
+        recipientName: gen?.recipientName ?? null,
+        style: gen?.style ?? null,
+        occasion: gen?.occasion ?? null,
+        voiceArtist: gen?.voiceArtist ?? null,
+        experienceSlug: payment.experienceSlug ?? gen?.experienceSlug ?? null,
+        generationId: gen?.id ?? null,
+        paymentId: payment.id,
+        amountRonCents: payment.amountRonCents ?? null,
+        kind: payment.remakeForGenerationId ? ('remake' as const) : ('order' as const),
+      };
+
+      await this.wingo.send({
+        title: buildPaymentTitle(input),
+        body: buildPaymentBody(input),
+        priority: 'high',
+        data: {
+          kind: 'payment_succeeded',
+          paymentId: payment.id,
+          siteId: payment.siteId,
+          siteDomain: site?.domain ?? null,
+          amountCents: payment.amount,
+          currency: payment.currency,
+          generationId: gen?.id ?? null,
+        },
+      });
+    } catch (err) {
+      this.logger.warn(`owner payment notification failed (${paymentId}): ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Emailul proprietarului comenzii, când Stripe nu ne-a dat unul
+   * (`customer_details.email` lipsește la unele metode de plată).
+   * `Generation` nu ține email — vine de pe user sau pe sesiunea de guest.
+   */
+  private async ownerEmailOf(gen: Generation): Promise<string | null> {
+    try {
+      if (gen.ownerUserId) {
+        const rows: Array<{ email: string | null }> = await this.repo.manager.query(
+          'SELECT email FROM users WHERE id = $1 LIMIT 1',
+          [gen.ownerUserId],
+        );
+        return rows[0]?.email ?? null;
+      }
+      if (gen.ownerGuestId) {
+        const rows: Array<{ email: string | null }> = await this.repo.manager.query(
+          'SELECT email FROM guest_sessions WHERE id = $1 LIMIT 1',
+          [gen.ownerGuestId],
+        );
+        return rows[0]?.email ?? null;
+      }
+    } catch {
+      /* best-effort — notificarea pleacă și fără email */
+    }
+    return null;
+  }
 
   /** Snapshot de atribuire + câmpurile de pe Payment, gata de `repo.create`. */
   private async attributionFields(input: {
@@ -294,6 +398,7 @@ export class PaymentsService {
     if (input.generationId) {
       try {
         await this.generations.markPaidAndQueue(input.generationId, payment.id);
+        void this.notifyOwnerOfPayment(payment.id);
       } catch (err) {
         this.logger.error(`free-checkout markPaidAndQueue failed: ${(err as Error).message}`);
       }
@@ -777,6 +882,10 @@ export class PaymentsService {
       if (metaSiteId) update.siteId = metaSiteId;
 
       await this.repo.update({ id: paymentId }, update);
+
+      // Notificare push către owner — o singură dată per plată (lock atomic
+      // înăuntru). Deliberat `void`: nu ținem webhook-ul Stripe în loc pentru ea.
+      if (isPaid) void this.notifyOwnerOfPayment(paymentId);
 
       // Plăți create înainte de snapshot (sau chat fără sesiune la create):
       // rezolvăm o dată, la paid. Nu rescriem un snapshot deja înghețat.
