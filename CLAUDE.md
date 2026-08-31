@@ -929,7 +929,19 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
     **înainte** de a relua deploy-ul — altfel intri în aceeași groapă. Un deploy
     eșuat merită întotdeauna un `curl` pe domenii, nu doar o privire în loguri:
     starea „failed" nu spune dacă producția a rămas sus sau nu.
-29. **O funcționalitate scoasă de pe site lasă urme în cinci locuri.** Codurile cadou aveau: modul de API cu rute publice, metode în SDK-ul web fără apelanți, un tabel gol în producție, o coloană de configurare în admin și — cel mai grav — o clauză în termeni, publicată în 8 limbi, despre o taxă inexistentă. Când scoți ceva, urmărește-l până la capăt: `apps/api/src/modules/`, `apps/web/lib/api.ts`, `apps/web/messages/*.json`, ecranele din admin, `app_settings` și schema.
+29. **O setare nouă se pune DUPĂ ce deployezi codul care o declară** — și
+    `PATCH /api/admin/settings` nu-ți spune că n-a aplicat-o. `update()` face
+    `const def = findDef(u.key); if (!def) continue` (ignoră cheile care nu sunt
+    în `SETTINGS_SCHEMA`), dar răspunsul numără cheile **trimise**, nu pe cele
+    scrise: primești `{"ok":true,"count":1}` pentru o setare care n-a ajuns
+    niciodată în `app_settings`. Pățit la migrarea pe PowerMail: am setat
+    `POWERMAIL_TRANSACTIONAL_GROUP` înainte de deploy, „a mers", și mailurile au
+    continuat să plece pe categoria implicită. Verifică întotdeauna în bază după
+    o setare nouă:
+    ```bash
+    deploy/prod.sh psql "SELECT key, value FROM app_settings WHERE key = 'CHEIA_TA'"
+    ```
+30. **O funcționalitate scoasă de pe site lasă urme în cinci locuri.** Codurile cadou aveau: modul de API cu rute publice, metode în SDK-ul web fără apelanți, un tabel gol în producție, o coloană de configurare în admin și — cel mai grav — o clauză în termeni, publicată în 8 limbi, despre o taxă inexistentă. Când scoți ceva, urmărește-l până la capăt: `apps/api/src/modules/`, `apps/web/lib/api.ts`, `apps/web/messages/*.json`, ecranele din admin, `app_settings` și schema.
 ---
 
 ## 13. Endpoint-uri utile
@@ -1405,6 +1417,12 @@ ușor la §14.
    panou** — `POST /v1/unsubscribe-groups` nu există. Împărțirea e în
    `BULK_KINDS` din `powermail.provider.ts`; un `kind` nou nedeclarat acolo e
    tratat ca tranzacțional, adică nedezabonabil — greșeala mai puțin costisitoare.
+
+   Ce e configurat în producție (31 aug 2026): `marketing` și `tranzactionale`.
+   Verificarea că un mesaj a plecat pe categoria corectă se face pe răspunsul
+   `GET /v1/emails/{id}`, în `metadata._unsubscribeGroupId` — nu există un câmp
+   `unsubscribeGroup` în răspuns, deci un mesaj căzut pe categoria implicită
+   arată identic cu unul corect dacă nu te uiți acolo.
 3. **PowerMail nu acceptă MIME brut** (n-are endpoint de raw, spre deosebire de
    `messages.mime` al lui Mailgun). Primește câmpuri structurate, iar SES compune
    MIME-ul. MIME-ul construit de `buildMime` rămâne folosit pentru SMTP și
