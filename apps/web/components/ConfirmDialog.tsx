@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 
 interface ConfirmState {
   title: string;
@@ -24,6 +25,7 @@ export function confirmDialog(opts: Omit<ConfirmState, 'resolve'>): Promise<bool
 }
 
 export function ConfirmDialogProvider() {
+  const t = useTranslations('common');
   const [state, setState] = useState<ConfirmState | null>(null);
 
   useEffect(() => {
@@ -90,7 +92,7 @@ export function ConfirmDialogProvider() {
             className="btn btn-ghost btn-sm"
             onClick={() => close(false)}
           >
-            {state.cancelText ?? 'Anulează'}
+            {state.cancelText ?? t('cancel')}
           </button>
           <button
             type="button"
@@ -98,7 +100,7 @@ export function ConfirmDialogProvider() {
             className={destructive ? 'btn btn-rose btn-sm' : 'btn btn-gold btn-sm'}
             onClick={() => close(true)}
           >
-            {state.confirmText ?? 'Confirmă'}
+            {state.confirmText ?? t('confirm')}
           </button>
         </div>
       </div>

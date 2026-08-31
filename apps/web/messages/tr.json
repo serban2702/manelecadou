@@ -13,7 +13,9 @@
     "share": "Paylaş",
     "copy": "Kopyala",
     "copied": "Kopyalandı!",
-    "ctaMakeManeaPlain": "🎤 Şarkı yap"
+    "ctaMakeManeaPlain": "🎤 Şarkı yap",
+    "confirm": "Onayla",
+    "endsIn": "Bitiş"
   },
   "urgency": "SINIRLI TEKLİF — şarkı <s>{compareAt}</s> <b>{price}</b>",
   "urgencyPlain": "SINIRLI TEKLİF — şarkı <b>{price}</b>",
@@ -360,7 +362,8 @@
       "title": "Şimdi dinle",
       "sub": "6 örnek — herhangi birine ▶ bas.",
       "viewAll": "Tüm şarkıları gör →"
-    }
+    },
+    "listenDemoHint": "Demo dinle"
   },
   "generator": {
     "steps": [
@@ -600,7 +603,10 @@
     "openPage": "Sayfayı aç →",
     "listen": "Şarkıyı dinle →",
     "edited": "(düzenlendi)",
-    "typing": "Operatör yazıyor..."
+    "typing": "Operatör yazıyor...",
+    "viewSong": "🎵 Şarkıyı gör →",
+    "paySecure": "💳 Güvenli ödeme",
+    "payNow": "Şimdi öde →"
   },
   "topPage": {
     "flag": "Top Türkiye",
@@ -916,7 +922,51 @@
     "retryPaymentCta": "Ödemeyi tekrar başlat",
     "retryPaymentCtaPrice": "Ödemeyi tekrar başlat — {amount}",
     "promoApplied": "{code} koduyla −%{percent} indirim otomatik uygulandı",
-    "collageDropHint": "en fazla {count} görsel · her biri {mb}MB'a kadar · JPG / PNG / WEBP"
+    "collageDropHint": "en fazla {count} görsel · her biri {mb}MB'a kadar · JPG / PNG / WEBP",
+    "shareTitle": "Paylaş",
+    "shareSub": "Şarkıyı alıcıya veya arkadaşlarına gönder.",
+    "shareSent": "✓ Gönderildi",
+    "shareNativeCta": "📤 Birine gönder",
+    "shareCopied": "✓ Kopyalandı",
+    "shareCopyCta": "🔗 Bağlantıyı kopyala",
+    "shareInstagramHint": "💡 Instagram için: bağlantıyı kopyala, uygulamayı aç ve story ya da bio'ya yapıştır.",
+    "shareText": "🎵 {name} için kişiye özel şarkıyı dinle",
+    "shareNativeTitle": "Şarkım",
+    "ivCta": "🎬 Bu fotoğrafla video yap",
+    "ivErrStart": "Videoyu başlatamadık. Tekrar dene.",
+    "ivDoneTitle": "🎬 Videon",
+    "download": "⬇ İndir",
+    "ivAgain": "🔁 Başka yap",
+    "ivWorking": "Video oluşturuluyor…",
+    "ivWorkingHint": "Birkaç dakika sürer — sayfayı kapatabilirsin.",
+    "ivFailed": "😕 Video oluşturulamadı. Bir kez daha dene.",
+    "ivRetry": "🔁 Tekrar dene",
+    "trackQuestion": "Hangi şarkıya?",
+    "version2": "Versiyon 2 🎁",
+    "formatLabel": "Format",
+    "submitting": "Gönderiliyor…",
+    "ivGenerate": "🎬 Oluştur",
+    "collageErrImagesOnly": "Yalnızca resim dosyası sürükle (JPG, PNG, WEBP…).",
+    "collageErrTooMany": "En fazla {limit} fotoğraf seçebilirsin. {picked} seçtin.",
+    "collageErrTooBig": "„{name}\" {mb}MB sınırını aşıyor. Daha küçük fotoğraflar seç.",
+    "collageErrNone": "En az bir fotoğraf seç.",
+    "collageErrStart": "Kolajı başlatamadık. Tekrar dene.",
+    "collageLabelImageVideo": "🖼️ Tek fotoğraflı video",
+    "collageLabelCollage": "🎞️ Fotoğraflarınla kolaj",
+    "collageLabelCollageCount": "🎞️ Fotoğraflarınla kolaj · {count} fotoğraf",
+    "collageGalleryTitle": "🎞️ Video kolajların",
+    "collageWorkingTitle": "🎞️ Video kolajın",
+    "collageWorking": "Kolajını hazırlıyoruz…",
+    "collageWorkingSteps": "🖼️ Fotoğrafları diziyoruz · 🎬 Geçişleri ekliyoruz · 🎵 Şarkıyla eşliyoruz",
+    "collageWorkingHint": "Birkaç dakika sürer. <b>Hazır olunca e-posta da alacaksın</b> — sayfayı kapatabilirsin.",
+    "collageFormTitle": "🎞️ Video kolajını yap",
+    "collageFormTitleMore": "🎞️ Bir video kolaj daha yap",
+    "collageFormSub": "Fotoğraflarını yükle, şarkına video olarak montajlayalım.",
+    "collageDropSelected": "📷 {count} fotoğraf seçildi — değiştirmek için bas",
+    "collageDropActive": "Fotoğrafları buraya bırak",
+    "collageDropIdle": "Fotoğrafları buraya sürükle ya da seçmek için bas",
+    "collageSubmit": "🎬 Kolajı oluştur",
+    "imageAlt": "Görsel {n}"
   },
   "cursorHint": {
     "default": "Buraya bas"
@@ -1718,5 +1768,45 @@
         "errSave": "Şifreyi kaydedemedik."
       }
     }
+  },
+  "videoPlayer": {
+    "unsupported": "Video burada oynatılamıyor.",
+    "downloadVideo": "⬇ Videoyu indir",
+    "openNewTab": "↗ Yeni sekmede aç",
+    "play": "Oynat",
+    "pause": "Duraklat",
+    "unmute": "Sesi aç",
+    "mute": "Sesi kapat",
+    "downloadAria": "Videoyu indir"
+  },
+  "player": {
+    "previewNotice": "🔒 {sec}s önizleme — tam dinlemek için şarkının kilidini aç.",
+    "downloadMp3": "MP3 indir"
+  },
+  "openReplay": {
+    "assistConfirm": "{brand} ekibi sana yardım etmek için ekranını görmek istiyor. Kabul ediyor musun?",
+    "assistAccept": "Kabul ediyorum",
+    "assistDecline": "Reddediyorum"
+  },
+  "unsubscribePage": {
+    "title": "Abonelikten çık",
+    "loading": "Yükleniyor...",
+    "invalid": "Abonelikten çıkma bağlantısı geçersiz ya da süresi dolmuş. Bu e-postaları almak istemiyorsan, en son aldığın e-postadaki bağlantıyı kullan.",
+    "question": "<s>{site}</s> sitesindeki <b>tamamlanmamış siparişinle</b> ilgili e-postaları almayı bırakmak ister misin?",
+    "confirmHint": "Onaylamak için e-postayı aldığın tam adresi yaz (<b>{masked}</b>).",
+    "emailLabel": "E-posta adresin",
+    "reasonLabel": "Sebep (isteğe bağlı)",
+    "reasonPick": "— Bir sebep seç —",
+    "reasonBought": "Zaten satın aldım",
+    "reasonTooMany": "Çok fazla e-posta",
+    "reasonNotInterested": "Artık ilgilenmiyorum",
+    "reasonOther": "Diğer",
+    "errEmail": "Lütfen tam e-posta adresini gir.",
+    "errMismatch": "Girdiğin adres, e-postanın gönderildiği adresle eşleşmiyor. Kontrol edip tekrar dene.",
+    "errNetwork": "Bir ağ hatası oluştu. Lütfen tekrar dene.",
+    "submitting": "İşleniyor...",
+    "submit": "Abonelikten çıkmayı onayla",
+    "doneTitle": "✅ Tamamlanmamış siparişlerle ilgili e-postalardan çıkarıldın.",
+    "doneSub": "Ödenmiş siparişlerle ilgili e-postalar (ödeme onayı, hazır şarkı) gelmeye devam eder."
   }
 }

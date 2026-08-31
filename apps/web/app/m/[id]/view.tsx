@@ -823,6 +823,7 @@ function PaymentRetrySection({
  * (Facebook, WhatsApp, X/Twitter, Copy link).
  */
 function ShareSection({ generationId, recipientName, imageUrl }: { generationId: string; recipientName: string; imageUrl?: string | null }) {
+  const t = useTranslations('mViewPage');
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
 
@@ -835,7 +836,7 @@ function ShareSection({ generationId, recipientName, imageUrl }: { generationId:
     return window.location.href;
   }
   function getText() {
-    return `🎵 Ascultă maneaua personalizată pentru ${recipientName}`;
+    return t('shareText', { name: recipientName });
   }
 
   /** Încearcă să atașeze poza de share la Web Share API (share nativ cu fișier).
@@ -854,7 +855,7 @@ function ShareSection({ generationId, recipientName, imageUrl }: { generationId:
 
   async function tryNativeShare() {
     if (typeof navigator === 'undefined' || !('share' in navigator)) return false;
-    const payload: ShareData = { title: 'Maneaua mea', text: getText(), url: getUrl() };
+    const payload: ShareData = { title: t('shareNativeTitle'), text: getText(), url: getUrl() };
     const file = await buildShareFile();
     if (file && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
       (payload as ShareData & { files: File[] }).files = [file];
@@ -888,10 +889,10 @@ function ShareSection({ generationId, recipientName, imageUrl }: { generationId:
       border: '1px solid rgba(241,200,77,0.2)',
     }}>
       <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
-        Share
+        {t('shareTitle')}
       </div>
       <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
-        Trimite-i melodia destinatarului sau prietenilor.
+        {t('shareSub')}
       </div>
 
       {hasNative && (
@@ -901,7 +902,7 @@ function ShareSection({ generationId, recipientName, imageUrl }: { generationId:
           className="btn btn-gold"
           style={{ width: '100%', marginBottom: 10 }}
         >
-          {shared ? '✓ Trimis' : '📤 Trimite cuiva'}
+          {shared ? t('shareSent') : t('shareNativeCta')}
         </button>
       )}
 
@@ -959,12 +960,12 @@ function ShareSection({ generationId, recipientName, imageUrl }: { generationId:
             cursor: 'pointer', fontSize: 13, fontWeight: 600,
           }}
         >
-          {copied ? '✓ Copiat' : '🔗 Copiază link'}
+          {copied ? t('shareCopied') : t('shareCopyCta')}
         </button>
       </div>
 
       <div style={{ fontSize: 11, opacity: 0.6, marginTop: 10, lineHeight: 1.4 }}>
-        💡 Pentru Instagram: copiază linkul, deschide app-ul și lipește-l în story sau bio.
+        {t('shareInstagramHint')}
       </div>
     </div>
   );
@@ -988,6 +989,7 @@ function ImageVideoLauncher({
   selected: string | null;
   password?: string;
 }) {
+  const t = useTranslations('mViewPage');
   const [iv2Open, setIv2Open] = useState(false);
   if (!isOwner || !selected) return null;
   return (
@@ -1001,7 +1003,7 @@ function ImageVideoLauncher({
           minHeight: 46, lineHeight: 1.25, padding: '11px 14px', textAlign: 'center',
         }}
       >
-        🎬 Fă videoclip cu imaginea asta
+        {t('ivCta')}
       </button>
 
       {iv2Open && (
@@ -1037,6 +1039,7 @@ function ImageVideoPanel({
   imageUrl: string;
   password?: string;
 }) {
+  const t = useTranslations('mViewPage');
   const g = generation;
   const hasBonus = !!(g.bonusAudioUrl || g.videoUrlBonus);
   const [trackChoice, setTrackChoice] = useState<'main' | 'bonus'>('main');
@@ -1069,7 +1072,7 @@ function ImageVideoPanel({
       setJob({ id: r.collageId, status: (r.status as CollageDto['status']) ?? 'pending', kind: 'image_video' });
       setPolling(true);
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : 'Nu am putut porni videoclipul. Încearcă din nou.');
+      setErr(e instanceof ApiError ? e.message : t('ivErrStart'));
     } finally {
       setSubmitting(false);
     }
@@ -1085,14 +1088,14 @@ function ImageVideoPanel({
     const resolved = resolveMediaUrl(job.videoUrl)!;
     return (
       <div style={panelStyle}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gold)', marginBottom: 8 }}>🎬 Videoclipul tău</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gold)', marginBottom: 8 }}>{t('ivDoneTitle')}</div>
         <VideoPlayer src={resolved} poster={resolveMediaUrl(imageUrl) ?? undefined} />
         <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
           <a href={resolved} download onClick={() => trackEvent({ type: 'image_download', props: { generationId: g.id, kind: 'video' } })} className="btn btn-gold" style={{ flex: '1 1 140px', textAlign: 'center', textDecoration: 'none' }}>
-            ⬇ Descarcă
+            {t('download')}
           </a>
           <button type="button" onClick={() => { setJob(null); setPolling(false); }} className="btn btn-ghost" style={{ flex: '1 1 140px' }}>
-            🔁 Fă altul
+            {t('ivAgain')}
           </button>
         </div>
       </div>
@@ -1109,7 +1112,7 @@ function ImageVideoPanel({
             border: '4px solid rgba(241,200,77,0.18)', borderTopColor: 'var(--gold)',
             animation: 'spin 0.9s linear infinite',
           }} />
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--gold-2)' }}>Se generează videoclipul…</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--gold-2)' }}>{t('ivWorking')}</div>
           <div style={{
             width: '100%', maxWidth: 320, height: 8, borderRadius: 999, overflow: 'hidden',
             background: 'rgba(241,200,77,0.12)', position: 'relative',
@@ -1121,7 +1124,7 @@ function ImageVideoPanel({
             }} />
           </div>
           <div style={{ fontSize: 12.5, color: 'rgba(255,245,220,0.6)' }}>
-            Durează câteva minute — poți închide pagina.
+            {t('ivWorkingHint')}
           </div>
         </div>
         <style>{`@keyframes collageShimmer { 0% { left: -45%; } 100% { left: 100%; } }`}</style>
@@ -1133,10 +1136,10 @@ function ImageVideoPanel({
     return (
       <div style={panelStyle}>
         <div style={{ fontSize: 13, color: '#ffb3b3', marginBottom: 10 }}>
-          😕 Videoclipul nu a putut fi generat. Mai încearcă o dată.
+          {t('ivFailed')}
         </div>
         <button type="button" onClick={() => { setJob(null); setPolling(false); }} className="btn btn-gold" style={{ width: '100%' }}>
-          🔁 Încearcă din nou
+          {t('ivRetry')}
         </button>
       </div>
     );
@@ -1147,11 +1150,11 @@ function ImageVideoPanel({
     <div style={panelStyle}>
       {hasBonus && (
         <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Pe ce melodie?</div>
+          <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>{t('trackQuestion')}</div>
           <div style={{ display: 'flex', gap: 8 }}>
             {([
-              { value: 'main', label: 'Versiunea 1' },
-              { value: 'bonus', label: 'Versiunea 2 🎁' },
+              { value: 'main', label: t('version1') },
+              { value: 'bonus', label: t('version2') },
             ] as const).map((opt) => {
               const active = trackChoice === opt.value;
               return (
@@ -1175,7 +1178,7 @@ function ImageVideoPanel({
       )}
 
       <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Format</div>
+        <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>{t('formatLabel')}</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {IV_ASPECTS.map((opt) => {
             const active = aspect === opt.value;
@@ -1205,7 +1208,7 @@ function ImageVideoPanel({
         className="btn btn-gold"
         style={{ width: '100%', cursor: submitting ? 'wait' : 'pointer', opacity: submitting ? 0.7 : 1 }}
       >
-        {submitting ? 'Se trimite…' : '🎬 Generează'}
+        {submitting ? t('submitting') : t('ivGenerate')}
       </button>
 
       {err && <div style={{ marginTop: 8, fontSize: 12, color: '#ff8888' }}>{err}</div>}
@@ -1294,17 +1297,17 @@ function CollageSection({
   function acceptFiles(all: File[]) {
     const picked = all.filter((f) => f.type.startsWith('image/'));
     if (picked.length === 0) {
-      if (all.length > 0) setErr('Trage doar fișiere imagine (JPG, PNG, WEBP…).');
+      if (all.length > 0) setErr(t('collageErrImagesOnly'));
       return;
     }
     setErr(null);
     if (limit > 0 && picked.length > limit) {
-      setErr(`Poți alege maxim ${limit} imagini. Ai selectat ${picked.length}.`);
+      setErr(t('collageErrTooMany', { limit, picked: picked.length }));
       return;
     }
     const tooBig = picked.find((f) => f.size > MAX_COLLAGE_FILE_BYTES);
     if (tooBig) {
-      setErr(`„${tooBig.name}" depășește 10MB. Alege imagini mai mici.`);
+      setErr(t('collageErrTooBig', { name: tooBig.name, mb: MAX_COLLAGE_FILE_MB }));
       return;
     }
     // Eliberează preview-urile vechi și creează altele noi.
@@ -1320,7 +1323,7 @@ function CollageSection({
   }
 
   async function submit() {
-    if (files.length === 0) { setErr('Alege cel puțin o imagine.'); return; }
+    if (files.length === 0) { setErr(t('collageErrNone')); return; }
     setSubmitting(true);
     setErr(null);
     try {
@@ -1335,7 +1338,7 @@ function CollageSection({
       setFiles([]);
       setPreviews([]);
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : 'Nu am putut porni generarea colajului. Încearcă din nou.');
+      setErr(e instanceof ApiError ? e.message : t('collageErrStart'));
     } finally {
       setSubmitting(false);
     }
@@ -1358,8 +1361,10 @@ function CollageSection({
   const working = collages.filter((c) => c.status === 'pending' || c.status === 'processing');
   const collageLabel = (c: CollageDto) =>
     c.kind === 'image_video'
-      ? '🖼️ Videoclip cu o poză'
-      : `🎞️ Colaj cu pozele tale${c.imageCount ? ` · ${c.imageCount} poze` : ''}`;
+      ? t('collageLabelImageVideo')
+      : c.imageCount
+        ? t('collageLabelCollageCount', { count: c.imageCount })
+        : t('collageLabelCollage');
 
   // Formularul de creare apare doar owner-ului care a cumpărat colajul.
   const showForm = isOwner && canCreate && limit > 0;
@@ -1372,7 +1377,7 @@ function CollageSection({
       {/* Galerie: TOATE colajele gata (cele cu poze primele). */}
       {done.length > 0 && (
         <div style={sectionStyle}>
-          <div style={headerStyle}>🎞️ Colajele tale video</div>
+          <div style={headerStyle}>{t('collageGalleryTitle')}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             {done.map((c) => {
               const resolved = resolveMediaUrl(c.videoUrl!)!;
@@ -1389,7 +1394,7 @@ function CollageSection({
                     className="btn btn-gold"
                     style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: 8 }}
                   >
-                    ⬇ Descarcă
+                    {t('download')}
                   </a>
                 </div>
               );
@@ -1401,7 +1406,7 @@ function CollageSection({
       {/* Colaj(e) în lucru — card animat. */}
       {working.length > 0 && (
         <div style={sectionStyle}>
-          <div style={headerStyle}>🎞️ Colajul tău video</div>
+          <div style={headerStyle}>{t('collageWorkingTitle')}</div>
           <div style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
             padding: '22px 12px 18px', gap: 14,
@@ -1412,7 +1417,7 @@ function CollageSection({
               animation: 'spin 0.9s linear infinite',
             }} />
             <div style={{ fontFamily: "'Cinzel', serif", fontSize: 17, fontWeight: 700, color: 'var(--gold-2)' }}>
-              Îți montăm colajul…
+              {t('collageWorking')}
             </div>
             <div style={{
               width: '100%', maxWidth: 320, height: 8, borderRadius: 999, overflow: 'hidden',
@@ -1425,9 +1430,10 @@ function CollageSection({
               }} />
             </div>
             <div style={{ fontSize: 12.5, lineHeight: 1.6, color: 'rgba(255,245,220,0.6)', maxWidth: 340 }}>
-              🖼️ Aranjăm pozele · 🎬 Adăugăm tranziții · 🎵 Sincronizăm pe melodie<br />
-              Durează câteva minute. <b style={{ color: 'var(--gold-2)' }}>Primești și pe email</b> când e gata —
-              poți închide pagina.
+              {t('collageWorkingSteps')}<br />
+              {t.rich('collageWorkingHint', {
+                b: (chunks) => <b style={{ color: 'var(--gold-2)' }}>{chunks}</b>,
+              })}
             </div>
           </div>
           <style>{`
@@ -1442,19 +1448,19 @@ function CollageSection({
       {/* Formular de creare (owner cu drept din pachet) — mereu disponibil ca să poată face altul. */}
       {showForm && (
     <div style={sectionStyle}>
-      <div style={headerStyle}>🎞️ Fă-ți {done.length > 0 ? 'încă un' : 'un'} colaj video</div>
+      <div style={headerStyle}>{done.length > 0 ? t('collageFormTitleMore') : t('collageFormTitle')}</div>
       <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
-        Încarcă-ți pozele și le montăm într-un videoclip pe melodia ta.
+        {t('collageFormSub')}
       </div>
 
       {/* Alegerea melodiei */}
       {hasBonus && (
         <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Pe ce melodie?</div>
+          <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>{t('trackQuestion')}</div>
           <div style={{ display: 'flex', gap: 8 }}>
             {([
-              { value: 'main', label: 'Versiunea 1' },
-              { value: 'bonus', label: 'Versiunea 2 🎁' },
+              { value: 'main', label: t('version1') },
+              { value: 'bonus', label: t('version2') },
             ] as const).map((opt) => {
               const active = trackChoice === opt.value;
               return (
@@ -1486,7 +1492,7 @@ function CollageSection({
 
       {/* Format (raport de aspect) — obligatoriu. */}
       <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Format</div>
+        <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>{t('formatLabel')}</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {IV_ASPECTS.map((opt) => {
             const active = aspect === opt.value;
@@ -1542,8 +1548,8 @@ function CollageSection({
         <div style={{ fontSize: 28, lineHeight: 1 }}>{dragOver ? '📥' : '🖼️'}</div>
         <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--gold-2)' }}>
           {files.length > 0
-            ? `📷 ${files.length} imagini selectate — apasă să schimbi`
-            : dragOver ? 'Dă drumul pozelor aici' : 'Trage pozele aici sau apasă să alegi'}
+            ? t('collageDropSelected', { count: files.length })
+            : dragOver ? t('collageDropActive') : t('collageDropIdle')}
         </div>
         <div style={{ fontSize: 11.5, color: 'rgba(255,245,220,0.5)' }}>
           {t('collageDropHint', { count: limit, mb: MAX_COLLAGE_FILE_MB })}
@@ -1557,7 +1563,7 @@ function CollageSection({
             <img
               key={src + i}
               src={src}
-              alt={`Imagine ${i + 1}`}
+              alt={t('imageAlt', { n: i + 1 })}
               style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: 6, display: 'block', background: '#000' }}
             />
           ))}
@@ -1572,7 +1578,7 @@ function CollageSection({
           className="btn btn-gold"
           style={{ width: '100%', marginTop: 12, cursor: submitting ? 'wait' : 'pointer', opacity: submitting ? 0.7 : 1 }}
         >
-          {submitting ? 'Se trimite…' : '🎬 Generează colajul'}
+          {submitting ? t('submitting') : t('collageSubmit')}
         </button>
       )}
 

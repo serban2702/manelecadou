@@ -13,7 +13,9 @@
     "share": "Distribuie",
     "copy": "Copiază",
     "copied": "Copiat!",
-    "ctaMakeManeaPlain": "🎤 Fă o manea"
+    "ctaMakeManeaPlain": "🎤 Fă o manea",
+    "confirm": "Confirmă",
+    "endsIn": "Se termină în"
   },
   "urgency": "Ofertă limitată — generare manea de la <s>{compareAt}</s> <b>{price}</b>",
   "urgencyPlain": "Ofertă limitată — generare manea de la <b>{price}</b>",
@@ -360,7 +362,8 @@
       "title": "Ascultă acum",
       "sub": "6 exemple — apasă ▶ pe oricare.",
       "viewAll": "Vezi toate manelele →"
-    }
+    },
+    "listenDemoHint": "Ascultă demo"
   },
   "generator": {
     "steps": [
@@ -600,7 +603,10 @@
     "openPage": "Deschide pagina →",
     "listen": "Ascultă maneaua →",
     "edited": "(editat)",
-    "typing": "Operatorul scrie..."
+    "typing": "Operatorul scrie...",
+    "viewSong": "🎵 Vezi melodia →",
+    "paySecure": "💳 Plată sigură",
+    "payNow": "Plătește acum →"
   },
   "topPage": {
     "flag": "Top România",
@@ -916,7 +922,51 @@
     "retryPaymentCta": "Reia plata",
     "retryPaymentCtaPrice": "Reia plata — {amount}",
     "promoApplied": "Reducere −{percent}% aplicată automat cu codul {code}",
-    "collageDropHint": "max {count} imagini · până la {mb}MB fiecare · JPG / PNG / WEBP"
+    "collageDropHint": "max {count} imagini · până la {mb}MB fiecare · JPG / PNG / WEBP",
+    "shareTitle": "Share",
+    "shareSub": "Trimite-i melodia destinatarului sau prietenilor.",
+    "shareSent": "✓ Trimis",
+    "shareNativeCta": "📤 Trimite cuiva",
+    "shareCopied": "✓ Copiat",
+    "shareCopyCta": "🔗 Copiază link",
+    "shareInstagramHint": "💡 Pentru Instagram: copiază linkul, deschide app-ul și lipește-l în story sau bio.",
+    "shareText": "🎵 Ascultă maneaua personalizată pentru {name}",
+    "shareNativeTitle": "Maneaua mea",
+    "ivCta": "🎬 Fă videoclip cu imaginea asta",
+    "ivErrStart": "Nu am putut porni videoclipul. Încearcă din nou.",
+    "ivDoneTitle": "🎬 Videoclipul tău",
+    "download": "⬇ Descarcă",
+    "ivAgain": "🔁 Fă altul",
+    "ivWorking": "Se generează videoclipul…",
+    "ivWorkingHint": "Durează câteva minute — poți închide pagina.",
+    "ivFailed": "😕 Videoclipul nu a putut fi generat. Mai încearcă o dată.",
+    "ivRetry": "🔁 Încearcă din nou",
+    "trackQuestion": "Pe ce melodie?",
+    "version2": "Versiunea 2 🎁",
+    "formatLabel": "Format",
+    "submitting": "Se trimite…",
+    "ivGenerate": "🎬 Generează",
+    "collageErrImagesOnly": "Trage doar fișiere imagine (JPG, PNG, WEBP…).",
+    "collageErrTooMany": "Poți alege maxim {limit} imagini. Ai selectat {picked}.",
+    "collageErrTooBig": "„{name}\" depășește {mb}MB. Alege imagini mai mici.",
+    "collageErrNone": "Alege cel puțin o imagine.",
+    "collageErrStart": "Nu am putut porni generarea colajului. Încearcă din nou.",
+    "collageLabelImageVideo": "🖼️ Videoclip cu o poză",
+    "collageLabelCollage": "🎞️ Colaj cu pozele tale",
+    "collageLabelCollageCount": "🎞️ Colaj cu pozele tale · {count} poze",
+    "collageGalleryTitle": "🎞️ Colajele tale video",
+    "collageWorkingTitle": "🎞️ Colajul tău video",
+    "collageWorking": "Îți montăm colajul…",
+    "collageWorkingSteps": "🖼️ Aranjăm pozele · 🎬 Adăugăm tranziții · 🎵 Sincronizăm pe melodie",
+    "collageWorkingHint": "Durează câteva minute. <b>Primești și pe email</b> când e gata — poți închide pagina.",
+    "collageFormTitle": "🎞️ Fă-ți un colaj video",
+    "collageFormTitleMore": "🎞️ Fă-ți încă un colaj video",
+    "collageFormSub": "Încarcă-ți pozele și le montăm într-un videoclip pe melodia ta.",
+    "collageDropSelected": "📷 {count} imagini selectate — apasă să schimbi",
+    "collageDropActive": "Dă drumul pozelor aici",
+    "collageDropIdle": "Trage pozele aici sau apasă să alegi",
+    "collageSubmit": "🎬 Generează colajul",
+    "imageAlt": "Imagine {n}"
   },
   "cursorHint": {
     "default": "Apasă aici"
@@ -1718,5 +1768,45 @@
         "errSave": "Nu am putut salva parola."
       }
     }
+  },
+  "videoPlayer": {
+    "unsupported": "Videoclipul nu poate fi redat aici.",
+    "downloadVideo": "⬇ Descarcă videoclipul",
+    "openNewTab": "↗ Deschide într-un tab nou",
+    "play": "Redă",
+    "pause": "Pauză",
+    "unmute": "Activează sunetul",
+    "mute": "Dezactivează sunetul",
+    "downloadAria": "Descarcă videoclipul"
+  },
+  "player": {
+    "previewNotice": "🔒 Previzualizare {sec}s — deblochează piesa pentru audiția completă.",
+    "downloadMp3": "Descarcă MP3"
+  },
+  "openReplay": {
+    "assistConfirm": "Echipa {brand} cere să-ți vadă ecranul pentru a te ajuta. Accepți?",
+    "assistAccept": "Accept",
+    "assistDecline": "Refuz"
+  },
+  "unsubscribePage": {
+    "title": "Dezabonare",
+    "invalid": "Linkul de dezabonare nu este valid sau a expirat. Dacă vrei să nu mai primești aceste emailuri, folosește linkul din cel mai recent email primit.",
+    "question": "Vrei să nu mai primești emailuri despre <b>comanda ta neterminată</b> de pe <s>{site}</s>?",
+    "confirmHint": "Pentru confirmare, tastează adresa de email completă la care ai primit emailul (<b>{masked}</b>).",
+    "emailLabel": "Adresa ta de email",
+    "reasonLabel": "Motivul (opțional)",
+    "reasonPick": "— Alege un motiv —",
+    "reasonBought": "Am cumpărat deja",
+    "reasonTooMany": "Prea multe emailuri",
+    "reasonNotInterested": "Nu mă mai interesează",
+    "reasonOther": "Altul",
+    "errEmail": "Te rugăm să introduci adresa ta de email completă.",
+    "errMismatch": "Adresa introdusă nu corespunde cu adresa la care a fost trimis emailul. Verifică și încearcă din nou.",
+    "errNetwork": "A apărut o eroare de rețea. Te rugăm să încerci din nou.",
+    "submitting": "Se procesează...",
+    "submit": "Confirmă dezabonarea",
+    "doneTitle": "✅ Te-am dezabonat de la emailurile despre comenzile neterminate.",
+    "doneSub": "Emailurile despre comenzile plătite (confirmare plată, melodia gata) ajung în continuare.",
+    "loading": "Se încarcă..."
   }
 }

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { AI_SUPPORTED_LOCALES } from '../chat/chat-i18n';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Conversation } from '../chat/conversation.entity';
@@ -44,6 +45,12 @@ export class AiFollowupService {
          FROM conversations c
          WHERE c."aiMode" = 'auto'
            AND c.status = 'open'
+           -- Doar site-urile în a căror limbă Irina poate purta o discuție. Pe restul,
+           -- chatul e canal de notificare (vezi chat-i18n.ts): un follow-up „mai ești pe
+           -- aici?" în română, pe un site grecesc, e exact ce am oprit.
+           AND EXISTS (
+             SELECT 1 FROM sites s WHERE s.id = c."siteId" AND lower(s.locale) = ANY($1)
+           )
            AND c."archivedAt" IS NULL
            AND c."aiFollowupCount" < 2
            AND c."lastMessageAt" BETWEEN now() - interval '45 minutes' AND now() - interval '4 minutes'
@@ -90,6 +97,7 @@ export class AiFollowupService {
            ), 'x') !~ '^((la[[:space:]]+revedere|noapte[[:space:]]+bun[aă]|o[[:space:]]+zi[[:space:]]+bun[aă]|nu[[:space:]]+mai[[:space:]]+vreau|nu[[:space:]]+vreau|m-am[[:space:]]+r[aă]zg[âa]ndit|renun[țt][[:alpha:]]*|ok|oki|okk|okay|bine|da|daa|gata|mersi|merci|multumesc|mulțumesc|multam|thanks|thx|ty|perfect|super|nu|pa+|adio|nimic|niciunul|niciuna|las[aă])[[:space:].,!]*)+[👍🙏❤️😊🎶]*$'
          ORDER BY c."lastMessageAt" ASC
          LIMIT 8`,
+        [[...AI_SUPPORTED_LOCALES]],
       );
       if (rows.length === 0) return;
       this.logger.log(`follow-up candidates: ${rows.length}`);

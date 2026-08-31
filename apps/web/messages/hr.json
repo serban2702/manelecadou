@@ -13,7 +13,9 @@
     "share": "Podijeli",
     "copy": "Kopiraj",
     "copied": "Kopirano!",
-    "ctaMakeManeaPlain": "🎤 Napravi pjesmu"
+    "ctaMakeManeaPlain": "🎤 Napravi pjesmu",
+    "confirm": "Potvrdi",
+    "endsIn": "Ističe za"
   },
   "urgency": "OGRANIČENA PONUDA — pjesma od <s>{compareAt}</s> <b>{price}</b>",
   "urgencyPlain": "OGRANIČENA PONUDA — pjesma od <b>{price}</b>",
@@ -360,7 +362,8 @@
       "title": "Slušaj sad",
       "sub": "6 primjera — pritisni ▶ na bilo koji.",
       "viewAll": "Vidi sve pjesme →"
-    }
+    },
+    "listenDemoHint": "Poslušaj demo"
   },
   "generator": {
     "steps": [
@@ -600,7 +603,10 @@
     "openPage": "Otvori stranicu →",
     "listen": "Poslušaj pjesmu →",
     "edited": "(uređeno)",
-    "typing": "Operater piše..."
+    "typing": "Operater piše...",
+    "viewSong": "🎵 Vidi pjesmu →",
+    "paySecure": "💳 Sigurno plaćanje",
+    "payNow": "Plati sada →"
   },
   "topPage": {
     "flag": "Top Hrvatska",
@@ -916,7 +922,51 @@
     "retryPaymentCta": "Nastavi plaćanje",
     "retryPaymentCtaPrice": "Nastavi plaćanje — {amount}",
     "promoApplied": "Popust −{percent}% automatski primijenjen s kodom {code}",
-    "collageDropHint": "najviše {count} slika · do {mb}MB po slici · JPG / PNG / WEBP"
+    "collageDropHint": "najviše {count} slika · do {mb}MB po slici · JPG / PNG / WEBP",
+    "shareTitle": "Podijeli",
+    "shareSub": "Pošalji pjesmu primatelju ili prijateljima.",
+    "shareSent": "✓ Poslano",
+    "shareNativeCta": "📤 Pošalji nekome",
+    "shareCopied": "✓ Kopirano",
+    "shareCopyCta": "🔗 Kopiraj poveznicu",
+    "shareInstagramHint": "💡 Za Instagram: kopiraj poveznicu, otvori aplikaciju i zalijepi je u story ili bio.",
+    "shareText": "🎵 Poslušaj personaliziranu pjesmu za {name}",
+    "shareNativeTitle": "Moja pjesma",
+    "ivCta": "🎬 Napravi video s ovom slikom",
+    "ivErrStart": "Nismo uspjeli pokrenuti video. Pokušaj ponovno.",
+    "ivDoneTitle": "🎬 Tvoj video",
+    "download": "⬇ Preuzmi",
+    "ivAgain": "🔁 Napravi drugi",
+    "ivWorking": "Video se generira…",
+    "ivWorkingHint": "Traje nekoliko minuta — možeš zatvoriti stranicu.",
+    "ivFailed": "😕 Video se nije mogao generirati. Pokušaj još jednom.",
+    "ivRetry": "🔁 Pokušaj ponovno",
+    "trackQuestion": "Na koju pjesmu?",
+    "version2": "Verzija 2 🎁",
+    "formatLabel": "Format",
+    "submitting": "Šalje se…",
+    "ivGenerate": "🎬 Generiraj",
+    "collageErrImagesOnly": "Povuci samo slikovne datoteke (JPG, PNG, WEBP…).",
+    "collageErrTooMany": "Možeš odabrati najviše {limit} slika. Odabrao si {picked}.",
+    "collageErrTooBig": "„{name}\" prelazi {mb}MB. Odaberi manje slike.",
+    "collageErrNone": "Odaberi barem jednu sliku.",
+    "collageErrStart": "Nismo uspjeli pokrenuti kolaž. Pokušaj ponovno.",
+    "collageLabelImageVideo": "🖼️ Video s jednom slikom",
+    "collageLabelCollage": "🎞️ Kolaž s tvojim slikama",
+    "collageLabelCollageCount": "🎞️ Kolaž s tvojim slikama · {count} slika",
+    "collageGalleryTitle": "🎞️ Tvoji video kolaži",
+    "collageWorkingTitle": "🎞️ Tvoj video kolaž",
+    "collageWorking": "Montiramo tvoj kolaž…",
+    "collageWorkingSteps": "🖼️ Slažemo slike · 🎬 Dodajemo prijelaze · 🎵 Sinkroniziramo s pjesmom",
+    "collageWorkingHint": "Traje nekoliko minuta. <b>Dobit ćeš i email</b> kad bude gotovo — možeš zatvoriti stranicu.",
+    "collageFormTitle": "🎞️ Napravi svoj video kolaž",
+    "collageFormTitleMore": "🎞️ Napravi još jedan video kolaž",
+    "collageFormSub": "Prenesi svoje slike i montirat ćemo ih u video na tvoju pjesmu.",
+    "collageDropSelected": "📷 {count} odabranih slika — pritisni za promjenu",
+    "collageDropActive": "Pusti slike ovdje",
+    "collageDropIdle": "Povuci slike ovdje ili pritisni za odabir",
+    "collageSubmit": "🎬 Generiraj kolaž",
+    "imageAlt": "Slika {n}"
   },
   "cursorHint": {
     "default": "Pritisni ovdje"
@@ -1718,5 +1768,45 @@
         "errSave": "Nismo uspjeli spremiti lozinku."
       }
     }
+  },
+  "videoPlayer": {
+    "unsupported": "Video se ne može reproducirati ovdje.",
+    "downloadVideo": "⬇ Preuzmi video",
+    "openNewTab": "↗ Otvori u novoj kartici",
+    "play": "Pokreni",
+    "pause": "Pauza",
+    "unmute": "Uključi zvuk",
+    "mute": "Isključi zvuk",
+    "downloadAria": "Preuzmi video"
+  },
+  "player": {
+    "previewNotice": "🔒 Pregled {sec}s — otključaj pjesmu za cijelo slušanje.",
+    "downloadMp3": "Preuzmi MP3"
+  },
+  "openReplay": {
+    "assistConfirm": "Tim {brand} traži da vidi tvoj ekran kako bi ti pomogao. Prihvaćaš?",
+    "assistAccept": "Prihvaćam",
+    "assistDecline": "Odbijam"
+  },
+  "unsubscribePage": {
+    "title": "Odjava",
+    "loading": "Učitava se...",
+    "invalid": "Poveznica za odjavu nije važeća ili je istekla. Ako ne želiš više primati ove emailove, koristi poveznicu iz najnovijeg primljenog emaila.",
+    "question": "Želiš li prestati primati emailove o <b>svojoj nedovršenoj narudžbi</b> s <s>{site}</s>?",
+    "confirmHint": "Za potvrdu, upiši punu email adresu na koju si primio email (<b>{masked}</b>).",
+    "emailLabel": "Tvoja email adresa",
+    "reasonLabel": "Razlog (neobavezno)",
+    "reasonPick": "— Odaberi razlog —",
+    "reasonBought": "Već sam kupio",
+    "reasonTooMany": "Previše emailova",
+    "reasonNotInterested": "Više me ne zanima",
+    "reasonOther": "Drugo",
+    "errEmail": "Molimo unesi svoju punu email adresu.",
+    "errMismatch": "Unesena adresa ne odgovara adresi na koju je email poslan. Provjeri i pokušaj ponovno.",
+    "errNetwork": "Došlo je do mrežne pogreške. Molimo pokušaj ponovno.",
+    "submitting": "Obrađuje se...",
+    "submit": "Potvrdi odjavu",
+    "doneTitle": "✅ Odjavili smo te s emailova o nedovršenim narudžbama.",
+    "doneSub": "Emailovi o plaćenim narudžbama (potvrda plaćanja, gotova pjesma) i dalje stižu."
   }
 }

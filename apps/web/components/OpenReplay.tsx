@@ -23,7 +23,9 @@
  */
 
 import { useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { getAccessToken } from '@/lib/api';
+import { useSite } from '@/lib/site-context';
 
 const PROJECT_KEY = process.env.NEXT_PUBLIC_OPENREPLAY_PROJECT_KEY;
 const INGEST_POINT = process.env.NEXT_PUBLIC_OPENREPLAY_INGEST_POINT;
@@ -40,6 +42,15 @@ declare global {
 }
 
 export function OpenReplay() {
+  const t = useTranslations('openReplay');
+  const site = useSite();
+  const brand = site?.name ?? '';
+  // Dialogul de co-browse e randat de SDK în afara React-ului, deci textele
+  // se calculează AICI (unde există contextul de locale) și se trec ca string.
+  const assistText = t('assistConfirm', { brand });
+  const assistAccept = t('assistAccept');
+  const assistDecline = t('assistDecline');
+
   useEffect(() => {
     if (!PROJECT_KEY) return;
     if (typeof window === 'undefined') return;
@@ -111,10 +122,10 @@ export function OpenReplay() {
               assistPluginFactory({
                 // Aspect: badge "Assist active" / call dialog folosesc culorile site-ului
                 callConfirm: {
-                  text: 'Echipa Manele Cadou cere să-ți vadă ecranul pentru a te ajuta. Accepți?',
+                  text: assistText,
                   style: { background: '#d4af37', color: '#0a0606' },
-                  confirmBtn: { text: 'Accept', style: { background: '#0a0606', color: '#d4af37' } },
-                  declineBtn: { text: 'Refuz', style: { background: 'transparent', color: '#d4af37', border: '1px solid #d4af37' } },
+                  confirmBtn: { text: assistAccept, style: { background: '#0a0606', color: '#d4af37' } },
+                  declineBtn: { text: assistDecline, style: { background: 'transparent', color: '#d4af37', border: '1px solid #d4af37' } },
                 },
               }),
             );
@@ -182,6 +193,11 @@ export function OpenReplay() {
       cancelled = true;
       if (identifyInterval) clearInterval(identifyInterval);
     };
+    // Deps intenționat goale: tracker-ul pornește O SINGURĂ dată pe pagină
+    // (guard-ul `__OR_TRACKER__`). Textele de co-browse sunt fixate la primul
+    // render — locale-ul nu se schimbă fără reload, iar re-rularea efectului ar
+    // opri intervalul de identify fără să-l repornească.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return null;

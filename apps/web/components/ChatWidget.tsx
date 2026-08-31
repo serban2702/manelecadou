@@ -729,7 +729,7 @@ export function ChatWidget() {
                                   textDecoration: 'none',
                                 }}
                               >
-                                🎵 Vezi melodia →
+                                {t('viewSong')}
                               </a>
                             )}
                           </div>
@@ -768,7 +768,7 @@ export function ChatWidget() {
                           }}
                         >
                           <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)' }}>
-                            💳 Plată sigură
+                            {t('paySecure')}
                           </div>
                           <div style={{ fontSize: 13, fontWeight: 600, margin: '2px 0' }}>
                             {p.description ?? t('songGeneric')}
@@ -788,7 +788,7 @@ export function ChatWidget() {
                               textAlign: 'center',
                             }}
                           >
-                            Plătește acum →
+                            {t('payNow')}
                           </div>
                         </a>
                       );

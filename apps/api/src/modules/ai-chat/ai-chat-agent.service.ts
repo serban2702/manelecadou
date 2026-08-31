@@ -6,6 +6,7 @@ import { OpenAiClient, type ChatMessage as OAIMsg, type ToolDef, type ToolHandle
 import { SettingsService } from '../settings/settings.service';
 import { KbService } from '../kb/kb.service';
 import { SitesService } from '../sites/sites.service';
+import { aiChatSupported } from '../chat/chat-i18n';
 import { ChatGateway } from '../chat/chat.gateway';
 import { Conversation, WizardData, WizardState } from '../chat/conversation.entity';
 import { ChatMessage, ChatMessagePayload } from '../chat/message.entity';
@@ -1042,6 +1043,20 @@ export class AIChatAgentService {
       if (!conv.siteId) return;
       const site = await this.sites.findById(conv.siteId);
       if (!site?.aiGreetingEnabled) return;
+      // Pe site-urile a căror limbă nu e acoperită de agent (vezi chat-i18n.ts) NU
+      // deschidem conversația: „Vrei să te ajut să îți scrii melodia?" ar promite un
+      // dialog pe care nu-l putem purta, iar orice răspuns ar primi trimiterea pe email.
+      // Chatul rămâne canal de NOTIFICARE (livrare, mulțumire), nu de conversație.
+      if (!aiChatSupported(site.locale)) {
+        await this.conv
+          .createQueryBuilder()
+          .update(Conversation)
+          .set({ greetingSentAt: () => 'NOW()' })
+          .where('id = :id AND "greetingSentAt" IS NULL', { id: conv.id })
+          .execute();
+        this.logger.log(`skip greeting for conv=${conv.id.slice(0, 8)} — locale=${site.locale} fără agent AI`);
+        return;
+      }
 
       // CRITIC: dacă există DEJA orice mesaj admin (human sau AI vechi) pe conv,
       // NU mai salutăm. Conversația e în desfășurare — un salut „Buna, sunt Irina"

@@ -26,6 +26,7 @@ import { RemoteMediaClient } from '../media/remote-media.client';
 import { MailerService } from '../../mailer/mailer.module';
 import { StorageService } from '../../storage/storage.service';
 import { renderBrandedEmail } from '../../mailer/templates/templates';
+import { collageReadyStrings } from '../../mailer/templates/recovery-i18n';
 import { brandingFromSite } from '../../mailer/branding';
 
 /**
@@ -507,22 +508,25 @@ export class CollageProcessor extends WorkerHost {
     const locale = site?.locale ?? gen.locale ?? 'ro';
 
     const recipient = gen.recipientName || '';
+    // Textele în limba site-ului: era singurul tranzacțional scris direct în cod,
+    // deci pleca în română și pe bg/el (vezi mailer/templates/recovery-i18n.ts).
+    const cs = collageReadyStrings(locale);
     const html = renderBrandedEmail({
-      subject: 'Colajul tău video e gata! 🎬',
-      preheader: 'Videoclipul cu pozele tale e gata de vizionat.',
+      subject: cs.subject,
+      preheader: cs.preheader,
       locale,
       branding,
       bodyHtml: `
         <div style="text-align:center;margin-bottom:18px;">
           <div style="font-size:48px;margin-bottom:8px;">🎬</div>
-          <h2 style="margin:0;font-family:'Times New Roman',serif;font-size:24px;">Colajul tău video e gata!</h2>
-          ${recipient ? `<p style="margin:8px 0 0;">Pentru ${escapeHtml(recipient)}</p>` : ''}
+          <h2 style="margin:0;font-family:'Times New Roman',serif;font-size:24px;">${escapeHtml(cs.title)}</h2>
+          ${recipient ? `<p style="margin:8px 0 0;">${escapeHtml(cs.forRecipient(recipient))}</p>` : ''}
         </div>
         <p style="margin:0 0 16px;line-height:1.6;">
-          Am montat videoclipul cu pozele tale pe melodie. Deschide pagina maneaua ta ca să-l vezi și să-l descarci.
+          ${escapeHtml(cs.body)}
         </p>
         <div style="text-align:center;margin:24px 0;">
-          <a href="${escapeHtml(link)}" style="display:inline-block;padding:14px 28px;border-radius:999px;background:linear-gradient(135deg,#f1c84d,#d4af37);color:#0a0606;text-decoration:none;font-weight:700;">Vezi colajul →</a>
+          <a href="${escapeHtml(link)}" style="display:inline-block;padding:14px 28px;border-radius:999px;background:linear-gradient(135deg,#f1c84d,#d4af37);color:#0a0606;text-decoration:none;font-weight:700;">${escapeHtml(cs.cta)}</a>
         </div>
       `,
     });
@@ -530,9 +534,9 @@ export class CollageProcessor extends WorkerHost {
     await this.mailer.send(
       {
         to: email,
-        subject: 'Colajul tău video e gata! 🎬',
+        subject: cs.subject,
         html,
-        text: `Colajul tău video e gata! Vezi-l aici: ${link}`,
+        text: cs.text(link),
         from: site?.fromEmail ?? undefined,
       },
       {

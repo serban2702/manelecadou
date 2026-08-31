@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { downloadUrl } from '@/lib/download';
 import { Ic } from './icons';
 import { resolveMediaUrl } from '@/lib/api';
@@ -30,6 +31,7 @@ interface Props {
 }
 
 export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = false, maxDurationSec, startSec, autoPlay, trackContext }: Props) {
+  const t = useTranslations('player');
   const audioUrl = resolveMediaUrl(rawAudioUrl) ?? rawAudioUrl;
   // Ref ca handler-ele wavesurfer (create o singură dată) să vadă mereu ultimul
   // context + să raporteze play-ul O SINGURĂ dată per montare.
@@ -266,7 +268,7 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
         />
         {previewLimited && (
           <div style={{ marginTop: 4, fontSize: 10, color: '#f1c84d' }}>
-            🔒 Previzualizare {maxDurationSec}s — deblochează piesa pentru audiția completă.
+            {t('previewNotice', { sec: maxDurationSec })}
           </div>
         )}
       </div>
@@ -376,7 +378,7 @@ export function ManeaPlayer({ audioUrl: rawAudioUrl, title, subtitle, compact = 
         <a
           href={downloadUrl(audioUrl)}
           download
-          title="Descarcă MP3"
+          title={t('downloadMp3')}
           onClick={() => {
             const ctx = trackCtxRef.current;
             if (ctx) trackEvent({ type: 'song_download', props: { generationId: ctx.generationId, variant: ctx.variant } });

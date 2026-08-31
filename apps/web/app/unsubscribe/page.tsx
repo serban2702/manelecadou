@@ -12,14 +12,17 @@
 
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
 
+/** Cheia de traducere pentru etichetă; VALOAREA trimisă la API rămâne cea din
+ *  stânga, în română, ca raportul de motive din admin să nu se spargă pe limbi. */
 const REASONS = [
-  'Am cumpărat deja',
-  'Prea multe emailuri',
-  'Nu mă mai interesează',
-  'Altul',
+  { value: 'Am cumpărat deja', key: 'reasonBought' },
+  { value: 'Prea multe emailuri', key: 'reasonTooMany' },
+  { value: 'Nu mă mai interesează', key: 'reasonNotInterested' },
+  { value: 'Altul', key: 'reasonOther' },
 ] as const;
 
 interface UnsubInfo {
@@ -38,6 +41,7 @@ export default function UnsubscribePage() {
 }
 
 function UnsubscribePageInner() {
+  const t = useTranslations('unsubscribePage');
   const params = useSearchParams();
   const token = params.get('token');
 
@@ -75,7 +79,7 @@ function UnsubscribePageInner() {
     setFormError(null);
     const typed = email.trim();
     if (!typed || !typed.includes('@')) {
-      setFormError('Te rugăm să introduci adresa ta de email completă.');
+      setFormError(t('errEmail'));
       return;
     }
     setPhase('submitting');
@@ -92,11 +96,11 @@ function UnsubscribePageInner() {
       const body = (await res.json().catch(() => null)) as { message?: string | string[] } | null;
       const msg = Array.isArray(body?.message) ? body?.message[0] : body?.message;
       setFormError(
-        msg || 'Adresa introdusă nu corespunde cu adresa la care a fost trimis emailul. Verifică și încearcă din nou.',
+        msg || t('errMismatch'),
       );
       setPhase('form');
     } catch {
-      setFormError('A apărut o eroare de rețea. Te rugăm să încerci din nou.');
+      setFormError(t('errNetwork'));
       setPhase('form');
     }
   }
@@ -104,34 +108,36 @@ function UnsubscribePageInner() {
   return (
     <main style={{ maxWidth: 460, margin: '60px auto', padding: 24 }}>
       <h1 className="gold-text serif" style={{ fontSize: 24, marginBottom: 12 }}>
-        Dezabonare
+        {t('title')}
       </h1>
 
       {phase === 'loading' && (
-        <p style={{ fontSize: 13, color: 'rgba(255,245,220,0.6)' }}>Se încarcă...</p>
+        <p style={{ fontSize: 13, color: 'rgba(255,245,220,0.6)' }}>{t('loading')}</p>
       )}
 
       {phase === 'invalid' && (
         <p style={{ color: 'var(--rose)', lineHeight: 1.6 }}>
-          Linkul de dezabonare nu este valid sau a expirat. Dacă vrei să nu mai primești aceste
-          emailuri, folosește linkul din cel mai recent email primit.
+          {t('invalid')}
         </p>
       )}
 
       {(phase === 'form' || phase === 'submitting') && info && (
         <>
           <p style={{ lineHeight: 1.6, marginBottom: 8 }}>
-            Vrei să nu mai primești emailuri despre <b>comanda ta neterminată</b> de pe{' '}
-            <b>{info.siteName}</b>?
+            {t.rich('question', {
+              b: (c) => <b>{c}</b>,
+              s: () => <b>{info.siteName}</b>,
+            })}
           </p>
           <p style={{ lineHeight: 1.6, marginBottom: 18, color: 'rgba(255,245,220,0.7)' }}>
-            Pentru confirmare, tastează adresa de email completă la care ai primit emailul (
-            <b style={{ color: 'var(--gold-2)' }}>{info.emailMasked}</b>).
+            {t.rich('confirmHint', {
+              b: () => <b style={{ color: 'var(--gold-2)' }}>{info.emailMasked}</b>,
+            })}
           </p>
 
           <form onSubmit={onSubmit}>
             <div className="field">
-              <label htmlFor="unsub-email">Adresa ta de email</label>
+              <label htmlFor="unsub-email">{t('emailLabel')}</label>
               <input
                 id="unsub-email"
                 type="email"
@@ -145,7 +151,7 @@ function UnsubscribePageInner() {
             </div>
 
             <div className="field">
-              <label htmlFor="unsub-reason">Motivul (opțional)</label>
+              <label htmlFor="unsub-reason">{t('reasonLabel')}</label>
               <select
                 id="unsub-reason"
                 value={reason}
@@ -162,10 +168,10 @@ function UnsubscribePageInner() {
                   outline: 'none',
                 }}
               >
-                <option value="">— Alege un motiv —</option>
+                <option value="">{t('reasonPick')}</option>
                 {REASONS.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
+                  <option key={r.value} value={r.value}>
+                    {t(r.key)}
                   </option>
                 ))}
               </select>
@@ -178,7 +184,7 @@ function UnsubscribePageInner() {
             )}
 
             <button type="submit" className="btn btn-gold btn-block" disabled={phase === 'submitting'}>
-              {phase === 'submitting' ? 'Se procesează...' : 'Confirmă dezabonarea'}
+              {phase === 'submitting' ? t('submitting') : t('submit')}
             </button>
           </form>
         </>
@@ -187,11 +193,10 @@ function UnsubscribePageInner() {
       {phase === 'done' && (
         <>
           <p style={{ lineHeight: 1.6, marginBottom: 10 }}>
-            ✅ Te-am dezabonat de la emailurile despre comenzile neterminate.
+            {t('doneTitle')}
           </p>
           <p style={{ lineHeight: 1.6, color: 'rgba(255,245,220,0.7)' }}>
-            Emailurile despre comenzile plătite (confirmare plată, melodia gata) ajung în
-            continuare.
+            {t('doneSub')}
           </p>
         </>
       )}

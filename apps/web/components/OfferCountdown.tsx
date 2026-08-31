@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 
 /**
  * Countdown de ofertă „pe timp limitat" — per-vizitator, NU expiră niciodată.
@@ -60,6 +61,7 @@ function parts(ms: number) {
 }
 
 export default function OfferCountdown({ label }: { label?: string }) {
+  const t = useTranslations('common');
   const [remaining, setRemaining] = useState<number | null>(null);
 
   useEffect(() => {
@@ -102,7 +104,7 @@ export default function OfferCountdown({ label }: { label?: string }) {
     >
       <span aria-hidden>⏳</span>
       <span>
-        {label ?? 'Se termină în'}{' '}
+        {label ?? t('endsIn')}{' '}
         <strong style={{ fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em' }}>
           {d}z {pad(h)}:{pad(m)}:{pad(s)}
         </strong>

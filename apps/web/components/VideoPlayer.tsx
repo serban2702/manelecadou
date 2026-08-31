@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 
 interface Props {
   /** URL deja rezolvat (absolut) al videoclipului. */
@@ -19,6 +20,7 @@ const GOLD = '#f1c84d';
  *   link „deschide într-un tab nou" în loc să crape pagina.
  */
 export function VideoPlayer({ src, poster }: Props) {
+  const t = useTranslations('videoPlayer');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playing, setPlaying] = useState(false);
   const [current, setCurrent] = useState(0);
@@ -84,7 +86,7 @@ export function VideoPlayer({ src, poster }: Props) {
         border: '1px solid rgba(241,200,77,0.25)', textAlign: 'center',
       }}>
         <div style={{ fontSize: 13, color: 'var(--gold-2)', marginBottom: 12 }}>
-          Videoclipul nu poate fi redat aici.
+          {t('unsupported')}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
           <a
@@ -93,7 +95,7 @@ export function VideoPlayer({ src, poster }: Props) {
             className="btn btn-ghost btn-sm"
             style={{ textDecoration: 'none' }}
           >
-            ⬇ Descarcă videoclipul
+            {t('downloadVideo')}
           </a>
           <a
             href={src}
@@ -102,7 +104,7 @@ export function VideoPlayer({ src, poster }: Props) {
             className="btn btn-ghost btn-sm"
             style={{ textDecoration: 'none' }}
           >
-            ↗ Deschide într-un tab nou
+            {t('openNewTab')}
           </a>
         </div>
       </div>
@@ -135,7 +137,7 @@ export function VideoPlayer({ src, poster }: Props) {
       <button
         type="button"
         onClick={togglePlay}
-        aria-label={playing ? 'Pauză' : 'Redă'}
+        aria-label={playing ? t('pause') : t('play')}
         style={{
           position: 'absolute', inset: 0, margin: 'auto',
           width: 72, height: 72, borderRadius: '50%', border: 'none',
@@ -177,7 +179,7 @@ export function VideoPlayer({ src, poster }: Props) {
           <button
             type="button"
             onClick={togglePlay}
-            aria-label={playing ? 'Pauză' : 'Redă'}
+            aria-label={playing ? t('pause') : t('play')}
             style={iconBtn}
           >
             {playing ? (
@@ -192,7 +194,7 @@ export function VideoPlayer({ src, poster }: Props) {
           <div style={{ flex: 1 }} />
 
           {/* Mute/Volum. */}
-          <button type="button" onClick={toggleMute} aria-label={muted ? 'Activează sunetul' : 'Dezactivează sunetul'} style={iconBtn}>
+          <button type="button" onClick={toggleMute} aria-label={muted ? t('unmute') : t('mute')} style={iconBtn}>
             {muted ? (
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-1.3-3.2l-1 1A3 3 0 0 1 15.5 12c0 .5-.1 1-.3 1.4l1.1 1.1c.4-.7.7-1.6.7-2.5zM4.3 3 3 4.3 7.7 9H3v6h4l5 5v-6.7l4.3 4.3 1.3-1.3L4.3 3z" /></svg>
             ) : (
@@ -201,7 +203,7 @@ export function VideoPlayer({ src, poster }: Props) {
           </button>
 
           {/* Download. */}
-          <a href={src} download aria-label="Descarcă videoclipul" style={{ ...iconBtn, textDecoration: 'none' }}>
+          <a href={src} download aria-label={t('downloadAria')} style={{ ...iconBtn, textDecoration: 'none' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.6l3.3-3.3 1.4 1.4L12 17.4l-4.7-4.7 1.4-1.4L12 13.6V3zM5 19h14v2H5z" /></svg>
           </a>
 

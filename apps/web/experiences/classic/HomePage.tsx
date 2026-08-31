@@ -78,7 +78,7 @@ export default function HomePage() {
               className="btn btn-ghost"
               style={{ textDecoration: 'none', fontFamily: 'inherit', cursor: 'pointer' }}
               data-hint="true"
-              data-hint-label="Ascultă demo"
+              data-hint-label={tHome('listenDemoHint')}
             >
               <Ic.Play s={14} /> {tCommon('ctaListen')}
             </button>

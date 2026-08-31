@@ -28,6 +28,7 @@ import { PaymentAttributionService } from '../analytics/payment-attribution.serv
 import { normalizeTier, packageLabel, type PackageTier } from '../payments/packages';
 import { effectiveExperienceSlug, resolveSitePackage } from '../experiences/package-resolve';
 import { SitesService } from '../sites/sites.service';
+import { chatStrings, aiChatSupported, allThankYouBodies, allReturningBodies } from './chat-i18n';
 import { SettingsService } from '../settings/settings.service';
 import { LyricsService } from '../lyrics/lyrics.module';
 import { MetaCapiService } from '../meta-capi/meta-capi.service';
@@ -1042,6 +1043,18 @@ export class ChatService implements OnModuleInit {
    */
   private async maybeTriggerAi(conversationId: string, userMessageId: string): Promise<void> {
     try {
+      // GATE DE LIMBĂ (31 aug 2026). Irina e scrisă și antrenată în română: prompturile,
+      // tunelul de comandă, memoria aprobată și toate uneltele presupun limba site-ului
+      // implicit. Pe `chalgapodarok.bg` / `doroparaggelia.gr` răspunsurile ei plecau în
+      // română, peste mesaje scrise în bulgară sau greacă. În loc să conversăm prost,
+      // spunem o dată, în limba omului, că discuția se mută pe email.
+      const conv = await this.conv.findOne({ where: { id: conversationId } });
+      const site = conv?.siteId ? await this.sites.findById(conv.siteId).catch(() => null) : null;
+      if (!aiChatSupported(site?.locale)) {
+        await this.replyLanguageUnsupported(conversationId, site);
+        return;
+      }
+
       // strict: false → permite resolve cross-module fără a marca dependency
       const agent = this.moduleRef.get(
         await import('../ai-chat/ai-chat-agent.service').then((m) => m.AIChatAgentService),
@@ -1051,6 +1064,68 @@ export class ChatService implements OnModuleInit {
     } catch (e) {
       // Silent — AI e opțional, nu blocăm chat-ul dacă agentul eșuează
     }
+  }
+
+  /**
+   * Răspunsul dat pe site-urile a căror limbă nu e acoperită de agentul AI:
+   * îndrumă clientul spre adresa de email a site-ului.
+   *
+   * Nu se trimite:
+   *  - dacă un OPERATOR UMAN a scris în ultimele 24h — conversația e preluată, iar
+   *    „nu vă putem răspunde aici" peste răspunsurile lui ar fi o contrazicere;
+   *  - dacă notificarea a fost deja trimisă și de atunci n-a mai scris niciun admin —
+   *    altfel un client care scrie trei mesaje la rând ar primi același text de trei ori.
+   */
+  private async replyLanguageUnsupported(
+    conversationId: string,
+    site: { locale?: string | null; supportEmail?: string | null } | null,
+  ): Promise<void> {
+    const conv = await this.conv.findOne({ where: { id: conversationId } });
+    if (!conv) return;
+
+    // Ultimul mesaj de la echipă (om sau automat) de pe conversație.
+    const lastAdmin = await this.msg.findOne({
+      where: { conversationId, authorRole: 'admin' },
+      order: { createdAt: 'DESC' },
+    });
+    if (lastAdmin) {
+      const isHuman = !lastAdmin.aiGenerated && !!lastAdmin.authorId;
+      const withinDay = Date.now() - new Date(lastAdmin.createdAt).getTime() < 24 * 60 * 60 * 1000;
+      if (isHuman && withinDay) return; // preluată de un coleg — îl lăsăm pe el
+      const kind = (lastAdmin.payload as { kind?: string } | null)?.kind;
+      if (kind === 'language_unsupported') return; // deja i-am spus, nu repetăm
+    }
+
+    const strings = chatStrings(site?.locale);
+    const email = site?.supportEmail?.trim();
+    const body = email ? strings.unsupportedLanguage(email) : strings.unsupportedLanguageNoEmail;
+
+    const msg = this.msg.create({
+      conversationId,
+      siteId: conv.siteId ?? null,
+      authorRole: 'admin',
+      authorId: null,
+      body,
+      messageType: 'text',
+      // Marcajul după care gărzile de mai sus recunosc mesajul, independent de limbă
+      // și de adresa de email din text.
+      payload: { kind: 'language_unsupported' },
+      aiGenerated: true,
+      detectedLang: site?.locale ?? null,
+    });
+    const saved = await this.msg.save(msg);
+    await this.conv
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+      .where('id = :id', { id: conversationId })
+      .execute();
+    conv.lastMessageAt = saved.createdAt;
+    conv.unreadByUser += 1;
+    this.gateway.emitMessage({ message: saved, conversation: conv });
+    this.logger.log(
+      `LANGUAGE_UNSUPPORTED_REPLY conv=${conversationId.slice(0, 8)} locale=${site?.locale ?? '?'} email=${email ?? '-'}`,
+    );
   }
 
   // ============== Faza 4: Approve AI suggestion ==============
@@ -1840,11 +1915,16 @@ export class ChatService implements OnModuleInit {
       }
     }
 
+    // Limba site-ului, nu româna: pe `chalgapodarok.bg` clientul comandase în
+    // bulgară și primea anunțul de livrare în română (vezi chat-i18n.ts).
+    const notifySite = conv.siteId ? await this.sites.findById(conv.siteId).catch(() => null) : null;
+    const ns = chatStrings(notifySite?.locale);
+    const genUrl = this.buildGenerationUrl(conv, generationId);
     const body = isOk
       ? isRemakeDelivery
-        ? `🎵 Varianta refăcută e gata! O poți asculta și descărca aici: ${this.buildGenerationUrl(conv, generationId)}`
-        : `🎵 Melodia ta e gata! O poți asculta și descărca aici: ${this.buildGenerationUrl(conv, generationId)}`
-      : `⚠️ A apărut o eroare la generarea melodiei. Operatorul nostru se ocupă imediat — te ținem la curent.`;
+        ? ns.songReadyRemake(genUrl)
+        : ns.songReady(genUrl)
+      : ns.generationError;
 
     const msg = this.msg.create({
       conversationId: conv.id,
@@ -1854,10 +1934,10 @@ export class ChatService implements OnModuleInit {
       body,
       messageType: isOk ? 'song_preview' : 'text',
       payload: isOk
-        ? { generationId, audioUrl: this.buildGenerationUrl(conv, generationId), audioTrackUrl: currentAudioUrl }
+        ? { generationId, audioUrl: genUrl, audioTrackUrl: currentAudioUrl }
         : null,
       aiGenerated: true,
-      detectedLang: 'ro',
+      detectedLang: notifySite?.locale ?? 'ro',
     });
     const saved = await this.msg.save(msg);
     conv.unreadByUser += 1;
@@ -2076,32 +2156,14 @@ export class ChatService implements OnModuleInit {
       /* best-effort — dacă query-ul pică, continuăm cu logica normală */
     }
 
-    const variants = [
-      'Mă bucur tare că ți-a ieșit! 🎵 Sper să le placă și celor pentru care e dedicată. Mulțumesc că ne-ai ales! ❤️',
-      'Gata, mulțumim mult! ✨ Sper să-i placă tare. Dacă vrei să mai faci una pentru cineva drag, mă găsești aici. 🎶',
-      'Mulțumim pentru încredere! 🙏 Aștept să-mi spui cum a reacționat când a auzit-o. ❤️',
-      'Felicitări, ai un cadou super! 🎤 Mulțumim că ne-ai dat o șansă să fim parte din momentul ăsta. ❤️',
-      'Mă bucur că totul a ieșit cum trebuie! 🎶 Mulțumim mult, ne vedem la următoarea manea! ✨',
-    ];
-    // Livrarea unei REFACERI (free remake / modificare plătită) nu e un moment de
-    // sărbătoare — clientul tocmai s-a plâns de ceva. Celebrarea „Mă bucur că totul a
-    // ieșit cum trebuie! ✨" pica tone-deaf (2026-07-08, audit conv fb5aa187: trimisă
-    // de 2× unui client furios că nu i s-a aplicat corectura). Mesaj dedicat, care
-    // cere confirmarea corecturii în loc să sărbătorească.
-    const remakeVariant =
-      'Am refăcut-o cum ai cerut 🙏 Ascultă te rog ULTIMA versiune de pe pagina melodiei (reîncarcă pagina) și spune-mi dacă acum e totul ok.';
-    // Variante pentru CLIENTUL CARE REVINE (a 2-a comandă plătită încolo pe aceeași
-    // conversație). Textele de mai sus sunt scrise pentru prima comandă — „Mulțumim că
-    // ne-ai dat o șansă", „Mulțumesc că ne-ai ales!" — și sună ca și cum nu-l recunoști
-    // pe omul care e la a cincea manea. BUG observat 2026-08-04 conv 0bba7f26: client cu
-    // 8 comenzi plătite (5 doar în seara aia), fiecare livrare întâmpinată cu formula de
-    // client nou, plus „Mă bucur tare că ți-a ieșit!" repetat la 35 de minute distanță.
-    const returningVariants = [
-      'Gata și asta! 🎵 Mulțumesc că te tot întorci la noi, chiar înseamnă mult. Dacă vrei ceva schimbat la ea, zi-mi.',
-      'Încă una gata! 🎶 Îmi place că ai prins gustul. Spune-mi dacă vrei să ajustăm ceva.',
-      'Livrată! ✨ Mersi că ne ești alături de fiecare dată. Sunt aici dacă mai facem una.',
-      'S-a făcut și asta! 🎤 Sper să iasă cadoul perfect. Orice ai nevoie, mă găsești aici.',
-    ];
+    // Textele de mulțumire în limba site-ului (vezi chat-i18n.ts). Pe site-urile
+    // non-RO plecau în română, imediat după un anunț de livrare tot românesc.
+    const tySite = siteId ? await this.sites.findById(siteId).catch(() => null) : null;
+    const ts = chatStrings(tySite?.locale);
+    const variants = ts.thankYou;
+    const remakeVariant = ts.thankYouRemake;
+    const returningVariants = ts.thankYouReturning;
+
     let isRemakeDelivery = false;
     if (generationId) {
       try {
@@ -2185,7 +2247,7 @@ export class ChatService implements OnModuleInit {
         authorRole: 'admin',
         messageType: 'text',
         aiGenerated: true,
-        body: In([...variants, ...returningVariants, remakeVariant]),
+        body: In(allThankYouBodies()),
         createdAt: MoreThan(new Date(Date.now() - 3 * 60 * 1000)),
       },
     });
@@ -2224,7 +2286,7 @@ export class ChatService implements OnModuleInit {
         authorRole: 'admin',
         messageType: 'text',
         aiGenerated: true,
-        body: In([...variants, ...returningVariants]),
+        body: In([...allThankYouBodies().filter((b) => b !== remakeVariant), ...allReturningBodies()]),
       },
       order: { createdAt: 'DESC' },
       take: 3,
