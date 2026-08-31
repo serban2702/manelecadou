@@ -349,8 +349,36 @@ export function Leaderboard() {
             linkable: false,
           }));
 
+  // `TOP` e umplutură ROMÂNEASCĂ („Manea pentru Costel șeful", „La mulți ani,
+  // soacră!"). E conținut legitim doar când sursa chiar e `seed`. Când site-ul are
+  // `live`/`template`, datele reale vin după hidratare — dar randarea de pe server
+  // n-are încă răspunsul, așa că până acum HTML-ul servit pe chalgapodarok.bg și
+  // doroparaggelia.gr conținea topul în română (verificat pe prod, 31 aug 2026).
+  // Se vedea ca flash la încărcare și rămânea în ce citesc crawlerele. Așteptăm.
+  const awaitingRealRows = (isLive || isTemplate) && rows.length > 0 && rows[0].id.startsWith('seed-');
+
   const mid = Math.ceil(rows.length / 2);
   const cols = [rows.slice(0, mid), rows.slice(mid)];
+
+  if (awaitingRealRows) {
+    return (
+      <div className="lb-grid" aria-busy="true">
+        {[0, 1].map((ci) => (
+          <div key={ci} className="lb">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="lb-row" style={{ opacity: 0.35 }}>
+                <div className="rk">{ci * 5 + i + 1}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="ttl" style={{ background: 'currentColor', opacity: 0.12, height: 12, borderRadius: 4 }} />
+                  <div className="by" style={{ background: 'currentColor', opacity: 0.08, height: 10, borderRadius: 4, marginTop: 5, width: '55%' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="lb-grid">

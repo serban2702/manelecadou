@@ -31,6 +31,11 @@ export default function TopPage() {
   // Sursa e dictată de admin (site.topSource). 'live' și 'template' aduc items
   // reale (cu audioUrl); 'seed' / niciun răspuns → lista demo hardcoded.
   const useReal = (data?.source === 'live' || data?.source === 'template') && !!data?.items;
+  // `TOP` e umplutură ROMÂNEASCĂ, legitimă doar când sursa chiar e `seed`. Cât timp
+  // răspunsul n-a venit (randarea de pe server, primul tick după hidratare), un site
+  // cu `live`/`template` ar arăta topul în română — vizibil pe chalgapodarok.bg și
+  // doroparaggelia.gr până la 31 aug 2026. Vezi și `Leaderboard` din components/sections.tsx.
+  const awaitingReal = !data && site.topSource !== 'seed';
   const rows: Array<{
     rk: number;
     id: string;
@@ -80,7 +85,17 @@ export default function TopPage() {
 
         <section className="band" style={{ marginTop: 24 }}>
           <div className="lb">
-            {rows.map((tr) => {
+            {awaitingReal &&
+              Array.from({ length: 10 }).map((_, i) => (
+                <div key={`sk-${i}`} className="lb-row" style={{ opacity: 0.35 }} aria-busy="true">
+                  <div className="rk">{i + 1}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="ttl" style={{ background: 'currentColor', opacity: 0.12, height: 13, borderRadius: 4 }} />
+                    <div className="by" style={{ background: 'currentColor', opacity: 0.08, height: 10, borderRadius: 4, marginTop: 6, width: '55%' }} />
+                  </div>
+                </div>
+              ))}
+            {!awaitingReal && rows.map((tr) => {
               const voice = VOICES.find((v) =>
                 tr.by.toLowerCase().includes(v.nm.toLowerCase().split(' ')[0].toLowerCase()),
               );
