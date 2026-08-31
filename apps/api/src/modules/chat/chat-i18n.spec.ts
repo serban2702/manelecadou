@@ -65,6 +65,17 @@ test('chat-i18n — limba site-ului decide textele automate', async (t) => {
     assert.doesNotMatch(chatStrings('bg').unsupportedLanguageNoEmail, /undefined|null/);
   });
 
+  await t.test('mesajul spune în cât timp răspundem pe email', () => {
+    // Omul e trimis pe email în loc să primească răspuns aici, deci trebuie să
+    // știe ce așteaptă. O traducere viitoare care uită termenul pică testul.
+    for (const loc of ['ro', 'bg', 'el', 'sr']) {
+      const s = chatStrings(loc);
+      for (const body of [s.unsupportedLanguage('a@b.co'), s.unsupportedLanguageNoEmail]) {
+        assert.match(body, /2[–-]48/, `${loc}: lipsește termenul de răspuns — ${body}`);
+      }
+    }
+  });
+
   await t.test('gărzile anti-duplicat acoperă TOATE limbile, inclusiv istoricul românesc', () => {
     const all = allThankYouBodies();
     // Textul exact trimis pe prod înainte de traducere trebuie să rămână recunoscut,

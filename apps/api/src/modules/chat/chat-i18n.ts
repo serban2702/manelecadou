@@ -45,7 +45,8 @@ type Dict = {
   thankYou: string[];
   thankYouRemake: string;
   thankYouReturning: string[];
-  /** Răspunsul dat când clientul scrie pe un site a cărui limbă nu e acoperită. */
+  /** Răspunsul dat când clientul scrie pe un site a cărui limbă nu e acoperită.
+   *  Anunță și în cât timp răspundem pe email (2–48h), ca omul să știe ce așteaptă. */
   unsupportedLanguage: (email: string) => string;
   /** Varianta fără adresă de email configurată pe site. */
   unsupportedLanguageNoEmail: string;
@@ -71,9 +72,9 @@ const RO: Dict = {
     'S-a făcut și asta! 🎤 Sper să iasă cadoul perfect. Orice ai nevoie, mă găsești aici.',
   ],
   unsupportedLanguage: (email) =>
-    `Îți mulțumim pentru mesaj! 🙏 Chatul nostru nu este deocamdată disponibil în limba ta, așa că nu îți putem răspunde aici. Scrie-ne te rog pe email la ${email} și îți răspundem cât putem de repede.`,
+    `Îți mulțumim pentru mesaj! 🙏 Chatul nostru nu este deocamdată disponibil în limba ta, așa că nu îți putem răspunde aici. Scrie-ne te rog pe email la ${email} — îți răspundem în 2–48 de ore.`,
   unsupportedLanguageNoEmail:
-    'Îți mulțumim pentru mesaj! 🙏 Chatul nostru nu este deocamdată disponibil în limba ta, așa că nu îți putem răspunde aici. Scrie-ne te rog pe adresa de email din pagina de contact și îți răspundem cât putem de repede.',
+    'Îți mulțumim pentru mesaj! 🙏 Chatul nostru nu este deocamdată disponibil în limba ta, așa că nu îți putem răspunde aici. Scrie-ne te rog pe adresa de email din pagina de contact — îți răspundem în 2–48 de ore.',
 };
 
 const BG: Dict = {
@@ -97,9 +98,9 @@ const BG: Dict = {
     'И тази е готова! 🎤 Дано подаръкът излезе перфектен. За каквото имаш нужда, тук съм.',
   ],
   unsupportedLanguage: (email) =>
-    `Благодарим ти за съобщението! 🙏 Чатът ни засега не е наличен на твоя език, затова не можем да ти отговорим тук. Моля, пиши ни на имейл ${email} и ще ти отговорим възможно най-бързо.`,
+    `Благодарим ти за съобщението! 🙏 Чатът ни засега не е наличен на твоя език, затова не можем да ти отговорим тук. Моля, пиши ни на имейл ${email} — ще ти отговорим в рамките на 2–48 часа.`,
   unsupportedLanguageNoEmail:
-    'Благодарим ти за съобщението! 🙏 Чатът ни засега не е наличен на твоя език, затова не можем да ти отговорим тук. Моля, пиши ни на имейл адреса от страницата за контакт и ще ти отговорим възможно най-бързо.',
+    'Благодарим ти за съобщението! 🙏 Чатът ни засега не е наличен на твоя език, затова не можем да ти отговорим тук. Моля, пиши ни на имейл адреса от страницата за контакт — ще ти отговорим в рамките на 2–48 часа.',
 };
 
 const EL: Dict = {
@@ -124,9 +125,9 @@ const EL: Dict = {
     'Έγινε και αυτό! 🎤 Ελπίζω το δώρο να βγει τέλειο. Ό,τι χρειαστείς, είμαι εδώ.',
   ],
   unsupportedLanguage: (email) =>
-    `Σε ευχαριστούμε για το μήνυμα! 🙏 Το chat μας δεν είναι προς το παρόν διαθέσιμο στη γλώσσα σου, οπότε δεν μπορούμε να σου απαντήσουμε εδώ. Στείλε μας παρακαλώ email στο ${email} και θα σου απαντήσουμε το συντομότερο δυνατό.`,
+    `Σε ευχαριστούμε για το μήνυμα! 🙏 Το chat μας δεν είναι προς το παρόν διαθέσιμο στη γλώσσα σου, οπότε δεν μπορούμε να σου απαντήσουμε εδώ. Στείλε μας παρακαλώ email στο ${email} — θα σου απαντήσουμε εντός 2–48 ωρών.`,
   unsupportedLanguageNoEmail:
-    'Σε ευχαριστούμε για το μήνυμα! 🙏 Το chat μας δεν είναι προς το παρόν διαθέσιμο στη γλώσσα σου, οπότε δεν μπορούμε να σου απαντήσουμε εδώ. Στείλε μας παρακαλώ email στη διεύθυνση από τη σελίδα επικοινωνίας και θα σου απαντήσουμε το συντομότερο δυνατό.',
+    'Σε ευχαριστούμε για το μήνυμα! 🙏 Το chat μας δεν είναι προς το παρόν διαθέσιμο στη γλώσσα σου, οπότε δεν μπορούμε να σου απαντήσουμε εδώ. Στείλε μας παρακαλώ email στη διεύθυνση από τη σελίδα επικοινωνίας — θα σου απαντήσουμε εντός 2–48 ωρών.',
 };
 
 const EN: Dict = {
@@ -150,9 +151,9 @@ const EN: Dict = {
     'That one is done as well! 🎤 I hope the gift turns out perfect. Whatever you need, I am here.',
   ],
   unsupportedLanguage: (email) =>
-    `Thank you for your message! 🙏 Our chat is not available in your language yet, so we cannot reply here. Please email us at ${email} and we will get back to you as soon as we can.`,
+    `Thank you for your message! 🙏 Our chat is not available in your language yet, so we cannot reply here. Please email us at ${email} — we reply within 2–48 hours.`,
   unsupportedLanguageNoEmail:
-    'Thank you for your message! 🙏 Our chat is not available in your language yet, so we cannot reply here. Please email us at the address on our contact page and we will get back to you as soon as we can.',
+    'Thank you for your message! 🙏 Our chat is not available in your language yet, so we cannot reply here. Please email us at the address on our contact page — we reply within 2–48 hours.',
 };
 
 const DICTS: Record<ChatLocale, Dict> = { ro: RO, bg: BG, el: EL, en: EN };
