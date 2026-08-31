@@ -592,9 +592,22 @@ pierde). Sunt **patru** locuri care trebuie să dea același verdict:
 | `experiences/package-resolve.ts` (`effectiveExperienceSlug`) | **prețul** — vezi mai jos |
 
 `defaultSlug` **nu** e o scutire: o interfață oprită cât timp e implicită rămâne
-inaccesibilă, iar site-ul cade pe `classic`, care nu poate fi oprită. Adminul
-mută singur implicitul înapoi pe classic când o oprești, ca să nu existe starea
-contradictorie „Implicită + Oprită".
+inaccesibilă, iar site-ul cade pe `classic`. Adminul mută singur implicitul
+înapoi pe classic când o oprești, ca să nu existe starea contradictorie
+„Implicită + Oprită".
+
+**`classic` se poate opri, dar condiționat** (31 aug 2026). E plasa de siguranță
+a site-ului: cu `experienceConfig` lipsă sau cu implicita oprită, trebuie să
+existe ce randa. Deci comutatorul ei ascultă doar cât timp o **altă** interfață
+e simultan activată **și** implicită — `classicCanBeOff` din ambele `assign.ts`.
+Oprești și pe aceea, classic revine singură, chiar cu `enabled: false` rămas în
+JSON. În admin comutatorul apare pe cardul Classic, blocat aprins cât timp nu se
+poate, cu motivul în tooltip.
+
+Există pentru un site cu o singură interfață (ex. `manele-top.ro`, doar `cadou`):
+adminul afișează linkul `?ui=classic` cu buton de copiere, iar scăpat într-o
+reclamă sau într-un mesaj către clienți lipea interfața greșită pe vizitator 365
+de zile, prin cookie-ul `mc_ui`.
 
 ⚠️ **Prețul se validează separat.** `x-mc-experience` (și `?ui=`) sunt controlate
 de client, iar `effectiveExperienceSlug` le lua la valoarea nominală: un pachet

@@ -11,7 +11,24 @@ function norm(v: string | null | undefined): string {
 }
 
 /**
- * classic cannot be turned off — a missing/disabled default must not lock the site.
+ * classic is the site's safety net: with no `experienceConfig` (API down) or a
+ * disabled default, something must still render. So it can be turned off ONLY
+ * while ANOTHER experience is both enabled and the default — i.e. can actually
+ * take over the homepage.
+ *
+ * Concrete reason: on a cadou-only tenant, the admin shows the `?ui=classic`
+ * link with a copy button. Leaked into an ad or a customer message, it stuck the
+ * wrong interface on a visitor for 365 days through the `mc_ui` cookie.
+ */
+function classicCanBeOff(config?: SiteExperienceConfig | null): boolean {
+  const fallback = config?.defaultSlug?.trim();
+  if (!fallback || fallback === DEFAULT_EXPERIENCE_SLUG) return false;
+  // Not recursive: `fallback !== DEFAULT_EXPERIENCE_SLUG`, so the call below
+  // takes the ordinary branch, which never reaches back here.
+  return isExperienceEnabled(fallback, config);
+}
+
+/**
  * A slug with no config entry counts as NOT enabled: otherwise a stale `mc_ui`
  * cookie (365 days) would force an experience onto a tenant that never turned it
  * on, including when the config comes back null because the API is down. Must
@@ -19,11 +36,13 @@ function norm(v: string | null | undefined): string {
  */
 export function isExperienceEnabled(slug: string, config?: SiteExperienceConfig | null): boolean {
   if (!isKnownExperienceSlug(slug)) return false;
-  if (slug === DEFAULT_EXPERIENCE_SLUG) return true;
+  const item = config?.items?.[slug];
+  if (slug === DEFAULT_EXPERIENCE_SLUG) {
+    return item?.enabled === false ? !classicCanBeOff(config) : true;
+  }
   // `defaultSlug` NU mai ține în viață o interfață oprită: dacă operatorul o
   // oprește cât timp e implicită, site-ul cade pe classic. Altfel „oprită"
   // n-ar însemna nimic exact în cazul în care e cel mai vizibilă.
-  const item = config?.items?.[slug];
   if (!item) return false;
   return item.enabled !== false;
 }

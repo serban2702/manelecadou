@@ -11,7 +11,7 @@ import type {
   SiteVoiceEntry,
 } from '@/lib/api/sites.api';
 
-/** Interfața care nu poate fi oprită — plasa de siguranță a site-ului. */
+/** Plasa de siguranță a site-ului. Vezi `canDisable` pentru când poate fi oprită. */
 const DEFAULT_EXPERIENCE_SLUG = 'classic';
 import { GLOBAL_VOICE_IDS, PACKAGE_TIERS, type PackageTier } from '../studio-constants';
 
@@ -39,7 +39,23 @@ export function itemOf(form: SiteDto, slug: string): ExperienceItemConfig {
   return form.experienceConfig?.items?.[slug] ?? emptyItem();
 }
 
-/** classic e mereu on; item lipsă = activ (runtime). */
+/**
+ * Poate fi oprită interfața asta din ecran?
+ *
+ * Orice interfață în afară de `classic`, mereu. `classic` doar cât timp o ALTĂ
+ * interfață e simultan activată și implicită — adică poate prelua homepage-ul.
+ * Fără condiția asta, un site cu `experienceConfig` gol (sau cu API-ul picat)
+ * n-ar mai avea ce randa.
+ *
+ * Trebuie să dea același verdict ca `classicCanBeOff` din cele două `assign.ts`.
+ */
+export function canDisable(form: SiteDto, slug: string): boolean {
+  if (slug !== DEFAULT_EXPERIENCE_SLUG) return true;
+  const fallback = form.experienceConfig?.defaultSlug?.trim();
+  if (!fallback || fallback === DEFAULT_EXPERIENCE_SLUG) return false;
+  return isEnabled(form, fallback);
+}
+
 /**
  * Trebuie să dea EXACT același verdict ca `isExperienceEnabled` din
  * `apps/web/experiences/assign.ts` și `apps/api/src/modules/experiences/assign.ts`.
@@ -51,8 +67,10 @@ export function itemOf(form: SiteDto, slug: string): ExperienceItemConfig {
  * — cel mai prost fel de a greși, fiindcă te face să cauți defectul în altă parte.
  */
 export function isEnabled(form: SiteDto, slug: string): boolean {
-  if (slug === DEFAULT_EXPERIENCE_SLUG) return true;
   const item = form.experienceConfig?.items?.[slug];
+  if (slug === DEFAULT_EXPERIENCE_SLUG) {
+    return item?.enabled === false ? !canDisable(form, slug) : true;
+  }
   // Lipsa configurării înseamnă „nu e activată pe site-ul ăsta", nu „e liberă".
   // `defaultSlug` nu e o scutire: oprită înseamnă oprită, chiar dacă a rămas
   // marcată implicită (atunci site-ul cade pe classic).
@@ -155,17 +173,19 @@ export function patchItem(
   // Oprirea interfeței care e implicită ar lăsa o stare contradictorie
   // („Implicită" + „Oprită"), pe care runtime-ul o rezolvă oricum căzând pe
   // classic. O rezolvăm aici, ca ecranul să arate ce se întâmplă de fapt.
-  const nextDefault =
-    nextItem.enabled === false && current.defaultSlug === slug
-      ? DEFAULT_EXPERIENCE_SLUG
-      : current.defaultSlug;
+  const fellBack = nextItem.enabled === false && current.defaultSlug === slug;
+  const nextDefault = fellBack ? DEFAULT_EXPERIENCE_SLUG : current.defaultSlug;
+  const items = { ...current.items, [slug]: nextItem };
+  // Căzând pe classic, o repornim: putea fi oprită tocmai fiindcă alta era
+  // implicită, iar acum ea ține site-ul. Runtime-ul o consideră pornită oricum
+  // (`classicCanBeOff` cere alt default), dar lăsat în JSON, `enabled: false`
+  // ar reapărea ca „Oprită" în ecran și ar deruta la următoarea schimbare.
+  if (fellBack && items[DEFAULT_EXPERIENCE_SLUG]?.enabled === false) {
+    items[DEFAULT_EXPERIENCE_SLUG] = { ...items[DEFAULT_EXPERIENCE_SLUG], enabled: true };
+  }
   return {
     ...form,
-    experienceConfig: {
-      ...current,
-      defaultSlug: nextDefault,
-      items: { ...current.items, [slug]: nextItem },
-    },
+    experienceConfig: { ...current, defaultSlug: nextDefault, items },
   };
 }
 

@@ -11,13 +11,35 @@ function norm(v: string | null | undefined): string {
   return (v ?? '').trim().toLowerCase();
 }
 
+/**
+ * `classic` e plasa de siguranță a site-ului: dacă `experienceConfig` lipsește
+ * (API picat) sau interfața implicită e oprită, trebuie să existe unde cădea.
+ * De aceea NU poate fi oprită necondiționat — doar cât timp o ALTĂ interfață e
+ * simultan activată și implicită, adică chiar poate prelua homepage-ul.
+ *
+ * Există pentru un caz concret: pe un tenant care rulează doar `cadou`, adminul
+ * afișează linkul `?ui=classic` cu buton de copiere. Scăpat într-o reclamă sau
+ * într-un mesaj către clienți, lipea interfața greșită pe vizitator 365 de zile,
+ * prin cookie-ul `mc_ui`.
+ */
+function classicCanBeOff(config?: SiteExperienceConfigLite | null): boolean {
+  const fallback = config?.defaultSlug?.trim();
+  if (!fallback || fallback === DEFAULT_EXPERIENCE_SLUG) return false;
+  // Nu recursează: `fallback !== DEFAULT_EXPERIENCE_SLUG`, deci apelul de mai
+  // jos intră pe ramura obișnuită, care nu mai ajunge aici.
+  return isExperienceEnabled(fallback, config);
+}
+
 export function isExperienceEnabled(slug: string, config?: SiteExperienceConfigLite | null): boolean {
   if (!isKnownExperienceSlug(slug)) return false;
-  if (slug === DEFAULT_EXPERIENCE_SLUG) return true;
-  // `defaultSlug` NU mai ține în viață o interfață oprită: dacă operatorul o
+  const item = config?.items?.[slug];
+  if (slug === DEFAULT_EXPERIENCE_SLUG) {
+    return item?.enabled === false ? !classicCanBeOff(config) : true;
+  }
+  // `defaultSlug` NU ține în viață o interfață oprită: dacă operatorul o
   // oprește cât timp e implicită, site-ul cade pe classic. Altfel „oprită"
   // n-ar însemna nimic exact în cazul în care e cel mai vizibilă.
-  const item = config?.items?.[slug];
+  //
   // Lipsa configurării înseamnă „nu e activată pe site-ul ăsta", nu „e liberă".
   // Altfel un cookie mc_ui rămas de la un test (365 de zile) ar forța interfața
   // pe un tenant care n-a activat-o niciodată — inclusiv când configul vine

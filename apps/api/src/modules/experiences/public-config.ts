@@ -1,3 +1,4 @@
+import { isExperienceEnabled } from './assign';
 import { EXPERIENCE_CATALOG, isKnownExperienceSlug } from './catalog';
 import { resolveExperiencePackages, type SitePackagePricing } from './package-resolve';
 import type { ExperienceCatalogConfig, SiteExperienceConfig } from './types';
@@ -92,10 +93,11 @@ export function toPublicExperienceConfig(
   }> = {};
   for (const { slug } of EXPERIENCE_CATALOG) {
     const item = config?.items?.[slug];
-    // Trebuie să dea ACELAȘI verdict ca `isExperienceEnabled` din assign.ts.
-    // `defaultSlug` nu mai e o scutire: o interfață oprită e oprită, chiar dacă
-    // a rămas marcată implicită (atunci site-ul cade pe classic).
-    const enabled = slug === 'classic' || (item?.enabled !== false && !!item);
+    // Verdictul vine din `isExperienceEnabled`, nu dintr-o copie a regulii:
+    // erau două locuri care trebuiau să spună același lucru, și au divergit
+    // deja o dată. `defaultSlug` nu e o scutire — o interfață oprită e oprită
+    // chiar dacă a rămas marcată implicită (atunci site-ul cade pe classic).
+    const enabled = isExperienceEnabled(slug, config);
     items[slug] = {
       enabled,
       utmRules: item?.utmRules ?? [],

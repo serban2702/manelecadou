@@ -7,6 +7,7 @@ import { cn } from '@/lib/cn';
 import type { SiteDto } from '@/lib/api/sites.api';
 import { useToast } from '@/components/ui/use-toast';
 import {
+  canDisable,
   defaultSlugOf,
   experienceUrl,
   hasOwnCatalog,
@@ -34,6 +35,7 @@ export function InterfaceCard({
   const item = itemOf(form, slug);
   const isDefault = defaultSlugOf(form) === slug;
   const enabled = isEnabled(form, slug);
+  const lockedOn = !canDisable(form, slug);
   const utmCount = item.utmRules?.filter((r) => r.source || r.campaign || r.content).length ?? 0;
   const own = hasOwnCatalog(item.catalog);
   const pkgCount = packageOverrideCount(item.packages);
@@ -106,15 +108,27 @@ export function InterfaceCard({
             onPointerDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
           >
-            {slug !== 'classic' && (
-              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-                <span>Disponibilă</span>
-                <Switch
-                  checked={enabled}
-                  onCheckedChange={(on) => setForm(patchItem(form, slug, { enabled: on }))}
-                />
-              </label>
-            )}
+            {/* Classic capătă comutatorul doar cât timp altcineva poate ține
+                site-ul în picioare — altfel rămâne aprins și blocat, cu motivul
+                în tooltip. Vezi `canDisable`. */}
+            <label
+              className={cn(
+                'flex items-center gap-2 text-xs text-muted-foreground',
+                lockedOn ? 'cursor-not-allowed' : 'cursor-pointer',
+              )}
+              title={
+                lockedOn
+                  ? 'Classic e plasa de siguranță a site-ului. Se poate opri doar după ce altă interfață devine implicită.'
+                  : undefined
+              }
+            >
+              <span>Disponibilă</span>
+              <Switch
+                checked={enabled}
+                disabled={lockedOn}
+                onCheckedChange={(on) => setForm(patchItem(form, slug, { enabled: on }))}
+              />
+            </label>
             {!isDefault && (
               <button
                 type="button"

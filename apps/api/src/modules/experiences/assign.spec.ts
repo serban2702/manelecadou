@@ -17,12 +17,70 @@ const cadouOn: SiteExperienceConfig = {
 };
 
 describe('isExperienceEnabled', () => {
-  it('classic is always enabled even if admin disables it', () => {
+  it('classic stays on while nothing else can take over the homepage', () => {
+    // `defaultSlug: 'cadou'` fără `items.cadou` = cadou nu e activată, deci
+    // n-are cine ține site-ul. Oprirea lui classic e ignorată.
     const cfg: SiteExperienceConfig = {
       defaultSlug: 'cadou',
       items: { classic: { enabled: false, utmRules: [] } },
     };
     assert.equal(isExperienceEnabled('classic', cfg), true);
+
+    // Nici cu classic ca default propriu — ar fi exact starea moartă.
+    assert.equal(
+      isExperienceEnabled('classic', {
+        defaultSlug: 'classic',
+        items: { classic: { enabled: false, utmRules: [] } },
+      }),
+      true,
+    );
+    // Nici fără config (API picat).
+    assert.equal(isExperienceEnabled('classic', null), true);
+  });
+
+  it('classic CAN be turned off once another experience is enabled and default', () => {
+    // Site cadou-only: adminul afișează linkul `?ui=classic` cu buton de
+    // copiere. Scăpat într-o reclamă, lipea interfața greșită pe vizitator 365
+    // de zile prin cookie-ul `mc_ui`. Acum operatorul poate închide portița.
+    const cadouOnly: SiteExperienceConfig = {
+      defaultSlug: 'cadou',
+      items: {
+        cadou: { enabled: true, utmRules: [] },
+        classic: { enabled: false, utmRules: [] },
+      },
+    };
+    assert.equal(isExperienceEnabled('classic', cadouOnly), false);
+    assert.equal(isExperienceEnabled('cadou', cadouOnly), true);
+
+    for (const input of [
+      { uiParam: 'classic' },
+      { cookieSlug: 'classic' },
+      { personSlug: 'classic' },
+      {},
+    ]) {
+      assert.deepEqual(
+        resolveExperienceSlug({ ...input, config: cadouOnly }),
+        { slug: 'cadou', reason: 'default' },
+        `intrare neașteptată pe classic prin ${JSON.stringify(input)}`,
+      );
+    }
+  });
+
+  it('turning off the sole remaining experience brings classic back', () => {
+    // Plasa de siguranță nu se poate pierde: dacă operatorul oprește și cadou,
+    // `classic: { enabled: false }` rămas în JSON nu mai blochează site-ul.
+    const bothOff: SiteExperienceConfig = {
+      defaultSlug: 'cadou',
+      items: {
+        cadou: { enabled: false, utmRules: [] },
+        classic: { enabled: false, utmRules: [] },
+      },
+    };
+    assert.equal(isExperienceEnabled('classic', bothOff), true);
+    assert.deepEqual(resolveExperienceSlug({ config: bothOff }), {
+      slug: 'classic',
+      reason: 'default',
+    });
   });
 
   it('unknown slug is disabled', () => {
