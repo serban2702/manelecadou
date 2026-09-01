@@ -251,3 +251,113 @@ describe('pachet dezactivat', () => {
     assert.equal(svc.quote(site, { packageTier: 'premium', experienceSlug: 'classic' }).enabled, true);
   });
 });
+
+
+/**
+ * Comanda gratuită (cod promo 100%).
+ *
+ * Două lucruri s-au rupt aici în producție pe 1 septembrie 2026, pe același
+ * click:
+ *  1. clientul nu retrimitea `packageTier` la reluarea plății (stare de wizard
+ *     restaurată), iar checkout-ul cădea cu 400 pe o comandă validă — deși
+ *     tier-ul era deja persistat pe generare;
+ *  2. comanda gratuită nu raporta nicio conversie server-side, deci un cod 100%
+ *     dat unui influencer nu apărea nicăieri în rapoarte.
+ */
+describe('comandă gratuită (promo 100%)', () => {
+  function makeFreeService(opts: { genTier?: PackageTier | null } = {}) {
+    const svc = makeService();
+    const s = svc as unknown as Record<string, unknown>;
+    const calls = { conversions: 0, stripe: 0, queued: [] as string[], redeemed: 0 };
+
+    s.generations = {
+      findOnePublic: async () => ({ id: 'gen-1', paidUnlocked: false, packageTier: opts.genTier ?? null }),
+      markPaidAndQueue: async (genId: string) => { calls.queued.push(genId); },
+    };
+    s.promo = {
+      validate: async (_c: string, _e: string | undefined, baseTotal: number) => ({
+        ok: true,
+        promoCodeId: 'promo-1',
+        appliedDiscountCents: baseTotal, // 100% off
+      }),
+      redeem: async () => { calls.redeemed += 1; },
+    };
+    s.repo = {
+      create: (row: Record<string, unknown>) => row,
+      save: async (row: Record<string, unknown>) => ({ ...row, id: 'pay-free-1' }),
+    };
+    s.attributionFields = async () => ({});
+    // `siteAppUrl` citește un fallback din config; site-ul de test are domeniu,
+    // deci valoarea n-are efect — dar metoda reală tot îl interoghează.
+    s.config = { get: () => undefined };
+    s.notifyOwnerOfPayment = () => undefined;
+    s.emitFreeOrderConversions = async () => { calls.conversions += 1; };
+    s.getStripe = async () => { calls.stripe += 1; return null; };
+    return { svc, calls };
+  }
+
+  it('nu atinge Stripe și confirmă direct, cu redirect pe melodie', async () => {
+    const { svc, calls } = makeFreeService({ genTier: 'basic' });
+    const res = await svc.createCheckoutSession({
+      userId: null,
+      guestId: null,
+      generationId: 'gen-1',
+      packageTier: 'basic',
+      promoCode: 'FREEVOX100',
+      email: 'client@example.com',
+      site: makeSite({}),
+    });
+
+    assert.equal(calls.stripe, 0, 'Stripe NU trebuie interogat pentru o comandă de 0');
+    assert.match(res.url, /\/m\/gen-1\?paymentId=pay-free-1&success=1$/);
+    assert.equal(res.paymentId, 'pay-free-1');
+    assert.deepEqual(calls.queued, ['gen-1'], 'generarea trebuie pornită imediat');
+    assert.equal(calls.redeemed, 1, 'codul promo trebuie marcat ca folosit');
+  });
+
+  it('raportează conversia (cu valoare 0), nu doar din browser', async () => {
+    const { svc, calls } = makeFreeService({ genTier: 'basic' });
+    await svc.createCheckoutSession({
+      userId: null,
+      guestId: null,
+      generationId: 'gen-1',
+      packageTier: 'basic',
+      promoCode: 'FREEVOX100',
+      email: 'client@example.com',
+      site: makeSite({}),
+    });
+    assert.equal(calls.conversions, 1);
+  });
+
+  it('merge și când clientul NU mai trimite packageTier — îl ia de pe generare', async () => {
+    // Regresia din producție: 400 „packageTier este obligatoriu" pe o comandă
+    // al cărei pachet era deja salvat pe generare.
+    const { svc, calls } = makeFreeService({ genTier: 'plus' });
+    const res = await svc.createCheckoutSession({
+      userId: null,
+      guestId: null,
+      generationId: 'gen-1',
+      promoCode: 'FREEVOX100',
+      email: 'client@example.com',
+      site: makeSite({}),
+    });
+    assert.match(res.url, /\/m\/gen-1\?/);
+    assert.equal(calls.stripe, 0);
+  });
+
+  it('fără generare ȘI fără packageTier rămâne o cerere invalidă', async () => {
+    // Retragerea e pe ce ȘTIM deja, nu o relaxare a validării: o cerere din
+    // care lipsește și pachetul, și generarea, chiar nu poate fi prețuită.
+    const { svc } = makeFreeService();
+    await assert.rejects(
+      svc.createCheckoutSession({
+        userId: null,
+        guestId: null,
+        promoCode: 'FREEVOX100',
+        email: 'client@example.com',
+        site: makeSite({}),
+      }),
+      /packageTier este obligatoriu/,
+    );
+  });
+});

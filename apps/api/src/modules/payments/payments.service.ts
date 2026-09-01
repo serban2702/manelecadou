@@ -420,6 +420,21 @@ export class PaymentsService {
       this.logger.warn(`free-checkout promo.redeem failed: ${(err as Error).message}`);
     }
 
+    // Conversiile server-side, exact ca pe ramura Stripe din webhook, dar cu
+    // valoarea 0. O comandă gratuită E o conversie: e cum măsurăm codurile
+    // 100% date influencerilor sau la campanii. Fără blocul ăsta, singura urmă
+    // rămânea evenimentul din browser de pe pagina de succes — care nu pleacă
+    // dacă omul închide tabul înainte să ajungă acolo.
+    //
+    // `event_id` = `pay-<paymentId>`, identic cu cel din browser, deci Meta,
+    // TikTok și OpenAI păstrează un singur eveniment, nu două.
+    void this.emitFreeOrderConversions({
+      payment,
+      site,
+      generationId: input.generationId ?? null,
+      email: input.email ?? null,
+    });
+
     const siteUrl = this.siteAppUrl(site);
     const successPath = input.generationId
       ? `/m/${input.generationId}?paymentId=${payment.id}&success=1`
@@ -428,6 +443,76 @@ export class PaymentsService {
       `Free checkout: payment=${payment.id} generation=${input.generationId ?? '-'} promo=${promoCode} (${baseTotal} cents)`,
     );
     return { url: `${siteUrl}${successPath}`, paymentId: payment.id };
+  }
+
+  /**
+   * Trimite conversiile pentru o comandă gratuită (promo 100%), cu valoarea 0.
+   *
+   * Fire-and-forget: raportarea către platforme n-are voie să întârzie
+   * răspunsul care duce clientul la melodia lui, și cu atât mai puțin să-l
+   * rupă. Fiecare canal își înghite propria eroare.
+   */
+  private async emitFreeOrderConversions(args: {
+    payment: Payment;
+    site: Site;
+    generationId: string | null;
+    email: string | null;
+  }): Promise<void> {
+    const { payment, site, generationId, email } = args;
+    const contentId = generationId ?? payment.id;
+    const currency = (site.currency || 'RON').toUpperCase();
+    const externalId = payment.userId ?? payment.guestId ?? null;
+    const siteUrl = this.siteAppUrl(site);
+
+    this.tiktok
+      .trackEvent({
+        site,
+        eventName: 'Purchase',
+        eventId: payment.id,
+        url: `${siteUrl}/`,
+        email,
+        externalId,
+        value: 0,
+        currency,
+        contentId,
+        contentName: 'Manea Cadou',
+      })
+      .catch((err) => this.logger.warn(`TikTok Purchase (gratuit) eșuat: ${(err as Error).message}`));
+
+    this.openaiAds
+      .sendEvent({
+        site,
+        event: 'order_created',
+        eventId: `pay-${payment.id}`,
+        dataType: 'contents',
+        amountMinor: 0,
+        currency,
+        sourceUrl: `${siteUrl}/`,
+        contents: [{ id: contentId, name: 'Manea Cadou', contentType: 'product', quantity: 1 }],
+        user: { email, externalId },
+      })
+      .catch((err) => this.logger.warn(`OpenAI order_created (gratuit) eșuat: ${(err as Error).message}`));
+
+    this.analytics
+      .ingestServerEvent({
+        type: 'purchase_success',
+        eventId: payment.id,
+        siteId: site.id,
+        userId: payment.userId,
+        guestId: payment.guestId,
+        userEmail: email,
+        valueCents: 0,
+        currency,
+        url: `${siteUrl}/`,
+        props: {
+          transaction_id: payment.id,
+          content_id: contentId,
+          content_name: 'Manea Cadou',
+          content_type: 'product',
+          free_order: true,
+        },
+      })
+      .catch((err) => this.logger.warn(`Analytics purchase_success (gratuit) eșuat: ${(err as Error).message}`));
   }
 
   async createCheckoutSession(input: CheckoutInput): Promise<{ url: string; paymentId: string }> {
@@ -440,8 +525,11 @@ export class PaymentsService {
     // se face doar pe generări pending/neplătite — acelea au paidUnlocked=false și
     // trec de guard. Fluxurile de unlock demo și de modificare folosesc alt câmp
     // (unlockGenerationId / overrideAmount fără generationId), deci nu sunt afectate.
+    // Pachetul comenzii, citit din generare. Servește la două lucruri: garda de
+    // dublă-plată de mai jos și retragerea pe tier când clientul nu-l retrimite.
+    let existingGen: Awaited<ReturnType<typeof this.generations.findOnePublic>> | null = null;
     if (input.generationId) {
-      const existingGen = await this.generations.findOnePublic(input.generationId);
+      existingGen = await this.generations.findOnePublic(input.generationId);
       if (existingGen?.paidUnlocked) {
         this.logger.warn(
           `Checkout refuzat (dublă-plată): generarea ${input.generationId} e deja plătită. Redirect la melodie.`,
@@ -462,8 +550,14 @@ export class PaymentsService {
     // Model PACHETE: pachetul EFECTIV pe interfața comenzii (aceeași sursă ca `quote`).
     // Îl rezolvăm chiar și când adminul suprascrie suma, ca să putem refuza un pachet
     // scos din vitrină indiferent pe unde vine cererea.
-    const pkg = input.packageTier
-      ? this.resolvedPackage(site, normalizeTier(input.packageTier), input.experienceSlug)
+    // Pachetul vine de la client, dar NU depindem de el: e persistat pe generare
+    // la creare, iar un client care nu-l retrimite (stare de wizard restaurată
+    // dintr-o versiune mai veche, reluare a plății de pe alt device) primea un
+    // 400 „packageTier este obligatoriu" pe o comandă perfect validă. Cerem
+    // clientului doar ce nu știm deja.
+    const tierFromClient = input.packageTier ?? existingGen?.packageTier ?? null;
+    const pkg = tierFromClient
+      ? this.resolvedPackage(site, normalizeTier(tierFromClient), input.experienceSlug)
       : null;
     if (pkg) this.assertPackagePurchasable(pkg);
 
