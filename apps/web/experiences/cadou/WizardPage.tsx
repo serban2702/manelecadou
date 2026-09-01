@@ -174,6 +174,10 @@ function WizardInner() {
               ...EMPTY_CADOU,
               ...snap.data,
               voice: snap.data.voice || 'male',
+              // Aceeași plasă ca la `voice`: un snapshot scris de o versiune
+              // mai veche (sau cu valoarea golită) lăsa comanda fără pachet,
+              // iar checkout-ul cădea cu „packageTier este obligatoriu".
+              packageTier: snap.data.packageTier || 'basic',
             });
             if (snap.generationId) setGenerationId(snap.generationId);
             setStep(3);
@@ -190,6 +194,7 @@ function WizardInner() {
         ...EMPTY_CADOU,
         ...snap.data,
         voice: snap.data.voice || 'male',
+        packageTier: snap.data.packageTier || 'basic',
         ...(fromUrlStyle ? { style: fromUrlStyle } : {}),
       });
       if (snap.generationId) setGenerationId(snap.generationId);
