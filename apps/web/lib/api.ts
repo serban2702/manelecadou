@@ -187,16 +187,32 @@ async function request<T>(
   const res = await fetch(url, { ...init, headers });
 
   if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      body = await res.text();
-    }
-    throw new ApiError(res.status, body);
+    throw new ApiError(res.status, await readErrorBody(res));
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+/**
+ * Corpul unui răspuns de eroare, citit O SINGURĂ dată.
+ *
+ * Varianta evidentă — `try { res.json() } catch { res.text() }` — e ruptă:
+ * `res.json()` consumă stream-ul chiar și când eșuează, iar `res.text()` de pe
+ * ramura de catch aruncă „body stream already read". Eroarea aia o ÎNLOCUIEȘTE
+ * pe cea reală, așa că un 502 de la nginx (upstream repornit în timpul unui
+ * deploy) ajungea în pagină ca un mesaj despre stream-uri, fără status și fără
+ * nicio urmă a cauzei.
+ *
+ * Citim textul o dată și parsăm din el: JSON când se poate, text brut altfel.
+ */
+async function readErrorBody(res: Response): Promise<unknown> {
+  const raw = await res.text().catch(() => '');
+  if (!raw) return '';
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
 }
 
 export class ApiError extends Error {
@@ -690,13 +706,7 @@ export const api = {
       body: form,
     });
     if (!res.ok) {
-      let body: unknown;
-      try {
-        body = await res.json();
-      } catch {
-        body = await res.text();
-      }
-      throw new ApiError(res.status, body);
+      throw new ApiError(res.status, await readErrorBody(res));
     }
     return (await res.json()) as GenerationDto;
   },
@@ -733,13 +743,7 @@ export const api = {
       body: form,
     });
     if (!res.ok) {
-      let body: unknown;
-      try {
-        body = await res.json();
-      } catch {
-        body = await res.text();
-      }
-      throw new ApiError(res.status, body);
+      throw new ApiError(res.status, await readErrorBody(res));
     }
     return (await res.json()) as { collageId: string; status: string };
   },
@@ -772,13 +776,7 @@ export const api = {
       body: form,
     });
     if (!res.ok) {
-      let body: unknown;
-      try {
-        body = await res.json();
-      } catch {
-        body = await res.text();
-      }
-      throw new ApiError(res.status, body);
+      throw new ApiError(res.status, await readErrorBody(res));
     }
     return (await res.json()) as {
       collages: Array<{ collageId: string; status: string; track: string }>;
