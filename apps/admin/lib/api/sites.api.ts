@@ -38,6 +38,8 @@ export interface SiteDto {
     googleAdsPurchaseLabel?: string;
     metaAdAccountId?: string;
     tiktokAdvertiserId?: string;
+    /** Pixel ID ChatGPT Ads (OpenAI). Public — apare în HTML-ul paginii. */
+    openaiPixelId?: string;
   };
   /** Token-uri server-side pentru tracking (server-only — nu apare în /public/site). */
   analyticsSecrets?: {
@@ -47,6 +49,8 @@ export interface SiteDto {
     tiktokAccessToken?: string;
     metaMarketingToken?: string;
     tiktokMarketingToken?: string;
+    /** Cheia OpenAI Ads Conversions API (server-side, oglinda pixelului). */
+    openaiConversionsApiKey?: string;
   };
   stripe: { priceId?: string | null; productName?: string; statementDescriptor?: string };
   suno: {
@@ -521,6 +525,17 @@ export const SitesApi = {
   get: (id: string) => http.get<SiteDto>(`/admin/sites/${id}`),
   create: (body: Partial<SiteDto>) => http.post<SiteDto>('/admin/sites', body),
   update: (id: string, body: Partial<SiteDto>) => http.patch<SiteDto>(`/admin/sites/${id}`, body),
+
+  /** Verifică pixelul + cheia ChatGPT Ads. Implicit `validate_only` — OpenAI
+   *  confirmă forma și credențialele fără să înregistreze o conversie falsă. */
+  openaiAdsTest: (body: { validateOnly?: boolean; email?: string } = {}) =>
+    http.post<{
+      ok: boolean;
+      validateOnly: boolean;
+      status: number | null;
+      response: string | null;
+      reason: string | null;
+    }>(`/admin/openai-ads/test`, body, { timeout: 20_000 }),
 
   /** Registru de lansare: ce lipsește pe fiecare site față de seed-ul curent (Lyria, Cadou, etc.). */
   rolloutOverview: () => http.get<SiteRolloutOverview>(`/admin/rollout`),

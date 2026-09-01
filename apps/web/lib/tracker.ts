@@ -1,9 +1,10 @@
 'use client';
 
+import { attributionPayload, getSessionCapture } from './utm';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:1501';
 const SESSION_KEY = 'mc_session_key';
 const VISITOR_KEY = 'mc_visitor_id';
-const SESSION_META_KEY = 'mc_session_meta';
 const CONSENT_KEY = 'mc_consent_v1';
 const SESSION_ENRICHED_KEY = 'mc_session_enriched';
 
@@ -54,59 +55,12 @@ function getVisitorId(): string {
   return v;
 }
 
-interface SessionMeta {
-  source: string | null;
-  medium: string | null;
-  campaign: string | null;
-  utmContent: string | null;
-  utmTerm: string | null;
-  referrer: string | null;
-  device: string;
-}
-
 function detectDevice(): 'mobile' | 'tablet' | 'desktop' {
   if (typeof navigator === 'undefined') return 'desktop';
   const ua = navigator.userAgent.toLowerCase();
   if (/ipad|tablet|playbook|silk/.test(ua) || (/android/.test(ua) && !/mobile/.test(ua))) return 'tablet';
   if (/mobile|iphone|ipod|android.*mobile|windows phone/.test(ua)) return 'mobile';
   return 'desktop';
-}
-
-function readSessionMeta(): SessionMeta {
-  if (typeof window === 'undefined') {
-    return { source: null, medium: null, campaign: null, utmContent: null, utmTerm: null, referrer: null, device: 'desktop' };
-  }
-  const cached = sessionStorage.getItem(SESSION_META_KEY);
-  if (cached) {
-    try {
-      return JSON.parse(cached);
-    } catch {
-      /* fallthrough */
-    }
-  }
-  const params = new URLSearchParams(window.location.search);
-  const ref = document.referrer || null;
-  let source = params.get('utm_source');
-  const medium = params.get('utm_medium');
-  if (!source && ref) {
-    try {
-      const refHost = new URL(ref).hostname;
-      if (refHost && !refHost.endsWith(window.location.hostname)) source = refHost;
-    } catch {
-      /* ignore */
-    }
-  }
-  const meta: SessionMeta = {
-    source: source || (ref ? null : 'direct'),
-    medium,
-    campaign: params.get('utm_campaign'),
-    utmContent: params.get('utm_content'),
-    utmTerm: params.get('utm_term'),
-    referrer: ref,
-    device: detectDevice(),
-  };
-  sessionStorage.setItem(SESSION_META_KEY, JSON.stringify(meta));
-  return meta;
 }
 
 interface ClientEnrichment {
@@ -298,7 +252,7 @@ export function track(input: TrackInput): string {
   const eventId = uuid();
   const sessionKey = getSessionKey();
   const visitorId = getVisitorId();
-  const meta = readSessionMeta();
+  const capture = getSessionCapture();
 
   // Trimit enrichment-ul DOAR prima dată per sesiune (pentru a evita payload mare).
   const enriched = sessionStorage.getItem(SESSION_ENRICHED_KEY) === '1';
@@ -315,16 +269,17 @@ export function track(input: TrackInput): string {
     visitorId,
     url: window.location.href,
     path: window.location.pathname,
-    referrer: meta.referrer,
+    referrer: capture.referrer,
     valueCents: input.valueCents,
     currency: input.currency,
     props: { ...(input.props ?? {}), ...fingerprint },
-    source: meta.source,
-    medium: meta.medium,
-    campaign: meta.campaign,
-    utmContent: meta.utmContent,
-    utmTerm: meta.utmTerm,
-    device: meta.device,
+    // Atribuirea completă (UTM extins + click-id-uri + prima atingere) pleacă pe
+    // FIECARE eveniment, nu doar pe primul: `attributionPayload()` omite câmpurile
+    // goale, deci o sesiune directă costă o cheie. Dacă am trimite-o o singură
+    // dată, un prim eveniment pierdut pe drum ar lăsa sesiunea fără campanie
+    // pentru totdeauna — exact rândurile pe care le plătim cel mai scump.
+    ...attributionPayload(),
+    device: detectDevice(),
     consentGiven: getConsent() === 'granted',
     ...enrichment,
     ts: Date.now(),

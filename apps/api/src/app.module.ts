@@ -40,6 +40,8 @@ import { SeoPagesModule } from './modules/seo-pages/seo-pages.module';
 import { WebPushModule } from './modules/web-push/web-push.module';
 import { AiChatModule } from './modules/ai-chat/ai-chat.module';
 import { OutboundEmailModule } from './modules/outbound-email/outbound-email.module';
+import { EmailTrackingModule } from './modules/email-tracking/email-tracking.module';
+import { OpenAiAdsModule } from './modules/openai-ads/openai-ads.module';
 import { MetaCapiModule } from './modules/meta-capi/meta-capi.module';
 import { SiteDemosModule } from './modules/site-demos/site-demos.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
@@ -76,6 +78,8 @@ import { StorageModule } from './storage/storage.module';
     IdentityModule,
     ExperiencesModule,
     OutboundEmailModule,
+    EmailTrackingModule,
+    OpenAiAdsModule,
     MetaCapiModule,
     MailerModule,
     HealthModule,

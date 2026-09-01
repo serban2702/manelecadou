@@ -13,6 +13,7 @@ import {
   normalizeSource,
   utmFromUrl,
 } from './attribution-sql';
+import { normalizeChannel } from './utm-standard';
 
 export type AttributionMatch =
   | 'session_key'
@@ -33,6 +34,41 @@ export interface AttributionSnapshot {
   attributionLandingPath: string | null;
   attributionMatch: AttributionMatch;
   attributedAt: Date;
+  // ===== Extensia UTM standardizată (vezi `utm-standard.ts`) =====
+  attributionChannel: string | null;
+  attributionUtmId: string | null;
+  attributionAdset: string | null;
+  attributionPlacement: string | null;
+  attributionTerm: string | null;
+  attributionClickId: string | null;
+  attributionClickIdSource: string | null;
+  attributionFirstSource: string | null;
+  attributionFirstChannel: string | null;
+  attributionFirstCampaign: string | null;
+  attributionEmailToken: string | null;
+}
+
+/** Coloanele citite din sesiunea câștigătoare la atribuire. */
+interface PickedSession {
+  source: string | null;
+  medium: string | null;
+  campaign: string | null;
+  utmContent: string | null;
+  referrer: string | null;
+  landingPath: string | null;
+  channel: string | null;
+  utmId: string | null;
+  utmTerm: string | null;
+  adsetName: string | null;
+  adName: string | null;
+  placement: string | null;
+  clickId: string | null;
+  clickIdSource: string | null;
+  emailToken: string | null;
+  firstSource: string | null;
+  firstChannel: string | null;
+  firstCampaign: string | null;
+  match: AttributionMatch;
 }
 
 export interface PaymentIdentity {
@@ -82,6 +118,17 @@ export class PaymentAttributionService implements OnModuleInit {
     target.attributionLandingPath = snap.attributionLandingPath;
     target.attributionMatch = snap.attributionMatch;
     target.attributedAt = snap.attributedAt;
+    target.attributionChannel = snap.attributionChannel;
+    target.attributionUtmId = snap.attributionUtmId;
+    target.attributionAdset = snap.attributionAdset;
+    target.attributionPlacement = snap.attributionPlacement;
+    target.attributionTerm = snap.attributionTerm;
+    target.attributionClickId = snap.attributionClickId;
+    target.attributionClickIdSource = snap.attributionClickIdSource;
+    target.attributionFirstSource = snap.attributionFirstSource;
+    target.attributionFirstChannel = snap.attributionFirstChannel;
+    target.attributionFirstCampaign = snap.attributionFirstCampaign;
+    target.attributionEmailToken = snap.attributionEmailToken;
     return target;
   }
 
@@ -96,6 +143,17 @@ export class PaymentAttributionService implements OnModuleInit {
       attributionLandingPath: null,
       attributionMatch: 'none',
       attributedAt: at,
+      attributionChannel: null,
+      attributionUtmId: null,
+      attributionAdset: null,
+      attributionPlacement: null,
+      attributionTerm: null,
+      attributionClickId: null,
+      attributionClickIdSource: null,
+      attributionFirstSource: null,
+      attributionFirstChannel: null,
+      attributionFirstCampaign: null,
+      attributionEmailToken: null,
     };
   }
 
@@ -167,16 +225,37 @@ export class PaymentAttributionService implements OnModuleInit {
     const campaignName = campaign ? await this.resolveCampaignName(campaign) : null;
     const creativeName = creative ? await this.resolveAdName(creative) : creative;
 
+    // Numele reclamei: `utm_ad` are prioritate față de `utm_content` când
+    // platforma le trimite pe amândouă (Meta le expune separat), fiindcă
+    // `utm_content` mai e folosit și pentru variante de copy.
+    const creativeFinal = decodeUtmParam(row.adName) ?? creativeName;
+
     return {
       attributionSource: normalizeSource(sourceRaw),
       attributionMedium: medium,
       attributionCampaign: campaign,
       attributionCampaignName: campaignName,
-      attributionCreative: creativeName,
+      attributionCreative: creativeFinal,
       attributionReferrer: referrer,
       attributionLandingPath: landingPath,
       attributionMatch: match,
       attributedAt: at,
+      // Canalul se recalculează din sursa EFECTIVĂ, nu se copiază orbește din
+      // sesiune: când UTM-ul a fost recuperat din URL-ul de page_view
+      // (`match='event_url'`), `sourceRaw` diferă de `row.source`, iar canalul
+      // sesiunii ar fi rămas cel greșit. Fallback pe canalul sesiunii doar când
+      // nu avem deloc sursă.
+      attributionChannel: sourceRaw ? normalizeChannel(sourceRaw) : (row.channel ?? 'direct'),
+      attributionUtmId: decodeUtmParam(row.utmId),
+      attributionAdset: decodeUtmParam(row.adsetName),
+      attributionPlacement: decodeUtmParam(row.placement),
+      attributionTerm: decodeUtmParam(row.utmTerm),
+      attributionClickId: row.clickId,
+      attributionClickIdSource: row.clickIdSource,
+      attributionFirstSource: row.firstSource,
+      attributionFirstChannel: row.firstChannel ?? (row.firstSource ? normalizeChannel(row.firstSource) : null),
+      attributionFirstCampaign: decodeUtmParam(row.firstCampaign),
+      attributionEmailToken: row.emailToken,
     };
   }
 
@@ -210,26 +289,13 @@ export class PaymentAttributionService implements OnModuleInit {
     return { scanned: all.length, updated, withSource, withCampaign };
   }
 
-  private async pickSession(p: PaymentIdentity): Promise<{
-    source: string | null;
-    medium: string | null;
-    campaign: string | null;
-    utmContent: string | null;
-    referrer: string | null;
-    landingPath: string | null;
-    match: AttributionMatch;
-  } | null> {
-    const rows: Array<{
-      source: string | null;
-      medium: string | null;
-      campaign: string | null;
-      utmContent: string | null;
-      referrer: string | null;
-      landingPath: string | null;
-      match: AttributionMatch;
-    }> = await this.sessions.query(
+  private async pickSession(p: PaymentIdentity): Promise<PickedSession | null> {
+    const rows: PickedSession[] = await this.sessions.query(
       `
       SELECT a.source, a.medium, a.campaign, a."utmContent", a.referrer, a."landingPath",
+        a.channel, a."utmId", a."utmTerm", a."adsetName", a."adName", a.placement,
+        a."clickId", a."clickIdSource", a."emailToken",
+        a."firstSource", a."firstChannel", a."firstCampaign",
         CASE
           WHEN $6::text IS NOT NULL AND a."sessionKey" = $6 THEN 'session_key'
           WHEN $7::text IS NOT NULL AND a."visitorId" = $7 THEN 'visitor'

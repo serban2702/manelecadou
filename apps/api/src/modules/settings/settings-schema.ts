@@ -618,6 +618,38 @@ export const SETTINGS_SCHEMA: SettingCategory[] = [
         helpWhat: 'Siguranță anti-burst, nu cota zilnică de la PowerMail/SES.',
       },
       {
+        key: 'EMAIL_CLICK_TRACKING',
+        label: 'Urmărire clicuri în emailuri',
+        description:
+          'Rescrie linkurile din emailuri prin /api/e/c/<token>: cine a apăsat, când și de câte ori.',
+        kind: 'bool',
+        hotReload: true,
+        group: 'Urmărire emailuri',
+        helpWhat:
+          'ACTIV implicit: cât timp e gol, urmărirea merge. Se oprește doar punându-l explicit pe „Dezactivat". Magic link-urile NU se rescriu niciodată, indiferent de setare.',
+      },
+      {
+        key: 'EMAIL_OPEN_TRACKING',
+        label: 'Pixel de deschidere',
+        description: 'Adaugă o imagine 1×1 care marchează deschiderea mailului.',
+        kind: 'bool',
+        hotReload: true,
+        group: 'Urmărire emailuri',
+        helpWhat:
+          'ACTIV implicit. Cifra e orientativă: Gmail preîncarcă imaginile prin proxy-ul lui, deci „deschis" nu înseamnă neapărat „citit". Clicul e dovada reală.',
+      },
+      {
+        key: 'EMAIL_TRACKING_EXCLUDE_KINDS',
+        label: 'Categorii excluse de la urmărire',
+        description: 'CSV cu valori din coloana „kind" a emailurilor (ex. payment_receipt,generation_done).',
+        kind: 'string',
+        hotReload: true,
+        group: 'Urmărire emailuri',
+        placeholder: 'payment_receipt,generation_done',
+        helpWhat:
+          'Linkurile categoriilor de aici primesc UTM-uri, dar nu trec prin redirect și nu se numără. `magic_link` e exclus din cod, nu de aici.',
+      },
+      {
         key: 'RECOVERY_EMAIL_ENABLED',
         label: 'Emailuri de recuperare comenzi',
         description:

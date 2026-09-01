@@ -25,6 +25,7 @@ import { PaymentAttributionService } from './payment-attribution.service';
 import type { ProfitConfigData } from './profit-config.entity';
 import { SitesService } from '../sites/sites.service';
 import { TrackBatchDto, TrackEventDto, AdPaymentCreateDto, AdPaymentUpdateDto } from './dto';
+import { utmSpec } from './utm-standard';
 
 function clientIp(req: Request): string | null {
   const fwd = (req.headers['x-forwarded-for'] as string) || '';
@@ -289,6 +290,29 @@ export class AnalyticsAdminController {
       excludeBots: q.excludeBots !== '0' && q.excludeBots !== 'false',
       excludeTests: q.excludeTests !== '0' && q.excludeTests !== 'false',
     });
+  }
+
+  /**
+   * Standardul UTM al platformei — șabloanele per platformă, vocabularul și
+   * capcanele. Servit din cod, nu duplicat în admin: „ce UTM punem în reclamă"
+   * trebuie să aibă un singur răspuns, iar acela e cel după care agregăm.
+   */
+  @Get('utm-spec')
+  utmSpec() {
+    return utmSpec();
+  }
+
+  /** Audit de taguire: câte reclame vin fără UTM și unde se pierde informația. */
+  @Get('utm-health')
+  utmHealth(
+    @Query() q: { from?: string; to?: string; excludeBots?: string },
+    @CurrentSiteId() siteId: string | null,
+  ) {
+    return this.analytics.utmHealth(
+      rangeFromQuery(q),
+      siteId,
+      q.excludeBots !== '0' && q.excludeBots !== 'false',
+    );
   }
 
   /** Backfill one-off: nume/email/gen cumpărător din Stripe pentru plăți istorice. */

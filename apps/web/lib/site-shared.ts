@@ -105,6 +105,8 @@ export interface SiteConfig {
     tiktokPixelId?: string;
     googleAdsConversionId?: string;
     googleAdsPurchaseLabel?: string;
+    /** Pixel ID ChatGPT Ads (OpenAI). Montat în `<head>` din `app/layout.tsx`. */
+    openaiPixelId?: string;
   };
   social?: {
     instagram?: string;

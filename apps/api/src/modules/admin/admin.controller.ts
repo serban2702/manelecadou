@@ -828,6 +828,18 @@ export class AdminController {
             referrer: p.attributionReferrer,
             landingPath: p.attributionLandingPath,
             match: p.attributionMatch,
+            // Standardul UTM extins — doar pe snapshot. Ramura „live" de mai sus
+            // rezolvă atribuirea pe loc pentru plățile încă nesnapshot-ate și
+            // nu are de unde să le știe; rămân null, nu ghicite.
+            channel: p.attributionChannel,
+            adset: p.attributionAdset,
+            placement: p.attributionPlacement,
+            term: p.attributionTerm,
+            utmId: p.attributionUtmId,
+            clickIdSource: p.attributionClickIdSource,
+            firstChannel: p.attributionFirstChannel,
+            firstCampaign: p.attributionFirstCampaign,
+            emailToken: p.attributionEmailToken,
           }
         : attrByPaymentId.get(p.id) ?? null;
       return {

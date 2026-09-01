@@ -289,6 +289,25 @@ export interface AdminPayment {
     landingPath: string | null;
     /** Cum s-a legat plata de sesiune (snapshot). */
     match?: string | null;
+    // ===== Standardul UTM extins — prezent doar pe plățile cu snapshot scris.
+    // Pe cele rezolvate „live" (fără `attributedAt`) rămân undefined.
+    /** Canal canonic: meta / tiktok / google / chatgpt / email / direct. */
+    channel?: string | null;
+    /** Grupul de anunțuri (utm_adset). */
+    adset?: string | null;
+    /** feed / story / reels / search / chat (utm_placement). */
+    placement?: string | null;
+    /** Cuvântul cheie sau audiența (utm_term). */
+    term?: string | null;
+    /** ID-ul campaniei din platformă (utm_id) — legătura exactă cu cheltuiala. */
+    utmId?: string | null;
+    /** Platforma care a pus click-id-ul: meta / tiktok / google / bing / … */
+    clickIdSource?: string | null;
+    /** Canalul PRIMEI atingeri — cine a găsit clientul, nu cine l-a adus înapoi. */
+    firstChannel?: string | null;
+    firstCampaign?: string | null;
+    /** Tokenul linkului de email care a adus sesiunea plătitoare. */
+    emailToken?: string | null;
   } | null;
   /** Generarea legată (când `generations.paymentId == payment.id`). */
   generation?: {

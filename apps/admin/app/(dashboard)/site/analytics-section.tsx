@@ -1,10 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { SiteDto } from '@/lib/api/sites.api';
+import { Loader2 } from 'lucide-react';
+import { SitesApi, type SiteDto } from '@/lib/api/sites.api';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { useToast } from '@/components/ui/use-toast';
 import { Field, StudioSection } from './studio-primitives';
+import { SpaLink } from '@/lib/spa-router';
 
 type SecretKey = keyof NonNullable<SiteDto['analyticsSecrets']>;
 
@@ -50,6 +54,8 @@ export function AnalyticsSection({
   setForm: (f: SiteDto) => void;
 }) {
   const [edited, setEdited] = useState<Set<SecretKey>>(new Set());
+  const [testingOpenAi, setTestingOpenAi] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     setEdited(new Set());
@@ -83,6 +89,21 @@ export function AnalyticsSection({
         title="Măsurare (pixeli)"
         help="ID-urile publice (pixel, GA4) apar în pagină. Tokenii server-side nu se reafișează — lasă gol ca să rămână neschimbați."
       >
+        {/* Pixelii spun platformei ce s-a întâmplat; UTM-urile ne spun NOUĂ din
+            ce reclamă a venit omul. Sunt două lucruri diferite și se configurează
+            în locuri diferite — de-aia linkul stă exact aici, unde se caută. */}
+        <div
+          className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2 text-xs text-muted-foreground"
+          data-field="operations.utm"
+        >
+          <span>
+            Pixelii de aici raportează conversiile către platforme. Etichetele de campanie
+            (UTM) — ce lipești în Meta, TikTok, Google, ChatGPT — sunt în pagina dedicată.
+          </span>
+          <SpaLink href="/utm" className="font-medium text-primary hover:underline">
+            Linkuri și UTM →
+          </SpaLink>
+        </div>
         <Card>
           <CardContent className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
             <Field
@@ -153,8 +174,59 @@ export function AnalyticsSection({
                 placeholder="AbC-D_efGh"
               />
             </Field>
+            <Field
+              label="Pixel ID ChatGPT Ads"
+              fieldId="operations.openaiPixel"
+              description="Din OpenAI Ads Manager → tab-ul Conversions. Se montează în <head>, cât mai devreme."
+            >
+              <Input
+                value={form.analytics?.openaiPixelId ?? ''}
+                onChange={(e) => patchPublic({ openaiPixelId: e.target.value })}
+                placeholder="KJceR4a84bdTfdXENYmP4x"
+              />
+            </Field>
+            <Field
+              label="Cheie ChatGPT Conversions API"
+              description="Din Ads Manager → Manage conversion keys. Trimite aceleași conversii din backend, ca plata confirmată după închiderea tabului să nu se piardă."
+            >
+              <SecretInput {...secretField('openaiConversionsApiKey')} />
+            </Field>
           </CardContent>
         </Card>
+
+        {/* Testul merge cu `validate_only`: OpenAI confirmă pixelul, cheia și
+            forma payload-ului, dar NU înregistrează nimic. Altfel fiecare
+            apăsare pe buton ar fi umflat raportul cu comenzi inexistente. */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={testingOpenAi}
+            onClick={async () => {
+              setTestingOpenAi(true);
+              try {
+                const res = await SitesApi.openaiAdsTest({ validateOnly: true });
+                toast({
+                  title: res.ok ? 'ChatGPT Ads: configurare validă' : 'ChatGPT Ads: a răspuns cu eroare',
+                  description: res.ok
+                    ? 'Pixelul și cheia sunt acceptate. Nu s-a înregistrat nicio conversie (validate_only).'
+                    : `${res.status ?? '—'} · ${res.response ?? res.reason ?? 'fără detalii'}`,
+                  variant: res.ok ? undefined : 'destructive',
+                });
+              } catch (e) {
+                toast({ title: 'Testul nu a pornit', description: (e as Error).message, variant: 'destructive' });
+              } finally {
+                setTestingOpenAi(false);
+              }
+            }}
+          >
+            {testingOpenAi && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+            Testează ChatGPT Ads
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Salvează întâi. Testul rulează în modul de validare — nu înregistrează conversii.
+          </span>
+        </div>
       </StudioSection>
 
       <StudioSection

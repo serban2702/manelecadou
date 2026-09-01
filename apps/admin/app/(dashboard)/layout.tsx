@@ -17,6 +17,7 @@ import {
   FolderCog,
   Globe,
   Inbox,
+  Link2,
   LayoutDashboard,
   LogOut,
   Megaphone,
@@ -99,6 +100,7 @@ const DESKTOP_NAV: NavEntry[] = [
       { href: '/generations', label: 'Generări', icon: Music2, scope: 'both' },
       { href: '/guests', label: 'Guests', icon: Users2, scope: 'both' },
       { href: '/marketing', label: 'Email marketing', icon: Megaphone, scope: 'both' },
+      { href: '/utm', label: 'Linkuri și UTM', icon: Link2, scope: 'both' },
     ],
   },
   {
@@ -142,6 +144,7 @@ const MOBILE_NAV: NavItem[] = [
   { href: '/payments', label: 'Payments', icon: CreditCard, scope: 'both' },
   { href: '/promo', label: 'Promo', icon: Tag, scope: 'both' },
   { href: '/emails', label: 'Emails trimise', icon: Send, scope: 'both' },
+  { href: '/utm', label: 'Linkuri și UTM', icon: Link2, scope: 'both' },
   { href: '/sites', label: 'Toate site-urile', icon: Globe, scope: 'both' },
   { href: '/terminal', label: 'Claude Ops', icon: SquareTerminal, scope: 'both' },
 ];

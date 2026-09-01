@@ -23,6 +23,12 @@ import {
   normalizeSourceSql,
   attributionOrderBySql,
 } from './attribution-sql';
+import { normalizeChannel, normalizeChannelSql, UTM_MEDIUMS } from './utm-standard';
+
+/** `utm_medium` din vocabularul standard — orice altceva e semnalat la audit.
+ *  Derivat din sursa unică, nu copiat: o listă duplicată ar fi divergat la
+ *  primul medium nou și auditul ar fi raportat abateri inexistente. */
+const STANDARD_MEDIUMS = UTM_MEDIUMS.map((m) => m.value);
 
 interface RangeQuery {
   from: Date;
@@ -263,8 +269,36 @@ export class AnalyticsService {
         ['connectionType', dto.connectionType ?? null],
         ['connectionDownlink', dto.connectionDownlink != null ? String(dto.connectionDownlink) : null],
         ['saveData', dto.saveData],
+        ['source', dto.source ?? null],
+        ['medium', dto.medium ?? null],
+        ['campaign', dto.campaign ?? null],
         ['utmContent', dto.utmContent ?? null],
         ['utmTerm', dto.utmTerm ?? null],
+        // Atribuirea se completează leneș din același motiv ca datele de
+        // browser: primul eveniment al sesiunii poate fi un `session_end`
+        // trimis prin sendBeacon, fără UTM-uri. Le luăm de pe primul payload
+        // care le aduce, dar NU suprascriem ce e deja acolo — prima valoare
+        // capturată e cea din URL-ul de aterizare.
+        ['utmId', dto.utmId ?? null],
+        ['utmSourcePlatform', dto.utmSourcePlatform ?? null],
+        ['utmCreativeFormat', dto.utmCreativeFormat ?? null],
+        ['utmMarketingTactic', dto.utmMarketingTactic ?? null],
+        ['adsetName', dto.adsetName ?? null],
+        ['adsetId', dto.adsetId ?? null],
+        ['adName', dto.adName ?? null],
+        ['adId', dto.adId ?? null],
+        ['placement', dto.placement ?? null],
+        ['clickId', dto.clickId ?? null],
+        ['clickIdSource', dto.clickIdSource ?? null],
+        ['clickIds', dto.clickIds ?? null],
+        ['emailToken', dto.emailToken ?? null],
+        ['landingQuery', dto.landingQuery ?? null],
+        ['firstSource', dto.firstSource ?? null],
+        ['firstMedium', dto.firstMedium ?? null],
+        ['firstCampaign', dto.firstCampaign ?? null],
+        ['firstChannel', dto.firstSource ? normalizeChannel(dto.firstSource) : null],
+        ['firstLandingPath', dto.firstLandingPath ?? null],
+        ['firstTouchAt', dto.firstTouchAt ? new Date(dto.firstTouchAt) : null],
       ];
       const sessionAny = session as unknown as Record<string, unknown>;
       for (const [k, v] of enrichFields) {
@@ -272,6 +306,15 @@ export class AnalyticsService {
           sessionAny[k as string] = v;
           dirty = true;
         }
+      }
+      // Canalul urmează sursa: dacă sursa a sosit abia acum (primul eveniment
+      // a fost un beacon fără UTM), un `channel` rămas pe 'direct' ar fi
+      // contrazis chiar rândul lui.
+      const effectiveSource = session.source ?? session.clickIdSource ?? null;
+      const recomputed = normalizeChannel(effectiveSource);
+      if (session.channel !== recomputed && (session.channel == null || session.channel === 'direct')) {
+        session.channel = recomputed;
+        dirty = true;
       }
       if (dto.consentGiven === true && !session.consentGiven) {
         session.consentGiven = true;
@@ -308,6 +351,31 @@ export class AnalyticsService {
       campaign: dto.campaign ?? null,
       utmContent: dto.utmContent ?? null,
       utmTerm: dto.utmTerm ?? null,
+      // Canalul se calculează O DATĂ, la crearea sesiunii, din sursa efectivă
+      // (UTM → click-id → referrer, cascada e făcută în browser). Stocat, nu
+      // dedus la interogare: altfel două rapoarte scrise la distanță de o lună
+      // ar putea da verdicte diferite pe aceleași rânduri.
+      channel: normalizeChannel(dto.source ?? dto.clickIdSource ?? null),
+      utmId: dto.utmId ?? null,
+      utmSourcePlatform: dto.utmSourcePlatform ?? null,
+      utmCreativeFormat: dto.utmCreativeFormat ?? null,
+      utmMarketingTactic: dto.utmMarketingTactic ?? null,
+      adsetName: dto.adsetName ?? null,
+      adsetId: dto.adsetId ?? null,
+      adName: dto.adName ?? null,
+      adId: dto.adId ?? null,
+      placement: dto.placement ?? null,
+      clickId: dto.clickId ?? null,
+      clickIdSource: dto.clickIdSource ?? null,
+      clickIds: dto.clickIds ?? null,
+      landingQuery: dto.landingQuery ?? null,
+      emailToken: dto.emailToken ?? null,
+      firstSource: dto.firstSource ?? null,
+      firstMedium: dto.firstMedium ?? null,
+      firstCampaign: dto.firstCampaign ?? null,
+      firstChannel: dto.firstSource ? normalizeChannel(dto.firstSource) : null,
+      firstLandingPath: dto.firstLandingPath ?? null,
+      firstTouchAt: dto.firstTouchAt ? new Date(dto.firstTouchAt) : null,
       referrer: dto.referrer ?? null,
       landingPath: dto.path ?? null,
       device: dto.device ?? ua.device,
@@ -1079,6 +1147,39 @@ export class AnalyticsService {
       browser: { sess: `COALESCE(NULLIF(s."browserName",''),'unknown')`, att: `COALESCE(NULLIF(att.browser,''),'unknown')` },
       country: { sess: `COALESCE(NULLIF(s.country,''),'??')`, att: `COALESCE(NULLIF(att.country,''),'??')` },
       landing: { sess: `COALESCE(NULLIF(s."landingPath",''),'/')`, att: `COALESCE(NULLIF(att.landing,''),'/')` },
+
+      // ===== Dimensiuni din standardul UTM (vezi `utm-standard.ts`) =====
+      // Pe sesiuni citim coloana calculată la captare; pe plăți, snapshot-ul
+      // înghețat la checkout, cu retragere pe coloana sesiunii pentru rândurile
+      // de dinaintea versiunii ăsteia — altfel istoricul ar dispărea din raport.
+      channel: {
+        sess: `COALESCE(NULLIF(s.channel,''), ${normalizeChannelSql('s.source')})`,
+        att: `COALESCE(NULLIF(att.attr_channel,''), ${normalizeChannelSql('att.source')}, 'direct')`,
+      },
+      utmId: {
+        sess: `COALESCE(NULLIF(s."utmId",''),'(fără utm_id)')`,
+        att: `COALESCE(NULLIF(att.attr_utm_id,''), NULLIF(att."utmId",''), '(fără utm_id)')`,
+      },
+      adset: {
+        sess: `COALESCE(NULLIF(s."adsetName",''),'(fără grup)')`,
+        att: `COALESCE(NULLIF(att.attr_adset,''), NULLIF(att.adset,''), '(fără grup)')`,
+      },
+      placement: {
+        sess: `COALESCE(NULLIF(s.placement,''),'(necunoscut)')`,
+        att: `COALESCE(NULLIF(att.attr_placement,''), NULLIF(att.placement,''), '(necunoscut)')`,
+      },
+      creative: {
+        sess: `COALESCE(NULLIF(s."adName",''), NULLIF(s."utmContent",''), '(fără creativ)')`,
+        att: `COALESCE(NULLIF(att.attr_creative,''), NULLIF(att."adName",''), NULLIF(att."utmContent",''), '(fără creativ)')`,
+      },
+      clickIdSource: {
+        sess: `COALESCE(NULLIF(s."clickIdSource",''),'(fără click-id)')`,
+        att: `COALESCE(NULLIF(att.attr_click_src,''), NULLIF(att."clickIdSource",''), '(fără click-id)')`,
+      },
+      firstSource: {
+        sess: `COALESCE(NULLIF(s."firstChannel",''), NULLIF(s.channel,''), 'direct')`,
+        att: `COALESCE(NULLIF(att.attr_first_channel,''), NULLIF(att."firstChannel",''), 'direct')`,
+      },
     };
 
     if (TRAFFIC[dimension]) {
@@ -1142,6 +1243,13 @@ export class AnalyticsService {
                 p."attributionSource" AS attr_source,
                 p."attributionMedium" AS attr_medium,
                 COALESCE(p."attributionCampaignName", p."attributionCampaign") AS attr_campaign,
+                p."attributionChannel" AS attr_channel,
+                p."attributionUtmId" AS attr_utm_id,
+                p."attributionAdset" AS attr_adset,
+                p."attributionPlacement" AS attr_placement,
+                p."attributionCreative" AS attr_creative,
+                p."attributionClickIdSource" AS attr_click_src,
+                p."attributionFirstChannel" AS attr_first_channel,
                 (${AnalyticsService.AMOUNT_RON}) AS amount_ron
          FROM payments p
          LEFT JOIN guest_sessions gst ON gst.id = p."guestId"
@@ -1149,7 +1257,9 @@ export class AnalyticsService {
        ),
        att AS (
          SELECT paid.*, s.source, s.medium, s.campaign, s.device,
-                s."osName" AS os, s."browserName" AS browser, s.country, s."landingPath" AS landing
+                s."osName" AS os, s."browserName" AS browser, s.country, s."landingPath" AS landing,
+                s."utmId", s."adsetName" AS adset, s.placement, s."adName", s."utmContent",
+                s."clickIdSource", s."firstChannel"
          FROM paid
          LEFT JOIN LATERAL (
            SELECT s2.* FROM analytics_sessions s2
@@ -1221,6 +1331,132 @@ export class AnalyticsService {
       }
     }
     return this.finalizeRows(Array.from(map.values()), true);
+  }
+
+  /**
+   * Sănătatea taguirii: câte sesiuni plătite vin corect etichetate și unde
+   * anume se pierde informația.
+   *
+   * Există fiindcă o campanie prost taguită NU dă eroare nicăieri — dă un rând
+   * „direct" în raport, care arată exact ca traficul organic. Singurul mod de a
+   * o prinde e să numeri sesiunile care au dovada unei reclame (click-id de la
+   * platformă) dar nu au eticheta pe care ar fi trebuit s-o punem noi.
+   */
+  async utmHealth(
+    range: RangeQuery,
+    siteId: string | null = null,
+    excludeBots = true,
+  ): Promise<{
+    totals: {
+      sessions: number;
+      withClickId: number;
+      withSource: number;
+      withCampaign: number;
+      /** Reclamă dovedită de click-id, dar fără UTM-uri de la noi. */
+      untaggedAds: number;
+      /** Campanii rămase cu macro netradus (rânduri vechi). */
+      macroCampaigns: number;
+      /** `utm_medium` în afara vocabularului standard. */
+      nonStandardMedium: number;
+      /** Campanii fără `utm_id` — nu se pot lega exact de cheltuială. */
+      campaignsWithoutId: number;
+    };
+    issues: Array<{ code: string; label: string; count: number; sample: string | null; severity: 'high' | 'medium' | 'low' }>;
+    byChannel: Array<{ channel: string; sessions: number; tagged: number; taggedPct: number }>;
+  }> {
+    const params: unknown[] = [range.from.toISOString(), range.to.toISOString()];
+    let site = '';
+    if (siteId) {
+      params.push(siteId);
+      site = `AND s."siteId" = $${params.length}::uuid`;
+    }
+    const bot = excludeBots ? `AND s."isBot" = false` : '';
+    const known = STANDARD_MEDIUMS.map((m) => `'${m}'`).join(',');
+
+    const [totals] = (await this.sessions.query(
+      `SELECT
+         COUNT(*)::int AS sessions,
+         COUNT(*) FILTER (WHERE s."clickId" IS NOT NULL)::int AS with_click_id,
+         COUNT(*) FILTER (WHERE COALESCE(s.source,'') NOT IN ('','direct'))::int AS with_source,
+         COUNT(*) FILTER (WHERE COALESCE(s.campaign,'') <> '')::int AS with_campaign,
+         COUNT(*) FILTER (WHERE s."clickId" IS NOT NULL AND COALESCE(s.campaign,'') = '')::int AS untagged_ads,
+         COUNT(*) FILTER (WHERE s.campaign ~ '^(\\{\\{.*\\}\\}|__[A-Z_]+__|\\{[a-z_]+\\})$')::int AS macro_campaigns,
+         COUNT(*) FILTER (WHERE COALESCE(s.medium,'') <> '' AND lower(s.medium) NOT IN (${known}))::int AS non_standard_medium,
+         COUNT(*) FILTER (WHERE COALESCE(s.campaign,'') <> '' AND COALESCE(s."utmId",'') = '')::int AS campaigns_without_id
+       FROM analytics_sessions s
+       WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${bot}`,
+      params,
+    )) as Array<Record<string, number>>;
+
+    const samples = (await this.sessions.query(
+      `SELECT 'untagged_ads' AS code, s."clickIdSource" AS sample, COUNT(*)::int AS count
+         FROM analytics_sessions s
+        WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${bot}
+          AND s."clickId" IS NOT NULL AND COALESCE(s.campaign,'') = ''
+        GROUP BY 2
+       UNION ALL
+       SELECT 'macro_campaign', s.campaign, COUNT(*)::int
+         FROM analytics_sessions s
+        WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${bot}
+          AND s.campaign ~ '^(\\{\\{.*\\}\\}|__[A-Z_]+__|\\{[a-z_]+\\})$'
+        GROUP BY 2
+       UNION ALL
+       SELECT 'non_standard_medium', s.medium, COUNT(*)::int
+         FROM analytics_sessions s
+        WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${bot}
+          AND COALESCE(s.medium,'') <> '' AND lower(s.medium) NOT IN (${known})
+        GROUP BY 2
+       ORDER BY 3 DESC
+       LIMIT 30`,
+      params,
+    )) as Array<{ code: string; sample: string | null; count: number }>;
+
+    const byChannel = (await this.sessions.query(
+      // `GROUP BY 1`, nu `GROUP BY channel`: aliasul de ieșire se ciocnește cu
+      // coloana reală `analytics_sessions.channel`, iar Postgres o preferă pe
+      // aceasta — expresia din SELECT rămâne negrupată și query-ul cade.
+      `SELECT COALESCE(NULLIF(s.channel,''), ${normalizeChannelSql('s.source')}) AS channel,
+              COUNT(*)::int AS sessions,
+              COUNT(*) FILTER (WHERE COALESCE(s.campaign,'') <> '')::int AS tagged
+         FROM analytics_sessions s
+        WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${bot}
+        GROUP BY 1
+        ORDER BY 2 DESC
+        LIMIT 20`,
+      params,
+    )) as Array<{ channel: string; sessions: number; tagged: number }>;
+
+    const SEVERITY: Record<string, { label: string; severity: 'high' | 'medium' | 'low' }> = {
+      untagged_ads: { label: 'Reclame fără UTM (avem click-id, dar nicio campanie)', severity: 'high' },
+      macro_campaign: { label: 'Macro netradus în utm_campaign', severity: 'high' },
+      non_standard_medium: { label: 'utm_medium în afara vocabularului standard', severity: 'medium' },
+    };
+
+    return {
+      totals: {
+        sessions: Number(totals?.sessions ?? 0),
+        withClickId: Number(totals?.with_click_id ?? 0),
+        withSource: Number(totals?.with_source ?? 0),
+        withCampaign: Number(totals?.with_campaign ?? 0),
+        untaggedAds: Number(totals?.untagged_ads ?? 0),
+        macroCampaigns: Number(totals?.macro_campaigns ?? 0),
+        nonStandardMedium: Number(totals?.non_standard_medium ?? 0),
+        campaignsWithoutId: Number(totals?.campaigns_without_id ?? 0),
+      },
+      issues: samples.map((r) => ({
+        code: r.code,
+        label: SEVERITY[r.code]?.label ?? r.code,
+        count: Number(r.count),
+        sample: r.sample,
+        severity: SEVERITY[r.code]?.severity ?? 'low',
+      })),
+      byChannel: byChannel.map((r) => ({
+        channel: r.channel,
+        sessions: Number(r.sessions),
+        tagged: Number(r.tagged),
+        taggedPct: r.sessions > 0 ? Math.round((Number(r.tagged) / Number(r.sessions)) * 1000) / 10 : 0,
+      })),
+    };
   }
 
   private async breakdownTemporal(

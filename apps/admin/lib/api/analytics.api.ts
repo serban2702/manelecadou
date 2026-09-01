@@ -175,6 +175,12 @@ export class AnalyticsApi {
       })}`,
     );
   }
+  static utmSpec(): Promise<UtmSpec> {
+    return http.get(`/admin/analytics/utm-spec`);
+  }
+  static utmHealth(range: AnalyticsRange, excludeBots = true): Promise<UtmHealth> {
+    return http.get(`/admin/analytics/utm-health${qs(range, excludeBots ? {} : { excludeBots: '0' })}`);
+  }
   static backfillBuyerNames(limit = 200): Promise<{
     scanned: number; updated: number; genderInferred: number; skipped: number; errors: number;
   }> {
@@ -266,9 +272,140 @@ export interface ProfitReport {
 /** Dimensiunile suportate de matricea de marketing (rânduri). */
 export type MarketingDimension =
   | 'source' | 'medium' | 'campaign' | 'device' | 'os' | 'browser' | 'country' | 'landing'
+  // Standardul UTM: canal canonic, ID de campanie, grup de anunțuri, creativ,
+  // plasare, click-id și prima atingere. Vezi `utm-standard.ts` din API.
+  | 'channel' | 'utmId' | 'adset' | 'creative' | 'placement' | 'clickIdSource' | 'firstSource'
   | 'day' | 'hour' | 'dow'
   | 'experience'
   | 'package' | 'occasion' | 'voiceGender' | 'buyerGender';
+
+// ============== Standardul UTM (servit din API, nu duplicat aici) ==============
+
+export interface UtmTemplateField { param: string; value: string; note: string }
+export interface UtmTemplate {
+  id: string;
+  platform: string;
+  where: string;
+  scope: string;
+  suffix: string;
+  fields: UtmTemplateField[];
+  notes: string[];
+  warnings: string[];
+}
+export interface UtmSpec {
+  version: number;
+  params: string[];
+  clickIds: Array<{ param: string; source: string; channel: string }>;
+  emailClickParam: string;
+  sources: Array<{ value: string; label: string; channel: string }>;
+  mediums: Array<{ value: string; label: string; when: string }>;
+  channelLabels: Record<string, string>;
+  templates: UtmTemplate[];
+  naming: {
+    campaign: { pattern: string; example: string; rules: string[] };
+    content: { pattern: string; example: string; rules: string[] };
+    general: string[];
+  };
+  pitfalls: Array<{ symptom: string; cause: string; fix: string }>;
+}
+
+export interface UtmHealth {
+  totals: {
+    sessions: number;
+    withClickId: number;
+    withSource: number;
+    withCampaign: number;
+    untaggedAds: number;
+    macroCampaigns: number;
+    nonStandardMedium: number;
+    campaignsWithoutId: number;
+  };
+  issues: Array<{ code: string; label: string; count: number; sample: string | null; severity: 'high' | 'medium' | 'low' }>;
+  byChannel: Array<{ channel: string; sessions: number; tagged: number; taggedPct: number }>;
+}
+
+// ============== Urmărirea emailurilor ==============
+
+export type EmailStatsDimension = 'kind' | 'campaign' | 'link' | 'day';
+
+export interface EmailPerformanceRow {
+  key: string;
+  sent: number;
+  recipients: number;
+  opens: number;
+  uniqueOpens: number;
+  clicks: number;
+  uniqueClicks: number;
+  botClicks: number;
+  openRate: number | null;
+  clickRate: number | null;
+  clickToOpenRate: number | null;
+  purchases: number;
+  revenueRon: number;
+  conversionRate: number | null;
+}
+
+export interface EmailRecipientRow {
+  email: string;
+  kind: string | null;
+  campaign: string | null;
+  emails: number;
+  firstSentAt: string;
+  lastSentAt: string;
+  clicks: number;
+  opens: number;
+  firstClickAt: string | null;
+  lastClickAt: string | null;
+  purchases: number;
+  revenueRon: number;
+}
+
+export interface EmailClickRow {
+  id: string;
+  token: string;
+  kind: string | null;
+  campaign: string | null;
+  linkKey: string | null;
+  email: string | null;
+  eventType: 'click' | 'open';
+  sequence: number;
+  device: string | null;
+  country: string | null;
+  isBot: boolean;
+  clickedAt: string;
+  targetUrl: string | null;
+}
+
+export class EmailTrackingApi {
+  static performance(
+    range: AnalyticsRange,
+    dimension: EmailStatsDimension = 'campaign',
+    includeBots = false,
+  ): Promise<{ dimension: EmailStatsDimension; rows: EmailPerformanceRow[] }> {
+    return http.get(
+      `/admin/email-tracking/performance${qs(range, { dimension, ...(includeBots ? { includeBots: '1' } : {}) })}`,
+    );
+  }
+  static recipients(
+    range: AnalyticsRange,
+    filters: { campaign?: string; kind?: string; email?: string; limit?: number } = {},
+  ): Promise<EmailRecipientRow[]> {
+    const extra: Record<string, string> = {};
+    if (filters.campaign) extra.campaign = filters.campaign;
+    if (filters.kind) extra.kind = filters.kind;
+    if (filters.email) extra.email = filters.email;
+    if (filters.limit) extra.limit = String(filters.limit);
+    return http.get(`/admin/email-tracking/recipients${qs(range, extra)}`);
+  }
+  static clicks(filters: { email?: string; token?: string; limit?: number } = {}): Promise<EmailClickRow[]> {
+    const p = new URLSearchParams();
+    if (filters.email) p.set('email', filters.email);
+    if (filters.token) p.set('token', filters.token);
+    if (filters.limit) p.set('limit', String(filters.limit));
+    const q = p.toString();
+    return http.get(`/admin/email-tracking/clicks${q ? `?${q}` : ''}`);
+  }
+}
 
 export interface MarketingSummary {
   range: AnalyticsRange;

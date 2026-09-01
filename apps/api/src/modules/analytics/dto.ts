@@ -131,6 +131,108 @@ export class TrackEventDto {
   @Length(0, 64)
   device?: string;
 
+  // ===== UTM extins + click-id-uri (vezi `utm-standard.ts`) =====
+  // Toate opționale: o sesiune directă nu trimite niciunul. Lungimile sunt
+  // aceleași ca ale coloanelor din `analytics_sessions` — un `utm_content`
+  // de 900 de caractere (se întâmplă, la nume de reclamă generate automat)
+  // ar fi picat tot evenimentul, nu doar câmpul, dacă validam mai strict.
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 128)
+  utmId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 64)
+  utmSourcePlatform?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 64)
+  utmCreativeFormat?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 64)
+  utmMarketingTactic?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 256)
+  adsetName?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 64)
+  adsetId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 256)
+  adName?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 64)
+  adId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 64)
+  placement?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 512)
+  clickId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 16)
+  clickIdSource?: string;
+
+  @IsOptional()
+  @IsObject()
+  clickIds?: Record<string, string>;
+
+  /** Tokenul linkului din email (`mc_eid`) — leagă sesiunea de mailul concret. */
+  @IsOptional()
+  @IsString()
+  @Length(0, 64)
+  emailToken?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 1024)
+  landingQuery?: string;
+
+  // ===== Prima atingere (localStorage, 90 zile) =====
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 64)
+  firstSource?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 64)
+  firstMedium?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 128)
+  firstCampaign?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 512)
+  firstLandingPath?: string;
+
+  @IsOptional()
+  @IsInt()
+  firstTouchAt?: number;
+
   // ============ CLIENT-SIDE ENRICHMENT (sent o singura data per sesiune) ============
 
   @IsOptional()

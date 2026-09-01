@@ -21,6 +21,7 @@ import {
 } from './marketing.entities';
 import { EmailOptOut } from './email-opt-out.entity';
 import { makeUnsubscribeToken } from './unsubscribe-token';
+import { utmSlug } from '../analytics/utm-standard';
 
 export interface AudienceRecipient {
   email: string;
@@ -290,7 +291,15 @@ export class MarketingService {
     );
 
     // Trimitere în background — nu blocăm request-ul admin.
-    void this.sendCampaignWork(campaign.id, siteId, input.templateId, recipients, promoCodeSnapshot, input.overrides ?? null);
+    void this.sendCampaignWork(
+      campaign.id,
+      siteId,
+      input.templateId,
+      recipients,
+      promoCodeSnapshot,
+      input.overrides ?? null,
+      { name: input.name, audience: input.audience },
+    );
 
     return campaign;
   }
@@ -302,6 +311,7 @@ export class MarketingService {
     recipients: AudienceRecipient[],
     promoCode: string | null,
     overrides: Record<string, unknown> | null,
+    meta?: { name?: string; audience?: string },
   ): Promise<void> {
     const tpl = findMarketingTemplate(templateId);
     if (!tpl) return;
@@ -331,7 +341,17 @@ export class MarketingService {
         const out = tpl.render(vars);
         await this.mailer.send(
           { to: r.email, subject: out.subject, html: out.html, text: out.text },
-          { site: site ?? undefined, kind: 'marketing_campaign', userId: r.userId, relatedId: campaignId },
+          {
+            site: site ?? undefined,
+            kind: 'marketing_campaign',
+            userId: r.userId,
+            relatedId: campaignId,
+            // Numele campaniei, nu id-ul: în rapoarte se citește direct. Se
+            // adaugă un sufix scurt din id ca două campanii cu același nume
+            // („Reducere 20%", trimisă în două luni) să nu se amestece.
+            campaign: `camp-${utmSlug(meta?.name ?? templateId, 96) || 'campanie'}-${campaignId.slice(0, 6)}`,
+            audience: meta?.audience ?? null,
+          },
         );
         sent++;
       } catch (e) {
@@ -461,7 +481,14 @@ export class MarketingService {
         const out = tpl.render(vars);
         await this.mailer.send(
           { to: r.email, subject: out.subject, html: out.html, text: out.text },
-          { site: site ?? undefined, kind: 'marketing_rule', userId: r.userId, relatedId: ruleId },
+          {
+            site: site ?? undefined,
+            kind: 'marketing_rule',
+            userId: r.userId,
+            relatedId: ruleId,
+            campaign: `rule-${utmSlug(rule.name, 96) || 'regula'}-${ruleId.slice(0, 6)}`,
+            audience: rule.trigger,
+          },
         );
         sent++;
       } catch (e) {

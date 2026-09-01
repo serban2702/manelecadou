@@ -67,6 +67,9 @@ declare global {
     };
     fbq?: (...args: unknown[]) => void;
     gtag?: (...args: unknown[]) => void;
+    /** OpenAI Measurement Pixel (ChatGPT Ads). Stub-ul din `<head>` pune
+     *  apelurile într-o coadă până se încarcă SDK-ul, deci se poate apela oricând. */
+    oaiq?: (...args: unknown[]) => void;
     /** Config Google Ads per-site, expus de <Analytics>. `id` = `AW-XXXXXXXXX`,
      *  `purchaseLabel` = eticheta acțiunii de conversie „Purchase". */
     __mcGads?: { id?: string; purchaseLabel?: string };
@@ -90,6 +93,60 @@ async function identifyOnce(email?: string) {
     if (window.ttq) window.ttq.identify({ email: emailHash });
   } catch {
     // ignore — identify e best-effort
+  }
+}
+
+/**
+ * Maparea evenimentelor noastre la numele standard OpenAI + forma de date
+ * cerută de fiecare.
+ *
+ * `AddPaymentInfo` lipsește intenționat: OpenAI nu are un eveniment standard
+ * pentru el, iar unul custom inventat ar fi un rând în plus în rapoarte fără
+ * nimic de comparat. `checkout_started` acoperă oricum același pas din pâlnie.
+ */
+const OPENAI_EVENT: Partial<
+  Record<TrackEventName, { name: string; type: 'contents' | 'customer_action' | 'plan_enrollment' }>
+> = {
+  PageView: { name: 'page_viewed', type: 'contents' },
+  ViewContent: { name: 'contents_viewed', type: 'contents' },
+  Lead: { name: 'lead_created', type: 'customer_action' },
+  CompleteRegistration: { name: 'registration_completed', type: 'customer_action' },
+  InitiateCheckout: { name: 'checkout_started', type: 'contents' },
+  Subscribe: { name: 'subscription_created', type: 'plan_enrollment' },
+  Purchase: { name: 'order_created', type: 'contents' },
+};
+
+function emitOpenAi(event: TrackEventName, params: TrackParams, eventId: string): void {
+  const mapped = OPENAI_EVENT[event];
+  if (!mapped || typeof window.oaiq !== 'function') return;
+  try {
+    const data: Record<string, unknown> = { type: mapped.type };
+
+    // `amount` se trimite în unități MINORE și ÎNTREG (12999 = 129,99 lei).
+    // `params.value` e în unități majore, deci înmulțim. Trimis ca 129.99,
+    // OpenAI l-ar citi ca 1,29 lei și campania ar părea de 100 de ori mai
+    // slabă decât e.
+    if (params.value != null) data.amount = Math.round(params.value * 100);
+    if (params.currency) data.currency = params.currency.toUpperCase();
+    if (mapped.type === 'plan_enrollment' && params.content_id) data.plan_id = params.content_id;
+
+    if (mapped.type === 'contents' && params.content_id) {
+      data.contents = [
+        {
+          id: params.content_id,
+          name: params.content_name,
+          content_type: params.content_type ?? 'product',
+          quantity: 1,
+        },
+      ];
+    }
+
+    // `event_id` identic cu cel al celorlalți pixeli și cu cel trimis de
+    // backend prin Conversions API (`pay-<paymentId>` la achiziție) → OpenAI
+    // păstrează primul eveniment primit și îl ignoră pe al doilea.
+    window.oaiq('measure', mapped.name, data, { event_id: eventId });
+  } catch (e) {
+    console.warn('[tracking] oaiq failed', e);
   }
 }
 
@@ -143,6 +200,9 @@ export function track(event: TrackEventName, params: TrackParams = {}): string {
       console.warn('[tracking] fbq failed', e);
     }
   }
+
+  // ChatGPT Ads (OpenAI Measurement Pixel)
+  emitOpenAi(event, params, eventId);
 
   // GA4 — folosim doar pentru evenimentele importante
   if (window.gtag && (event === 'Purchase' || event === 'InitiateCheckout')) {

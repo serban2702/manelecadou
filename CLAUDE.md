@@ -866,6 +866,10 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
 4. **Build prod Next.js 15** — useSearchParams() fără Suspense rupe prerender-ul paginilor statice. Vezi §11.1.
 5. **Magic link pe admin host** — verifică `auth.controller.ts` pasează `Host` header către service și `auth.service.ts` `computeLoginBaseUrl()` decide între `ADMIN_URL` și `site.domain`.
 6. **Stripe = un singur cont** pentru toate site-urile. Webhook unic la `https://manelecadou.ro/api/payments/webhook`. `STRIPE_WEBHOOK_SECRET` global. Site-ul curent se ia din `metadata.siteId` în webhook.
+6bis. **Patru canale de reclame, patru configurări per-site**: Meta (pixel +
+    CAPI), TikTok (pixel + Events API), Google (GA4 + Google Ads prin același
+    `gtag.js`) și ChatGPT/OpenAI (pixel + Conversions API, §16.11). Toate se
+    setează în admin `/site` → Operațiuni, nu din env.
 7. **Suno + OpenAI** sunt per-site prin `site.suno` (basePrompt, stylePromptMap, writerSystemPrompt, lyricsLocale, voiceMap, styleSamples, voiceSamples). Setabil din admin.
 8. **Fișierele nu mai stau în volume Docker.** Uploadurile sunt pe R2 (§5.3), certificatele le ține Traefik, baza e resursă gestionată de Coolify cu backup propriu (§5.4). Un fișier scris direct pe disc, în afara `StorageService`, trăiește doar până la următorul deploy (§19.5).
 9. **Tot ce ține de deploy și de acces e în repo**: `deploy/coolify-deploy.sh` și `deploy/prod.sh`. Pe Ionos, `deploy.sh` trăia doar pe server și nu se actualiza cu `git pull` — o sursă constantă de divergență.
@@ -941,7 +945,14 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
     ```bash
     deploy/prod.sh psql "SELECT key, value FROM app_settings WHERE key = 'CHEIA_TA'"
     ```
-30. **O funcționalitate scoasă de pe site lasă urme în cinci locuri.** Codurile cadou aveau: modul de API cu rute publice, metode în SDK-ul web fără apelanți, un tabel gol în producție, o coloană de configurare în admin și — cel mai grav — o clauză în termeni, publicată în 8 limbi, despre o taxă inexistentă. Când scoți ceva, urmărește-l până la capăt: `apps/api/src/modules/`, `apps/web/lib/api.ts`, `apps/web/messages/*.json`, ecranele din admin, `app_settings` și schema.
+30. **În Postgres, `GROUP BY <alias>` pierde în fața unei coloane cu același
+    nume.** `SELECT COALESCE(s.channel, <expresie>) AS channel … GROUP BY channel`
+    NU grupează după alias, ci după coloana reală `analytics_sessions.channel` —
+    iar expresia din SELECT rămâne negrupată și query-ul cade cu „column s.source
+    must appear in the GROUP BY clause". Când numele aliasului există și ca
+    coloană în tabel, grupează pe poziție (`GROUP BY 1`). Prins la auditul UTM
+    (§16.10.2).
+31. **O funcționalitate scoasă de pe site lasă urme în cinci locuri.** Codurile cadou aveau: modul de API cu rute publice, metode în SDK-ul web fără apelanți, un tabel gol în producție, o coloană de configurare în admin și — cel mai grav — o clauză în termeni, publicată în 8 limbi, despre o taxă inexistentă. Când scoți ceva, urmărește-l până la capăt: `apps/api/src/modules/`, `apps/web/lib/api.ts`, `apps/web/messages/*.json`, ecranele din admin, `app_settings` și schema.
 ---
 
 ## 13. Endpoint-uri utile
@@ -955,6 +966,9 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
 | `https://manelecadou.ro/llms.txt`             | fișierul pentru asistenți AI, în limba site-ului |
 | `https://manelecadou.ro/llms/<locale>.txt`    | același fișier, în oricare din cele 8 limbi |
 | `https://manelecadou.ro/api/payments/webhook` | Stripe webhook (un singur cont)          |
+| `https://manelecadou.ro/api/e/c/<token>`      | click pe un link din email → 302 (§16.10.3)|
+| `https://manelecadou.ro/api/e/o/<token>`      | pixel de deschidere email (GIF 1×1)      |
+| `POST /api/admin/openai-ads/test`             | validează pixelul + cheia ChatGPT Ads (§16.11) |
 | `https://manelecadou.ro/uploads/<cale>`       | fișiere: disc → 302 spre R2 → proxy (§5.3)|
 | `https://files.manelecadou.ro/<cale>`         | R2 public, servit direct                 |
 | `https://openreplay.manelecadou.ro`           | session replay (alt server — §16)        |
@@ -1466,6 +1480,200 @@ nou capătă automat numele lui, fără să depindă de cineva care completează
 
 ---
 
+## 16.10 UTM și urmărirea linkurilor din emailuri
+
+**Sursa unică de adevăr: `apps/api/src/modules/analytics/utm-standard.ts`.** Acolo
+stau lista parametrilor capturați, vocabularul canonic (`utm_source` /
+`utm_medium`), maparea sursă → canal și șabloanele gata de lipit în Meta,
+TikTok, Google, ChatGPT și email. Adminul le SERVEȘTE de acolo
+(`GET /api/admin/analytics/utm-spec`) — nu le duplică. Motivul e cel obișnuit:
+„ce UTM punem în reclamă" trebuie să aibă același răspuns în trei locuri
+(browserul care capturează, SQL-ul care agregă, pagina din care copiezi omul),
+iar o copie ar diverge de la prima schimbare.
+
+Oglinda din browser e `apps/web/lib/utm.ts`. **Ține-le sincronizate**: un
+parametru capturat pe server dar netrimis de client e o coloană goală care
+arată exact ca „reclamă fără UTM".
+
+### 16.10.1 Ce capturăm
+
+| Grup | Câmpuri |
+|---|---|
+| UTM standard | `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `utm_id`, `utm_source_platform`, `utm_creative_format`, `utm_marketing_tactic` |
+| Extensii proprii | `utm_adset`, `utm_adset_id`, `utm_ad`, `utm_ad_id`, `utm_placement` |
+| Click-ID-uri | `fbclid`, `ttclid`, `gclid`, `gbraid`, `wbraid`, `msclkid`, `twclid`, `li_fat_id`, `epik`, `ScCid`, `irclickid`, `rdt_cid` |
+| Al nostru | `mc_eid` — tokenul linkului din email |
+| Derivat | `channel` (canal canonic), `firstSource/firstChannel/firstCampaign` (prima atingere, 90 zile) |
+
+Toate ajung pe `analytics_sessions` (coloane noi, aditive) și, la checkout, în
+snapshotul de pe `payments` (`attributionChannel`, `attributionAdset`,
+`attributionPlacement`, `attributionUtmId`, `attributionClickId*`,
+`attributionFirst*`, `attributionEmailToken`).
+
+Trei decizii care contează:
+
+1. **Click-ID-ul ține atribuirea singur.** `fbclid` fără `utm_source` e tot
+   Meta. Fără cascada asta, o reclamă cu parametrii uitați ar fi apărut ca
+   „direct" — indistinct de traficul organic.
+2. **Macro-urile netraduse devin `null`, nu valori.** `{{campaign.name}}`,
+   `__CAMPAIGN_NAME__`, `{campaignid}` ajung la noi ca text când sunt scrise
+   greșit. Numărate ca valori, ar fi adunat toate reclamele prost configurate
+   pe același rând de raport.
+3. **`channel` e vocabular NOU, calculat la captare și stocat.** Diferă de
+   `normalizeSource` din `attribution-sql.ts` (rămas neschimbat, ca să nu rupă
+   rapoartele vechi): acolo Facebook și Instagram sunt două canale, în `channel`
+   sunt unul singur (`meta`), fiindcă o campanie Meta livrează pe ambele și
+   defalcarea corectă e `utm_placement`. Emailul se separă ÎNAINTEA lui Google —
+   `com.google.android.gm` e clientul Gmail, nu Google Ads (§12 pct. 12).
+
+### 16.10.2 Unde se vede
+
+| Loc | Ce arată |
+|---|---|
+| Admin **`/utm`** | Șabloanele per platformă (copy), constructor de link, dicționar, verificare pe date reale, statistici email |
+| `/analytics` → Marketing → **Reclame (UTM)** | Defalcare pe grup de anunțuri, creativ, plasare, `utm_id`, click-id, prima atingere |
+| `/analytics` → Marketing → **Emailuri trimise de noi** | Deschideri, clicuri, venit per campanie / categorie / buton |
+| `/payments` | Canal, grup și plasare în tooltip + sub campanie |
+| `GET /api/admin/analytics/utm-health` | Câte reclame vin fără UTM, macro-uri netraduse, medium în afara vocabularului |
+
+**Plățile vechi nu capătă retroactiv câmpurile noi**: snapshotul se scrie o
+singură dată. Ca să-l recalculezi pe tot istoricul:
+`POST /api/admin/analytics/attribution/backfill?force=1`.
+
+### 16.10.3 Urmărirea linkurilor din emailuri
+
+Fiecare link dintr-un email trimis de platformă e rescris în `MailerService.sendDetailed`
+— punctul unic prin care trece TOT mailul. Linkurile noastre primesc UTM-uri
+standard (`utm_source=email`, `utm_medium=email`, `utm_campaign=<campania>`,
+`utm_content=<butonul>`) și, pentru categoriile urmărite, redirect prin
+`/api/e/c/<token>` cu un token unic per (mail × link × destinatar). Pixelul de
+deschidere e `/api/e/o/<token>`.
+
+Din asta ies **cine a apăsat, când și de câte ori** (`email_links` +
+`email_link_clicks`), plus venitul: `payments.attributionEmailToken` leagă plata
+de tokenul EXACT al linkului apăsat, deci mesajul de recuperare la 24h își vede
+banii separat de cel de la 72h.
+
+Capcane deja plătite, plus decizii de proiectare:
+
+1. **`magic_link` nu se atinge niciodată** — nici măcar cu UTM-uri. Tokenul de
+   autentificare n-are ce căuta într-un tabel de clicuri, iar un redirect în
+   plus pe calea de login e suprafață de atac degeaba. Excluderea e în cod
+   (`NEVER_TRACK_KINDS`), nu într-o setare care se poate schimba din greșeală.
+   Tot acolo sunt alertele interne (`ai_alert`, `suno_*`, `gdpr_admin_notify`,
+   `admin_test`) — vin la noi, nu la clienți — și `inbox_*`, scrise de un
+   operator care s-ar mira să-i vadă linkul rescris.
+2. **Linkul de dezabonare nu se rescrie.** Un hop în plus între om și butonul
+   „nu-mi mai trimite" e exact ce penalizează furnizorii de email, iar Gmail
+   apelează `List-Unsubscribe` singur.
+3. **Roboții de scanare sunt marcați, nu șterși** (`email_link_clicks.isBot`).
+   Furnizorii de email apasă toate linkurile înainte ca omul să vadă mesajul;
+   numărați, fiecare campanie ar fi raportat rată de click aproape 100%.
+4. **Deschiderile sunt orientative, clicurile sunt dovada.** Gmail preîncarcă
+   imaginile prin proxy-ul lui, deci „deschis" nu înseamnă „citit".
+5. **Redirectul e fail-open.** Token necunoscut (mail vechi, tabel curățat) →
+   302 spre pagina principală, nu eroare. Un client care a apăsat butonul din
+   email n-are ce căuta pe o pagină de eroare. `@SkipThrottle()` din același
+   motiv: o campanie produce un vârf de clicuri în primele minute.
+6. **Campania e ETAPA, nu categoria.** `recovery-h24`, nu `recovery`; altfel
+   toate cele șase mesaje s-ar aduna pe un rând și n-ai ști care aduce banii.
+   Se pasează prin `SendMailExtra.campaign`.
+7. **Rândul de audit păstrează HTML-ul REAL trimis** — `outbound_emails.html` e
+   actualizat după decorare. Altfel, la o reclamație „n-a mers butonul", am fi
+   citit alt mail decât cel primit.
+
+Setări (Settings → Marketing → *Urmărire emailuri*), toate hot-reload:
+`EMAIL_CLICK_TRACKING`, `EMAIL_OPEN_TRACKING`, `EMAIL_TRACKING_EXCLUDE_KINDS`.
+Active implicit cât timp sunt goale.
+
+Teste: `utm-standard.spec.ts` (normalizare canal, macro-uri, parsare, builder,
+șabloane) și `email-tracking.spec.ts` (rescrierea linkurilor — cod cu regex
+peste HTML scris de om, adică exact unde o greșeală nu dă eroare, ci un buton
+mort într-un email deja plecat).
+
+---
+
+## 16.11 ChatGPT Ads (OpenAI) — pixel + Conversions API
+
+Al patrulea canal de reclame, alături de Meta, TikTok și Google. Are DOUĂ
+jumătăți, ambele necesare:
+
+| | Unde |
+|---|---|
+| Measurement Pixel (browser) | `apps/web/app/layout.tsx` (`<head>`) + maparea din `apps/web/lib/tracking.ts` |
+| Conversions API (server) | `apps/api/src/modules/openai-ads/` — apelat din webhook-ul Stripe |
+| Configurare | admin `/site` → Operațiuni → Măsurare (pixeli): **Pixel ID** (public) + **cheie Conversions API** (secret) |
+| Docs | <https://developers.openai.com/ads/> |
+
+### 16.11.1 Ce e diferit față de ceilalți pixeli
+
+1. **Pixelul se montează în `<head>`-ul randat pe server**, nu prin `<Script>`
+   ca Meta/TikTok/GA4. Documentația OpenAI cere scriptul cât mai devreme, ca o
+   conversie rapidă să nu se piardă cât se încarcă restul paginii. Tot de acolo
+   SDK-ul citește `oppref` din URL-ul de aterizare.
+2. **`amount` se trimite în unități MINORE și ÎNTREG** (12999 = 129,99 lei), și
+   în browser, și pe server. Trimis ca `129.99`, OpenAI îl citește ca 1,29 lei
+   și campania pare de o sută de ori mai slabă decât e. Ambele căi înmulțesc
+   explicit; testele blochează regresia.
+3. **Normalizarea identificatorilor diferă de Meta și TikTok.** La nume se
+   PĂSTREAZĂ diacriticele (`José` → `josé`, nu `jose`), se scot doar spațiile și
+   punctuația ASCII. Telefonul păstrează codul de țară, dar pierde `+` și
+   zerourile din față (`0040 723…` → `40723…`). O normalizare greșită nu dă
+   eroare — dă zero potriviri, tăcut. Regulile sunt în `openai-ads.service.ts`,
+   acoperite de `openai-ads.spec.ts`.
+4. **`oppref` e click-ID-ul canalului** și e tratat ca `fbclid`/`ttclid`: intră
+   în `CLICK_ID_PARAMS` din `utm-standard.ts`, deci o reclamă ChatGPT rămâne
+   atribuită canalului `chatgpt` chiar fără UTM-uri (campania și creativul tot
+   lipsesc — pe alea doar UTM-urile le pot spune, §16.10).
+5. **`AddPaymentInfo` nu are corespondent standard** la OpenAI și e sărit
+   intenționat. Un eveniment custom inventat ar fi un rând în plus în rapoarte
+   fără nimic de comparat; `checkout_started` acoperă același pas din pâlnie.
+
+### 16.11.2 Maparea evenimentelor
+
+| La noi (`lib/tracking.ts`) | OpenAI | Forma datelor |
+|---|---|---|
+| `PageView` | `page_viewed` | `contents` |
+| `ViewContent` | `contents_viewed` | `contents` |
+| `Lead` | `lead_created` | `customer_action` |
+| `CompleteRegistration` | `registration_completed` | `customer_action` |
+| `InitiateCheckout` | `checkout_started` | `contents` |
+| `Purchase` | `order_created` | `contents` |
+| `Subscribe` | `subscription_created` | `plan_enrollment` |
+
+### 16.11.3 Deduplicarea browser ↔ server
+
+Ambele căi trimit **același `event_id`**: `pay-<paymentId>` la achiziție, exact
+convenția folosită și pentru Meta CAPI. OpenAI păstrează primul eveniment primit
+și îl ignoră pe al doilea. Nu e o optimizare — fără id comun, fiecare plată ar fi
+raportată de două ori.
+
+Calea de server există pentru că webhook-ul Stripe vine 100%, chiar dacă omul a
+închis tabul imediat după ce a apăsat „Plătește". Pe mobil, exact conversiile
+care contează cel mai mult sunt cele care se pierd pe calea de browser.
+
+### 16.11.4 Setup pe un site nou
+
+1. Ads Manager → Conversions → creezi Pixel ID, îl pui în admin `/site` →
+   Operațiuni → **Pixel ID ChatGPT Ads**.
+2. Ads Manager → *Manage conversion keys* → creezi cheia, o pui în **Cheie
+   ChatGPT Conversions API**. Salvezi.
+3. Apeși **Testează ChatGPT Ads**. Testul rulează cu `validate_only: true`:
+   OpenAI confirmă pixelul, cheia și forma payload-ului **fără** să înregistreze
+   o conversie. Altfel fiecare apăsare pe buton ar fi umflat raportul cu comenzi
+   inexistente.
+4. Pixelul e build-independent (citit la runtime din configul site-ului), deci
+   după pasul 1 e nevoie doar de un reload al paginii, nu de un deploy — spre
+   deosebire de `NEXT_PUBLIC_OPENREPLAY_PROJECT_KEY` (§16.7 pct. 9).
+
+⚠️ **CSP**: routerul nostru pune doar `frame-ancestors` (`deploy/router/nginx.conf`),
+fără `script-src` / `connect-src` / `img-src`, deci nimic nu blochează SDK-ul.
+Dacă ADAUGI vreodată directivele alea, OpenAI cere: `script-src
+https://bzrcdn.openai.com`, `connect-src https://bzr.openai.com
+https://bzrcdn.openai.com`, `img-src https://bzr.openai.com`.
+
+---
+
 ## 17. Stripe
 
 Un singur cont Stripe pentru toate site-urile; site-ul curent se ia din
@@ -1517,6 +1725,7 @@ mai jos.
 | pagină pe site public | `apps/web/app/` |
 | design alternativ | `apps/web/experiences/` (§10) |
 | să testez prompturi (versuri / Suno / Lyria) | admin `/site/playground` — trei laboratoare separate |
+| standardul UTM (parametri, vocabular, șabloane) | `apps/api/src/modules/analytics/utm-standard.ts` + oglinda `apps/web/lib/utm.ts` (§16.10) |
 | ceva ce scrie fișiere | `StorageService` — niciodată `fs` direct (§19.5) |
 
 ### 19.1 Modul nou de API

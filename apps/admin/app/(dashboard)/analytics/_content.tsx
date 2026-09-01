@@ -60,6 +60,9 @@ import {
 } from 'recharts';
 import {
   AnalyticsApi,
+  EmailTrackingApi,
+  type EmailPerformanceRow,
+  type EmailStatsDimension,
   type AdSpendPlatform,
   type AdPayment,
   type AdPaymentInput,
@@ -239,7 +242,8 @@ const MKT_DIMENSIONS: Array<{ group: string; items: Array<{ value: MarketingDime
   {
     group: 'Trafic',
     items: [
-      { value: 'source', label: 'Sursă' },
+      { value: 'channel', label: 'Canal (Meta / TikTok / Google / ChatGPT)' },
+      { value: 'source', label: 'Sursă (utm_source)' },
       { value: 'medium', label: 'Medium' },
       { value: 'campaign', label: 'Campanie' },
       { value: 'device', label: 'Device' },
@@ -247,6 +251,19 @@ const MKT_DIMENSIONS: Array<{ group: string; items: Array<{ value: MarketingDime
       { value: 'browser', label: 'Browser' },
       { value: 'country', label: 'Țară' },
       { value: 'landing', label: 'Landing' },
+    ],
+  },
+  {
+    // Dimensiunile care există doar dacă reclamele sunt taguite după standard.
+    // Rândul „(fără …)" din tabel = reclame netaguite; vezi /utm → Verificare.
+    group: 'Reclame (UTM)',
+    items: [
+      { value: 'adset', label: 'Grup de anunțuri (utm_adset)' },
+      { value: 'creative', label: 'Creativ (utm_ad / utm_content)' },
+      { value: 'placement', label: 'Plasare (utm_placement)' },
+      { value: 'utmId', label: 'ID campanie (utm_id)' },
+      { value: 'clickIdSource', label: 'Click-ID (fbclid / ttclid / gclid)' },
+      { value: 'firstSource', label: 'Prima atingere (cine a găsit clientul)' },
     ],
   },
   {
@@ -473,6 +490,9 @@ function MarketingTab({ range }: { range: { from: string; to: string } }) {
       {/* Interfețe — care design vinde mai bine */}
       <ExperienceBreakdownCard range={range} excludeBots={excludeBots} excludeTests={excludeTests} />
 
+      {/* Emailuri — cine apasă linkurile din retargetare și cât aduce fiecare mesaj */}
+      <EmailPerformanceCard range={range} />
+
       {/* Matricea de defalcare */}
       <Card>
         <CardHeader>
@@ -611,6 +631,97 @@ const EXPERIENCE_COLUMNS: Array<{ key: keyof MarketingBreakdownRow; label: strin
  * Comenzile fără interfață (dinaintea acestei versiuni) sunt numărate la
  * `classic` de către API.
  */
+/**
+ * Performanța emailurilor: deschideri, clicuri și venit per campanie.
+ *
+ * Trăiește în tabul Marketing fiindcă emailul E un canal de achiziție, nu o
+ * anexă: în rândurile de mai sus apare ca „email", iar aici se vede din CE
+ * mesaj a venit. Detaliul pe destinatar („cine, când, de câte ori") e în
+ * pagina Linkuri și UTM.
+ */
+function EmailPerformanceCard({ range }: { range: { from: string; to: string } }) {
+  const [dimension, setDimension] = useState<EmailStatsDimension>('campaign');
+  const { data, isLoading } = useAsync(
+    () => EmailTrackingApi.performance(range, dimension),
+    [range, dimension],
+  );
+  const rows: EmailPerformanceRow[] = data?.rows ?? [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle>Emailuri trimise de noi</CardTitle>
+            <CardDescription>
+              Recuperare comenzi, campanii și drip. Clicul e măsurat exact; deschiderea e orientativă
+              (Gmail preîncarcă imaginile).
+            </CardDescription>
+          </div>
+          <div className="flex gap-1.5">
+            {(['campaign', 'kind', 'link'] as EmailStatsDimension[]).map((d) => (
+              <button
+                key={d}
+                onClick={() => setDimension(d)}
+                className={cn(
+                  'px-2.5 py-1 rounded-md text-xs font-medium border transition-colors',
+                  dimension === d
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-secondary/40 border-border hover:bg-secondary text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {d === 'campaign' ? 'Campanie' : d === 'kind' ? 'Categorie' : 'Buton'}
+              </button>
+            ))}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        {isLoading ? (
+          <div className="p-4"><Skeleton className="h-48 w-full" /></div>
+        ) : rows.length === 0 ? (
+          <Empty
+            title="Niciun email urmărit în interval"
+            description="Statisticile apar după primul email trimis cu urmărirea activă (Settings → Marketing)."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{dimension === 'kind' ? 'Categorie' : dimension === 'link' ? 'Buton' : 'Campanie'}</TableHead>
+                  <TableHead className="text-right">Destinatari</TableHead>
+                  <TableHead className="text-right">Deschis</TableHead>
+                  <TableHead className="text-right">Click</TableHead>
+                  <TableHead className="text-right">Rată click</TableHead>
+                  <TableHead className="text-right">Comenzi</TableHead>
+                  <TableHead className="text-right">Venit</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.slice(0, 12).map((r) => (
+                  <TableRow key={r.key}>
+                    <TableCell className="font-medium break-all">{r.key}</TableCell>
+                    <TableCell className="text-right tabular-nums">{r.recipients.toLocaleString('ro-RO')}</TableCell>
+                    <TableCell className="text-right tabular-nums">{r.uniqueOpens.toLocaleString('ro-RO')}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {r.uniqueClicks.toLocaleString('ro-RO')}
+                      {r.clicks > r.uniqueClicks && <span className="ml-1 text-xs text-muted-foreground">({r.clicks})</span>}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{r.clickRate == null ? '—' : `${r.clickRate}%`}</TableCell>
+                    <TableCell className="text-right tabular-nums">{r.purchases.toLocaleString('ro-RO')}</TableCell>
+                    <TableCell className="text-right tabular-nums font-medium">{RON(r.revenueRon)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ExperienceBreakdownCard({
   range,
   excludeBots,

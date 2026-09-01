@@ -132,7 +132,11 @@ export const STUDIO_SEARCH: StudioSearchItem[] = [
   { id: 'operations.smartbill', label: 'SmartBill', href: '/site/operations', keywords: ['factură', 'cif', 'tva'], group: 'operations' },
   // Aceeași casetă ca `price.stripe` — ancora de acolo, nu una proprie.
   { id: 'operations.stripe', label: 'Stripe descriptor', href: '/site/prices', keywords: ['statement', 'productName'], group: 'prices', field: 'price.stripe' },
-  { id: 'operations.analytics', label: 'Pixeli și ads', href: '/site/operations', keywords: ['ga4', 'meta', 'pixel', 'capi', 'tiktok', 'analytics'], group: 'operations' },
+  { id: 'operations.analytics', label: 'Pixeli și ads', href: '/site/operations', keywords: ['ga4', 'meta', 'pixel', 'capi', 'tiktok', 'analytics', 'google ads'], group: 'operations' },
+  { id: 'operations.openaiPixel', label: 'Pixel ChatGPT Ads', href: '/site/operations', keywords: ['chatgpt', 'openai', 'oaiq', 'pixel', 'conversions api', 'oppref'], group: 'operations' },
+  // Ancoră spre pagina dedicată: cine caută „utm" în studio caută de fapt
+  // șabloanele de campanie, nu un câmp de pe site.
+  { id: 'operations.utm', label: 'Etichete de campanie (UTM)', href: '/site/operations', keywords: ['utm', 'campanie', 'meta', 'tiktok', 'google', 'chatgpt', 'reclame', 'linkuri', 'retargetare'], group: 'operations' },
   { id: 'operations.ai', label: 'AI chat', href: '/site/operations', keywords: ['irina', 'greeting', 'manual', 'suggest', 'auto'], group: 'operations' },
   { id: 'top.source', label: 'Sursă top săptămână', href: '/site/top', keywords: ['demo', 'live', 'manual', 'seed', 'template'], group: 'top' },
 ];

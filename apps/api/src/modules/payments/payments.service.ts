@@ -24,6 +24,7 @@ import { GenerationsService } from '../generations/generations.service';
 import { Generation } from '../generations/generation.entity';
 import { CreateGenerationDto } from '../generations/dto/create-generation.dto';
 import { TiktokEventsService } from '../tiktok/tiktok-events.service';
+import { OpenAiAdsService, splitFullName } from '../openai-ads/openai-ads.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { PaymentAttributionService } from '../analytics/payment-attribution.service';
 import { inferBuyerGender } from '../analytics/gender-infer';
@@ -107,6 +108,7 @@ export class PaymentsService {
     @Inject(forwardRef(() => GenerationsService))
     private readonly generations: GenerationsService,
     private readonly tiktok: TiktokEventsService,
+    private readonly openaiAds: OpenAiAdsService,
     private readonly analytics: AnalyticsService,
     private readonly attribution: PaymentAttributionService,
     private readonly moduleRef: ModuleRef,
@@ -1124,6 +1126,52 @@ export class PaymentsService {
           })
           .catch((err) =>
             this.logger.warn(`TikTok Purchase event failed: ${(err as Error).message}`),
+          );
+
+        // ChatGPT Ads (OpenAI) — Conversions API. `event_id` = `pay-<paymentId>`,
+        // exact cel folosit de `oaiq("measure", "order_created", …)` din browser,
+        // deci OpenAI păstrează primul eveniment primit și îl ignoră pe al
+        // doilea. Calea asta e cea care contează: webhook-ul vine de la Stripe
+        // chiar dacă omul a închis tabul imediat după plată.
+        this.openaiAds
+          .sendEvent({
+            site: siteForTracking,
+            event: 'order_created',
+            eventId: `pay-${paymentId}`,
+            dataType: 'contents',
+            // Unități MINORE și întreg — vezi comentariul din `buildEvent`.
+            amountMinor: pixelValueCents,
+            currency: pixelCurrency,
+            sourceUrl: session.metadata?.siteDomain
+              ? `https://${session.metadata.siteDomain}/`
+              : undefined,
+            contents: [
+              {
+                id: generationId ?? paymentId,
+                name: 'Manea Cadou',
+                contentType: 'product',
+                quantity: 1,
+              },
+            ],
+            // Datele de potrivire se iau din `customer_details` al sesiunii, nu
+            // din rândul de plată: adresa se persistă tot în webhook-ul ăsta,
+            // iar dacă pasul de sincronizare ar rula după, am fi trimis null-uri
+            // exact acolo unde rata de potrivire e cel mai ieftin de crescut.
+            user: {
+              email: customerEmail,
+              phone: customerPhone,
+              externalId,
+              firstName: splitFullName(session.customer_details?.name ?? payment?.customerName).first,
+              lastName: splitFullName(session.customer_details?.name ?? payment?.customerName).last,
+              country: session.customer_details?.address?.country ?? payment?.billingCountry ?? null,
+              city: session.customer_details?.address?.city ?? payment?.billingCity ?? null,
+              region: session.customer_details?.address?.state ?? payment?.billingCounty ?? null,
+              postalCode:
+                session.customer_details?.address?.postal_code ?? payment?.billingPostalCode ?? null,
+            },
+          })
+          .catch((err) =>
+            this.logger.warn(`OpenAI Ads order_created eșuat: ${(err as Error).message}`),
           );
 
         // Meta CAPI + GA4 Measurement Protocol (server-side Purchase). event_id

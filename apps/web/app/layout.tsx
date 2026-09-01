@@ -187,12 +187,44 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     ? `window.__CLIENT_IP__=${JSON.stringify(clientIp)};`
     : '';
 
+  /**
+   * ChatGPT Ads — Measurement Pixel (OpenAI).
+   *
+   * Se montează AICI, în `<head>`-ul randat pe server, nu prin `<Script>` ca
+   * ceilalți pixeli: documentația OpenAI cere scriptul cât mai devreme, ca o
+   * conversie rapidă să nu se piardă cât se încarcă restul paginii. Tot de aici
+   * SDK-ul citește `oppref` din URL-ul de aterizare — parametrul care leagă
+   * vizita de reclama din ChatGPT — și îl salvează în cookie-ul `__oppref`.
+   *
+   * Stub-ul pune apelurile într-o coadă, deci `oaiq("measure", …)` din
+   * `lib/tracking.ts` funcționează și înainte ca SDK-ul să fi terminat de
+   * încărcat.
+   */
+  const openaiPixelId = site.analytics?.openaiPixelId?.trim() || '';
+  const openaiPixelScript = openaiPixelId
+    ? `(function(w,d,s,u){if(w.oaiq)return;var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;` +
+      `var js=d.createElement(s);js.async=true;js.src=u;var f=d.getElementsByTagName(s)[0];` +
+      `f.parentNode.insertBefore(js,f)})(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js");` +
+      // Refuzul explicit al vizitatorului oprește pingurile de măsurare, prin
+      // chiar mecanismul SDK-ului. Consimțământul implicit e `true`, ca la
+      // ceilalți pixeli ai platformei.
+      `try{if(localStorage.getItem("mc_consent_v1")==="denied")oaiq("consent",false)}catch(e){}` +
+      // `?oaidebug=1` pornește logurile SDK-ului în consolă, pentru verificare
+      // manuală. Opt-in prin URL, nu o setare: un `debug:true` uitat pornit ar
+      // scrie în consola fiecărui vizitator, la fiecare eveniment.
+      `var __oaidbg=false;try{__oaidbg=new URLSearchParams(location.search).get("oaidebug")==="1"}catch(e){}` +
+      `oaiq("init",{pixelId:${JSON.stringify(openaiPixelId)},debug:__oaidbg});`
+    : '';
+
   return (
     <html lang={htmlLang} className={`${cinzel.variable} ${manrope.variable} ${outfit.variable} ${cadouIntl.variable}`}>
       <head>
         <style dangerouslySetInnerHTML={{ __html: brandVars }} />
         {clientIpScript && (
           <script dangerouslySetInnerHTML={{ __html: clientIpScript }} />
+        )}
+        {openaiPixelScript && (
+          <script dangerouslySetInnerHTML={{ __html: openaiPixelScript }} />
         )}
         <script
           type="application/ld+json"

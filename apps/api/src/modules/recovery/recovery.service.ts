@@ -345,7 +345,17 @@ export class RecoveryService {
 
         await this.mailer.send(
           { to: state.email, subject: out.subject, html: out.html, text: out.text },
-          { site: site ?? undefined, kind: 'recovery', userId: state.userId, relatedId: state.id },
+          {
+            site: site ?? undefined,
+            kind: 'recovery',
+            userId: state.userId,
+            relatedId: state.id,
+            // Campania e ETAPA, nu „recovery": altfel toate cele șase mesaje
+            // s-ar aduna pe un rând și n-am ști care aduce banii — exact
+            // întrebarea pentru care există programul escaladat.
+            campaign: `recovery-${target.key}`,
+            audience: `stage-${target.stage}-off${target.percent}`,
+          },
         );
 
         stagesSent[target.key] = { sentAt: nowIso, promoCode: promoCode.code };

@@ -380,6 +380,8 @@ export class DomainCheckService {
       analytics.ga4Id ? 'GA4' : '',
       analytics.metaPixelId ? 'Meta' : '',
       analytics.tiktokPixelId ? 'TikTok' : '',
+      analytics.googleAdsConversionId ? 'Google Ads' : '',
+      analytics.openaiPixelId ? 'ChatGPT' : '',
     ].filter(Boolean);
     push({
       id: 'pixels',

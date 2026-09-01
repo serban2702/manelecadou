@@ -12,6 +12,8 @@ import type { Site, SiteMailConfig } from '../modules/sites/site.entity';
 import { decryptSecret } from '../common/crypto.util';
 import { OutboundEmailModule } from '../modules/outbound-email/outbound-email.module';
 import { OutboundEmailService } from '../modules/outbound-email/outbound-email.service';
+import { EmailTrackingModule } from '../modules/email-tracking/email-tracking.module';
+import { EmailTrackingService } from '../modules/email-tracking/email-tracking.service';
 import { StorageService } from '../storage/storage.service';
 
 export type MailSiteRef = Site | { id?: string; slug?: string; name?: string; mailConfig?: SiteMailConfig; fromEmail?: string | null; supportEmail?: string | null } | null | undefined;
@@ -41,6 +43,20 @@ export interface SendMailExtra {
    * nu au ce căuta în căsuță (ex. testul de config din admin).
    */
   skipSentCopy?: boolean;
+  /**
+   * `utm_campaign` pus pe linkurile din mail. Gol → se folosește `kind`.
+   * Aici se pune granularitatea care contează: `recovery-h24` în loc de
+   * `recovery`, altfel toate cele șase etape de recuperare s-ar aduna pe un
+   * singur rând și n-ai ști care aduce banii.
+   */
+  campaign?: string | null;
+  /** `utm_term` — audiența, unde o știm (payers / nonpayers / stage). */
+  audience?: string | null;
+  /**
+   * Oprește rescrierea linkurilor pentru acest mail. Pentru testele de config
+   * din admin și pentru orice mesaj care nu merge la un client real.
+   */
+  skipLinkTracking?: boolean;
 }
 
 @Injectable()
@@ -52,6 +68,7 @@ export class MailerService {
     private readonly powermail: PowerMailProvider,
     private readonly settings: SettingsService,
     private readonly outboundLog: OutboundEmailService,
+    private readonly linkTracking: EmailTrackingService,
     // Global (StorageModule) — MIME-ul copiat în `Sent` merge pe disc + R2.
     private readonly storage: StorageService,
     @InjectQueue(MAIL_APPEND_QUEUE) private readonly appendQueue: Queue,
@@ -206,6 +223,35 @@ export class MailerService {
       this.logger.warn(`outbound-email log insert failed: ${(logErr as Error).message}`);
     }
 
+    // Punctul unic prin care trece TOT mailul platformei — deci și singurul loc
+    // în care are sens rescrierea linkurilor. Aici primesc UTM-urile standard
+    // și, pentru categoriile urmărite, redirectul care numără clicurile.
+    // Se face DUPĂ rândul de audit (ca să-i putem lega tokenurile) și ÎNAINTE
+    // de `buildMime`, ca octeții trimiși să fie exact cei decorați.
+    if (!extra?.skipLinkTracking) {
+      const decorated = await this.linkTracking.decorate(opts.html, {
+        siteId,
+        siteUrl: siteBaseUrl(extra?.site, ctx),
+        kind: extra?.kind ?? null,
+        recipientEmail: opts.to,
+        userId: extra?.userId ?? null,
+        relatedId: extra?.relatedId ?? null,
+        campaign: extra?.campaign ?? null,
+        audience: extra?.audience ?? null,
+        outboundEmailId: logId,
+      });
+      if (decorated.html !== opts.html) {
+        opts = { ...opts, html: decorated.html };
+        // Rândul de audit păstrează HTML-ul REAL trimis: altfel, la o
+        // reclamație („n-a mers butonul"), am fi citit alt mail decât cel primit.
+        if (logId) {
+          await this.outboundLog
+            .updateHtml(logId, decorated.html)
+            .catch((e) => this.logger.warn(`outbound-email updateHtml failed: ${(e as Error).message}`));
+        }
+      }
+    }
+
     // MIME-ul se construiește o singură dată, aici: aceiași octeți pleacă la
     // client (prin oricare provider) și se salvează în `Sent`.
     const mime = await buildMime(opts, ctx);
@@ -308,8 +354,34 @@ function safeDecrypt(value: string | undefined | null): string | undefined {
   return value;
 }
 
+/**
+ * Baza publică a site-ului, pentru linkurile de urmărire din email.
+ *
+ * `mailConfig`/`ctx` nu poartă domeniul, deci îl luăm din site. Fără el nu
+ * decorăm nimic (nu avem unde trimite redirectul) — un mail fără statistici e
+ * preferabil unui buton care duce nicăieri.
+ */
+function siteBaseUrl(site: MailSiteRef, ctx: ResolvedMailContext): string | null {
+  const domain = (site as { domain?: string | null } | undefined)?.domain ?? null;
+  if (domain) {
+    if (/^https?:\/\//i.test(domain)) return domain.replace(/\/+$/, '');
+    if (domain.startsWith('localhost') || domain.startsWith('127.') || domain.endsWith('.local')) {
+      return `http://${domain}`;
+    }
+    return `https://${domain}`;
+  }
+  const appUrl = (process.env.APP_URL ?? '').trim();
+  void ctx;
+  return appUrl ? appUrl.replace(/\/+$/, '') : null;
+}
+
 @Module({
-  imports: [ConfigModule, OutboundEmailModule, BullModule.registerQueue({ name: MAIL_APPEND_QUEUE })],
+  imports: [
+    ConfigModule,
+    OutboundEmailModule,
+    EmailTrackingModule,
+    BullModule.registerQueue({ name: MAIL_APPEND_QUEUE }),
+  ],
   providers: [SmtpMailProvider, PowerMailProvider, MailerService],
   exports: [MailerService],
 })

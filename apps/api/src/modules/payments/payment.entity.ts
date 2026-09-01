@@ -167,6 +167,61 @@ export class Payment {
   @Column({ type: 'timestamptz', nullable: true })
   attributedAt!: Date | null;
 
+  // ===== Atribuire extinsă (același snapshot, câmpuri noi) =====
+  // Aditive și nullable: plățile de dinaintea acestei versiuni rămân cu NULL și
+  // se citesc ca „necunoscut". Vocabularul canonic e în `utm-standard.ts`.
+
+  /** Canal canonic: meta | tiktok | google | chatgpt | email | direct | …
+   *  Diferă intenționat de `attributionSource`: acolo Facebook și Instagram sunt
+   *  două canale, aici sunt unul singur (o campanie Meta livrează pe ambele, iar
+   *  defalcarea corectă e `attributionPlacement`). */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  attributionChannel!: string | null;
+
+  /** `utm_id` — ID-ul campaniei din platformă, cheia exactă spre `ad_spend`. */
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  attributionUtmId!: string | null;
+
+  /** Grupul de anunțuri / ad group (audiența). */
+  @Column({ type: 'varchar', length: 256, nullable: true })
+  attributionAdset!: string | null;
+
+  /** feed / story / reels / search / chat. */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  attributionPlacement!: string | null;
+
+  /** `utm_term` — cuvântul cheie (Google) sau audiența. */
+  @Column({ type: 'varchar', length: 256, nullable: true })
+  attributionTerm!: string | null;
+
+  /** Click-ID-ul platformei (fbclid / ttclid / gclid). Pus de platformă, deci
+   *  singura dovadă de atribuire care supraviețuiește unei reclame fără UTM. */
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  attributionClickId!: string | null;
+
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  attributionClickIdSource!: string | null;
+
+  // ===== Prima atingere: cine a GĂSIT clientul, nu cine l-a adus înapoi =====
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  attributionFirstSource!: string | null;
+
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  attributionFirstChannel!: string | null;
+
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  attributionFirstCampaign!: string | null;
+
+  /** Tokenul `mc_eid` al linkului de email care a adus sesiunea plătitoare.
+   *  Cu el, un email de retargetare își vede venitul, nu doar clicurile.
+   *  SINGURA coloană nouă indexată: e cheia de JOIN dinspre `email_links`
+   *  (raportul de performanță pe emailuri). Restul se citesc doar în GROUP BY. */
+  @Index()
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  attributionEmailToken!: string | null;
+
+
   // ============== Date cumpărător (din Stripe customer_details, la webhook) ==============
 
   /** Numele complet al cumpărătorului (Stripe customer_details.name). Sursă pentru `buyerGender`. */

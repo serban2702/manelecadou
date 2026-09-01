@@ -45,6 +45,12 @@ export interface SiteAnalytics {
   metaAdAccountId?: string;
   /** Advertiser ID TikTok (din Ads Manager). Folosit de Marketing API reporting. */
   tiktokAdvertiserId?: string;
+  /** Pixel ID pentru ChatGPT Ads (OpenAI Measurement Pixel), din Ads Manager →
+   *  tab-ul Conversions. Public — apare oricum în HTML-ul paginii. Se montează
+   *  în `<head>` din `app/layout.tsx`, nu prin `<Script>`: documentația OpenAI
+   *  cere scriptul cât mai devreme, ca o conversie rapidă să nu se piardă cât
+   *  se încarcă restul paginii. */
+  openaiPixelId?: string;
 }
 
 /**
@@ -67,6 +73,12 @@ export interface SiteAnalyticsSecrets {
    *  Settings → System Users → Generate Token). Citește spend-ul de campanie. Token
    *  de system user nu expiră. Separat de `metaCapiToken` (Conversions API). */
   metaMarketingToken?: string;
+  /** Cheia pentru OpenAI Ads Conversions API (Ads Manager → Manage conversion
+   *  keys). Trimite aceleași conversii ca pixelul, din backend, cu același
+   *  `event_id` → OpenAI păstrează primul eveniment primit și îl ignoră pe al
+   *  doilea. Fără ea, o plată confirmată de Stripe după ce clientul a închis
+   *  tab-ul nu ajunge niciodată la OpenAI. */
+  openaiConversionsApiKey?: string;
   /** TikTok Marketing API access token (din TikTok for Business → app aprobat pentru
    *  Reporting). Citește spend-ul de campanie. Separat de `tiktokAccessToken` (Events API). */
   tiktokMarketingToken?: string;

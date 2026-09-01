@@ -52,6 +52,13 @@ export class OutboundEmailService {
     return this.repo.save(row);
   }
 
+  /** Înlocuiește HTML-ul salvat cu varianta REALĂ trimisă (după decorarea
+   *  linkurilor de urmărire). Fără asta, la o reclamație am fi citit din audit
+   *  alt mail decât cel primit de client. */
+  async updateHtml(id: string, html: string): Promise<void> {
+    await this.repo.update(id, { html });
+  }
+
   async markSent(
     id: string,
     update: { provider?: string; providerMessageId?: string; providerNotes?: string },

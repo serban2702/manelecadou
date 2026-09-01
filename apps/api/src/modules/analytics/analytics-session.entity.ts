@@ -84,6 +84,99 @@ export class AnalyticsSession {
   @Column({ type: 'varchar', length: 256, nullable: true })
   exitPath!: string | null;
 
+  // ============ UTM EXTINS + CLICK-ID-URI (vezi `utm-standard.ts`) ============
+  // Toate aditive și nullable — `synchronize` le adaugă cu ADD COLUMN (§6.4).
+  // Rândurile de dinaintea acestei versiuni rămân cu NULL și se citesc peste tot
+  // ca „necunoscut", nu dispar din rapoarte.
+
+  // NICIUNA din coloanele de mai jos nu e indexată, deliberat: toate se citesc
+  // doar în GROUP BY peste un interval de zile, unde interogarea e condusă de
+  // index-ul `(siteId, startedAt)`. Un index în plus ar încetini fiecare
+  // inserare de sesiune fără să grăbească niciun raport. Vezi și §19.2:
+  // index-urile se adaugă pentru căutări punctuale, nu „pentru orice eventualitate".
+
+  /** Canal canonic calculat la creare: meta | tiktok | google | chatgpt | email | direct | …
+   *  Există ca să nu recalculăm normalizarea la fiecare interogare și ca toate
+   *  rapoartele să vadă exact același verdict. */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  channel!: string | null;
+
+  /** `utm_id` — ID-ul campaniei din platformă. Cheia de legătură cu `ad_spend`. */
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  utmId!: string | null;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  utmSourcePlatform!: string | null;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  utmCreativeFormat!: string | null;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  utmMarketingTactic!: string | null;
+
+  /** `utm_adset` — grupul de anunțuri / ad group (audiența). */
+  @Column({ type: 'varchar', length: 256, nullable: true })
+  adsetName!: string | null;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  adsetId!: string | null;
+
+  /** `utm_ad` — numele reclamei, când platforma îl expune separat de `utm_content`. */
+  @Column({ type: 'varchar', length: 256, nullable: true })
+  adName!: string | null;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  adId!: string | null;
+
+  /** `utm_placement` — feed / story / reels / search / chat. */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  placement!: string | null;
+
+  /** Click-ID-ul preferat (fbclid / ttclid / gclid / …). Pus de platformă, deci
+   *  supraviețuiește unei reclame cu UTM-uri uitate. */
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  clickId!: string | null;
+
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  clickIdSource!: string | null;
+
+  /** Toate click-ID-urile găsite pe URL (se întâmplă la redirect între platforme). */
+  @Column({ type: 'jsonb', nullable: true })
+  clickIds!: Record<string, string> | null;
+
+  /** Query string-ul de aterizare, brut. Plasa de siguranță pentru un parametru
+   *  nou apărut în reclame înainte să-l capturăm explicit. */
+  @Column({ type: 'varchar', length: 1024, nullable: true })
+  landingQuery!: string | null;
+
+  // ============ EMAIL (linkul urmărit care a adus sesiunea) ============
+
+  /** Tokenul `mc_eid` din linkul de email. Leagă sesiunea de mailul concret. */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  emailToken!: string | null;
+
+  // ============ PRIMA ATINGERE (localStorage client, 90 zile) ============
+  // Fără ea, un client adus de Meta acum trei zile care revine azi din email
+  // apare ca adus de email, iar reclama care l-a găsit nu primește nimic.
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  firstSource!: string | null;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  firstMedium!: string | null;
+
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  firstCampaign!: string | null;
+
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  firstChannel!: string | null;
+
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  firstLandingPath!: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  firstTouchAt!: Date | null;
+
   // ============ DEVICE & UA ============
 
   /** mobile / tablet / desktop */

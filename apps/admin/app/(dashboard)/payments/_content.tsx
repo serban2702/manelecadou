@@ -119,9 +119,19 @@ function SourceBadge({
                   : { emoji: '🌐', label: attribution.source });
   // Title detaliat la hover: medium + campaign + referrer + landing path.
   const tooltipParts = [
+    attribution.channel ? `Canal: ${attribution.channel}` : null,
     `Source: ${attribution.source}`,
     attribution.medium ? `Medium: ${attribution.medium}` : null,
     attribution.campaign ? `Campaign: ${attribution.campaign}` : null,
+    attribution.utmId ? `utm_id: ${attribution.utmId}` : null,
+    attribution.adset ? `Grup: ${attribution.adset}` : null,
+    attribution.placement ? `Plasare: ${attribution.placement}` : null,
+    attribution.term ? `Term: ${attribution.term}` : null,
+    attribution.clickIdSource ? `Click-ID: ${attribution.clickIdSource}` : null,
+    // Prima atingere apare doar când diferă de ultima — altfel e zgomot.
+    attribution.firstChannel && attribution.firstChannel !== attribution.channel
+      ? `Prima atingere: ${attribution.firstChannel}${attribution.firstCampaign ? ` (${attribution.firstCampaign})` : ''}`
+      : null,
     attribution.referrer ? `Referrer: ${attribution.referrer}` : null,
     attribution.landingPath ? `Landing: ${attribution.landingPath}` : null,
     attribution.match ? `Match: ${attribution.match}` : null,
@@ -138,6 +148,10 @@ function SourceBadge({
  * Coloană „Campanie → Creativ": numele campaniei (utm_campaign, cu ID-uri Meta
  * deja traduse în nume de backend) urmat de creativul/ad-ul (utm_content, tradus
  * la ad_spend.adName). „—" când nu există atribuire de campanie.
+ *
+ * Al doilea rând arată grupul de anunțuri și plasarea, când reclama e taguită
+ * după standard (vezi pagina Linkuri și UTM). Fără ele, o campanie e o cutie
+ * neagră: știi că a vândut, nu și care audiență și care plasare.
  */
 function CampaignCreativeCell({
   attribution,
@@ -146,17 +160,31 @@ function CampaignCreativeCell({
 }) {
   const campaign = attribution?.campaignName?.trim() || null;
   const creative = attribution?.creative?.trim() || null;
+  const adset = attribution?.adset?.trim() || null;
+  const placement = attribution?.placement?.trim() || null;
   if (!campaign && !creative) {
     return <span className="text-xs text-muted-foreground">—</span>;
   }
-  const tooltip = [campaign ? `Campanie: ${campaign}` : null, creative ? `Creativ: ${creative}` : null]
+  const tooltip = [
+    campaign ? `Campanie: ${campaign}` : null,
+    adset ? `Grup: ${adset}` : null,
+    creative ? `Creativ: ${creative}` : null,
+    placement ? `Plasare: ${placement}` : null,
+  ]
     .filter(Boolean)
     .join('\n');
   return (
-    <div className="flex items-center gap-1 text-xs max-w-[260px]" title={tooltip}>
-      <span className="truncate font-medium text-foreground">{campaign ?? '—'}</span>
-      <span className="text-muted-foreground shrink-0">→</span>
-      <span className="truncate text-muted-foreground">{creative ?? '—'}</span>
+    <div className="max-w-[260px]" title={tooltip}>
+      <div className="flex items-center gap-1 text-xs">
+        <span className="truncate font-medium text-foreground">{campaign ?? '—'}</span>
+        <span className="text-muted-foreground shrink-0">→</span>
+        <span className="truncate text-muted-foreground">{creative ?? '—'}</span>
+      </div>
+      {(adset || placement) && (
+        <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+          {[adset, placement].filter(Boolean).join(' · ')}
+        </div>
+      )}
     </div>
   );
 }
