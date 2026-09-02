@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type React
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { api, ApiError, ensureGuestSession, type GenerationDto } from '@/lib/api';
+import { readFollowPromo } from '@/lib/follow-promo';
 import { track } from '@/lib/tracking';
 import { useSession } from '@/lib/providers';
 import { useSite } from '@/lib/site-context';
@@ -367,19 +368,10 @@ function WizardInner() {
     // trimis, iar o cifră din cod ar da alt discount decât cel real.
     if (promo || followPromoTried.current || !packages.loaded || !currentPrice) return;
     (async () => {
-      let code: string | null = null;
-      try {
-        code = window.localStorage.getItem('mc_follow_promo');
-      } catch {
-        code = null;
-      }
+      let code = readFollowPromo();
       if (!code) {
         try {
-          const me = await api.guestMe();
-          code = me.followPromoCode ?? null;
-          if (code) {
-            try { window.localStorage.setItem('mc_follow_promo', code); } catch { /* */ }
-          }
+          code = (await api.guestMe()).followPromoCode ?? null;
         } catch {
           return;
         }

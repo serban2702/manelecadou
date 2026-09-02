@@ -1250,21 +1250,6 @@
       "showLyrics": "Виж текста",
       "hideLyrics": "Скрий текста"
     },
-    "follow": {
-      "title": "Следващата песен — по-евтина",
-      "badge": "−{pct}%",
-      "done": "Благодарим, че ни последва. Имаш {pct}% отстъпка за следващата песен.",
-      "doneCode": "Твоят код: <b>{code}</b>.",
-      "doneAuto": "Прилагаме го автоматично при плащане.",
-      "lead": "Последвай ни във Facebook и TikTok и получаваш {pct}% отстъпка за следващата песен.",
-      "leadOne": "Последвай ни в {network} и получаваш {pct}% отстъпка за следващата песен.",
-      "facebook": "Facebook",
-      "tiktok": "TikTok",
-      "facebookDone": "Facebook · последван",
-      "facebookCta": "Последвай във Facebook",
-      "tiktokDone": "TikTok · последван",
-      "tiktokCta": "Последвай в TikTok"
-    },
     "player": {
       "play": "Пусни",
       "pause": "Пауза",
@@ -1775,6 +1760,27 @@
         "errSave": "Не успяхме да запазим паролата."
       }
     }
+  },
+  "followPromo": {
+    "title": "Следващата песен — по-евтина",
+    "badge": "−{pct}%",
+    "loading": "Офертата се зарежда…",
+    "lead": "Последвай ни във Facebook и TikTok и получаваш {pct}% отстъпка за следващата песен.",
+    "leadOne": "Последвай ни в {network} и получаваш {pct}% отстъпка за следващата песен.",
+    "facebook": "Facebook",
+    "tiktok": "TikTok",
+    "facebookCta": "Последвай във Facebook",
+    "facebookDone": "Facebook · последван",
+    "tiktokCta": "Последвай в TikTok",
+    "tiktokDone": "TikTok · последван",
+    "done": "Благодарим, че ни последва. Имаш {pct}% отстъпка за следващата песен.",
+    "doneAuto": "Прилагаме го автоматично при плащане.",
+    "copy": "Копирай",
+    "copied": "Копирано",
+    "popupTitle": "Искаш ли още една песен?",
+    "popupDoneTitle": "Отстъпката е твоя!",
+    "popupLater": "Може би по-късно",
+    "close": "Затвори"
   },
   "videoPlayer": {
     "unsupported": "Видеото не може да се възпроизведе тук.",

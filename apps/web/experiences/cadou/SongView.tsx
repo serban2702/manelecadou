@@ -20,6 +20,8 @@ import { CadouVideoSection } from './VideoSection';
 import { CadouRemakeCard } from './RemakeCard';
 import { CadouUpsellModal, upsellAlreadySeen } from './UpsellModal';
 import { CadouFollowCard } from './FollowCard';
+import { FollowPromoModal } from '@/components/FollowPromo';
+import { useFollowPromo, useFollowPromoPopup } from '@/lib/follow-promo';
 import { CadouFold } from './Fold';
 import { cadouStyleArt } from './style-art';
 import { useCadouFromName } from './from-name';
@@ -614,7 +616,9 @@ function CadouSongInner() {
   const showShare = ready;
   const showVideo = ready && paid;
   const showRemake = ready && paid && !!g?.isOwner;
-  const showFollow = ready && paid && !!g?.isOwner;
+  // Owner care a plătit SAU vizitator care a deschis melodia cu parola ei: în
+  // ambele cazuri e cineva care ține la piesa asta, deci merită oferta.
+  const showFollow = ready && ((paid && !!g?.isOwner) || !!g?.unlocked);
   const showLyrics = !!lyrics;
   const showOrder = !!g?.isOwner;
   // ── Livrabile vechi (nu se mai vând, dar comenzile plătite înainte le au) ──
@@ -649,8 +653,16 @@ function CadouSongInner() {
                     ? 'share'
                     : 'play';
 
+  const followPromo = useFollowPromo();
+  const followPopup = useFollowPromoPopup({
+    generationId: g?.id,
+    eligible: showFollow,
+    hasCode: !!followPromo.code,
+  });
+
   return (
     <>
+      <FollowPromoModal state={followPromo} open={followPopup.open} onClose={followPopup.close} />
       {upsellOpen && g?.id && (
         <CadouUpsellModal
           generationId={g.id}
@@ -791,7 +803,7 @@ function CadouSongInner() {
                   />
                 )}
 
-                {showFollow && <CadouFollowCard defaultOpen={last !== 'follow'} />}
+                {showFollow && <CadouFollowCard state={followPromo} defaultOpen={last !== 'follow'} />}
 
                 {showLyrics && (
                   <CadouFold title={t('lyricsTitle')} className="cadou-song-sheet" defaultOpen={last !== 'lyrics'}>

@@ -1250,21 +1250,6 @@
       "showLyrics": "Pogledaj tekst",
       "hideLyrics": "Sakrij tekst"
     },
-    "follow": {
-      "title": "Sledeća pesma jeftinije",
-      "badge": "−{pct}%",
-      "done": "Hvala na praćenju. Imaš {pct}% popusta na sledeću pesmu.",
-      "doneCode": "Tvoj kod: <b>{code}</b>.",
-      "doneAuto": "Primenjujemo ga automatski na plaćanju.",
-      "lead": "Zaprati nas na Facebook-u i TikTok-u i dobijaš {pct}% popusta na sledeću pesmu.",
-      "leadOne": "Zaprati nas na {network} i dobijaš {pct}% popusta na sledeću pesmu.",
-      "facebook": "Facebook",
-      "tiktok": "TikTok",
-      "facebookDone": "Facebook · zapraćen",
-      "facebookCta": "Zaprati na Facebook-u",
-      "tiktokDone": "TikTok · zapraćen",
-      "tiktokCta": "Zaprati na TikTok-u"
-    },
     "player": {
       "play": "Pusti",
       "pause": "Pauza",
@@ -1775,6 +1760,27 @@
         "errSave": "Nismo mogli da sačuvamo lozinku."
       }
     }
+  },
+  "followPromo": {
+    "title": "Sledeća pesma jeftinije",
+    "badge": "−{pct}%",
+    "loading": "Učitavanje ponude…",
+    "lead": "Zaprati nas na Facebook-u i TikTok-u i dobijaš {pct}% popusta na sledeću pesmu.",
+    "leadOne": "Zaprati nas na {network} i dobijaš {pct}% popusta na sledeću pesmu.",
+    "facebook": "Facebook",
+    "tiktok": "TikTok",
+    "facebookCta": "Zaprati na Facebook-u",
+    "facebookDone": "Facebook · zapraćen",
+    "tiktokCta": "Zaprati na TikTok-u",
+    "tiktokDone": "TikTok · zapraćen",
+    "done": "Hvala na praćenju. Imaš {pct}% popusta na sledeću pesmu.",
+    "doneAuto": "Primenjujemo ga automatski na plaćanju.",
+    "copy": "Kopiraj",
+    "copied": "Kopirano",
+    "popupTitle": "Želiš još jednu pesmu?",
+    "popupDoneTitle": "Popust je tvoj!",
+    "popupLater": "Možda kasnije",
+    "close": "Zatvori"
   },
   "videoPlayer": {
     "unsupported": "Video ne može da se reprodukuje ovde.",

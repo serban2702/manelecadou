@@ -130,8 +130,13 @@ export class GuestSessionsService {
    * `packageSnapshot` pe ultima lui comandă (ce i s-a promis când a plătit), altfel
    * pachetul rezolvat azi, altfel valoarea implicită. Best-effort — orice eroare cade
    * pe default, reducerea nu are voie să blocheze follow-ul.
+   *
+   * PUBLIC pentru că pagina de melodie AFIȘEAZĂ procentul înainte de a-l emite, iar
+   * cifra promisă în interfață trebuie să fie exact cea scrisă pe cod. Cât timp a fost
+   * privată, frontendul avea un `40` hardcodat: un client cu pachet Plus citea „40%"
+   * și primea un cod de 25%.
    */
-  private async nextSongDiscountFor(guestId: string, siteId: string | null): Promise<number> {
+  async nextSongDiscountFor(guestId: string, siteId: string | null): Promise<number> {
     try {
       const rows: Array<{
         packageSnapshot: PackageSnapshot | null;

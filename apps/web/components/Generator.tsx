@@ -19,6 +19,7 @@ import { usePackages } from '@/experiences/use-packages';
 import { saveWizard, readWizard, clearWizard } from '@/lib/wizard';
 import { useExperienceCatalog } from '@/experiences/use-experience-catalog';
 import { useSamplePreview } from '@/lib/use-sample-preview';
+import { readFollowPromo } from '@/lib/follow-promo';
 import OfferCountdown from './OfferCountdown';
 
 type Data = {
@@ -251,6 +252,43 @@ function GeneratorInner({ playing, onPlay }: { playing: string | null; onPlay: (
   const [promoCode, setPromoCode] = useState('');
   const [promoApplied, setPromoApplied] = useState<{ code: string; discountCents: number } | null>(null);
   const [promoError, setPromoError] = useState<string | null>(null);
+
+  // Codul câștigat prin follow pe social se aplică SINGUR — i-am promis pe pagina
+  // melodiei că „îl aplicăm automat la plată", iar un cod pe care clientul trebuie
+  // să și-l amintească și să-l lipească e o promisiune pe jumătate. Așteptăm
+  // pachetele: `validatePromo` calculează reducerea pe prețul trimis.
+  const followPromoTried = useRef(false);
+  const currentPackagePrice = packages.byTier[data.packageTier]?.priceCents ?? 0;
+  useEffect(() => {
+    if (promoApplied || followPromoTried.current || !packages.loaded || !currentPackagePrice) return;
+    void (async () => {
+      let code = readFollowPromo();
+      if (!code) {
+        try {
+          code = (await api.guestMe()).followPromoCode ?? null;
+        } catch {
+          return; // guest indisponibil — reîncercăm la următorul render util
+        }
+      }
+      if (!code) {
+        followPromoTried.current = true;
+        return;
+      }
+      try {
+        const r = await api.validatePromo(code, emailDraft.trim() || undefined, currentPackagePrice);
+        if (r.ok) {
+          followPromoTried.current = true;
+          setPromoApplied({ code, discountCents: r.appliedDiscountCents ?? 0 });
+          setPromoCode(code);
+          return;
+        }
+        // `wrong_email` e singurul motiv recuperabil: userul încă n-a scris adresa.
+        if (r.reason !== 'wrong_email') followPromoTried.current = true;
+      } catch {
+        followPromoTried.current = true;
+      }
+    })();
+  }, [promoApplied, packages.loaded, currentPackagePrice, emailDraft]);
 
   // „Nudge" pe încercare de continuare cu câmpuri incomplete. Setat când userul
   // dă „Continuă →" pe un step invalid; afișează banner + outline roșu pe

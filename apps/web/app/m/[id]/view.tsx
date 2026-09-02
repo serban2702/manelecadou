@@ -21,6 +21,8 @@ import { formatPrice, siteSupportEmail } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
 import { prettifyLyrics } from '@/lib/lyrics-display';
 import { RotatingStatus } from '@/components/RotatingStatus';
+import { FollowPromoSection, FollowPromoModal } from '@/components/FollowPromo';
+import { useFollowPromo, useFollowPromoPopup } from '@/lib/follow-promo';
 
 export default function ShareGenerationView() {
   return (
@@ -145,6 +147,22 @@ function ShareGenerationViewInner() {
       }
     })();
   }, [search, params.id, unlocking]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Follow ⇒ reducere. Hook-urile stau ÎNAINTE de early return-urile de mai jos:
+  // altfel primul render fără generare le-ar sări, iar React ar cădea pe
+  // „rendered more hooks than during the previous render".
+  const followPromo = useFollowPromo();
+  const followEligible = !!g && (
+    // owner care a plătit…
+    ((g.type === 'full' || g.paidUnlocked) && (g.isOwner ?? !!(g.ownerUserId || g.ownerGuestId)))
+    // …sau vizitatorul care a deschis melodia cu parola ei.
+    || !!g.unlocked
+  );
+  const followPopup = useFollowPromoPopup({
+    generationId: g?.id,
+    eligible: followEligible,
+    hasCode: !!followPromo.code,
+  });
 
   if (error) return <main style={{ padding: 40, textAlign: 'center' }}><p>{error}</p></main>;
   if (!g) return <main style={{ padding: 40, textAlign: 'center' }}><p className="ld">{t('loading')}</p></main>;
@@ -413,6 +431,8 @@ function ShareGenerationViewInner() {
         />
       )}
 
+      {followEligible && <FollowPromoSection state={followPromo} />}
+
       <ContactSection />
 
       {g.lyrics && (
@@ -427,6 +447,8 @@ function ShareGenerationViewInner() {
           }}>{prettifyLyrics(g.lyrics, site.locale)}</pre>
         </details>
       )}
+
+      <FollowPromoModal state={followPromo} open={followPopup.open} onClose={followPopup.close} />
     </main>
   );
 }

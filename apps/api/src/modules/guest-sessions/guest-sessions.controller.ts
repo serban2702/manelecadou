@@ -59,6 +59,26 @@ export class GuestSessionsController {
     };
   }
 
+  /**
+   * Starea follow-ului + procentul care VA FI emis. Endpoint separat de `me`
+   * fiindcă procentul cere un query pe `generations`, iar `me` e apelat de pe
+   * fiecare pagină; aici se cere doar de secțiunea de follow.
+   */
+  @Get('me/follow')
+  async followStatus(
+    @Headers('x-guest-id') guestId: string | undefined,
+    @CurrentSiteId() siteId: string | null,
+  ) {
+    if (!guestId) throw new BadRequestException('Missing X-Guest-Id');
+    const g = await this.svc.findById(guestId);
+    if (!g) throw new BadRequestException('Missing X-Guest-Id');
+    const follow = this.svc.followState(g);
+    return {
+      ...follow,
+      discountPercent: await this.svc.nextSongDiscountFor(g.id, g.siteId ?? siteId),
+    };
+  }
+
   @Post('me/follow')
   async follow(
     @Headers('x-guest-id') guestId: string | undefined,
@@ -66,7 +86,11 @@ export class GuestSessionsController {
     @CurrentSiteId() siteId: string | null,
   ) {
     if (!guestId) throw new BadRequestException('Missing X-Guest-Id');
-    return this.svc.markSocialFollow(guestId, body.network, siteId);
+    const state = await this.svc.markSocialFollow(guestId, body.network, siteId);
+    return {
+      ...state,
+      discountPercent: await this.svc.nextSongDiscountFor(guestId, siteId),
+    };
   }
 
   @Patch('me/email')

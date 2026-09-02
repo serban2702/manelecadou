@@ -266,6 +266,14 @@ export async function ensureGuestSession(): Promise<string> {
   return created.id;
 }
 
+export interface FollowStatusDto {
+  facebook: boolean;
+  tiktok: boolean;
+  promoCode: string | null;
+  /** Procentul EXACT care se emite pe cod. Vine din pachetul comenzii, nu din cod. */
+  discountPercent: number;
+}
+
 export interface MeGuest {
   id: string | null;
   freeDemoUsed: boolean;
@@ -609,8 +617,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ notes }),
     }),
+  /** Starea follow-ului + procentul care VA fi emis (nu o cifră din cod — vezi FollowPromo). */
+  followStatus: () =>
+    request<FollowStatusDto>('/guest-sessions/me/follow'),
   markSocialFollow: (network: 'facebook' | 'tiktok') =>
-    request<{ facebook: boolean; tiktok: boolean; promoCode: string | null }>('/guest-sessions/me/follow', {
+    request<FollowStatusDto>('/guest-sessions/me/follow', {
       method: 'POST',
       body: JSON.stringify({ network }),
     }),

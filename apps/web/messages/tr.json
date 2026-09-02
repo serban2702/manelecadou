@@ -1250,21 +1250,6 @@
       "showLyrics": "Sözleri göster",
       "hideLyrics": "Sözleri gizle"
     },
-    "follow": {
-      "title": "Sonraki şarkı daha ucuz",
-      "badge": "−%{pct}",
-      "done": "Takip için teşekkürler. Sonraki şarkında %{pct} indirimin var.",
-      "doneCode": "Kodun: <b>{code}</b>.",
-      "doneAuto": "Ödemede otomatik uyguluyoruz.",
-      "lead": "Facebook ve TikTok'ta takip et, sonraki şarkında %{pct} indirim kazan.",
-      "leadOne": "{network} üzerinde takip et, sonraki şarkında %{pct} indirim kazan.",
-      "facebook": "Facebook",
-      "tiktok": "TikTok",
-      "facebookDone": "Facebook · takip ediliyor",
-      "facebookCta": "Facebook'ta takip et",
-      "tiktokDone": "TikTok · takip ediliyor",
-      "tiktokCta": "TikTok'ta takip et"
-    },
     "player": {
       "play": "Çal",
       "pause": "Duraklat",
@@ -1775,6 +1760,27 @@
         "errSave": "Şifreyi kaydedemedik."
       }
     }
+  },
+  "followPromo": {
+    "title": "Sonraki şarkı daha ucuz",
+    "badge": "−%{pct}",
+    "loading": "Teklif yükleniyor…",
+    "lead": "Facebook ve TikTok'ta takip et, sonraki şarkında %{pct} indirim kazan.",
+    "leadOne": "{network} üzerinde takip et, sonraki şarkında %{pct} indirim kazan.",
+    "facebook": "Facebook",
+    "tiktok": "TikTok",
+    "facebookCta": "Facebook'ta takip et",
+    "facebookDone": "Facebook · takip ediliyor",
+    "tiktokCta": "TikTok'ta takip et",
+    "tiktokDone": "TikTok · takip ediliyor",
+    "done": "Takip için teşekkürler. Sonraki şarkında %{pct} indirimin var.",
+    "doneAuto": "Ödemede otomatik uyguluyoruz.",
+    "copy": "Kopyala",
+    "copied": "Kopyalandı",
+    "popupTitle": "Bir şarkı daha ister misin?",
+    "popupDoneTitle": "İndirim senin!",
+    "popupLater": "Belki daha sonra",
+    "close": "Kapat"
   },
   "videoPlayer": {
     "unsupported": "Video burada oynatılamıyor.",

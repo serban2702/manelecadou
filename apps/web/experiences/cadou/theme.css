@@ -1433,7 +1433,7 @@ button.cadou-pack { cursor: pointer; }
 .cadou-song-sheet .cadou-song-lyrics {
   background: transparent; border: 0; padding: 0;
 }
-.cadou-remake h2, .cadou-video h2, .cadou-song-sheet h2, .cadou-follow h2 {
+.cadou-remake h2, .cadou-video h2, .cadou-song-sheet h2 {
   margin: 0 0 8px;
   font-size: 13px; font-weight: 800; letter-spacing: 0.12em;
   text-transform: uppercase; color: var(--cadou-gold-deep);
@@ -1446,34 +1446,6 @@ button.cadou-pack { cursor: pointer; }
 .cadou-remake-lead {
   margin: 0 0 12px;
   color: var(--cadou-muted); font-size: 14px; line-height: 1.45;
-}
-.cadou-follow-badge {
-  background: linear-gradient(135deg, #c9a227, #f1c84d);
-  color: #1a1a1a; font-weight: 800; font-size: 12px;
-  letter-spacing: 0.04em; border-radius: 999px; padding: 4px 9px;
-  text-transform: none;
-}
-.cadou-follow-lead {
-  margin: 0 0 14px;
-  color: var(--cadou-muted); font-size: 14px; line-height: 1.45;
-}
-.cadou-follow-lead b {
-  color: var(--cadou-ink); font-weight: 800; letter-spacing: 0.04em;
-}
-.cadou-follow-btns {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-}
-.cadou-follow-btn {
-  min-height: 46px; border: 0; border-radius: 999px; cursor: pointer;
-  font-weight: 800; font-size: 13px; letter-spacing: 0.02em;
-  color: #fff;
-}
-.cadou-follow-btn.fb { background: #1877f2; }
-.cadou-follow-btn.tt { background: #111; }
-.cadou-follow-btn.on { opacity: 0.72; cursor: default; }
-.cadou-follow-btn:disabled { opacity: 0.72; cursor: default; }
-@media (max-width: 520px) {
-  .cadou-follow-btns { grid-template-columns: 1fr; }
 }
 .cadou-remake-lab {
   display: block; margin-bottom: 6px;
@@ -1922,3 +1894,30 @@ button.cadou-pack { cursor: pointer; }
   }
   .cadou-footer > div + div { margin-top: 4px !important; }
 }
+
+/* „Follow ⇒ reducere": ACELAȘI markup ca pe classic (`fp-*`, vezi
+   app/follow-promo.css). Aici doar întoarcem jetoanele pe tema deschisă —
+   crem și auriu adânc în loc de negru și auriu deschis. Fără fork de
+   componentă, deci o schimbare de layout ajunge pe ambele interfețe. */
+.cadou-root {
+  --fp-card-bg: linear-gradient(180deg, #fff9ea, var(--cadou-card));
+  --fp-card-line: var(--cadou-line);
+  --fp-title: var(--cadou-gold-deep);
+  --fp-text: var(--cadou-ink);
+  --fp-muted: var(--cadou-muted);
+  --fp-code-bg: rgba(201, 162, 39, 0.12);
+  --fp-modal-bg: var(--cadou-card);
+  --fp-modal-line: var(--cadou-line);
+  --fp-shadow: 0 24px 60px rgba(26, 26, 26, 0.28);
+  --fp-glow: rgba(201, 162, 39, 0.2);
+  --fp-overlay-bg: rgba(26, 26, 26, 0.5);
+}
+
+/* În `CadouFold` titlul e deja în `<summary>`, deci cardul intră fără ramă proprie. */
+.cadou-fold .fp-card {
+  margin-top: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+.cadou-fold .fp-card .fp-head { display: none; }
