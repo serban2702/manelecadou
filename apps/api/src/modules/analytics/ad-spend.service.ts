@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Between, Repository } from 'typeorm';
 import { AdSpend, AdPlatform, AD_PLATFORMS } from './ad-spend.entity';
 import { Payment } from '../payments/payment.entity';
 import { SitesService } from '../sites/sites.service';
@@ -112,7 +112,11 @@ export class AdSpendService {
     for (const [platform, fetchRows] of jobs) {
       try {
         const rows = await fetchRows();
-        await this.upsert(site.id, platform, rows);
+        if (platform === 'chatgpt') {
+          await this.replaceWindow(site.id, platform, since, until, rows);
+        } else {
+          await this.upsert(site.id, platform, rows);
+        }
         res[platform] = { ok: true, rows: rows.length };
       } catch (e) {
         res[platform] = { ok: false, rows: 0, error: (e as Error).message };
@@ -422,29 +426,44 @@ export class AdSpendService {
     }
   }
 
+  /**
+   * Rescrie COMPLET fereastra pentru o platformă, în loc s-o îmbine cu ce era.
+   *
+   * Există pentru ChatGPT. Advertiser API-ul e în beta și nu întoarce (încă)
+   * istoric zilnic: verificat pe 4 septembrie 2026, o interogare pe 22.08–04.09
+   * a răspuns cu UN SINGUR bucket — cel de azi — conținând totalurile de la
+   * începutul campaniilor (82 de clickuri și 33,90 € pe o campanie pornită pe 1
+   * septembrie), iar interogările pe zile anterioare au întors zero rânduri.
+   * `time_granularity` e acceptat, dar ignorat.
+   *
+   * Cu upsert pe `(siteId, platform, adId, date)`, dacă mâine același total
+   * cumulat apare ștampilat cu ziua de mâine, rândul de azi rămâne pe loc și
+   * cheltuiala se numără de două ori. Nu ca eroare — ca ROAS înjumătățit tăcut.
+   * Ștergerea ferestrei înainte de scriere face sincronizarea idempotentă
+   * indiferent cum își mută ei bucket-ul, iar când vor da defalcare zilnică
+   * reală se comportă exact ca un upsert.
+   *
+   * Zero rânduri NU șterge nimic: un `200` gol în timpul unei pene la ei ar
+   * rade cheltuiala reală din rapoarte.
+   */
+  private async replaceWindow(
+    siteId: string,
+    platform: AdPlatform,
+    since: string,
+    until: string,
+    rows: NormalizedRow[],
+  ): Promise<void> {
+    if (rows.length === 0) return;
+    await this.repo.manager.transaction(async (m) => {
+      await m.delete(AdSpend, { siteId, platform, date: Between(since, until) });
+      await m.insert(AdSpend, toEntities(siteId, platform, rows));
+    });
+  }
+
   private async upsert(siteId: string, platform: AdPlatform, rows: NormalizedRow[]): Promise<void> {
     if (rows.length === 0) return;
-    const now = new Date();
-    const entities = rows.map((r) => ({
-      siteId,
-      platform,
-      campaignId: r.campaignId,
-      campaignName: r.campaignName,
-      adsetId: r.adsetId,
-      adsetName: r.adsetName,
-      adId: r.adId,
-      adName: r.adName,
-      date: r.date,
-      spendCents: r.spendCents,
-      currency: r.currency,
-      impressions: r.impressions,
-      clicks: r.clicks,
-      conversions: r.conversions,
-      conversionValueCents: r.conversionValueCents,
-      fetchedAt: now,
-    }));
     // Upsert idempotent pe index-ul unic (siteId, platform, adId, date).
-    await this.repo.upsert(entities, {
+    await this.repo.upsert(toEntities(siteId, platform, rows), {
       conflictPaths: ['siteId', 'platform', 'adId', 'date'],
       skipUpdateIfNoValuesChanged: true,
     });
@@ -658,6 +677,29 @@ export class AdSpendService {
     const since = new Date(until.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
     return { since: toDay(since), until: toDay(until) };
   }
+}
+
+/** Rândurile normalizate → entități gata de scris. Comun între upsert și replaceWindow. */
+function toEntities(siteId: string, platform: AdPlatform, rows: NormalizedRow[]) {
+  const now = new Date();
+  return rows.map((r) => ({
+    siteId,
+    platform,
+    campaignId: r.campaignId,
+    campaignName: r.campaignName,
+    adsetId: r.adsetId,
+    adsetName: r.adsetName,
+    adId: r.adId,
+    adName: r.adName,
+    date: r.date,
+    spendCents: r.spendCents,
+    currency: r.currency,
+    impressions: r.impressions,
+    clicks: r.clicks,
+    conversions: r.conversions,
+    conversionValueCents: r.conversionValueCents,
+    fetchedAt: now,
+  }));
 }
 
 function toDay(d: Date): string {

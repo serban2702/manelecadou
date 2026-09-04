@@ -1715,6 +1715,22 @@ Capcanele endpoint-ului, toate acoperite de `ad-spend-openai.spec.ts`:
    interval și campanie, nu pe zi și ad — deci nu încap în rândul zilnic. Pentru
    ChatGPT, `ad_spend.conversions` rămâne 0 intenționat; comenzile și venitul din
    raport vin din plățile noastre atribuite canalului.
+5. **`time_granularity` e acceptat, dar ignorat.** Verificat pe 4 septembrie 2026,
+   pe toate variantele (`date_range` / `unix_range` / fără parametru): o
+   interogare pe 22.08–04.09 întoarce UN SINGUR bucket, cel de azi
+   (`start_time`/`end_time` = ziua curentă în fusul contului), conținând
+   totalurile de la începutul campaniilor — 82 de clickuri și 33,90 € pe o
+   campanie pornită pe 1 septembrie. Interogările pe zile anterioare întorc zero
+   rânduri. Totalul e corect, defalcarea pe zile nu există.
+
+   De-aia sincronizarea pentru ChatGPT **rescrie fereastra** (`replaceWindow`),
+   nu face upsert ca la Meta și TikTok: dacă mâine același total cumulat apare
+   ștampilat cu ziua de mâine, un upsert ar lăsa rândul de azi pe loc și aceeași
+   cheltuială s-ar număra de două ori — adică ROAS înjumătățit, fără nicio
+   eroare. Ștergerea ferestrei o face idempotentă indiferent cum își mută ei
+   bucket-ul, iar când vor da defalcare zilnică reală se comportă ca un upsert.
+   Zero rânduri nu șterge nimic — un `200` gol în timpul unei pene la ei ar rade
+   cheltuiala reală.
 
 ⚠️ **CSP**: routerul nostru pune doar `frame-ancestors` (`deploy/router/nginx.conf`),
 fără `script-src` / `connect-src` / `img-src`, deci nimic nu blochează SDK-ul.

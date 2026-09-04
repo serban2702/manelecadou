@@ -2,6 +2,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { AdSpendService } from './ad-spend.service';
+import { AdSpend } from './ad-spend.entity';
 
 /**
  * Citirea cheltuielii din ChatGPT Ads (Advertiser API — Insights).
@@ -159,5 +160,75 @@ describe('ChatGPT Ads — erori', () => {
       json: async () => ({ error: { message: 'Invalid API key' } }),
     })) as any;
     await assert.rejects(() => insights('ad'), /OpenAI insights \(ad\): Invalid API key/);
+  });
+});
+
+/**
+ * Rescrierea ferestrei pentru ChatGPT.
+ *
+ * Advertiser API-ul întoarce (deocamdată) totalurile cumulate într-un singur
+ * bucket, ștampilat cu ziua curentă. Dacă mâine le ștampilează cu ziua de mâine
+ * și noi doar facem upsert, rândul de azi rămâne pe loc și aceeași cheltuială
+ * se numără de două ori — ROAS-ul se înjumătățește, fără nicio eroare.
+ */
+describe('ChatGPT Ads — sincronizarea rescrie fereastra, nu o adaugă la ea', () => {
+  const RAND = {
+    platform: 'chatgpt' as const,
+    campaignId: 'cmpn_1', campaignName: 'C', adsetId: null, adsetName: null,
+    adId: 'ad_1', adName: 'A', date: '2026-09-04',
+    spendCents: 3390, currency: 'EUR', impressions: 2560, clicks: 82,
+    conversions: 0, conversionValueCents: 0,
+  };
+
+  /** Repo fals care reține ce s-a șters și ce s-a inserat. */
+  function fakeRepo() {
+    const calls: Array<{ op: string; arg: unknown }> = [];
+    const manager = {
+      delete: async (_e: unknown, where: unknown) => { calls.push({ op: 'delete', arg: where }); },
+      insert: async (_e: unknown, rows: unknown) => { calls.push({ op: 'insert', arg: rows }); },
+    };
+    const repo = {
+      manager: { transaction: async (cb: (m: typeof manager) => Promise<void>) => cb(manager) },
+      upsert: async () => { calls.push({ op: 'upsert', arg: null }); },
+    };
+    return { repo, calls };
+  }
+
+  const replace = (svc: AdSpendService, rows: unknown[]) =>
+    (svc as any).replaceWindow('site-1', 'chatgpt', '2026-08-22', '2026-09-04', rows);
+
+  it('șterge fereastra înainte să scrie, în aceeași tranzacție', async () => {
+    const { repo, calls } = fakeRepo();
+    const svc = new AdSpendService(repo as any, null as any, null as any, null as any);
+    await replace(svc, [RAND]);
+
+    assert.deepEqual(calls.map((c) => c.op), ['delete', 'insert']);
+    const where = calls[0].arg as any;
+    assert.equal(where.siteId, 'site-1');
+    assert.equal(where.platform, 'chatgpt');
+    // Ștergerea e limitată la fereastra sincronizată — nu la tot istoricul.
+    assert.ok(where.date, 'ștergerea trebuie limitată pe interval de date');
+    const inserted = calls[1].arg as any[];
+    assert.equal(inserted.length, 1);
+    assert.equal(inserted[0].spendCents, 3390);
+    assert.equal(inserted[0].adId, 'ad_1');
+  });
+
+  it('zero rânduri nu șterge nimic — un 200 gol ar rade cheltuiala reală', async () => {
+    const { repo, calls } = fakeRepo();
+    const svc = new AdSpendService(repo as any, null as any, null as any, null as any);
+    await replace(svc, []);
+    assert.deepEqual(calls, []);
+  });
+
+  it('entitatea scrisă e cea din tabel, nu un obiect liber', async () => {
+    const { repo, calls } = fakeRepo();
+    const svc = new AdSpendService(repo as any, null as any, null as any, null as any);
+    let target: unknown;
+    (repo.manager as any).transaction = async (cb: any) =>
+      cb({ delete: async (e: unknown) => { target = e; }, insert: async () => {} });
+    await replace(svc, [RAND]);
+    assert.equal(target, AdSpend);
+    assert.equal(calls.length, 0);
   });
 });
