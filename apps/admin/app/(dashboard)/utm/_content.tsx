@@ -310,8 +310,8 @@ function BuilderTab() {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2"><Wand2 className="h-4 w-4" /> Construiește linkul</CardTitle>
           <CardDescription>
-            Pentru plasările unde scrii valorile de mână: ChatGPT, postări organice, influenceri, QR-uri.
-            La Meta/TikTok/Google folosește șabloanele cu macro-uri — se completează singure.
+            Pentru plasările unde scrii valorile de mână: postări organice, influenceri, QR-uri.
+            La Meta, TikTok, Google și ChatGPT folosește șabloanele cu macro-uri — se completează singure.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">

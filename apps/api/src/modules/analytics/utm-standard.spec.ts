@@ -195,6 +195,34 @@ describe('șabloanele per platformă', () => {
     }
   });
 
+  /**
+   * Macro-urile pe care OpenAI le înlocuiește efectiv, cuvânt cu cuvânt din
+   * câmpul „Parametrii de interogare ai paginii de destinație" (verificat în
+   * Ads Manager, 4 sept. 2026). Un macro inventat NU dă eroare: ajunge la noi
+   * ca text, iar `isMacroPlaceholder` îl aruncă — adică o coloană goală care
+   * arată exact ca „reclamă fără UTM".
+   */
+  it('șablonul ChatGPT folosește doar macro-uri pe care platforma le are', () => {
+    const SUPORTATE = new Set([
+      '{campaign_id}',
+      '{ad_group_id}',
+      '{ad_id}',
+      '{ad_account_id}',
+      '{oppref}',
+    ]);
+    const t = UTM_TEMPLATES.find((x) => x.id === 'chatgpt')!;
+    const inSuffix = t.suffix.match(/\{[^}]+\}/g) ?? [];
+    assert.ok(inSuffix.length > 0, 'șablonul ChatGPT nu mai are niciun macro');
+    for (const m of inSuffix) {
+      assert.ok(SUPORTATE.has(m), `macro inexistent la OpenAI: ${m}`);
+    }
+    for (const f of t.fields) {
+      for (const m of f.value.match(/\{[^}]+\}/g) ?? []) {
+        assert.ok(SUPORTATE.has(m), `macro inexistent la OpenAI, pe câmpul ${f.param}: ${m}`);
+      }
+    }
+  });
+
   it('valorile parsate din șabloane sunt macro-uri, nu text real', () => {
     // Verifică indirect că `parseUtmFromUrl` le va arunca: dacă un macro ar fi
     // scris greșit și ar trece de `isMacroPlaceholder`, ar ajunge ca „campanie"

@@ -578,27 +578,47 @@ export const UTM_TEMPLATES: UtmTemplate[] = [
   {
     id: 'chatgpt',
     platform: 'ChatGPT / OpenAI Ads',
-    where: 'În URL-ul de destinație al reclamei (platforma nu are, la momentul scrierii, câmp separat de parametri).',
-    scope: 'Per campanie / per creativ. Valorile se scriu de mână, deci convenția de nume contează dublu.',
+    where:
+      'Ads Manager → Campanii → „…" pe campanie → Editează campania → câmpul ' +
+      '„Parametrii de interogare ai paginii de destinație". Același câmp există ' +
+      'și pe Editează anunțul.',
+    scope:
+      'Se poate pune pe campanie (se aplică tuturor reclamelor din ea) SAU pe ' +
+      'fiecare reclamă. Pune-l în AMBELE locuri, identic — vezi avertismentul.',
     suffix:
-      'utm_source=chatgpt&utm_medium=paid_ai&utm_campaign=CAMPANIA-TA&utm_id=ID-CAMPANIE' +
-      '&utm_content=CREATIVUL-TAU&utm_placement=chat',
+      'utm_source=chatgpt&utm_medium=paid_ai&utm_campaign=NUMELE-CAMPANIEI&utm_id={campaign_id}' +
+      '&utm_adset_id={ad_group_id}&utm_ad_id={ad_id}&utm_content={ad_id}&utm_placement=chat',
     fields: [
       { param: 'utm_source', value: 'chatgpt', note: 'Fix — canalul apare separat în rapoarte.' },
       { param: 'utm_medium', value: 'paid_ai', note: 'Fix. Îl ține separat de social și de search.' },
-      { param: 'utm_campaign', value: 'ex. ro-cadou-craciun-2612', note: 'Scris de mână. Vezi convenția de nume mai jos.' },
-      { param: 'utm_id', value: 'ID-ul din platformă, dacă există', note: 'Pentru legătura cu cheltuiala.' },
-      { param: 'utm_content', value: 'ex. video-reactie-mama', note: 'Ce creativ / ce variantă de text.' },
-      { param: 'utm_placement', value: 'chat', note: 'Unde a apărut reclama.' },
+      {
+        param: 'utm_campaign',
+        value: 'numele campaniei, scris de mână',
+        note: 'OpenAI NU expune un macro de nume. Scrie-l identic cu numele din platformă.',
+      },
+      { param: 'utm_id', value: '{campaign_id}', note: 'Macro. Leagă rândul de cheltuiala din Insights.' },
+      { param: 'utm_adset_id', value: '{ad_group_id}', note: 'Macro. Grupul de reclame.' },
+      { param: 'utm_ad_id', value: '{ad_id}', note: 'Macro. Reclama individuală.' },
+      { param: 'utm_content', value: '{ad_id}', note: 'Macro. Creativul, în lipsa unui macro de nume.' },
+      { param: 'utm_placement', value: 'chat', note: 'Fix — singurul plasament de acum.' },
+      {
+        param: 'utm_ad',
+        value: 'opțional, numele reclamei, scris de mână',
+        note: 'Doar la nivel de reclamă. Face raportul lizibil: nume în loc de „ad_7f3…".',
+      },
     ],
     notes: [
-      'Platforma e nouă: dacă expune macro-uri (de tipul `{campaign_id}`), înlocuiește valorile statice cu ele — restul șablonului rămâne identic.',
-      'Fără macro-uri, o singură reclamă = un singur link. Scrie linkul cu constructorul din pagina asta, nu de mână.',
-      'Conversiile se raportează separat, prin pixelul de măsurare OpenAI: îl activezi punând Pixel ID-ul în „Acest site" → Operațiuni → Măsurare (pixeli). UTM-urile de aici sunt pentru rapoartele NOASTRE, pixelul e pentru optimizarea campaniei.',
+      'Macro-urile acceptate de platformă sunt EXACT acestea cinci: `{campaign_id}`, `{ad_group_id}`, `{ad_id}`, `{ad_account_id}`, `{oppref}`. Nu există macro de NUME (nici de campanie, nici de reclamă) — de-aia `utm_campaign` se scrie de mână.',
+      '`{ad_account_id}` nu e în șablon: avem un singur cont de ads, deci ar fi o coloană cu aceeași valoare pe toate rândurile. `{oppref}` nici atât — vine deja singur pe URL.',
       'Traficul din ChatGPT fără UTM ajunge oricum pe canalul `chatgpt`: OpenAI pune `oppref` pe URL-ul de aterizare, iar noi îl citim ca identificator de click. Campania și creativul lipsesc însă — pe alea doar UTM-urile le pot spune.',
+      'Cheltuiala se trage automat prin Advertiser API (Setări → Chei API), deci `utm_id={campaign_id}` e ceea ce leagă venitul de banii cheltuiți pe acea campanie.',
+      'Conversiile se raportează prin pixelul de măsurare + Conversions API, separat de UTM-uri. UTM-urile de aici sunt pentru rapoartele NOASTRE; pixelul e pentru optimizarea campaniei.',
     ],
     warnings: [
-      'Dacă duplici o reclamă, SCHIMBĂ `utm_content` — altfel două creative se adună în același rând și nu mai știi care a vândut.',
+      'Nu e documentat dacă valoarea de pe reclamă o ÎNLOCUIEȘTE pe cea de pe campanie sau se adaugă la ea. De-aia se pune identic în ambele locuri: dacă înlocuiește, rezultatul e același; dacă se adaugă, ies parametri dublați cu aceeași valoare, iar noi citim prima apariție. Oricum ai lua-o, iese corect.',
+      'Un eveniment de conversie NU se poate atașa la o campanie decât din „Configurează" pe coloana Conversii — iar obiectivul campaniei (Clickuri / Conversii) NU se mai poate schimba după creare. Pentru optimizare pe conversii îți trebuie campanie nouă.',
+      '`utm_campaign` fiind scris de mână, la DUPLICAREA unei campanii rămâne numele vechi. Schimbă-l imediat, altfel două campanii se adună pe același rând.',
+      'Dacă duplici o reclamă, `{ad_id}` se schimbă singur — dar `utm_ad`, dacă l-ai pus, rămâne cel vechi.',
     ],
   },
   {
