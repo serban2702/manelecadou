@@ -51,6 +51,11 @@ export interface SiteAnalytics {
    *  cere scriptul cât mai devreme, ca o conversie rapidă să nu se piardă cât
    *  se încarcă restul paginii. */
   openaiPixelId?: string;
+  /** ID-ul contului de ads OpenAI (`adacct_...`), din URL-ul Ads Manager. Opțional
+   *  — cheia Advertiser API e deja legată de un singur cont, deci raportarea merge
+   *  și fără el. Îl ținem ca să putem construi linkuri către Ads Manager și ca să
+   *  se vadă în admin PE CE cont raportăm. */
+  openaiAdAccountId?: string;
 }
 
 /**
@@ -82,6 +87,13 @@ export interface SiteAnalyticsSecrets {
   /** TikTok Marketing API access token (din TikTok for Business → app aprobat pentru
    *  Reporting). Citește spend-ul de campanie. Separat de `tiktokAccessToken` (Events API). */
   tiktokMarketingToken?: string;
+  /** Cheia Advertiser API a ChatGPT Ads (Ads Manager → Setări → Chei API). Citește
+   *  cheltuiala prin `GET /v1/ad_account/insights`. E a TREIA cheie OpenAI din
+   *  platformă și nu se poate confunda cu celelalte două: `openaiConversionsApiKey`
+   *  trimite conversii (Ads Manager → Manage conversion keys), iar `OPENAI_API_KEY`
+   *  din setările globale e pentru versuri și chat. Fiind legată de un singur cont
+   *  de ads, ea singură e de ajuns pentru raportare. */
+  openaiAdsApiKey?: string;
 }
 
 export interface SiteStripe {

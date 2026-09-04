@@ -2,13 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AdSpend, AdPlatform } from './ad-spend.entity';
+import { AdSpend, AdPlatform, AD_PLATFORMS } from './ad-spend.entity';
 import { Payment } from '../payments/payment.entity';
 import { SitesService } from '../sites/sites.service';
+import { FxRateService } from '../fx/fx-rate.service';
+import { CHANNEL_LABELS, normalizeChannelSql } from './utm-standard';
 import type { Site } from '../sites/site.entity';
 
 const META_API_VERSION = 'v21.0';
 const TIKTOK_API_BASE = 'https://business-api.tiktok.com/open_api/v1.3';
+const OPENAI_ADS_API_BASE = 'https://api.ads.openai.com/v1';
 
 /**
  * Tipuri de acțiune Meta numărate ca „Purchase", în ordinea priorității. Luăm
@@ -41,10 +44,18 @@ interface NormalizedRow {
   conversionValueCents: number;
 }
 
+/** Starea sincronizării unei platforme. `ok` fără credențiale = nimic de făcut. */
+export interface AdSpendSyncPlatformResult {
+  ok: boolean;
+  rows: number;
+  error?: string;
+}
+
 export interface AdSpendSyncResult {
   siteId: string;
-  meta: { ok: boolean; rows: number; error?: string };
-  tiktok: { ok: boolean; rows: number; error?: string };
+  meta: AdSpendSyncPlatformResult;
+  tiktok: AdSpendSyncPlatformResult;
+  chatgpt: AdSpendSyncPlatformResult;
 }
 
 @Injectable()
@@ -55,6 +66,7 @@ export class AdSpendService {
     @InjectRepository(AdSpend) private readonly repo: Repository<AdSpend>,
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     private readonly sites: SitesService,
+    private readonly fx: FxRateService,
   ) {}
 
   // ============== SYNC ==============
@@ -71,7 +83,7 @@ export class AdSpendService {
   /** Sincronizează toate site-urile care au cel puțin o platformă configurată. */
   async syncAll(days = 7): Promise<AdSpendSyncResult[]> {
     const sites = await this.sites.listAll();
-    const targets = sites.filter((s) => this.hasMeta(s) || this.hasTiktok(s));
+    const targets = sites.filter((s) => this.hasMeta(s) || this.hasTiktok(s) || this.hasOpenAi(s));
     const results: AdSpendSyncResult[] = [];
     for (const site of targets) {
       results.push(await this.syncSite(site, days));
@@ -85,34 +97,27 @@ export class AdSpendService {
     const { since, until } = this.windowDates(days);
     const res: AdSpendSyncResult = {
       siteId: site.id,
-      meta: { ok: false, rows: 0 },
-      tiktok: { ok: false, rows: 0 },
+      meta: { ok: true, rows: 0 },
+      tiktok: { ok: true, rows: 0 },
+      chatgpt: { ok: true, rows: 0 },
     };
 
-    if (this.hasMeta(site)) {
-      try {
-        const rows = await this.fetchMeta(site, since, until);
-        await this.upsert(site.id, 'meta', rows);
-        res.meta = { ok: true, rows: rows.length };
-      } catch (e) {
-        res.meta = { ok: false, rows: 0, error: (e as Error).message };
-        this.logger.warn(`Meta sync ${site.domain} failed: ${(e as Error).message}`);
-      }
-    } else {
-      res.meta.ok = true; // nimic de făcut → nu e eroare
-    }
+    // Fără credențiale nu e eroare, e „nimic de făcut" — de-aia pornesc toate
+    // pe `ok: true` și doar o excepție reală le strică.
+    const jobs: Array<[AdPlatform, () => Promise<NormalizedRow[]>]> = [];
+    if (this.hasMeta(site)) jobs.push(['meta', () => this.fetchMeta(site, since, until)]);
+    if (this.hasTiktok(site)) jobs.push(['tiktok', () => this.fetchTiktok(site, since, until)]);
+    if (this.hasOpenAi(site)) jobs.push(['chatgpt', () => this.fetchOpenAi(site, since, until)]);
 
-    if (this.hasTiktok(site)) {
+    for (const [platform, fetchRows] of jobs) {
       try {
-        const rows = await this.fetchTiktok(site, since, until);
-        await this.upsert(site.id, 'tiktok', rows);
-        res.tiktok = { ok: true, rows: rows.length };
+        const rows = await fetchRows();
+        await this.upsert(site.id, platform, rows);
+        res[platform] = { ok: true, rows: rows.length };
       } catch (e) {
-        res.tiktok = { ok: false, rows: 0, error: (e as Error).message };
-        this.logger.warn(`TikTok sync ${site.domain} failed: ${(e as Error).message}`);
+        res[platform] = { ok: false, rows: 0, error: (e as Error).message };
+        this.logger.warn(`${platform} sync ${site.domain} failed: ${(e as Error).message}`);
       }
-    } else {
-      res.tiktok.ok = true;
     }
 
     return res;
@@ -123,6 +128,15 @@ export class AdSpendService {
   }
   private hasTiktok(s: Site): boolean {
     return !!(s.analytics?.tiktokAdvertiserId && s.analyticsSecrets?.tiktokMarketingToken);
+  }
+  /**
+   * Spre deosebire de Meta și TikTok, aici e de ajuns cheia: fiecare cheie
+   * Advertiser API e legată de UN SINGUR cont de ads, deci `GET /ad_account`
+   * și `/ad_account/insights` nu primesc niciun id. `openaiAdAccountId` rămâne
+   * opțional, pentru afișare și linkuri către Ads Manager.
+   */
+  private hasOpenAi(s: Site): boolean {
+    return !!s.analyticsSecrets?.openaiAdsApiKey;
   }
 
   // ============== META MARKETING API ==============
@@ -278,6 +292,136 @@ export class AdSpendService {
 
   // ============== UPSERT ==============
 
+  // ============== CHATGPT (OpenAI Advertiser API — Insights) ==============
+
+  /**
+   * Cheltuiala zilnică din ChatGPT Ads.
+   *
+   * Docs: https://developers.openai.com/ads/api-reference/insights
+   * `GET /v1/ad_account/insights` — contul e implicit (cheia e legată de el).
+   *
+   * Trei lucruri care diferă de Meta/TikTok și pe care le-ai greși scriind
+   * request-ul din memorie:
+   *
+   * 1. **`fields[]` folosește nume canonice, dar răspunsul vine cu chei
+   *    APLATIZATE**: ceri `campaign.id` și primești `campaign_id`,
+   *    `metadata.readable_time` → `readable_time`. Citite cu numele cerut, toate
+   *    ar fi `undefined` — adică zero rânduri, tăcut.
+   * 2. **`spend` vine în unități MAJORE** (`18.42`), nu în cenți ca la noi.
+   * 3. **`until` din `date_range` e INCLUSIV** (se normalizează la miezul nopții
+   *    următoare), deci nu trebuie mărit cu o zi ca la alte API-uri.
+   *
+   * Conversiile nu se cer aici: OpenAI le expune prin `POST /conversions/insights`,
+   * agregat pe interval și pe campanie — nu pe zi și pe ad, deci n-au unde intra
+   * în rândul zilnic. Pentru ChatGPT, conversiile și venitul din raport vin din
+   * plățile NOASTRE atribuite canalului (vezi `report`), care sunt oricum sursa
+   * după care calculăm ROAS-ul pentru toate platformele.
+   */
+  private async fetchOpenAi(site: Site, since: string, until: string): Promise<NormalizedRow[]> {
+    const key = site.analyticsSecrets!.openaiAdsApiKey!.trim();
+    const currency = await this.fetchOpenAiCurrency(key);
+
+    // Întâi la nivel de ad, ca la Meta/TikTok. Dacă nu vine niciun rând (cont cu
+    // livrare pornită dar fără defalcare pe ad încă), reîncercăm la nivel de
+    // campanie — altfel o campanie care cheltuie ar apărea cu 0 lei, ceea ce e
+    // mai rău decât o defalcare mai puțin fină.
+    let rows = await this.fetchOpenAiInsights(key, since, until, 'ad', currency);
+    if (rows.length === 0) {
+      rows = await this.fetchOpenAiInsights(key, since, until, 'campaign', currency);
+      if (rows.length > 0) {
+        this.logger.log(`OpenAI insights: fără rânduri pe ad, am căzut pe nivel de campanie (${rows.length})`);
+      }
+    }
+    return rows;
+  }
+
+  private async fetchOpenAiInsights(
+    key: string,
+    since: string,
+    until: string,
+    level: 'ad' | 'campaign',
+    currency: string,
+  ): Promise<NormalizedRow[]> {
+    const fields =
+      level === 'ad'
+        ? [
+            'metadata.readable_time',
+            'campaign.id', 'campaign.name',
+            'ad_group.id', 'ad_group.name',
+            'ad.id', 'ad.name',
+            'ad.spend', 'ad.impressions', 'ad.clicks',
+          ]
+        : [
+            'metadata.readable_time',
+            'campaign.id', 'campaign.name',
+            'campaign.spend', 'campaign.impressions', 'campaign.clicks',
+          ];
+
+    const rows: NormalizedRow[] = [];
+    let after: string | null = null;
+    for (let page = 0; page < 50; page++) {
+      const params = new URLSearchParams();
+      params.set('time_granularity', 'daily');
+      params.set('aggregation_level', level);
+      for (const f of fields) params.append('fields[]', f);
+      params.append('time_ranges[]', JSON.stringify({ type: 'date_range', since, until }));
+      params.set('limit', '1000');
+      if (after) params.set('after', after);
+
+      const res = await fetch(`${OPENAI_ADS_API_BASE}/ad_account/insights?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
+      });
+      const json: any = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = json?.error?.message ?? json?.message ?? `HTTP ${res.status}`;
+        throw new Error(`OpenAI insights (${level}): ${msg}`);
+      }
+
+      for (const d of json.data ?? []) {
+        const campaignId = String(d.campaign_id ?? '');
+        // La nivel de campanie nu există `ad_id`, iar index-ul unic e pe
+        // `(siteId, platform, adId, date)` — cu NULL, Postgres n-ar mai vedea
+        // duplicatele (NULL ≠ NULL), deci fiecare sincronizare ar insera din nou
+        // aceleași zile. De-aia un id sintetic, stabil.
+        const adId = level === 'ad' ? String(d.ad_id ?? '') : `campaign:${campaignId}`;
+        rows.push({
+          platform: 'chatgpt',
+          campaignId,
+          campaignName: d.campaign_name ?? null,
+          adsetId: d.ad_group_id ? String(d.ad_group_id) : null,
+          adsetName: d.ad_group_name ?? null,
+          adId,
+          adName: level === 'ad' ? (d.ad_name ?? null) : 'Total campanie',
+          date: String(d.readable_time ?? '').slice(0, 10),
+          spendCents: toCents(d.spend),
+          currency,
+          impressions: toInt(d.impressions),
+          clicks: toInt(d.clicks),
+          conversions: 0,
+          conversionValueCents: 0,
+        });
+      }
+
+      if (!json.has_more || !json.last_id) break;
+      after = String(json.last_id);
+    }
+
+    return rows.filter((r) => r.adId && /^\d{4}-\d{2}-\d{2}$/.test(r.date));
+  }
+
+  /** Moneda contului de ads. `GET /ad_account` e și verificarea că cheia e bună. */
+  private async fetchOpenAiCurrency(key: string): Promise<string> {
+    try {
+      const res = await fetch(`${OPENAI_ADS_API_BASE}/ad_account`, {
+        headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
+      });
+      const json: any = await res.json();
+      return (json?.currency_code as string)?.toUpperCase() || 'EUR';
+    } catch {
+      return 'EUR';
+    }
+  }
+
   private async upsert(siteId: string, platform: AdPlatform, rows: NormalizedRow[]): Promise<void> {
     if (rows.length === 0) return;
     const now = new Date();
@@ -387,23 +531,121 @@ export class AdSpendService {
     const revenueCents = rev?.sum ?? 0;
     const paidCount = rev?.count ?? 0;
 
-    const platforms = (['meta', 'tiktok'] as AdPlatform[]).map((platform) =>
+    // Venitul defalcat pe CANAL, ca ROAS-ul să se poată calcula per sursă și nu
+    // doar global. Canalul se ia din snapshotul de pe plată; rândurile mai vechi
+    // decât standardul UTM au `attributionChannel` NULL, deci cădem pe aceeași
+    // normalizare aplicată sursei — altfel toată perioada de dinainte ar fi
+    // arătat ca venit neatribuit, iar ROAS-ul pe Meta ar fi ieșit artificial mic.
+    const channelExpr = `COALESCE(NULLIF(p."attributionChannel", ''), ${normalizeChannelSql('p."attributionSource"')})`;
+    const byChannelQb = this.payments
+      .createQueryBuilder('p')
+      .select(channelExpr, 'channel')
+      .addSelect(`COALESCE(SUM(${AMOUNT_RON_P}), 0)::int`, 'sum')
+      .addSelect('COUNT(*)::int', 'count')
+      .where('p.status = :s', { s: 'paid' })
+      .andWhere('p.createdAt BETWEEN :from AND :to', { from: range.from, to: range.to })
+      // `GROUP BY 1`, nu `GROUP BY channel`: dacă `payments` capătă vreodată o
+      // coloană numită `channel`, Postgres ar grupa după ea, nu după alias, iar
+      // query-ul ar cădea cu „must appear in the GROUP BY clause".
+      .groupBy('1');
+    if (siteId) byChannelQb.andWhere('p."siteId" = :siteId', { siteId });
+    const channelRows = await byChannelQb.getRawMany<{ channel: string; sum: number; count: number }>();
+    const revenueByChannel = new Map(
+      channelRows.map((r) => [String(r.channel ?? 'direct'), { sum: Number(r.sum), count: Number(r.count) }]),
+    );
+
+    // Cheltuiala pe zi și monedă, ca s-o putem converti în RON la cursul zilei.
+    // Fără conversie, ROAS-ul ar fi împărțit lei la euro: pe un cont de ads în
+    // EUR ieșea de ~5 ori mai bun decât e în realitate.
+    const spendDaysQb = this.repo
+      .createQueryBuilder('a')
+      .select('a.platform', 'platform')
+      .addSelect('a.date', 'date')
+      .addSelect('MAX(a.currency)', 'currency')
+      .addSelect('SUM(a.spendCents)::int', 'spendCents')
+      .where('a.date BETWEEN :from AND :to', { from: fromDay, to: toDayStr })
+      .groupBy('a.platform')
+      .addGroupBy('a.date');
+    if (siteId) spendDaysQb.andWhere('a.siteId = :siteId', { siteId });
+    const spendDays = await spendDaysQb.getRawMany<{
+      platform: AdPlatform;
+      date: string;
+      currency: string;
+      spendCents: number;
+    }>();
+
+    const spendRonByPlatform = new Map<AdPlatform, number>();
+    let fxIncomplete = false;
+    for (const d of spendDays) {
+      const cents = Number(d.spendCents);
+      const conv = await this.fx.toRonCents(cents, d.currency || 'EUR', d.date);
+      if (!conv) fxIncomplete = true;
+      const prev = spendRonByPlatform.get(d.platform) ?? 0;
+      spendRonByPlatform.set(d.platform, prev + (conv?.amountRonCents ?? cents));
+    }
+
+    const platforms = AD_PLATFORMS.map((platform) =>
       buildPlatformTree(platform, adRows.filter((r) => r.platform === platform)),
     );
 
     const totalSpendCents = platforms.reduce((a, p) => a + p.spendCents, 0);
+    const totalSpendRonCents = [...spendRonByPlatform.values()].reduce((a, v) => a + v, 0);
     const totalConversions = platforms.reduce((a, p) => a + p.conversions, 0);
+
+    /**
+     * O linie de raport per sursă plătită. Cheltuiala vine de la platformă,
+     * venitul din plățile NOASTRE atribuite acelui canal — nu din conversiile
+     * raportate de platformă. E singura variantă care dă același înțeles pentru
+     * toate trei: Meta și TikTok raportează conversii proprii, ChatGPT le ține
+     * într-un endpoint separat, iar cele trei numere nu sunt comparabile între
+     * ele. Banii încasați, da.
+     */
+    const sources = AD_PLATFORMS.map((platform) => {
+      const tree = platforms.find((p) => p.platform === platform)!;
+      const rev = revenueByChannel.get(platform) ?? { sum: 0, count: 0 };
+      const spendRonCents = spendRonByPlatform.get(platform) ?? 0;
+      return {
+        key: platform,
+        label: CHANNEL_LABELS[platform] ?? platform,
+        configured: tree.configured,
+        currency: tree.currency,
+        spendCents: tree.spendCents,
+        spendRonCents,
+        impressions: tree.impressions,
+        clicks: tree.clicks,
+        revenueRonCents: rev.sum,
+        purchases: rev.count,
+        /** Conversiile raportate de platformă. 0 la ChatGPT — vezi `fetchOpenAi`. */
+        platformConversions: tree.conversions,
+        roas: spendRonCents > 0 ? rev.sum / spendRonCents : null,
+        costPerPurchaseRonCents: rev.count > 0 && spendRonCents > 0 ? Math.round(spendRonCents / rev.count) : null,
+      };
+    });
+
+    // Ce a intrat din canale pentru care nu plătim reclamă (direct, organic,
+    // email, referral). Există ca să se închidă socoteala: suma veniturilor pe
+    // surse plus asta trebuie să dea „Revenue (Stripe)".
+    const paidRevenue = sources.reduce((a, x) => a + x.revenueRonCents, 0);
+    const paidPurchases = sources.reduce((a, x) => a + x.purchases, 0);
 
     return {
       range: { from: range.from.toISOString(), to: range.to.toISOString() },
       revenueCents,
       paidCount,
       totalSpendCents,
+      totalSpendRonCents,
       totalConversions,
-      // ROAS = venit Stripe / cheltuială. Caveat: monedele trebuie să coincidă.
-      roas: totalSpendCents > 0 ? revenueCents / totalSpendCents : null,
+      // ROAS global = venit Stripe (RON) / cheltuială convertită în RON.
+      roas: totalSpendRonCents > 0 ? revenueCents / totalSpendRonCents : null,
       // Cost/conversie global din conversiile atribuite de platforme (Purchase).
       costPerConversion: totalConversions > 0 ? totalSpendCents / totalConversions : null,
+      /** `true` = cel puțin o zi n-a găsit curs BNR și a fost numărată 1:1. */
+      fxIncomplete,
+      sources,
+      unattributed: {
+        revenueRonCents: Math.max(0, revenueCents - paidRevenue),
+        purchases: Math.max(0, paidCount - paidPurchases),
+      },
       platforms,
     };
   }

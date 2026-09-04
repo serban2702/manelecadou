@@ -63,7 +63,11 @@ import {
   EmailTrackingApi,
   type EmailPerformanceRow,
   type EmailStatsDimension,
+  AD_PLATFORMS,
+  type AdPlatform,
   type AdSpendPlatform,
+  type AdSpendReport,
+  type AdSpendSource,
   type AdPayment,
   type AdPaymentInput,
   type AdPaymentType,
@@ -2197,9 +2201,10 @@ const money = (cents: number, currency?: string | null) => {
   return currency ? `${v} ${currency}` : v;
 };
 
-const PLATFORM_META: Record<'meta' | 'tiktok', { label: string; color: string }> = {
+const PLATFORM_META: Record<AdPlatform, { label: string; color: string }> = {
   meta: { label: 'Meta (Facebook/Instagram)', color: 'hsl(217 91% 65%)' },
   tiktok: { label: 'TikTok', color: 'hsl(330 80% 60%)' },
+  chatgpt: { label: 'ChatGPT (OpenAI Ads)', color: 'hsl(158 64% 52%)' },
 };
 
 function AdsTab({ range }: { range: { from: string; to: string } }) {
@@ -2222,9 +2227,12 @@ function AdsTab({ range }: { range: { from: string; to: string } }) {
     setSyncing(true);
     try {
       const res = await AnalyticsApi.adSpendSync(30);
-      const totalRows = res.results.reduce((a, x) => a + x.meta.rows + x.tiktok.rows, 0);
+      const totalRows = res.results.reduce(
+        (a, x) => a + AD_PLATFORMS.reduce((n, p) => n + x[p].rows, 0),
+        0,
+      );
       const errs = res.results
-        .flatMap((x) => [x.meta.error, x.tiktok.error])
+        .flatMap((x) => AD_PLATFORMS.map((p) => x[p].error))
         .filter(Boolean) as string[];
       toast({
         variant: errs.length ? 'destructive' : 'success',
@@ -2255,7 +2263,7 @@ function AdsTab({ range }: { range: { from: string; to: string } }) {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          Cheltuieli trase din Meta &amp; TikTok Marketing API, defalcate pe campanie. ROAS = venit ÷ cheltuială.
+          Cheltuieli trase din Meta, TikTok și ChatGPT (Advertiser API), defalcate pe campanie. ROAS = venit ÷ cheltuială, calculat separat pe fiecare sursă.
           <span className="block text-xs opacity-70">Se sincronizează automat la deschiderea tab-ului.</span>
         </p>
         <Button variant="outline" size="sm" onClick={onSync} disabled={syncing}>
@@ -2280,9 +2288,9 @@ function AdsTab({ range }: { range: { from: string; to: string } }) {
           loading={report.isLoading}
         />
         <KpiCard
-          label="ROAS"
+          label="ROAS total"
           value={r ? (r.roas != null ? `${r.roas.toFixed(2)}×` : '—') : undefined}
-          sub={r?.roas != null ? (r.roas >= 1 ? 'profitabil' : 'sub pragul de rentabilitate') : undefined}
+          sub={r ? 'toate sursele la un loc — defalcarea mai jos' : undefined}
           icon={<Target />}
           tone={r && r.roas != null && r.roas >= 1 ? 'success' : 'primary'}
           loading={report.isLoading}
@@ -2297,6 +2305,8 @@ function AdsTab({ range }: { range: { from: string; to: string } }) {
         />
       </div>
 
+      <RoasBySourceCard report={r} loading={report.isLoading} />
+
       <AdPaymentsSection />
 
       {r && r.totalSpendCents === 0 && !report.isLoading ? (
@@ -2306,7 +2316,7 @@ function AdsTab({ range }: { range: { from: string; to: string } }) {
         />
       ) : null}
 
-      {(['meta', 'tiktok'] as const).map((platform) => {
+      {AD_PLATFORMS.map((platform) => {
         const p = r?.platforms.find((x) => x.platform === platform);
         return (
           <PlatformBreakdown
@@ -2318,6 +2328,145 @@ function AdsTab({ range }: { range: { from: string; to: string } }) {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * ROAS calculat separat pe fiecare sursă plătită.
+ *
+ * Un singur ROAS global amestecă surse care se comportă complet diferit și nu
+ * răspunde la întrebarea pentru care se uită omul aici: pe ce canal mai pun
+ * bani și de pe care îi iau. De-aia numărul global a rămas doar în KPI-ul de
+ * sus, iar decizia se ia din tabelul ăsta.
+ *
+ * Venitul per sursă vine din plățile atribuite canalului (`attributionChannel`),
+ * NU din conversiile raportate de fiecare platformă: Meta, TikTok și ChatGPT le
+ * numără altfel, deci ROAS-urile lor n-ar fi comparabile între ele. Cheltuiala e
+ * convertită în RON la cursul BNR al zilei — altfel un cont în EUR ar fi arătat
+ * un ROAS de vreo cinci ori mai bun decât e.
+ */
+function RoasBySourceCard({ report, loading }: { report: AdSpendReport | null | undefined; loading: boolean }) {
+  const sources = report?.sources ?? [];
+  // Ascundem sursele care n-au nici cheltuială, nici venit — un rând gol pe
+  // TikTok, pe un cont care nu rulează TikTok, e doar zgomot.
+  const visible = sources.filter((x) => x.spendCents > 0 || x.revenueRonCents > 0);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Target className="h-4 w-4 text-primary" />
+          ROAS pe sursă
+        </CardTitle>
+        <CardDescription>
+          Venit ÷ cheltuială, separat pe fiecare canal plătit. Venitul e din plățile atribuite canalului,
+          nu din conversiile raportate de platformă — doar așa cifrele sunt comparabile între ele.
+          {report?.fxIncomplete ? (
+            <span className="mt-1 block text-xs text-amber-500">
+              Atenție: pentru cel puțin o zi n-a existat curs BNR, iar cheltuiala în valută a fost numărată 1:1.
+              ROAS-ul e ușor optimist.
+            </span>
+          ) : null}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <Skeleton className="h-40 w-full" />
+        ) : visible.length === 0 ? (
+          <Empty
+            title="Nicio sursă plătită în interval"
+            description="Nu există nici cheltuială, nici venit atribuit unui canal de reclamă în perioada selectată."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Sursă</TableHead>
+                  <TableHead className="text-right">Cheltuială</TableHead>
+                  <TableHead className="text-right">Venit</TableHead>
+                  <TableHead className="text-right">Comenzi</TableHead>
+                  <TableHead className="text-right">ROAS</TableHead>
+                  <TableHead className="text-right">Cost / comandă</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visible.map((x) => (
+                  <SourceRow key={x.key} source={x} />
+                ))}
+                {report && report.unattributed.revenueRonCents > 0 ? (
+                  <TableRow className="text-muted-foreground">
+                    <TableCell>
+                      <span className="text-sm">Alte canale (fără cost de reclamă)</span>
+                      <span className="block text-xs opacity-70">direct, organic, email, referral</span>
+                    </TableCell>
+                    <TableCell className="text-right">—</TableCell>
+                    <TableCell className="text-right tabular-nums">{RON(report.unattributed.revenueRonCents)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{report.unattributed.purchases}</TableCell>
+                    <TableCell className="text-right">—</TableCell>
+                    <TableCell className="text-right">—</TableCell>
+                  </TableRow>
+                ) : null}
+                {report ? (
+                  <TableRow className="border-t-2 font-medium">
+                    <TableCell>Total</TableCell>
+                    <TableCell className="text-right tabular-nums">{RON(report.totalSpendRonCents)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{RON(report.revenueCents)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{report.paidCount}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {report.roas != null ? `${report.roas.toFixed(2)}×` : '—'}
+                    </TableCell>
+                    <TableCell className="text-right">—</TableCell>
+                  </TableRow>
+                ) : null}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SourceRow({ source }: { source: AdSpendSource }) {
+  const meta = PLATFORM_META[source.key];
+  // Cheltuiala se afișează în moneda contului, cu echivalentul în RON dedesubt —
+  // numitorul ROAS-ului trebuie să se poată verifica cu ochiul.
+  const foreign = source.currency && source.currency !== 'RON';
+  const noSpend = source.spendRonCents === 0;
+
+  return (
+    <TableRow>
+      <TableCell>
+        <span className="flex items-center gap-2 text-sm">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: meta?.color }} />
+          {meta?.label ?? source.label}
+        </span>
+        {noSpend && source.revenueRonCents > 0 ? (
+          <span className="block text-xs text-amber-500">
+            venit atribuit, dar fără cheltuială sincronizată
+          </span>
+        ) : null}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {source.spendCents > 0 ? money(source.spendCents, source.currency) : '—'}
+        {foreign && source.spendCents > 0 ? (
+          <span className="block text-xs text-muted-foreground">{RON(source.spendRonCents)}</span>
+        ) : null}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">{RON(source.revenueRonCents)}</TableCell>
+      <TableCell className="text-right tabular-nums">{source.purchases}</TableCell>
+      <TableCell className="text-right tabular-nums">
+        {source.roas != null ? (
+          <Badge variant={source.roas >= 1 ? 'success' : 'destructive'}>{source.roas.toFixed(2)}×</Badge>
+        ) : (
+          '—'
+        )}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {source.costPerPurchaseRonCents != null ? RON(source.costPerPurchaseRonCents) : '—'}
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -2639,7 +2788,7 @@ function PlatformBreakdown({
   data,
   loading,
 }: {
-  platform: 'meta' | 'tiktok';
+  platform: AdPlatform;
   data: AdSpendPlatform | undefined;
   loading: boolean;
 }) {

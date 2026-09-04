@@ -1666,6 +1666,56 @@ care contează cel mai mult sunt cele care se pierd pe calea de browser.
    după pasul 1 e nevoie doar de un reload al paginii, nu de un deploy — spre
    deosebire de `NEXT_PUBLIC_OPENREPLAY_PROJECT_KEY` (§16.7 pct. 9).
 
+### 16.11.5 Cheltuiala + de ce nu apar conversiile pe campanie
+
+**Conversiile nu se raportează pe o campanie decât dacă evenimentul e ATAȘAT la
+ea.** Pățit pe 4 septembrie 2026: pixelul și Conversions API mergeau perfect —
+în cont ajunseseră exact cele 2 `order_created` corespunzătoare celor 2 plăți
+reale din canalul `chatgpt`, cu 100% acoperire de identificatori — dar coloana
+„Conversii" din Ads Manager arăta `-`. Cauza e un pas de configurare, nu un bug:
+în Ads Manager → Instrumente → Conversii, pasul 4 („Asociază evenimentul cu o
+campanie") era nebifat, iar la nivel de cont exista avertismentul *„Nicio
+campanie activă nu are atașat în prezent un eveniment de conversie activ"*.
+
+Se rezolvă din **Campanii → Configurează (coloana Conversii) → Eveniment de
+conversie**. Verificarea că a prins: în tab-ul *Evenimente de conversie*, coloana
+**„Folosit de"** trece de la `-` la `N campanii`.
+
+Două lucruri care NU se pot schimba după creare (documentate de OpenAI):
+**obiectivul** campaniei (Clickuri/Afișări → conversion-optimized) și
+**evenimentul de conversie** ales. Optimizarea pe conversii (oCPC,
+`bidding_type: "conversions"`) cere o **campanie nouă**; atașarea de mai sus dă
+doar raportarea.
+
+Tot de acolo se ia și defalcarea pe campanie în analiticele NOASTRE: câmpul
+**„Parametrii de interogare ai paginii de destinație"** din aceeași fereastră
+acceptă macrourile `{campaign_id}`, `{ad_group_id}`, `{ad_id}`,
+`{ad_account_id}`, `{oppref}`. Lăsat gol, traficul ajunge oricum pe canalul
+`chatgpt` (prin `oppref`), dar fără campanie și fără creativ — vezi șablonul din
+`utm-standard.ts`.
+
+**Cheltuiala** se trage prin **Advertiser API — Insights**
+(`apps/api/src/modules/analytics/ad-spend.service.ts`, `fetchOpenAi`), la fel ca
+Meta și TikTok. Cheia se face în Ads Manager → **Setări → Chei API** și se pune
+în admin `/site` → Operațiuni → Cheltuieli ads. E a **treia** cheie OpenAI din
+platformă și se confundă ușor: `openaiAdsApiKey` citește cheltuiala,
+`openaiConversionsApiKey` trimite conversii, `OPENAI_API_KEY` e pentru versuri și
+chat. Fiind legată de un singur cont de ads, ea singură ajunge — nu se cere și
+un id de cont.
+
+Capcanele endpoint-ului, toate acoperite de `ad-spend-openai.spec.ts`:
+
+1. **Ceri `fields[]=campaign.id`, primești `campaign_id`.** Răspunsul aplatizează
+   numele canonice. Citite cu numele cerut, toate câmpurile ar fi `undefined` —
+   adică zero rânduri, fără nicio eroare.
+2. **`spend` vine în unități MAJORE** (`18.42`), spre deosebire de restul
+   platformei, care ține bani în cenți.
+3. **`until` din `date_range` e INCLUSIV** — nu se mărește cu o zi.
+4. **Conversiile sunt în alt endpoint** (`POST /conversions/insights`), agregat pe
+   interval și campanie, nu pe zi și ad — deci nu încap în rândul zilnic. Pentru
+   ChatGPT, `ad_spend.conversions` rămâne 0 intenționat; comenzile și venitul din
+   raport vin din plățile noastre atribuite canalului.
+
 ⚠️ **CSP**: routerul nostru pune doar `frame-ancestors` (`deploy/router/nginx.conf`),
 fără `script-src` / `connect-src` / `img-src`, deci nimic nu blochează SDK-ul.
 Dacă ADAUGI vreodată directivele alea, OpenAI cere: `script-src

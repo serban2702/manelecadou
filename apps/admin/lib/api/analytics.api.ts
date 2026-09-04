@@ -484,12 +484,42 @@ export interface CampaignNode extends AdMetrics {
   adsets: AdsetNode[];
 }
 
+/** Platformele de la care tragem cheltuiala. Aceeași listă ca `AD_PLATFORMS` din API. */
+export type AdPlatform = 'meta' | 'tiktok' | 'chatgpt';
+export const AD_PLATFORMS: AdPlatform[] = ['meta', 'tiktok', 'chatgpt'];
+
 export interface AdSpendPlatform extends AdMetrics {
-  platform: 'meta' | 'tiktok';
+  platform: AdPlatform;
   configured: boolean;
   fetchedAt: string | null;
   platformRoas: number | null;
   campaigns: CampaignNode[];
+}
+
+/**
+ * O linie de ROAS per sursă plătită.
+ *
+ * `revenueRonCents` / `purchases` vin din plățile NOASTRE atribuite canalului,
+ * nu din conversiile raportate de platformă: cele trei platforme numără altfel
+ * (ChatGPT nici nu le expune per zi), deci doar banii încasați sunt comparabili
+ * între ele. `platformConversions` rămâne alături, ca informație.
+ */
+export interface AdSpendSource {
+  key: AdPlatform;
+  label: string;
+  configured: boolean;
+  currency: string | null;
+  /** Cheltuiala în moneda contului de ads. */
+  spendCents: number;
+  /** Aceeași cheltuială, convertită în RON la cursul BNR al zilei — numitorul ROAS. */
+  spendRonCents: number;
+  impressions: number;
+  clicks: number;
+  revenueRonCents: number;
+  purchases: number;
+  platformConversions: number;
+  roas: number | null;
+  costPerPurchaseRonCents: number | null;
 }
 
 export interface AdSpendReport {
@@ -497,16 +527,29 @@ export interface AdSpendReport {
   revenueCents: number;
   paidCount: number;
   totalSpendCents: number;
+  totalSpendRonCents: number;
   totalConversions: number;
   roas: number | null;
   costPerConversion: number | null;
+  /** `true` = o zi n-a găsit curs BNR și a fost numărată 1:1 (ROAS ușor optimist). */
+  fxIncomplete: boolean;
+  sources: AdSpendSource[];
+  /** Venitul din canale pentru care nu plătim reclamă (direct, organic, email). */
+  unattributed: { revenueRonCents: number; purchases: number };
   platforms: AdSpendPlatform[];
+}
+
+export interface AdSpendSyncPlatformResult {
+  ok: boolean;
+  rows: number;
+  error?: string;
 }
 
 export interface AdSpendSyncResult {
   siteId: string;
-  meta: { ok: boolean; rows: number; error?: string };
-  tiktok: { ok: boolean; rows: number; error?: string };
+  meta: AdSpendSyncPlatformResult;
+  tiktok: AdSpendSyncPlatformResult;
+  chatgpt: AdSpendSyncPlatformResult;
 }
 
 // ============== AD PAYMENTS (registru manual plăți către platforme de ads) ==============

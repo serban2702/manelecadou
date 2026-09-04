@@ -40,6 +40,9 @@ export interface SiteDto {
     tiktokAdvertiserId?: string;
     /** Pixel ID ChatGPT Ads (OpenAI). Public — apare în HTML-ul paginii. */
     openaiPixelId?: string;
+    /** Contul de ads OpenAI (`adacct_...`). Opțional — cheia Advertiser API e
+     *  deja legată de un cont; îl ținem doar ca să se vadă pe care raportăm. */
+    openaiAdAccountId?: string;
   };
   /** Token-uri server-side pentru tracking (server-only — nu apare în /public/site). */
   analyticsSecrets?: {
@@ -51,6 +54,8 @@ export interface SiteDto {
     tiktokMarketingToken?: string;
     /** Cheia OpenAI Ads Conversions API (server-side, oglinda pixelului). */
     openaiConversionsApiKey?: string;
+    /** Cheia OpenAI Advertiser API — citește cheltuiala. Alta decât cea de conversii. */
+    openaiAdsApiKey?: string;
   };
   stripe: { priceId?: string | null; productName?: string; statementDescriptor?: string };
   suno: {

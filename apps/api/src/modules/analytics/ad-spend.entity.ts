@@ -7,11 +7,15 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export type AdPlatform = 'meta' | 'tiktok';
+export type AdPlatform = 'meta' | 'tiktok' | 'chatgpt';
+
+/** Toate platformele de care tragem spend, în ordinea de afișare din admin. */
+export const AD_PLATFORMS: AdPlatform[] = ['meta', 'tiktok', 'chatgpt'];
 
 /**
- * Cheltuieli zilnice de advertising trase din Marketing API (Meta) / Marketing API
- * (TikTok), defalcate la nivel de AD (un rând per ad per zi). Fiecare rând conține
+ * Cheltuieli zilnice de advertising trase din Marketing API (Meta), Marketing API
+ * (TikTok) și Advertiser API — Insights (ChatGPT / OpenAI), defalcate la nivel de
+ * AD (un rând per ad per zi). Fiecare rând conține
  * și ierarhia părinte (campanie + ad set / ad group) ca să putem agrega în sus
  * pentru drill-down campanie → ad set → ad.
  *

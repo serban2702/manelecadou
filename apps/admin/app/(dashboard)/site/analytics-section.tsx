@@ -267,6 +267,22 @@ export function AnalyticsSection({
             >
               <SecretInput {...secretField('tiktokMarketingToken')} />
             </Field>
+            <Field
+              label="Cont ChatGPT Ads (opțional)"
+              description="adacct_… din URL-ul Ads Manager. Doar informativ — cheia de mai jos e deja legată de un singur cont."
+            >
+              <Input
+                value={form.analytics?.openaiAdAccountId ?? ''}
+                onChange={(e) => patchPublic({ openaiAdAccountId: e.target.value })}
+                placeholder="adacct_6a971f8a3aec819da1e2270a7221948e"
+              />
+            </Field>
+            <Field
+              label="Cheie ChatGPT Advertiser API"
+              description="Ads Manager → Setări → Chei API → Creează o cheie nouă. Citește cheltuiala. A TREIA cheie OpenAI: nu e nici cea de conversii, nici OPENAI_API_KEY."
+            >
+              <SecretInput {...secretField('openaiAdsApiKey')} />
+            </Field>
           </CardContent>
         </Card>
       </StudioSection>
