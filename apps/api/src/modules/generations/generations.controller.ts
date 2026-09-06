@@ -254,6 +254,25 @@ export class GenerationsController {
     });
   }
 
+  /**
+   * Limba paginii de livrare a unei comenzi — citită de web ÎNAINTE de a randa
+   * layoutul, ca `<html lang>` și textele să fie corecte din SSR, nu corectate
+   * după hidratare.
+   *
+   * Endpoint separat și minimal (nu `GET :id`) din două motive: se apelează pe
+   * calea de randare a fiecărei pagini `/m/<id>`, deci nu trebuie să tragă
+   * payload-ul complet cu variante și drepturi; și n-are nevoie de sesiune, pe
+   * când `GET :id` întoarce alt corp pentru owner față de vizitator.
+   *
+   * `locale: null` = comandă inexistentă sau fără site — apelantul cade pe
+   * limba site-ului vizitat.
+   */
+  @SkipThrottle({ long: true })
+  @Get(':id/locale')
+  async deliveryLocale(@Param('id') id: string) {
+    return { locale: await this.svc.resolveDeliveryLocale(id) };
+  }
+
   @UseGuards(OptionalJwtAuthGuard)
   @Get(':id')
   async findOne(

@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 import { ExperienceSongView } from '@/components/ExperiencePage';
 import { getSiteConfig, siteUrl } from '@/lib/site-config';
+import { getActiveLocale } from '@/lib/active-locale';
+import { LOCALE_META } from '@/i18n/locales';
 import { apiInternalUrl } from '@/lib/api-internal';
 
 // Fetch SSR (generateMetadata) → URL INTERN Docker. `NEXT_PUBLIC_API_URL` e gol
@@ -75,7 +77,11 @@ export async function generateMetadata({
     site.brand?.ogImageUrl ??
     `${appUrl}/icon-512.png`;
   const url = `${appUrl}/m/${id}`;
-  const ogLocale = site.locale ? `${site.locale}_${site.locale.toUpperCase()}` : 'ro_RO';
+  // Limba comenzii, nu a site-ului vizitat — un link bulgar partajat de pe
+  // domeniul RO anunța preview-ul în română. `getTranslations` de mai sus vine
+  // deja din același resolver (vezi lib/active-locale.ts), deci titlul și
+  // descrierea sunt pe aceeași limbă cu eticheta.
+  const ogLocale = LOCALE_META[await getActiveLocale()].og;
 
   return {
     title,

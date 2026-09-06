@@ -40,6 +40,11 @@ import {
 } from '../experiences/package-resolve';
 import { DEFAULT_EXPERIENCE_SLUG } from '../experiences/catalog';
 import { hashUnlock, verifyUnlock } from '../../common/unlock';
+import {
+  resolveDeliveryLocale,
+  resolveOrderLocale,
+  type SupportedLocale,
+} from '../../common/locale';
 
 export { GENERATIONS_QUEUE } from './generations.constants';
 import { GENERATIONS_QUEUE } from './generations.constants';
@@ -202,7 +207,7 @@ export class GenerationsService {
         premium: dto.premium ?? false,
         packageTier: tier,
         paymentId: dto.paymentId ?? null,
-        locale: dto.locale ?? 'ro',
+        locale: resolveOrderLocale(dto.locale, site?.locale),
         siteId: ctx.siteId ?? null,
       });
       return generationRepo.save(created);
@@ -238,6 +243,34 @@ export class GenerationsService {
 
   async findOnePublic(id: string): Promise<Generation | null> {
     return this.repo.findOne({ where: { id } });
+  }
+
+  /**
+   * Limba în care se servește pagina de livrare `/m/<id>` a unei comenzi.
+   *
+   * Ordinea e „site-ul PROPRIETAR, apoi limba scrisă pe comandă" — nu invers,
+   * și nu site-ul VIZITAT:
+   *
+   *  • Site-ul vizitat ar fi greșit pentru cazul care a declanșat asta: linkul
+   *    unei comenzi bulgare, deschis pe `manelecadou.ro`, servea românește
+   *    (verificat pe producție) — deși comanda, emailul și melodia sunt bulgare.
+   *  • Limba de pe comandă nu poate fi prima pentru că pe unele rânduri e chiar
+   *    bug-ul reparat aici: 5 comenzi de pe `chalgapodarok.bg` au `locale='ro'`
+   *    scris de fallback-ul global. Puse înaintea site-ului, ar fi ÎNTORS pe
+   *    românește niște pagini care azi se văd corect în bulgară. Comenzile
+   *    existente nu se modifică (cerință), deci le corectăm la citire.
+   *
+   * Rămâne utilă ca plasă când comanda n-are site (rânduri vechi cu
+   * `siteId = null`). `null` = nu știm, decide apelantul.
+   */
+  async resolveDeliveryLocale(id: string): Promise<SupportedLocale | null> {
+    const gen = await this.repo.findOne({
+      where: { id },
+      select: { id: true, locale: true, siteId: true },
+    });
+    if (!gen) return null;
+    const site = gen.siteId ? await this.sites.findById(gen.siteId) : null;
+    return resolveDeliveryLocale(gen.locale, site?.locale);
   }
 
   /**
@@ -1356,7 +1389,7 @@ export class GenerationsService {
       packageTier: tier,
       paymentId: null,
       paidUnlocked: false,
-      locale: dto.locale ?? 'ro',
+      locale: resolveOrderLocale(dto.locale, site?.locale),
       siteId: ctx.siteId ?? null,
     });
     return this.repo.save(gen);

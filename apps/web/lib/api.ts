@@ -1,6 +1,8 @@
 'use client';
 
 import type { PackageTier } from './packages';
+import { normalizeLocale } from '@/i18n/locales';
+import { withOrderLocale } from './order-locale';
 
 /** Raport de aspect pentru colaje / image→video. */
 export type CollageAspect = '9x16' | '1x1' | '16x9';
@@ -122,18 +124,37 @@ export function setAccessToken(token: string | null) {
   }
 }
 
+/**
+ * Limba cu care pleacă fiecare cerere (antetul `X-Locale`) și cu care se
+ * înregistrează o comandă.
+ *
+ * Ordinea: site-ul curent → `<html lang>` → cookie → default. Toate trec prin
+ * `normalizeLocale`, altfel o valoare regională (`bg-BG`) ajungea la server ca
+ * limbă necunoscută și cădea pe română.
+ *
+ * `<html lang>` e treapta care lipsea: `__SITE_LOCALE__` îl pune `SiteProvider`,
+ * iar o cerere pornită înaintea lui (montare devreme, cod în afara React)
+ * sărea direct la cookie — care pe site-urile „un domeniu = o limbă" nici nu
+ * există, deci la `NEXT_PUBLIC_DEFAULT_LOCALE`. Atributul e randat pe server
+ * din configul site-ului, deci e corect din prima frântură de HTML.
+ */
 function getCurrentLocale(): string {
   if (typeof window !== 'undefined') {
     // SiteProvider stash-uiește locale-ul site-ului curent (prioritar — un
     // domeniu = o limbă; cookie e secundar pentru cazuri cu switcher).
-    const fromSite = (window as unknown as { __SITE_LOCALE__?: string }).__SITE_LOCALE__;
+    const fromSite = normalizeLocale(
+      (window as unknown as { __SITE_LOCALE__?: string }).__SITE_LOCALE__,
+    );
     if (fromSite) return fromSite;
   }
   if (typeof document !== 'undefined') {
+    const fromHtml = normalizeLocale(document.documentElement.lang);
+    if (fromHtml) return fromHtml;
     const m = document.cookie.match(/(?:^|;\s*)NEXT_LOCALE=([^;]+)/);
-    if (m) return decodeURIComponent(m[1]);
+    const fromCookie = m ? normalizeLocale(decodeURIComponent(m[1])) : null;
+    if (fromCookie) return fromCookie;
   }
-  return process.env.NEXT_PUBLIC_DEFAULT_LOCALE ?? 'ro';
+  return normalizeLocale(process.env.NEXT_PUBLIC_DEFAULT_LOCALE) ?? 'ro';
 }
 
 async function request<T>(
@@ -547,7 +568,7 @@ export const api = {
   createGeneration: (input: CreateGenerationInput) =>
     request<GenerationDto>('/generations', {
       method: 'POST',
-      body: JSON.stringify({ locale: getCurrentLocale(), ...input }),
+      body: JSON.stringify(withOrderLocale(input, getCurrentLocale())),
     }),
   getGeneration: (id: string, password?: string) =>
     request<GenerationDto>(
@@ -678,7 +699,14 @@ export const api = {
       '/payments/checkout-direct',
       {
         method: 'POST',
-        body: JSON.stringify(input),
+        // Limba comenzii, completată aici pentru că niciun wizard nu o trimite.
+        // Fără ea, calea pay-first — singura folosită de când s-a scos demo-ul —
+        // crea comenzi fără limbă, iar serverul le scria 'ro': pe
+        // chalgapodarok.bg, 5 comenzi bulgare înregistrate ca românești.
+        body: JSON.stringify({
+          ...input,
+          generation: withOrderLocale(input.generation, getCurrentLocale()),
+        }),
       },
     ),
   createUpgradeCheckoutSession: (input: {

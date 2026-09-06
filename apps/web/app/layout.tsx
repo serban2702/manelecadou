@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { Cinzel, Manrope, Outfit } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
-import { getLocale, getMessages, getTranslations } from 'next-intl/server';
+import { getMessages, getTranslations } from 'next-intl/server';
 import { cookies, headers } from 'next/headers';
 import { Providers } from '@/lib/providers';
 import { CursorHint } from '@/components/CursorHint';
@@ -18,6 +18,7 @@ import { LOCALE_META, isLocale } from '@/i18n/locales';
 import { getSiteConfig, siteSupportEmail, siteUrl as siteUrlOf } from '@/lib/site-config';
 import { isIpWhitelisted } from '@/lib/site-shared';
 import { SiteProvider } from '@/lib/site-context';
+import { getActiveLocale } from '@/lib/active-locale';
 import { ExperienceProvider } from '@/lib/experience-context';
 import { resolveExperienceSlug } from '@/experiences/assign';
 import { ExperienceBoot } from '@/components/ExperienceBoot';
@@ -153,13 +154,12 @@ function buildWebsiteJsonLd(site: Awaited<ReturnType<typeof getSiteConfig>>, bas
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const site = await getSiteConfig();
-  // Locale-ul site-ului are prioritate față de cookie-ul user-ului — un site
-  // BG forțează limba BG indiferent ce ar prefera utilizatorul (per cerință).
-  const siteLocale = site.locale;
-  const cookieLocale = await getLocale();
-  const effectiveLocale = isLocale(siteLocale) ? siteLocale : (isLocale(cookieLocale) ? cookieLocale : 'ro');
-  const messages = await getMessages({ locale: effectiveLocale });
-  const htmlLang = isLocale(effectiveLocale) ? LOCALE_META[effectiveLocale].html : 'ro';
+  // Aceeași funcție care dă limba mesajelor next-intl (`i18n/request.ts`), ca
+  // `<html lang>` și textele să nu poată diverge. Ordinea și motivele: vezi
+  // `lib/active-locale.ts`. `getMessages()` fără argument citește tot de acolo.
+  const effectiveLocale = await getActiveLocale();
+  const messages = await getMessages();
+  const htmlLang = LOCALE_META[effectiveLocale].html;
 
   // Inject CSS var pentru culoarea primară a brandului — UI-ul o citește prin var(--brand-primary)
   const brandVars = `:root{--brand-primary:${site.brand.primaryColor || '#d4af37'};--brand-accent:${site.brand.accentColor || '#f5d271'};}`;

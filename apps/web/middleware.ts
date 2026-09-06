@@ -4,6 +4,7 @@ import { resolveCanonicalPath } from '@/lib/page-slugs';
 import { resolveExperienceSlug } from '@/experiences/assign';
 import type { SiteExperienceConfigLite } from '@/experiences/types';
 import { apiInternalUrl } from '@/lib/api-internal';
+import { normalizeLocale } from '@/i18n/locales';
 
 const API_INTERNAL = apiInternalUrl();
 
@@ -77,7 +78,7 @@ async function fetchSiteFlags(host: string, clientIp: string | null): Promise<Ca
     const entry: CacheEntry = {
       hidden: Boolean(site?.hiddenMode),
       ipWhitelist: Array.isArray(site?.ipWhitelist) ? site.ipWhitelist : [],
-      locale: typeof site?.locale === 'string' && site.locale ? site.locale : 'ro',
+      locale: normalizeLocale(site?.locale) ?? 'ro',
       experienceConfig: site?.experienceConfig ?? null,
       expiresAt: Date.now() + TTL_MS,
     };
@@ -116,6 +117,11 @@ export async function middleware(req: NextRequest) {
 
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set('x-mc-experience', assigned.slug);
+  // Calea cerută, pentru layout-ul root: `next/headers` nu expune pathname-ul,
+  // iar layoutul are nevoie de el ca să știe că randează o pagină de livrare
+  // `/m/<id>` și să-i ia limba de la comandă (vezi lib/delivery-locale.ts).
+  // Pe rescriere punem calea ORIGINALĂ — slug-ul localizat e ce a cerut omul.
+  requestHeaders.set('x-mc-pathname', req.nextUrl.pathname);
 
   const canonical = resolveCanonicalPath(req.nextUrl.pathname, flags.locale);
   let res: NextResponse;

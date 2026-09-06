@@ -953,6 +953,40 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
     coloană în tabel, grupează pe poziție (`GROUP BY 1`). Prins la auditul UTM
     (§16.10.2).
 31. **O funcționalitate scoasă de pe site lasă urme în cinci locuri.** Codurile cadou aveau: modul de API cu rute publice, metode în SDK-ul web fără apelanți, un tabel gol în producție, o coloană de configurare în admin și — cel mai grav — o clauză în termeni, publicată în 8 limbi, despre o taxă inexistentă. Când scoți ceva, urmărește-l până la capăt: `apps/api/src/modules/`, `apps/web/lib/api.ts`, `apps/web/messages/*.json`, ecranele din admin, `app_settings` și schema.
+32. **Limba unei comenzi se scrie pe o singură cale, dar comanda se creează pe
+    două.** `createGeneration` injecta limba în payload; `checkout-direct` — calea
+    pay-first, adică SINGURA folosită de când s-a scos demo-ul — trimitea
+    payload-ul brut. Niciun wizard nu pune câmpul, serverul îl completa cu
+    `dto.locale ?? 'ro'`, și fiecare comandă bulgară se înregistra ca românească:
+    5 din 12 pe `chalgapodarok.bg`, toate de după 8 iulie 2026. Nimic nu semnala
+    nimic — emailurile și versurile plecau corect în bulgară, fiindcă ele citesc
+    `site.locale ?? gen.locale`, deci singurul loc unde se vedea era coloana
+    „Locale" din admin. **Un fallback global la o limbă anume e aproape întotdeauna
+    un bug**: limba corectă e a site-ului, iar `'ro'` merită doar poziția de ultimă
+    instanță. Regulile stau acum în `apps/api/src/common/locale.ts` (+ oglinda
+    `apps/web/lib/order-locale.ts`); dacă adaugi o cale nouă de creare a unei
+    comenzi, treci-o prin ele.
+33. **Pagina de livrare `/m/<id>` e singura rută a cărei limbă NU o dă domeniul
+    vizitat.** Linkurile de livrare circulă — sunt trimise mai departe și
+    partajate — deci o comandă bulgară deschisă pe `manelecadou.ro/m/<id>` se
+    servea integral în română, `<html lang="ro">` inclusiv. Limba vine acum de la
+    site-ul PROPRIETAR al comenzii (`GET /api/generations/:id/locale`), cu limba
+    scrisă pe rând ca rezervă — în ordinea asta, nu invers: pe rândurile lovite de
+    pct. 32 limba de pe comandă e chiar bug-ul, iar pusă prima ar întoarce pe
+    românește pagini care azi se văd corect. Comenzile existente nu se modifică;
+    se corectează la citire.
+34. **`getMessages({ locale })` NU suprascrie configul de request al next-intl.**
+    Layoutul își calcula limba lui pentru `<html lang>`, iar mesajele veneau din
+    calculul separat din `i18n/request.ts`. Cât timp amândouă spuneau
+    „site.locale", rezultatul era identic și nimeni n-avea de unde ști; la prima
+    divergență ar fi ieșit o pagină cu `lang="bg"` și texte românești. Ordinea
+    stă acum într-un singur loc, `apps/web/lib/active-locale.ts`, folosit de
+    amândouă.
+35. **Normalizează codurile de limbă la intrare.** `isLocale('bg-BG')` e `false`,
+    iar limbile vin și în forme regionale (`navigator.language`, valori scrise de
+    mână în admin). Fără normalizare, un site configurat corect cade tăcut pe
+    fallback — adică pe română. `normalizeLocale` există în ambele apps.
+
 ---
 
 ## 13. Endpoint-uri utile
@@ -969,6 +1003,7 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
 | `https://manelecadou.ro/api/e/c/<token>`      | click pe un link din email → 302 (§16.10.3)|
 | `https://manelecadou.ro/api/e/o/<token>`      | pixel de deschidere email (GIF 1×1)      |
 | `POST /api/admin/openai-ads/test`             | validează pixelul + cheia ChatGPT Ads (§16.11) |
+| `GET /api/generations/<id>/locale`            | limba paginii de livrare (site proprietar → comandă) |
 | `https://manelecadou.ro/uploads/<cale>`       | fișiere: disc → 302 spre R2 → proxy (§5.3)|
 | `https://files.manelecadou.ro/<cale>`         | R2 public, servit direct                 |
 | `https://openreplay.manelecadou.ro`           | session replay (alt server — §16)        |
@@ -1858,14 +1893,20 @@ ordinea disc → R2 → proxy: §5.3.
 
 ```bash
 cd apps/api   && pnpm typecheck && pnpm test
-cd apps/web   && pnpm typecheck && pnpm run check:messages
+cd apps/web   && pnpm typecheck && pnpm test && pnpm run check:messages
 cd apps/admin && pnpm typecheck
 ```
 
-Testele (`node --test`, 11 fișiere `*.spec.ts`) acoperă zonele unde o greșeală
+Testele (`node --test`, fișiere `*.spec.ts`) acoperă zonele unde o greșeală
 tăcută costă scump: rezolvarea interfeței, identitatea vizitatorului, prețurile de
 pachet, hostul de login, calea S3. Dacă atingi una, rulează-le. Cele de storage se
 sar singure fără `S3_TEST_ENDPOINT` (au nevoie de un MinIO local).
+
+`apps/web` are și el teste de când limba comenzilor s-a dovedit că se poate
+pierde tăcut (§12 pct. 32-35). Rulează pe Node nativ, fără dependență de build:
+`scripts/test-resolver.mjs` învață `node --test` aliasul `@/` și importurile
+fără extensie, ca testele să nu ceară ca sursele să fie scrise altfel decât
+restul appului.
 
 Commit **doar fișierele pe care le-ai atins** — working tree-ul are frecvent
 modificări străine, necommise. `git add -A` le-ar trimite în producție odată cu

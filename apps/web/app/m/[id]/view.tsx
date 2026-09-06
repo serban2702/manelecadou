@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { api, ApiError, resolveMediaUrl, type GenerationDto, type CollageAspect, type CollageDto } from '@/lib/api';
 import type { PackageTier } from '@/lib/packages';
 import { track } from '@/lib/tracking';
@@ -40,6 +40,14 @@ const IN_PROGRESS_STATUSES = new Set([
 type PlayableVariant = { id: string; kind: 'main' | 'bonus' | 'variation'; label: string; audioUrl: string };
 
 function ShareGenerationViewInner() {
+  // Limba COMENZII, nu a domeniului vizitat. Pe pagina de livrare, next-intl
+  // primește deja limba comenzii (vezi lib/active-locale.ts), deci `useLocale()`
+  // e aceeași sursă cu textele de mai jos — numele de stil/ocazie/voce și
+  // versurile nu pot ieși în altă limbă decât restul paginii.
+  //
+  // URL-urile rămân pe `site.locale`: slug-ul „manelele-mele" trebuie să existe
+  // pe domeniul pe care e omul, altfel linkul de întoarcere dă 404.
+  const contentLocale = useLocale();
   const t = useTranslations('mViewPage');
   const tLive = useTranslations('generator.live');
   const tStatus = useTranslations('generator.live.status');
@@ -207,19 +215,19 @@ function ShareGenerationViewInner() {
   const adminOcc = site.occasions?.find((o) => o.id === g.occasion);
   const adminVoice = site.voices?.find((v) => v.id === g.voiceArtist);
   const styleNm =
-    adminStyle?.i18n?.[site.locale]?.nm ||
+    adminStyle?.i18n?.[contentLocale]?.nm ||
     adminStyle?.nm ||
     ((tStyles as any).has?.(`${g.style}.nm`) ? tStyles(`${g.style}.nm` as any) : null) ||
     STYLES.find((s) => s.id === g.style)?.nm ||
     g.style;
   const occNm =
-    adminOcc?.i18n?.[site.locale]?.nm ||
+    adminOcc?.i18n?.[contentLocale]?.nm ||
     adminOcc?.nm ||
     ((tOcc as any).has?.(g.occasion) ? tOcc(g.occasion as any) : null) ||
     OCC.find((o) => o.id === g.occasion)?.nm ||
     g.occasion;
   const voiceNm =
-    adminVoice?.i18n?.[site.locale]?.nm ||
+    adminVoice?.i18n?.[contentLocale]?.nm ||
     adminVoice?.nm ||
     VOICES.find((v) => v.id === g.voiceArtist)?.nm ||
     g.voiceArtist;
@@ -324,7 +332,7 @@ function ShareGenerationViewInner() {
       {inProgress && (
         <GenerationProgress
           generation={g}
-          locale={site.locale}
+          locale={contentLocale}
           tLive={tLive}
           tStatus={tStatus}
         />
@@ -444,7 +452,7 @@ function ShareGenerationViewInner() {
             whiteSpace: 'pre-wrap', marginTop: 10, color: 'var(--gold-2)',
             background: 'rgba(241,200,77,0.05)', padding: 12, borderRadius: 8,
             fontSize: 13, lineHeight: 1.6,
-          }}>{prettifyLyrics(g.lyrics, site.locale)}</pre>
+          }}>{prettifyLyrics(g.lyrics, contentLocale)}</pre>
         </details>
       )}
 
