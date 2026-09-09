@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Site } from './site.entity';
+import { Generation } from '../generations/generation.entity';
 import { SitesService } from './sites.service';
 import { AdminSitesController, AdminSiteSamplesController, CaddyAskController, PublicSiteController } from './sites.controller';
 import { SiteContextMiddleware } from './site-context.middleware';
@@ -21,7 +22,7 @@ import { LyricsModule } from '../lyrics/lyrics.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Site]),
+    TypeOrmModule.forFeature([Site, Generation]),
     SunoModule,
     LyricsModule,
     // JwtModule local cu același secret ca AuthModule — middleware-ul are nevoie să

@@ -15,6 +15,7 @@ import {
 import { Generator } from '@/components/Generator';
 import { Ic } from '@/components/icons';
 import { useSite } from '@/lib/site-context';
+import { fillStats } from '@/lib/site-stats';
 import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
 import { openDemosModal, useWizardReachedPackage } from '@/lib/wizard';
@@ -28,6 +29,9 @@ export default function HomePage() {
   const tHome = useTranslations('home');
   const tCommon = useTranslations('common');
   const site = useSite();
+  // Numărul de recenzii vine din cifrele reale; prea puține = badge-ul dispare,
+  // în loc să afișeze o cifră inventată (vezi `site-stats.ts`).
+  const testiBadge = fillStats(tHome('testi.badge'), site);
   // „de la X" din cel mai ieftin pachet ACTIV — aceeași cifră ca în grila de
   // tarife și ca la checkout (`basePriceCents` e legacy și diverge).
   const fromCents = useFromPriceCents();
@@ -158,7 +162,7 @@ export default function HomePage() {
         {/* TESTIMONIALS */}
         <section className="band">
           <div className="band-head">
-            <div className="ek">{tHome('testi.badge')}</div>
+            {testiBadge && <div className="ek">{testiBadge}</div>}
             <h2 className="gold-text">{tHome('testi.title')}</h2>
           </div>
           <Testimonials />

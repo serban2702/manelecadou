@@ -9,8 +9,9 @@ import { toast } from './Toaster';
 import { ManeaPlayer } from './ManeaPlayer';
 import { DEMOS, FEED as FEED_FALLBACK, TESTI, TOP, VOICES } from '@/lib/seed-data';
 import { api } from '@/lib/api';
-import { formatPrice, siteSupportEmail, siteUrl } from '@/lib/site-shared';
+import { currencySymbol, formatPrice, siteSupportEmail, siteUrl } from '@/lib/site-shared';
 import { useSite } from '@/lib/site-context';
+import { fillStats } from '@/lib/site-stats';
 import { getLegalPath } from '@/lib/legal-slugs';
 import { getPagePath } from '@/lib/page-slugs';
 import { useExperienceCatalog } from '@/experiences/use-experience-catalog';
@@ -23,6 +24,10 @@ export function Hero({ onGen, onListen }: { onGen: () => void; onListen: () => v
   // „de la X" = cel mai mic preț dintre pachetele ACTIVE, aceeași sursă ca
   // vitrina de tarife. `basePriceCents` (legacy) arăta altă cifră decât cardul.
   const { fromCents } = usePackages();
+  // Cifrele vin din comenzile reale (vezi `site-stats.ts`); lipsă = badge ascuns,
+  // niciodată un număr inventat.
+  const trustReviews = fillStats(t.raw('trustReviews') as string, site);
+  const trustCount = fillStats(t.raw('trustCount') as string, site);
   return (
     <section className="hero">
       <div className="hero-flag">{t('flag')}</div>
@@ -39,8 +44,8 @@ export function Hero({ onGen, onListen }: { onGen: () => void; onListen: () => v
         <button className="btn btn-ghost" onClick={onListen}><Ic.Play s={14} /> {tc('ctaListen')}</button>
       </div>
       <div className="hero-trust">
-        <span>⭐ <span dangerouslySetInnerHTML={{ __html: t.raw('trustReviews') as string }} /></span>
-        <span>🎤 <span dangerouslySetInnerHTML={{ __html: t.raw('trustCount') as string }} /></span>
+        {trustReviews && <span>⭐ <span dangerouslySetInnerHTML={{ __html: trustReviews }} /></span>}
+        {trustCount && <span>🎤 <span dangerouslySetInnerHTML={{ __html: trustCount }} /></span>}
         <span>⚡ <span dangerouslySetInnerHTML={{ __html: t.raw('trustSpeed') as string }} /></span>
       </div>
     </section>
@@ -98,7 +103,8 @@ export function PriceStrip() {
         <div className="now gold-text">
           {baseInt}
           <span style={{ fontSize: 18 }}>,{baseFrac}</span>
-          <span className="lei">{site.currency}</span>
+          {/* Spațiul e obligatoriu: fără el ieșea „7,99EUR", lipit. */}
+          <span className="lei">&nbsp;{currencySymbol(site)}</span>
         </div>
       </div>
       <div className="right">
@@ -155,9 +161,11 @@ function QuickListenCard({ demo }: { demo: import('@/lib/api').SiteDemoDto }) {
   // doar la primul click — care apoi auto-play-ează (gest user, browser nu
   // blochează).
   const [activated, setActivated] = useState(false);
-  // „Pentru X" e principalul label — exact ca în screenshot-ul user-ului.
-  // Cădem pe titlul demo-ului dacă n-avem recipient (nu strică).
-  const headline = demo.toName ? `Pentru ${demo.toName}` : demo.title;
+  const tq = useTranslations('quickListen');
+  // „Pentru X" e principalul label. Cădem pe titlul demo-ului dacă n-avem recipient.
+  // `forSomeone` e tradus în toate limbile; scris de mână aici, un site bulgăresc
+  // afișa „Pentru Красимир" — română peste date corecte.
+  const headline = demo.toName ? tq('forSomeone', { name: demo.toName }) : demo.title;
   const subline = demo.fromName ?? demo.title;
 
   return (
@@ -656,7 +664,14 @@ export function LiveFeed() {
 
 export function Ticker() {
   const t = useTranslations('ticker');
-  const items = (t.raw('items') as string[]) ?? [];
+  const site = useSite();
+  // Fiecare linie trece prin `fillStats`: cele care cer o cifră sau un cod promo
+  // pe care site-ul nu le are dispar, în loc să afișeze `{count}` sau o ofertă
+  // inexistentă.
+  const items = ((t.raw('items') as string[]) ?? [])
+    .map((line) => fillStats(line, site))
+    .filter((line): line is string => !!line);
+  if (items.length === 0) return null;
   return (
     <div className="ticker-bar">
       <div className="track">

@@ -27,9 +27,12 @@ export class PublicSiteController {
   constructor(private readonly sites: SitesService) {}
 
   @Get()
-  current(@Req() req: Request) {
+  async current(@Req() req: Request) {
     if (!req.site) throw new NotFoundException('Site neconfigurat');
-    return this.serialize(req.site, /* publicOnly */ true, req);
+    // Cifrele de dovadă socială vin din baza de date, nu din traduceri: vezi
+    // `site-stats.ts` pentru de ce.
+    const stats = await this.sites.statsFor(req.site);
+    return { ...this.serialize(req.site, /* publicOnly */ true, req), stats };
   }
 
   /**
@@ -94,6 +97,7 @@ export class PublicSiteController {
       demoEnabled: site.demoEnabled ?? true,
       lyricsReviewEnabled: site.lyricsReviewEnabled ?? true,
       topSource: site.topSource ?? 'seed',
+      tickerPromoCode: site.tickerPromoCode ?? null,
       styles: site.styles ?? [],
       voices: site.voices ?? [],
       occasions: site.occasions ?? [],

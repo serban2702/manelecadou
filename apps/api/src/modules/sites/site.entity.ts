@@ -650,6 +650,31 @@ export class Site {
   topSource!: 'seed' | 'live' | 'template';
 
   /**
+   * Cât se adaugă la numărul REAL de melodii livrate, pentru cifra afișată pe
+   * site („N melodii făcute").
+   *
+   * Există fiindcă înainte numărul era un text fix în traduceri (`50 000+`),
+   * scris o dată și rămas acolo — adică o cifră care nu creștea niciodată și pe
+   * care nimeni nu o putea verifica. Acum baza dă partea reală, iar asta e
+   * singura parte inventată, vizibilă și schimbabilă dintr-un singur loc.
+   *
+   * 0 = se afișează exact câte comenzi există.
+   */
+  @Column({ type: 'integer', default: 0 })
+  statsSongsOffset!: number;
+
+  /**
+   * Cod promo afișat în banda derulantă de pe homepage. Gol = linia nu apare.
+   *
+   * Înainte, codul era scris direct în traduceri (`FRATE10`, în toate cele opt
+   * limbi) și NU exista în `promo_codes` — adică un cod pe care niciun client
+   * nu-l putea folosi, promovat pe prima pagină. Acum e o singură setare, iar
+   * lipsa ei ascunde linia în loc să afișeze o ofertă inexistentă.
+   */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  tickerPromoCode!: string | null;
+
+  /**
    * Top curat manual, folosit doar când `topSource='template'`. Fiecare intrare
    * pointează la o mostră existentă (stil sau voce) și definește titlul, artistul,
    * vizualizările afișate, secunda de start și (opțional) limita de preview.

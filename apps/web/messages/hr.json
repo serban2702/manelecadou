@@ -17,8 +17,8 @@
     "confirm": "Potvrdi",
     "endsIn": "Ističe za"
   },
-  "urgency": "OGRANIČENA PONUDA — pjesma od <s>{compareAt}</s> <b>{price}</b>",
-  "urgencyPlain": "OGRANIČENA PONUDA — pjesma od <b>{price}</b>",
+  "urgency": "PONUDA — pjesma od <s>{compareAt}</s> <b>{price}</b>",
+  "urgencyPlain": "PONUDA — pjesma od <b>{price}</b>",
   "nav": {
     "asculta": "Slušaj",
     "studio": "Napravi pjesmu",
@@ -31,17 +31,17 @@
     "subBrand": "★ AI Studio ★"
   },
   "hero": {
-    "flag": "⭐ #1 GENERATOR PERSONALIZIRANIH PJESAMA NA BALKANU",
+    "flag": "⭐ PERSONALIZIRANE PJESME S NJEGOVIM IMENOM",
     "titleA": "Napravi mu pjesmu s",
     "titleHl": "njegovim imenom",
-    "titleB": "u 90 sekundi",
+    "titleB": "u nekoliko minuta",
     "sub": "Buraz, pokloni mu pjesmu. Biraš stil, prigodu, glas — dobivaš profi pjesmu na mail.",
-    "trustReviews": "<b>4.9/5</b> · 12.483 recenzija",
-    "trustCount": "<b>50.000+</b> pjesama",
+    "trustReviews": "<b>4.9/5</b> · {reviews} recenzija",
+    "trustCount": "<b>{count}</b> pjesama",
     "trustSpeed": "Isporuka <b>~90 sek</b>"
   },
   "price": {
-    "badge": "⚡ Samo danas",
+    "badge": "⚡ Lansirna cijena",
     "firstOrder": "prva narudžba"
   },
   "quickListen": {
@@ -79,12 +79,11 @@
   },
   "ticker": {
     "items": [
-      "🎤 12.483 pjesme generirane do sada",
-      "🔥 Pjesma \"Za šefa Costela\" — 12.4K slušanja",
-      "⚡ Promo kod FRATE10 — još 2h 47min",
-      "🎁 Preko 4.500 poklon kodova ovog mjeseca",
-      "👑 Top izvođač ovog tjedna: Adi Šampanjac",
-      "⭐ 4.9/5 — 12.483 stvarne recenzije"
+      "🎤 {count} pjesama napravljeno do sada",
+      "🔥 „Za šefa\" — jedna od najslušanijih",
+      "⚡ Promo kod {promo}",
+      "👑 Glas tjedna: Ivan Dijamant",
+      "⭐ 4.9/5 od {reviews} recenzija"
     ]
   },
   "liveFeed": {
@@ -333,7 +332,7 @@
       "whyTitle": "Zašto manele na poklon?",
       "whyBullet1": "🎯 Tekst piše naš tim, provjerava urednik",
       "whyBullet2": "🎤 2 audio verzije, biraš najbolju",
-      "whyBullet3": "📧 Stiže na mail za <2 minute",
+      "whyBullet3": "📧 Stiže na mail za nekoliko minuta",
       "whyBullet4": "💰 Plaćaš jednom — bez pretplate",
       "howTitle": "Kako funkcionira?",
       "howStep1Title": "Biraš",
@@ -354,7 +353,7 @@
       "sub": "Odgovori na 5 brzih pitanja i otkrij presudu. Bonus: preporučujemo ti pravu pjesmu."
     },
     "testi": {
-      "badge": "★★★★★ 4.9 / 12.483 recenzija",
+      "badge": "★★★★★ 4.9 od {reviews} recenzija",
       "title": "Što kažu buraze"
     },
     "listen": {
@@ -582,7 +581,7 @@
     "whyTryTitle": "Zašto probati?",
     "whyBullet1": "🎯 Tekst piše naš tim, provjerava urednik",
     "whyBullet2": "🎤 2 audio verzije, biraš najbolju",
-    "whyBullet3": "📧 Stiže na mail za <2 minute",
+    "whyBullet3": "📧 Stiže na mail za nekoliko minuta",
     "whyBullet4": "💰 Plaćaš jednom — bez pretplate"
   },
   "chat": {
@@ -677,7 +676,7 @@
       "sec2": {
         "h": "2. O usluzi",
         "p1": "Pružamo uslugu generiranja manela uz pomoć umjetne inteligencije. Ti unosiš stil, prigodu, poruku, glas — mi ti vraćamo 1-2 automatski generirane MP3 audio pjesme.",
-        "p2": "<b>Važno:</b> svi glasovi su sintetski (AI). Imena izvođača (Florinel de Aur, Adi Șampanie, itd.) su izmišljena i parodična. Ne predstavljamo prave izvođače, žive ili pokojne."
+        "p2": "<b>Važno:</b> svi glasovi su sintetski (AI). Imena izvođača su izmišljena i parodična. Ne predstavljamo prave izvođače, žive ili pokojne."
       },
       "sec3": {
         "h": "3. Cijene i plaćanja",

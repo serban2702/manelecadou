@@ -17,8 +17,8 @@
     "confirm": "Confirmă",
     "endsIn": "Se termină în"
   },
-  "urgency": "Ofertă limitată — generare manea de la <s>{compareAt}</s> <b>{price}</b>",
-  "urgencyPlain": "Ofertă limitată — generare manea de la <b>{price}</b>",
+  "urgency": "Ofertă — generare manea de la <s>{compareAt}</s> <b>{price}</b>",
+  "urgencyPlain": "Ofertă — generare manea de la <b>{price}</b>",
   "nav": {
     "asculta": "Ascultă",
     "studio": "Fă o manea",
@@ -31,17 +31,17 @@
     "subBrand": "★ STUDIO DE MANELE ★"
   },
   "hero": {
-    "flag": "⭐ #1 GENERATOR DE MANELE PERSONALIZATE ÎN ROMÂNIA",
+    "flag": "⭐ MANELE PERSONALIZATE CU NUMELE LUI",
     "titleA": "Fă o manea în",
     "titleHl": "3 minute",
     "titleB": "",
     "sub": "Bă fine, fă-i cadou o manea. Alegi stilul, ocazia, vocea — primești manea profi pe email.",
-    "trustReviews": "<b>4.9/5</b> · 12.483 review",
-    "trustCount": "<b>50.000+</b> manele",
-    "trustSpeed": "Livrare <b>~90 sec</b>"
+    "trustReviews": "<b>4.9/5</b> · {reviews} review-uri",
+    "trustCount": "<b>{count}</b> manele",
+    "trustSpeed": "Livrare <b>în câteva minute</b>"
   },
   "price": {
-    "badge": "⚡ Doar azi",
+    "badge": "⚡ Preț de lansare",
     "firstOrder": "prima comandă"
   },
   "quickListen": {
@@ -79,12 +79,11 @@
   },
   "ticker": {
     "items": [
-      "🎤 12.483 manele generate până acum",
-      "🔥 Maneaua \"Pentru Costel șeful\" — 12.4K play-uri",
-      "⚡ Cod ofertă FRATE10 — încă 2h 47min",
-      "🎁 Peste 4.500 coduri cadou trimise luna asta",
-      "👑 Top artist săptămâna asta: Adi Șampanie",
-      "⭐ 4.9/5 — 12.483 review-uri reale"
+      "🎤 {count} manele generate până acum",
+      "🔥 Maneaua „Pentru șeful\" — una dintre cele mai ascultate",
+      "⚡ Cod ofertă {promo}",
+      "👑 Vocea săptămânii: Adi Șampanie",
+      "⭐ 4.9/5 din {reviews} review-uri"
     ]
   },
   "liveFeed": {
@@ -333,7 +332,7 @@
       "whyTitle": "De ce manele cadou?",
       "whyBullet1": "🎯 Versuri scrise de echipa noastră, verificate de editor",
       "whyBullet2": "🎤 2 versiuni audio, alegi pe cea mai tare",
-      "whyBullet3": "📧 Livrate pe email în <2 minute",
+      "whyBullet3": "📧 Livrate pe email în câteva minute",
       "whyBullet4": "💰 Plătești o singură dată — fără abonament",
       "howTitle": "Cum funcționează?",
       "howStep1Title": "Alegi",
@@ -354,7 +353,7 @@
       "sub": "Răspunde la 5 întrebări rapide și află verdictul. Bonus: îți recomandăm maneaua potrivită."
     },
     "testi": {
-      "badge": "★★★★★ 4.9 / 12.483 review-uri",
+      "badge": "★★★★★ 4.9 din {reviews} review-uri",
       "title": "Ce zic frații"
     },
     "listen": {
@@ -582,7 +581,7 @@
     "whyTryTitle": "De ce să încerci?",
     "whyBullet1": "🎯 Versuri scrise de echipa noastră, verificate de editor",
     "whyBullet2": "🎤 2 versiuni audio, alegi pe cea mai tare",
-    "whyBullet3": "📧 Livrate pe email în <2 minute",
+    "whyBullet3": "📧 Livrate pe email în câteva minute",
     "whyBullet4": "💰 Plătești o singură dată — fără abonament"
   },
   "chat": {
@@ -677,7 +676,7 @@
       "sec2": {
         "h": "2. Despre serviciu",
         "p1": "Oferim un serviciu de generare de manele cu inteligență artificială. Tu introduci stilul, ocazia, mesajul, vocea — noi îți întoarcem 1-2 piese audio MP3 generate automat.",
-        "p2": "<b>Important:</b> toate vocile sunt sintetice (AI). Numele artiștilor (Florinel de Aur, Adi Șampanie, etc.) sunt fictive și parodice. Nu reprezentăm artiști reali, vii sau decedați."
+        "p2": "<b>Important:</b> toate vocile sunt sintetice (AI). Numele artiștilor sunt fictive și parodice. Nu reprezentăm artiști reali, vii sau decedați."
       },
       "sec3": {
         "h": "3. Prețuri și plăți",
@@ -860,7 +859,7 @@
       },
       {
         "q": "Vocile sunt reale? Sunt artiști?",
-        "a": "Nu. Toate vocile sunt generate cu AI și sunt parodice. Numele artiștilor sunt fictive (Florinel de Aur, Adi Șampanie etc.). Nu reprezentăm artiști reali."
+        "a": "Nu. Toate vocile sunt generate cu AI și sunt parodice. Numele artiștilor sunt fictive. Nu reprezentăm artiști reali."
       },
       {
         "q": "Pot folosi maneaua pe TikTok / Instagram?",
@@ -1524,7 +1523,7 @@
     },
     "home": {
       "heroKicker": "Fă-ți maneaua mai jos!",
-      "heroTitle": "Creează-ți propria manea în 2 minute!",
+      "heroTitle": "Creează-ți propria manea în câteva minute!",
       "heroLead": "Alege stilul, adaugă detaliile și noi generăm o manea unică pentru tine — gata în câteva minute.",
       "heroDeal": "1+1 GRATIS",
       "heroCta": "Fă o manea!",

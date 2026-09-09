@@ -2,6 +2,8 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Site, SiteSampleEntry } from './site.entity';
+import { Generation } from '../generations/generation.entity';
+import { computeSiteStats, type SiteStats } from './site-stats';
 
 const CACHE_TTL_MS = 30_000;
 
@@ -16,13 +18,41 @@ export class SitesService {
   private defaultSite: Site | null = null;
   private defaultExpiresAt = 0;
 
+  /**
+   * Cifrele de dovadă socială per site, cache-uite.
+   *
+   * Se citesc la FIECARE randare de homepage, iar partea reală e un COUNT pe
+   * `generations`. Fără cache ar însemna o numărătoare pe tabelul cel mai mare
+   * din bază la fiecare vizitator; cu cinci minute de cache, cifra e la fel de
+   * corectă pentru cine o citește și costă practic nimic.
+   */
+  private statsCache = new Map<string, { stats: SiteStats; expiresAt: number }>();
+
   constructor(
     @InjectRepository(Site) private readonly repo: Repository<Site>,
+    @InjectRepository(Generation) private readonly generations: Repository<Generation>,
   ) {}
+
+  /** Melodii livrate + recenzii afișabile, pentru un site. Vezi `site-stats.ts`. */
+  async statsFor(site: Site): Promise<SiteStats> {
+    const hit = this.statsCache.get(site.id);
+    if (hit && hit.expiresAt > this.now()) return hit.stats;
+    let real = 0;
+    try {
+      real = await this.generations.count({ where: { siteId: site.id } });
+    } catch (e) {
+      // O numărătoare eșuată nu trebuie să rupă homepage-ul: rămâne offsetul.
+      this.logger.warn(`stats count failed for ${site.domain}: ${(e as Error).message}`);
+    }
+    const stats = computeSiteStats(real, site.statsSongsOffset ?? 0);
+    this.statsCache.set(site.id, { stats, expiresAt: this.now() + 5 * 60_000 });
+    return stats;
+  }
 
   private now(): number { return Date.now(); }
 
   invalidateCache(): void {
+    this.statsCache.clear();
     this.domainCache.clear();
     this.idCache.clear();
     this.defaultExpiresAt = 0;

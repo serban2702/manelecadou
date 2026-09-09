@@ -136,6 +136,20 @@ export interface SiteConfig {
    *    ce site-ul are suficiente manele publice.
    *  - 'template': top curat manual din mostrele de stil/voce (configurate în admin). */
   topSource?: 'seed' | 'live' | 'template';
+
+  /** Cod promo pentru banda derulantă. Gol = linia nu se afișează. */
+  tickerPromoCode?: string | null;
+
+  /**
+   * Cifrele de dovadă socială, calculate pe server din comenzile reale + offsetul
+   * per site (vezi `site-stats.ts` din API). Lipsesc dacă API-ul n-a răspuns —
+   * componentele care le folosesc ascund badge-ul, nu afișează un număr inventat.
+   */
+  stats?: {
+    songs: number;
+    /** `null` = prea puține recenzii ca să merite afișate. */
+    reviews: number | null;
+  };
   maintenanceMessage?: Record<string, string>;
   /** Lista IP-uri scutite de maintenance + hidden mode (exact match sau wildcard "*"). */
   ipWhitelist?: string[];
@@ -286,6 +300,25 @@ export function formatPrice(
     }).format(value);
   } catch {
     return `${value.toFixed(opts.fractionDigits ?? 2)} ${site.currency}`;
+  }
+}
+
+/**
+ * Simbolul monedei site-ului („€", „RON", „лв."), pentru locurile care compun
+ * prețul din bucăți în loc să folosească `formatPrice`.
+ *
+ * Fără el, banda de preț concatena cifra cu codul valutar și ieșea „7,99EUR" —
+ * lipit, și cu codul ISO în loc de simbol.
+ */
+export function currencySymbol(site: Pick<SiteConfig, 'locale' | 'currency'>): string {
+  try {
+    const parts = new Intl.NumberFormat(site.locale, {
+      style: 'currency',
+      currency: site.currency,
+    }).formatToParts(0);
+    return parts.find((p) => p.type === 'currency')?.value ?? site.currency;
+  } catch {
+    return site.currency;
   }
 }
 

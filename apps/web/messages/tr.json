@@ -17,8 +17,8 @@
     "confirm": "Onayla",
     "endsIn": "Bitiş"
   },
-  "urgency": "SINIRLI TEKLİF — şarkı <s>{compareAt}</s> <b>{price}</b>",
-  "urgencyPlain": "SINIRLI TEKLİF — şarkı <b>{price}</b>",
+  "urgency": "TEKLİF — şarkı <s>{compareAt}</s> <b>{price}</b>",
+  "urgencyPlain": "TEKLİF — şarkı <b>{price}</b>",
   "nav": {
     "asculta": "Dinle",
     "studio": "Şarkı yap",
@@ -31,17 +31,17 @@
     "subBrand": "★ AI Stüdyo ★"
   },
   "hero": {
-    "flag": "⭐ #1 KİŞİSELLEŞTİRİLMİŞ MANELE/ARABESK GENERATÖRÜ",
+    "flag": "⭐ İSME ÖZEL KİŞİSELLEŞTİRİLMİŞ ŞARKILAR",
     "titleA": "Ona ismiyle bir",
     "titleHl": "şarkı yap",
-    "titleB": "90 saniyede",
+    "titleB": "birkaç dakikada",
     "sub": "Kanka, ona şarkı hediye et. Stili, vesileyi, sesi seç — profesyonel şarkıyı e-postaya al.",
-    "trustReviews": "<b>4.9/5</b> · 12.483 yorum",
-    "trustCount": "<b>50.000+</b> şarkı",
+    "trustReviews": "<b>4.9/5</b> · {reviews} yorum",
+    "trustCount": "<b>{count}</b> şarkı",
     "trustSpeed": "Teslim <b>~90 sn</b>"
   },
   "price": {
-    "badge": "⚡ Sadece bugün",
+    "badge": "⚡ Lansman fiyatı",
     "firstOrder": "ilk sipariş"
   },
   "quickListen": {
@@ -79,12 +79,11 @@
   },
   "ticker": {
     "items": [
-      "🎤 Şu ana kadar 12.483 şarkı üretildi",
-      "🔥 \"Patron Costel için\" şarkısı — 12.4K dinleme",
-      "⚡ İndirim kodu FRATE10 — daha 2sa 47dk",
-      "🎁 Bu ay 4.500'den fazla hediye kodu gönderildi",
-      "👑 Bu haftanın sanatçısı: Adi Şampanya",
-      "⭐ 4.9/5 — 12.483 gerçek yorum"
+      "🎤 Şimdiye kadar {count} şarkı yapıldı",
+      "🔥 „Patron için\" — en çok dinlenenlerden",
+      "⚡ İndirim kodu {promo}",
+      "👑 Haftanın sesi: Emre Elmas",
+      "⭐ 4.9/5 · {reviews} yorum"
     ]
   },
   "liveFeed": {
@@ -333,7 +332,7 @@
       "whyTitle": "Neden manele hediye?",
       "whyBullet1": "🎯 Ekibimiz tarafından yazılan sözler, editör tarafından doğrulanmış",
       "whyBullet2": "🎤 2 ses versiyonu, en iyisini seçiyorsun",
-      "whyBullet3": "📧 E-postaya <2 dakikada teslim",
+      "whyBullet3": "📧 E-postaya birkaç dakikada teslim",
       "whyBullet4": "💰 Tek seferlik ödeme — abonelik yok",
       "howTitle": "Nasıl çalışır?",
       "howStep1Title": "Seçiyorsun",
@@ -354,7 +353,7 @@
       "sub": "5 kısa soruyu cevapla ve sonucu gör. Bonus: sana uygun şarkıyı öneririz."
     },
     "testi": {
-      "badge": "★★★★★ 4.9 / 12.483 yorum",
+      "badge": "★★★★★ 4.9 · {reviews} yorum",
       "title": "Kankalar ne diyor"
     },
     "listen": {
@@ -566,7 +565,7 @@
     }
   },
   "metadata": {
-    "title": "Manele Cadou — Onun ismiyle 90 saniyede şarkı",
+    "title": "Manele Cadou — Onun ismiyle kişiye özel şarkı",
     "description": "Kişiselleştirilmiş arabesk/manele üreticisi. Stil, vesile, ses seç — e-postaya 2 versiyon. 1+1 BEDAVA, tek ödeme.",
     "songTitle": "{name} için şarkı — {site}",
     "songDescription": "{name} için kişiye özel şarkıyı dinle. Tarz {style}, ses {voice}.",
@@ -582,7 +581,7 @@
     "whyTryTitle": "Neden denemeli?",
     "whyBullet1": "🎯 Ekibimiz tarafından yazılan sözler, editör tarafından doğrulanmış",
     "whyBullet2": "🎤 2 ses versiyonu, en iyisini seçiyorsun",
-    "whyBullet3": "📧 E-postaya <2 dakikada teslim",
+    "whyBullet3": "📧 E-postaya birkaç dakikada teslim",
     "whyBullet4": "💰 Tek seferlik ödeme — abonelik yok"
   },
   "chat": {
@@ -677,7 +676,7 @@
       "sec2": {
         "h": "2. Hizmet hakkında",
         "p1": "Yapay zeka ile manele üretim hizmeti sunuyoruz. Sen stili, vesileyi, mesajı ve sesi giriyorsun — biz sana otomatik olarak üretilmiş 1-2 MP3 ses dosyası teslim ediyoruz.",
-        "p2": "<b>Önemli:</b> tüm sesler sentetiktir (AI). Sanatçı isimleri (Florinel de Aur, Adi Șampanie vb.) kurgusal ve parodidir. Yaşayan veya hayatını kaybetmiş gerçek sanatçıları temsil etmiyoruz."
+        "p2": "<b>Önemli:</b> tüm sesler sentetiktir (AI). Sanatçı isimleri kurgusal ve parodidir. Yaşayan veya hayatını kaybetmiş gerçek sanatçıları temsil etmiyoruz."
       },
       "sec3": {
         "h": "3. Fiyatlar ve ödemeler",
