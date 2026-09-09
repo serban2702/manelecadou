@@ -6,7 +6,15 @@ import { OpenAiClient, type ChatMessage as OAIMsg, type ToolDef, type ToolHandle
 import { SettingsService } from '../settings/settings.service';
 import { KbService } from '../kb/kb.service';
 import { SitesService } from '../sites/sites.service';
-import { aiChatSupported } from '../chat/chat-i18n';
+import { aiChatSupported, chatLocale, chatStrings } from '../chat/chat-i18n';
+import {
+  containsRawAudioLink,
+  decideStyleSample,
+  matchSample,
+  resolveChatStyleSamples,
+  resolveChatVoiceSamples,
+  type ChatSample,
+} from './chat-samples';
 import { ChatGateway } from '../chat/chat.gateway';
 import { Conversation, WizardData, WizardState } from '../chat/conversation.entity';
 import { ChatMessage, ChatMessagePayload } from '../chat/message.entity';
@@ -652,18 +660,27 @@ export class AIChatAgentService {
    * Interfața pe care s-a făcut comanda din conversație. Sursa de adevăr e generarea
    * (are coloana `experienceSlug`); fără generare, `null` → cade pe default-ul site-ului.
    */
+  /**
+   * Interfața (classic / cadou) conversației: generarea în lucru, altfel interfața pe
+   * care a scris ultima dată clientul (`conversations.experienceSlug`, din antetul
+   * `X-MC-Experience`). Aceeași ordine ca în `ChatService.conversationExperienceSlug` —
+   * ține-le sincronizate: prețul din prompt trebuie să fie cel de pe linkul de plată, iar
+   * mostrele oferite trebuie să fie stilurile de pe interfața pe care e omul.
+   */
   private async convExperienceSlug(conv: Conversation): Promise<string | null> {
     const genId = conv.wizardState?.generationId;
-    if (!genId) return null;
-    try {
-      const rows: Array<{ experienceSlug: string | null }> = await this.conv.manager.query(
-        `SELECT "experienceSlug" FROM generations WHERE id = $1 LIMIT 1`,
-        [genId],
-      );
-      return rows?.[0]?.experienceSlug || null;
-    } catch {
-      return null;
+    if (genId) {
+      try {
+        const rows: Array<{ experienceSlug: string | null }> = await this.conv.manager.query(
+          `SELECT "experienceSlug" FROM generations WHERE id = $1 LIMIT 1`,
+          [genId],
+        );
+        if (rows?.[0]?.experienceSlug) return rows[0].experienceSlug;
+      } catch {
+        /* cădem pe interfața conversației */
+      }
     }
+    return conv.experienceSlug || null;
   }
 
   /**
@@ -1162,8 +1179,12 @@ export class AIChatAgentService {
 
     // ── STARE CURENTĂ (server-side) — elimină iterații irosite pe wizard_get_state
     // și o categorie întreagă de halucinații (AI nu mai ghicește ce s-a colectat).
-    const styleSampleIds = Object.keys(site?.suno?.styleSamples ?? {});
-    const voiceSampleIds = Object.keys(site?.suno?.voiceSamples ?? {});
+    // Mostrele = EXACT stilurile afișate pe interfața clientului (classic / cadou), cu
+    // numele de pe site — nu cheile brute din `suno.styleSamples`, care conțin și stiluri
+    // scoase de pe site (kuchek, tallava) sau voci pe nume de artiști fictivi.
+    const sampleSlug = effectiveExperienceSlug(site, convSlug);
+    const chatStyleSamples = resolveChatStyleSamples(site, sampleSlug, site?.locale);
+    const chatVoiceSamples = resolveChatVoiceSamples(site, sampleSlug, site?.locale);
 
     // ── Semnale pentru blocul determinist de stare. `userSubstantiveMsgs` =
     // câte mesaje REALE a dat userul (peste un simplu „da/ok") — dacă a povestit
@@ -1184,8 +1205,9 @@ export class AIChatAgentService {
     sysPrompt += this.buildOrderStateBlock(conv, {
       userSubstantiveMsgs,
       hasEmail,
-      styleSampleIds,
-      voiceSampleIds,
+      styleSamples: chatStyleSamples,
+      voiceSamples: chatVoiceSamples,
+      experienceSlug: sampleSlug,
       pendingOffer,
     });
 
@@ -1628,8 +1650,10 @@ formular mascat și nu a avansat deloc. NU repeta.`;
     ctx: {
       userSubstantiveMsgs: number;
       hasEmail: boolean;
-      styleSampleIds: string[];
-      voiceSampleIds: string[];
+      /** Mostrele disponibile clientului — stilurile/vocile interfeței lui care au audio. */
+      styleSamples: ChatSample[];
+      voiceSamples: ChatSample[];
+      experienceSlug: string;
       /** Oferta proprie la care userul tocmai a spus „da" și pe care NU a onorat-o încă. */
       pendingOffer?: string | null;
     },
@@ -1687,7 +1711,10 @@ ${fields.join('\n')}
 • NU repeta o întrebare la care userul a răspuns deja în istoric. Integrezi ce a zis și
   AVANSEZI. Dacă te trezești trimițând al 2-lea mesaj aproape identic → e greșit, schimbă pasul.
 
-Mostre audio pentru play_sample → stiluri: [${ctx.styleSampleIds.join(', ') || 'niciuna'}]; voci: [${ctx.voiceSampleIds.join(', ') || 'niciuna'}] (folosește EXACT aceste id-uri).`;
+Mostre audio (play_sample) = EXACT stilurile de pe interfața clientului („${ctx.experienceSlug}"), cu numele de pe site:
+  stiluri: ${ctx.styleSamples.map((s) => `${s.id} („${s.name}")`).join('; ') || 'NICIUNA — nu promite mostre audio, oferă versurile gratuit'}
+  voci: ${ctx.voiceSamples.map((s) => `${s.id} („${s.name}")`).join('; ') || 'niciuna — nu există mostre de voce, oferă o mostră de STIL'}
+  Folosește EXACT aceste id-uri. La o cerere de demo FĂRĂ stil ales → întâi întrebi ce stil vrea și enumeri NUMELE de mai sus, apoi play_sample. Niciodată link audio în text — doar play_sample (pune un player în chat).`;
   }
 
   /**
@@ -2581,34 +2608,51 @@ Dacă userul cere reducere / spune că „e scump" / „nu am bani acum":
 ═══════════════════════════════════════════════════════════════════════
 DEMO / MOSTRE AUDIO / VERSURI:
 ═══════════════════════════════════════════════════════════════════════
-Dacă userul cere mostre/exemple („cum suna?", „vreau sa aud o manea", „arata-mi exemple",
-„vreau sa-mi dau seama cum e vocea"):
-  → Apelează \`play_sample\` cu kind='style' sau 'voice' și un ID EXACT din lista de mostre
-    disponibile (vezi STAREA CURENTĂ). Acestea sunt DEMO-urile oficiale ale site-ului —
-    NU trimite melodii generate de alți clienți.
-  → Dacă mostra cerută nu există în listă → oferă cea mai apropiată din listă, NU repeta
-    același link de 2 ori dacă userul zice că nu merge — oferă alta sau întreabă ce stil vrea.
+Mostrele sunt EXACT stilurile muzicale afișate pe site-ul pe care e clientul (lista cu nume din
+STAREA CURENTĂ). Nu există alte demo-uri: NU trimite melodii ale altor clienți, NU inventa stiluri,
+NU lipi NICIODATĂ un link audio/mp3 în text (send_message cu link audio e BLOCAT) — mostra se
+trimite DOAR prin \`play_sample\`, care pune în chat un PLAYER pe care omul apasă play.
 
-Dacă userul cere un DEMO PERSONALIZAT înainte de plată („fă-mi o mostră cu numele lui",
-„vreau să aud melodia mea înainte să plătesc"):
-  → Spune-i cald că un demo audio personalizat nu se poate genera înainte de plată (costul
-    generării e real), DAR îi poți scrie GRATUIT versurile complete chiar acum, ca să vadă
-    exact ce se va cânta → apelează \`generate_lyrics\`.
+Dacă userul cere să audă cum sună / un demo / exemple („cum suna?", „vreau sa aud o manea",
+„arata-mi exemple", „aveti demo?", „vreau sa-mi dau seama cum e"):
+  1. Dacă NU a numit un stil → NU trimite nimic încă: întreabă-l ce stil vrea să audă și
+     ENUMERĂ stilurile disponibile, cu NUMELE lor exacte din listă, într-un singur mesaj scurt
+     și cald. Ex: „Sigur! 🎵 Ce stil vrei să auzi? Avem: Clasică de pahar, Modernă, De iubire,
+     De jale, Cu trompetă… Spune-mi unul și îți pun mostra aici în chat." Apoi te oprești.
+     (\`play_sample\` te refuză oricum cu ASK_STYLE_FIRST dacă sari pasul.)
+  2. După ce alege (cu numele, cu numărul, „primul", „oricare") → \`play_sample\` cu
+     kind='style' și id-ul EXACT al stilului ales. Tool-ul trimite singur player-ul; tu adaugi
+     cel mult o propoziție de context (fără link, fără „uite linkul").
+  3. Dacă a numit stilul din prima („vreau să aud una de jale") → \`play_sample\` direct,
+     fără să-l mai întrebi.
+  4. Dacă stilul cerut nu e în listă → spune-i cinstit că nu avem mostră pe stilul ăla și
+     întreabă-l pe care din listă vrea să-l audă (enumeră numele). NU trimite din oficiu.
+  5. NU retrimite aceeași mostră. Dacă zice că nu-i merge, răspunde ca un om (apasă pe
+     butonul ▶ de pe card, încearcă alt browser) sau oferă-i alt stil — nu te bloca pe mostră.
+
+Dacă userul cere un DEMO DIN MELODIA LUI înainte de plată („fă-mi o mostră cu numele lui",
+„vreau să aud melodia mea înainte să plătesc", „vreau sa aud cum iese a mea"):
+  → Spune-i clar și cald, O DATĂ: un demo din melodia LUI nu se poate face înainte de plată —
+    audio-ul personalizat se generează abia după achiziție. DAR: după ce o cumpără, dacă vrea
+    ceva schimbat, își poate REFACE maneaua (modificări/refacere după livrare). Ce poate primi
+    ACUM, gratuit: versurile complete ale melodiei lui (\`generate_lyrics\`) — ca să vadă exact
+    ce se va cânta — și o mostră audio cu STILUL de pe site, ca să audă cum sună (fluxul de
+    mai sus: întreabă stilul, enumeră, apoi play_sample).
   → După ce-i trimiți versurile: întreabă dacă îi plac și ce ar schimba. Dacă cere ajustări
     → generate_lyrics cu revisionNotes (ce a cerut). Dacă îi plac → continuă fluxul normal
     (email/pachet/finalize). Melodia finală se va cânta EXACT pe versurile aprobate de el.
   → Versurile sunt cel mai puternic instrument de vânzare — odată ce omul își vede povestea
     scrisă, conversia e aproape făcută. Folosește-le și proactiv la clienții indeciși.
-  → ⚠️ SPUNE-I EXPLICIT, O DATĂ, CĂ AUDIO-UL VINE DOAR DUPĂ PLATĂ. Declanșatorii sunt adesea
-    scurți și scriși prost: „vreau sa aud", „vreau sa aud si muzica", „nu vreau mai inainte
-    sa aud ce canta ca daca nu imi place", „sa o ascult intai". Nu trata asta ca pe o cerere
-    de versuri și NU o ocoli cu formulări vagi („ți-o trimit și aici în chat după ce e gata").
-    Răspunde clar și cald, o singură dată: „Melodia cu vocea ta personalizată se face abia
-    după plată — de asta nu ți-o pot da la ascultat înainte. Ce pot să-ți dau ACUM, gratuit,
-    sunt versurile exacte care se vor cânta, iar dacă vrei îți trimit și o mostră audio cu
-    stilul/vocea de pe site ca să auzi cum sună." → apoi \`generate_lyrics\` (+ \`play_sample\`
-    dacă vrea să audă vocea). Dacă userul repetă cererea a doua sau a treia oară, înseamnă că
-    NU a primit răspunsul — nu-i mai trimite alte versuri, spune-i explicit regula de mai sus.
+  → ⚠️ Declanșatorii sunt adesea scurți și scriși prost: „vreau sa aud", „vreau sa aud si
+    muzica", „nu vreau mai inainte sa aud ce canta ca daca nu imi place", „sa o ascult intai".
+    Nu trata asta ca pe o cerere de versuri și NU o ocoli cu formulări vagi („ți-o trimit și
+    aici în chat după ce e gata"). Răspunde clar și cald, o singură dată: „Melodia ta, cu
+    numele și povestea ta, se face abia după plată — de asta nu ți-o pot da la ascultat
+    înainte; dacă după livrare vrei ceva schimbat, o refacem. Ce pot să-ți dau ACUM, gratuit,
+    sunt versurile exacte care se vor cânta, și îți pot pune aici o mostră cu stilul de pe
+    site ca să auzi cum sună — ce stil vrei?" → apoi generate_lyrics (+ play_sample după ce
+    alege stilul). Dacă userul repetă cererea a doua sau a treia oară, înseamnă că NU a
+    primit răspunsul — nu-i mai trimite alte versuri, spune-i explicit regula de mai sus.
     BUG observat 2026-07-30 conv dbf701dd: clienta a cerut de 4 ori să audă înainte de plată;
     Irina i-a trimis versuri și „îți citesc mai clar pe scurt", fără să-i spună niciodată că
     audio-ul nu se poate înainte de plată — comanda a rămas neplătită.
@@ -2626,9 +2670,11 @@ REGULI STRICTE:
 ═══════════════════════════════════════════════════════════════════════
 1. Răspunzi DOAR prin tool call \`send_message\` (sau alte tools care trimit mesaje).
    NU scrie text liber în răspuns direct.
-2. NICIODATĂ nu întreba: stilul, ocazia. Astea le DEDUCI la finalize din ce a zis
-   userul + defaults rezonabile. EXCEPȚIE: vocea (M/F) o întrebi conform ETAPA 5, iar
-   PACHETUL îl întrebi OBLIGATORIU în ETAPA 5.5 (e singura alegere de preț a userului).
+2. NICIODATĂ nu întreba: stilul, ocazia — pentru COMANDĂ. Astea le DEDUCI la finalize din
+   ce a zis userul + defaults rezonabile. EXCEPȚII: vocea (M/F) o întrebi conform ETAPA 5,
+   PACHETUL îl întrebi OBLIGATORIU în ETAPA 5.5 (e singura alegere de preț a userului), iar
+   la o cerere de DEMO/MOSTRĂ întrebi ce stil vrea să AUDĂ și enumeri stilurile (e alegerea
+   mostrei, nu a comenzii — vezi secțiunea DEMO).
 3. Dacă userul a SPUS singur stilul/ocazia/vocea („vreau ceva clasic", „de jale",
    „voce de barbat") → ține minte și folosește exact ce a zis. NU inventa altceva.
 4. Dacă userul are 1-2 mesaje vagi → cere context întâi, nu sări la pași tehnici.
@@ -3068,12 +3114,12 @@ REGULI STRICTE:
       },
       {
         name: 'play_sample',
-        description: 'Trimite în chat un link cu o mostră audio pentru ca userul să asculte un stil sau o voce de pe site. Tool-ul trimite singur mesajul cu link-ul.',
+        description: 'Pune în chat un PLAYER audio cu mostra unui stil (sau a unei voci) de pe site — exact stilurile afișate pe interfața clientului (lista din STAREA CURENTĂ). Tool-ul trimite singur cardul cu player; tu NU trimiți linkuri audio în text. Dacă userul a cerut un demo fără să aleagă stilul, tool-ul refuză cu ASK_STYLE_FIRST: întâi îl întrebi ce stil vrea și îi enumeri numele stilurilor, apoi apelezi din nou cu id-ul ales.',
         parameters: {
           type: 'object',
           properties: {
-            kind: { type: 'string', enum: ['style', 'voice'], description: 'Tip mostră.' },
-            id: { type: 'string', description: 'ID-ul stilului (ex. clasic, modern) sau vocii (male, female).' },
+            kind: { type: 'string', enum: ['style', 'voice'], description: 'Tip mostră (aproape mereu style).' },
+            id: { type: 'string', description: 'ID-ul EXACT al stilului din lista de mostre (ex. clasic, modern, romantica) sau al vocii (male, female).' },
           },
           required: ['kind', 'id'],
         },
@@ -3119,7 +3165,7 @@ REGULI STRICTE:
       },
       {
         name: 'escalate_to_human',
-        description: 'Cere intervenția unui operator uman. Folosește dacă userul cere explicit „om real", dacă cere refund, dacă întrebarea e prea complexă sau dacă nu ai informația in KB/memorie.',
+        description: 'Cere intervenția unui operator uman. Folosește dacă userul cere explicit „om real", dacă cere refund, dacă întrebarea e prea complexă sau dacă nu ai informația in KB/memorie. Tool-ul trimite SINGUR clientului un card: „te va prelua un operator uman, s-ar putea să dureze, îți recomand să ne scrii și pe email" + buton de email către adresa site-ului. Tu poți adăuga cel mult o propoziție scurtă și diplomată — NU promite un timp de răspuns, NU repeta emailul.',
         parameters: {
           type: 'object',
           properties: {
@@ -4978,6 +5024,20 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
       };
     }
 
+    // GUARD link audio brut: mostrele se trimit DOAR prin `play_sample` (player în chat).
+    // Modelul copia URL-ul din rezultatul tool-ului și îl lipea în text („Uite o mostră mai
+    // potrivită: https://…/style-clasic.mp3") — la client apărea un link care deschidea
+    // fișierul mp3 în loc de player (20 de cazuri în 60 de zile, audit 10 sep 2026).
+    if (containsRawAudioLink(trimmed)) {
+      return {
+        sent: false,
+        messageType: 'noop',
+        status: 'RAW_AUDIO_LINK_BLOCKED',
+        instruction:
+          'STAI — NU lipi linkuri audio (mp3) în text. Mostrele se trimit DOAR prin play_sample, care pune în chat un PLAYER pe care omul apasă ▶. Dacă voiai să-i trimiți o mostră: play_sample cu kind=\'style\' și id-ul EXACT din lista de mostre (dacă nu a ales stilul, întreabă-l întâi ce stil vrea și enumeră stilurile). Rescrie mesajul FĂRĂ link.',
+      };
+    }
+
     // Hard-check live mode — anti race condition cu setAiMode('manual')
     const check = await this.assertNotManual(ctx);
     if (check.aborted) {
@@ -6754,14 +6814,68 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     });
     const saved = await this.msg.save(m);
     this.gateway.emitAiSuggestion({ conversation: ctx.conv, message: saved });
-    // Clientul NU rămâne în tăcere (mesajul system de mai sus e invizibil pentru el)
-    // + adminii află pe push și email chiar dacă nu sunt pe dashboard.
-    if (ctx.mode === 'auto' && ctx.sentRealMessages === 0) {
-      await this.sendServiceMessage(ctx.conv, 'Te preia imediat un coleg din echipa noastră 🙏 Revine în cel mai scurt timp!');
+    // Clientul NU rămâne în tăcere (mesajul system de mai sus e invizibil pentru el):
+    // primește cardul „te preia un operator uman, poate dura, scrie-ne și pe email" cu
+    // buton de email către adresa site-ului (cerere owner, 10 sep 2026). Adminii află pe
+    // push și email chiar dacă nu sunt pe dashboard.
+    if (ctx.mode === 'auto') {
+      await this.sendContactCard(ctx.conv);
     }
     this.notifyAdminsPush(ctx.conv, `🚨 Escalare AI — ${ctx.conv.email ?? 'guest'}`, reason.slice(0, 140));
     this.notifyAdminsUrgent(ctx.conv, { reason: `Escalare la om: ${reason.slice(0, 160)}` });
-    return { ok: true, message: 'Escalated. Operator notified (push + email). User informed.' };
+    return {
+      ok: true,
+      message:
+        'Escalated. Operator notified (push + email). Clientul a primit deja cardul: „te va prelua un operator uman, s-ar putea să dureze, scrie-ne și pe email" cu buton de email. Poți adăuga cel mult o propoziție scurtă și diplomată (fără să promiți un timp de răspuns și fără să repeți emailul); dacă ai trimis deja un mesaj în turul ăsta, nu mai trimite nimic.',
+    };
+  }
+
+  /**
+   * Cardul de contact (`contact_card`) — trimis clientului la escaladare: îl anunță că îl
+   * preia un operator uman, că poate dura, și îi pune butonul „scrie-ne pe email" către
+   * adresa de suport a site-ului (`supportEmail` → `mailConfig.replyTo` → `fromEmail`).
+   * Textul e în limba site-ului (`chat-i18n`). Cel mult unul la 24h per conversație.
+   */
+  private async sendContactCard(conv: Conversation): Promise<void> {
+    try {
+      const recent = await this.msg.findOne({
+        where: { conversationId: conv.id, messageType: 'contact_card' },
+        order: { createdAt: 'DESC' },
+      });
+      if (recent && Date.now() - new Date(recent.createdAt).getTime() < 24 * 3600 * 1000) return;
+      const site = conv.siteId ? await this.sites.findById(conv.siteId) : null;
+      const email =
+        (site?.supportEmail ?? '').trim() ||
+        (site?.mailConfig?.replyTo ?? '').trim() ||
+        (site?.fromEmail ?? '').trim() ||
+        null;
+      const strings = chatStrings(site?.locale);
+      const body = email ? strings.escalated(email) : strings.escalatedNoEmail;
+      const payload: ChatMessagePayload = email
+        ? { kind: 'contact', email, subject: strings.contactSubject(site?.name ?? '') }
+        : { kind: 'contact' };
+      const m = this.msg.create({
+        conversationId: conv.id,
+        siteId: conv.siteId ?? null,
+        authorRole: 'admin',
+        authorId: null,
+        body,
+        messageType: 'contact_card',
+        payload,
+        aiGenerated: true,
+        detectedLang: chatLocale(site?.locale),
+      });
+      const saved = await this.msg.save(m);
+      await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ lastMessageAt: saved.createdAt, unreadByUser: () => '"unreadByUser" + 1' })
+        .where('id = :id', { id: conv.id })
+        .execute();
+      this.gateway.emitMessage({ message: saved, conversation: conv });
+    } catch (e) {
+      this.logger.warn(`sendContactCard failed: ${(e as Error).message}`);
+    }
   }
 
   // ============== INFERARE CREATIVĂ (Faza 6 — Irina virtuală) ==============
@@ -7635,7 +7749,35 @@ ${transcript}`;
     };
   }
 
-  /** Trimite un link cu o mostră audio (style sau voice) pentru ascultare pe site. */
+  /** Mesajul userului care a declanșat turul (sau ultimul lui mesaj). */
+  private async currentUserText(ctx: AgentCtx): Promise<string> {
+    try {
+      if (ctx.userMessageId) {
+        const m = await this.msg.findOne({ where: { id: ctx.userMessageId } });
+        if (m?.body) return m.body;
+      }
+      const last = await this.msg.findOne({
+        where: { conversationId: ctx.conv.id, authorRole: 'user' },
+        order: { createdAt: 'DESC' },
+      });
+      return last?.body ?? '';
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Pune în chat un PLAYER cu mostra unui stil (sau a unei voci) de pe site.
+   *
+   * Regulile (cerere owner, 10 sep 2026), toate ținute în cod, nu doar în prompt:
+   *  - mostrele = EXACT stilurile afișate pe interfața clientului (`chat-samples.ts`);
+   *  - la o cerere de demo FĂRĂ stil ales → refuz cu ASK_STYLE_FIRST: Irina întreabă ce
+   *    stil vrea și enumeră stilurile, abia apoi trimite (`decideStyleSample`);
+   *  - modelul NU primește URL-ul audio înapoi — îl copia în text și clientul primea un
+   *    link care deschidea fișierul mp3 (vezi și garda RAW_AUDIO_LINK_BLOCKED);
+   *  - mesajul e `song_preview` cu `payload.kind='sample'` → web-ul randează cardul cu
+   *    player (titlu = numele stilului, ▶, bară de progres), fără link în body.
+   */
   private async handlePlaySample(ctx: AgentCtx, kind: string, id: string): Promise<unknown> {
     const check = await this.assertNotManual(ctx);
     if (check.aborted) return { aborted: true };
@@ -7645,100 +7787,157 @@ ${transcript}`;
     const site = await this.sites.findById(ctx.conv.siteId);
     if (!site) return { error: 'site_not_found' };
 
-    const samples = kind === 'style' ? site.suno?.styleSamples : site.suno?.voiceSamples;
-    // Fuzzy-match pe id: „de iubire"→iubire, „Modernă"→modern, fără diacritice.
-    // Pe prod modelul a cerut „de iubire"/„female" și a primit sample_not_found
-    // deși mostrele existau sub alt key (2026-06-10).
-    const norm = (s: string) =>
-      s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/^(de|cu)\s+/, '').trim();
-    const wanted = norm(id);
-    const availableKeys = Object.keys(samples ?? {});
-    const resolvedKey =
-      availableKeys.find((k) => norm(k) === wanted) ??
-      availableKeys.find((k) => norm(k).startsWith(wanted) || wanted.startsWith(norm(k))) ??
-      availableKeys.find((k) => norm(k).includes(wanted) || wanted.includes(norm(k)));
-    const entry = resolvedKey ? samples?.[resolvedKey] : undefined;
-    if (!entry?.audioUrl) {
-      return {
-        error: 'sample_not_found',
-        kind,
-        id,
-        availableIds: availableKeys,
-        instruction: `Mostra „${id}" nu există. Id-uri disponibile pentru ${kind}: ${availableKeys.join(', ') || 'niciunul'}. Alege EXACT unul din listă sau oferă userului stilul cel mai apropiat.`,
-      };
-    }
+    const slug = effectiveExperienceSlug(site, await this.convExperienceSlug(ctx.conv));
+    const styleSamples = resolveChatStyleSamples(site, slug, site.locale);
+    const voiceSamples = resolveChatVoiceSamples(site, slug, site.locale);
+    const styleNames = styleSamples.map((s) => s.name);
+    const listForModel = (arr: ChatSample[]) => arr.map((s) => `${s.id} („${s.name}")`).join(', ') || 'niciuna';
 
-    const label = kind === 'style' ? 'stilul' : 'voce';
-    const text = `Asculta o mostra de ${label} aici 🎵: ${entry.audioUrl}`;
+    let sample: ChatSample | undefined;
+    let corrected = false;
+    if (kind === 'voice') {
+      sample = matchSample(voiceSamples, id);
+      if (!sample) {
+        return {
+          sent: false,
+          status: 'SAMPLE_NOT_FOUND',
+          kind,
+          id,
+          availableVoices: listForModel(voiceSamples),
+          availableStyles: listForModel(styleSamples),
+          instruction: voiceSamples.length
+            ? `Mostra de voce „${id}" nu există. Voci cu mostră: ${listForModel(voiceSamples)}. Alege EXACT una din listă.`
+            : `Pe site-ul ăsta NU există mostre de voce. Spune-i cinstit că vocea (bărbat/femeie) se alege la comandă și oferă-i în schimb o mostră de STIL: întreabă-l ce stil vrea să audă și enumeră numele: ${styleNames.join(', ') || 'niciunul (nu există mostre)'}.`,
+        };
+      }
+    } else {
+      if (ctx.askedStyleThisTurn) {
+        return {
+          sent: false,
+          status: 'ASK_STYLE_FIRST',
+          availableStyles: styleNames,
+          instruction: `Ți-am spus deja în turul ăsta: clientul NU a ales stilul. Trimite DOAR mesajul în care îl întrebi ce stil vrea și enumeri stilurile (${styleNames.join(', ')}), apoi oprește-te. play_sample abia după răspunsul lui.`,
+        };
+      }
+      const userText = await this.currentUserText(ctx);
+      const recentAi = await this.msg.find({
+        where: { conversationId: ctx.conv.id, authorRole: 'admin' },
+        order: { createdAt: 'DESC' },
+        take: 6,
+      });
+      const decision = decideStyleSample({
+        requested: id,
+        samples: styleSamples,
+        userText,
+        userAffirmOnly: isAffirmOnly(userText),
+        recentAiTexts: recentAi.map((m) => m.body ?? ''),
+        wizardStyle: ctx.conv.wizardState?.data?.style ?? null,
+      });
+      if (decision.action === 'not_found') {
+        return {
+          sent: false,
+          status: 'SAMPLE_NOT_FOUND',
+          kind,
+          id,
+          availableStyles: listForModel(styleSamples),
+          instruction: styleSamples.length
+            ? `Stilul „${id}" nu e printre mostrele de pe interfața clientului. Disponibile: ${listForModel(styleSamples)}. NU trimite altceva din oficiu: spune-i cinstit că nu avem mostră pe stilul cerut și întreabă-l pe care din listă vrea să-l audă (enumeră numele: ${styleNames.join(', ')}).`
+            : 'Pe interfața clientului NU există mostre audio de stil. NU promite o mostră; spune-i că îi poți scrie GRATUIT versurile complete ca să vadă exact ce se cântă (generate_lyrics) și că audio-ul personalizat vine după plată.',
+        };
+      }
+      if (decision.action === 'ask') {
+        ctx.askedStyleThisTurn = true;
+        return {
+          sent: false,
+          status: 'ASK_STYLE_FIRST',
+          availableStyles: styleNames,
+          instruction: `STAI — clientul a cerut un demo / să audă cum sună, dar NU a ales un stil. Regula: ÎNTÂI îl întrebi ce stil vrea și îi ENUMERI stilurile de pe site, cu numele EXACTE, într-un singur mesaj scurt și cald (send_message), apoi te oprești și aștepți răspunsul. Stilurile: ${styleNames.join(', ')}. Exemplu: „Sigur! 🎵 Ce stil vrei să auzi? Avem: ${styleNames.join(', ')}. Spune-mi unul și îți pun mostra aici în chat." NU mai apela play_sample în turul ăsta. După ce alege, apelezi play_sample cu id-ul EXACT: ${listForModel(styleSamples)}.`,
+        };
+      }
+      sample = decision.sample;
+      corrected = decision.corrected;
+    }
 
     // Anti-dup: dacă EXACT aceeași mostră a fost deja trimisă în conversație, NU o
     // retrimite identic. play_sample NU trece prin dedup-ul din handleSendMessage, deci
-    // fără asta AI poate spama același link. BUG observat 2026-06-19 conv b6bf78a7: userul
+    // fără asta AI poate spama același player. BUG observat 2026-06-19 conv b6bf78a7: userul
     // a zis de 2 ori că linkul nu se deschide („nu ma sala lincu", „nu pot intra") iar AI
     // a retrimis EXACT același link de mostră de 3 ori la rând.
-    // Două scăpări reale, ambele văzute pe 2026-08-26 conv 02a15adf (om care voia o doină):
+    // Două scăpări reale, ambele văzute pe 2026-08-26 conv 02a15adf:
     //  (a) fereastra de 6 mesaje — mostra „romantica" trimisă la 16:29 ieșise din ea până la
     //      16:42, așa că a fost retrimisă deși clientul o respinsese explicit („nu asa gen");
-    //  (b) `?v=` — același mp3 servit cu alt query string trecea de `includes(audioUrl)`, așa
-    //      că „clasic", respinsă de client cu „asta e de joc", i-a fost trimisă din nou.
-    // Căutăm pe TOATĂ conversația și comparăm URL-ul fără query string.
+    //  (b) `?v=` — același mp3 servit cu alt query string trecea de `includes(audioUrl)`.
+    // Căutăm pe TOATĂ conversația și comparăm URL-ul fără query string — în payload (mesajele
+    // noi n-au URL în body) sau în body (mesajele vechi).
     const baseUrl = (u: string) => u.split('?')[0];
-    const wantedBase = baseUrl(entry.audioUrl);
+    const wantedBase = baseUrl(sample.audioUrl);
     const recentSamples = await this.msg.find({
       where: { conversationId: ctx.conv.id, aiGenerated: true },
       order: { createdAt: 'DESC' },
       take: 120,
     });
-    if (recentSamples.some((m) => m.body.includes(wantedBase))) {
+    const sentUrlOf = (m: ChatMessage): string | null => {
+      const p = m.payload?.audioUrl;
+      return typeof p === 'string' && p ? baseUrl(p) : null;
+    };
+    const wasSent = (url: string) => recentSamples.some((m) => sentUrlOf(m) === baseUrl(url) || (m.body ?? '').includes(baseUrl(url)));
+    if (wasSent(sample.audioUrl)) {
       // Câte mostre DISTINCTE i-am trimis deja: dacă a respins tot ce avem, insistența e o
       // capcană — clientul cere un stil pe care catalogul nu-l are (2026-08-26 conv 02a15adf:
       // voia o doină, noi aveam doar „romantica" și „clasic", iar Irina i-a promis de 3 ori
       // „îți caut imediat o mostră mai potrivită" și i-a retrimis exact ce respinsese).
-      const sentBases = new Set<string>();
-      for (const k of availableKeys) {
-        const url = samples?.[k]?.audioUrl;
-        if (url && recentSamples.some((m) => m.body.includes(baseUrl(url)))) sentBases.add(k);
-      }
-      const exhausted = sentBases.size >= Math.min(2, availableKeys.length);
+      const pool = sample.kind === 'style' ? styleSamples : voiceSamples;
+      const sentIds = pool.filter((s) => wasSent(s.audioUrl)).map((s) => s.id);
+      const remaining = pool.filter((s) => !sentIds.includes(s.id));
+      const exhausted = sentIds.length >= Math.min(2, pool.length);
       return {
         sent: false,
         status: 'SAMPLE_ALREADY_SENT',
-        audioUrl: entry.audioUrl,
-        alreadySentIds: [...sentBases],
-        remainingIds: availableKeys.filter((k) => !sentBases.has(k)),
+        sample: { id: sample.id, name: sample.name },
+        alreadySentIds: sentIds,
+        remainingIds: remaining.map((s) => s.id),
         instruction:
-          'STAI — ai trimis DEJA exact această mostră în conversație. NU o retrimite identic. Dacă userul spune că linkul nu se deschide / nu poate intra, NU repeta linkul: răspunde-i ca un om — sugerează-i să apese direct pe link sau să-l deschidă în alt browser (Chrome/Safari), ori întreabă dacă vrea altă mostră (alt stil/voce). Dacă insistă că nu merge, asigură-l că mostra e doar un exemplu de stil și că maneaua lui va fi complet personalizată, apoi avansează spre finalizarea comenzii — nu te bloca pe mostră.' +
+          `STAI — mostra „${sample.name}" e DEJA în chat (player-ul de mai sus). NU o retrimite. Dacă userul spune că nu merge, NU repeta player-ul: răspunde-i ca un om — să apese pe butonul ▶ de pe card, ori să încerce în alt browser (Chrome/Safari) — sau întreabă dacă vrea alt stil. Dacă insistă că nu merge, asigură-l că mostra e doar un exemplu de stil și că maneaua lui va fi complet personalizată, apoi avansează spre finalizarea comenzii — nu te bloca pe mostră.` +
           (exhausted
-            ? ` ⚠️ I-ai arătat deja mostrele pe care le avem (${[...sentBases].join(', ')}) și nu i-au plăcut. NU-i mai promite „îți caut una mai potrivită" — n-avem alta, iar promisiunea repetată e minciună. Spune-i ADEVĂRUL, cald și scurt: mostrele sunt doar exemple de sunet, nu acoperă tot ce putem cânta, iar melodia LUI se face pe stilul cerut de el (folosește cuvintele lui: doină, jale, acordeon, saxofon...). Oferă-i alternativa reală: îi scrii versurile complete gratuit ca să vadă exact ce se cântă. NU-l lăsa să aștepte o mostră care nu vine.`
-            : ` Mostre pe care NU i le-ai trimis încă: ${availableKeys.filter((k) => !sentBases.has(k)).join(', ') || 'niciuna'}.`),
+            ? ` ⚠️ I-ai arătat deja mostrele pe care le avem (${sentIds.join(', ')}) și nu i-au plăcut. NU-i mai promite „îți caut una mai potrivită" — n-avem alta, iar promisiunea repetată e minciună. Spune-i ADEVĂRUL, cald și scurt: mostrele sunt doar exemple de sunet, nu acoperă tot ce putem cânta, iar melodia LUI se face pe stilul cerut de el (folosește cuvintele lui: doină, jale, acordeon, saxofon...). Oferă-i alternativa reală: îi scrii versurile complete gratuit ca să vadă exact ce se cântă. NU-l lăsa să aștepte o mostră care nu vine.`
+            : ` Mostre pe care NU i le-ai trimis încă: ${remaining.map((s) => `${s.id} („${s.name}")`).join(', ') || 'niciuna'}.`),
       };
     }
 
+    const strings = chatStrings(site.locale);
+    const text = sample.kind === 'style' ? strings.sampleStyleBody(sample.name) : strings.sampleVoiceBody(sample.name);
     await this.humanDelay(text, ctx.mode);
-    // Trimitem mostra ca `song_preview` cu payload kind='sample' → clientul randează un
-    // PLAYER AUDIO inline în chat (se redă fără să iasă din conversație). Înainte trimiteam
-    // un link mp3 brut (messageType='text') pe care userii din in-app browsers (FB/IG/TikTok)
-    // nu îl puteau deschide. BUG observat 2026-06-19 conv b6bf78a7: userul a zis de 2 ori „nu
-    // pot intra" pe linkul de mostră. Body-ul păstrează URL-ul (fallback clicabil în admin;
-    // web-ul suprimă body pentru song_preview, deci userul vede doar player-ul).
+    // `song_preview` + payload.kind='sample' → web-ul randează un CARD cu PLAYER (titlu =
+    // numele stilului, ▶/⏸, bară de progres), fără link în body. În mod suggest, sugestia
+    // pentru admin păstrează URL-ul, ca aprobarea ei să aibă măcar un link clicabil.
     const m = this.msg.create({
       conversationId: ctx.conv.id,
       siteId: ctx.conv.siteId,
       authorRole: ctx.mode === 'suggest' ? 'system' : 'admin',
       authorId: null,
-      body: text,
+      body: ctx.mode === 'suggest' ? `${text} — ${sample.audioUrl}` : text,
       messageType: ctx.mode === 'suggest' ? 'ai_suggestion' : 'song_preview',
       payload:
         ctx.mode === 'suggest'
           ? null
-          : { audioUrl: entry.audioUrl, kind: 'sample', sampleLabel: label },
+          : {
+              kind: 'sample',
+              sampleKind: sample.kind,
+              sampleId: sample.id,
+              title: sample.name,
+              subtitle: sample.description,
+              audioUrl: sample.audioUrl,
+              startSec: sample.startSec,
+              // compat cu widgetul vechi (eticheta „Mostră de {label}")
+              sampleLabel: sample.kind === 'style' ? 'stilul' : 'voce',
+            },
       aiGenerated: true,
       detectedLang: site.locale,
     });
     const saved = await this.msg.save(m);
     if (ctx.mode === 'suggest') {
       this.gateway.emitAiSuggestion({ conversation: ctx.conv, message: saved });
-      return { sent: false, audioUrl: entry.audioUrl };
+      return { sent: false, status: 'SUGGESTED', sample: { id: sample.id, name: sample.name } };
     }
     await this.conv
       .createQueryBuilder()
@@ -7749,7 +7948,15 @@ ${transcript}`;
     this.gateway.emitMessage({ message: saved, conversation: ctx.conv });
     ctx.sentRealMessages++;
     ctx.samplePlayedThisTurn = true;
-    return { sent: true, audioUrl: entry.audioUrl, status: 'SAMPLE_SENT' };
+    return {
+      sent: true,
+      status: 'SAMPLE_SENT',
+      sample: { id: sample.id, name: sample.name },
+      corrected,
+      instruction: corrected
+        ? `Am pus în chat player-ul cu mostra „${sample.name}" — stilul pe care l-a NUMIT clientul (nu „${id}", cum ai cerut). Poți adăuga cel mult o propoziție scurtă de context, fără link, apoi aștepți reacția lui.`
+        : `Player-ul cu mostra „${sample.name}" e în chat. Poți adăuga cel mult o propoziție scurtă de context (fără link, fără „uite linkul"), apoi aștepți reacția lui.`,
+    };
   }
 
   /**
@@ -9440,6 +9647,9 @@ interface AgentCtx {
   /** A trimis deja o mostră audio în acest run? Mostra are voie să treacă peste limita de
    *  1 mesaj/tur (clientul o cere explicit), dar una singură. (2026-08-12, conv fe06d874.) */
   samplePlayedThisTurn?: boolean;
+  /** `play_sample` a refuzat deja o dată în acest run cu ASK_STYLE_FIRST (clientul a cerut un
+   *  demo fără să aleagă stilul) — a doua apelare primește același răspuns, nu o mostră. */
+  askedStyleThisTurn?: boolean;
   /** A cotat prețul (quote_price_with_offer) în acest run? După quote, mesajul e
    *  „Maneaua costa X. Sunteti de acord?" și turul TREBUIE să se oprească — ETAPA 2
    *  cere confirmarea „da/ok" a userului ÎNAINTE de a cere email/detalii. Blochează

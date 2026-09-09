@@ -220,7 +220,7 @@ export interface AdminChatMessage {
   bodyRo: string | null;
   translationConsensus: number | null;
   // Faza 1
-  messageType?: 'text' | 'image' | 'file' | 'payment_link' | 'song_form_step' | 'song_preview' | 'system' | 'ai_suggestion';
+  messageType?: 'text' | 'image' | 'file' | 'payment_link' | 'song_form_step' | 'song_preview' | 'system' | 'ai_suggestion' | 'contact_card';
   payload?: Record<string, unknown> | null;
   deliveredAt?: string | null;
   readAt?: string | null;

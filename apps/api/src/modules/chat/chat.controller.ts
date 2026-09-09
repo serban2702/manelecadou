@@ -21,6 +21,7 @@ import { Request } from 'express';
 import { Observable, interval } from 'rxjs';
 import { switchMap, distinctUntilChanged } from 'rxjs/operators';
 import { ChatService } from './chat.service';
+import { experienceSlugFromRequest } from '../experiences/request-slug';
 import { OptionalJwtAuthGuard } from '../../common/jwt.guard';
 import { AdminGuard } from '../../common/admin.guard';
 import {
@@ -123,11 +124,13 @@ export class ChatController {
     @CurrentUser() user: AuthedRequestUser | null,
     @CurrentGuestId() guestId: string | null,
     @CurrentSiteId() siteId: string | null,
+    @Req() req: Request,
   ) {
     return this.svc.listMyMessages({
       userId: user?.id ?? null,
       guestId: user ? null : guestId,
       siteId,
+      experienceSlug: experienceSlugFromRequest(req),
     });
   }
 
@@ -173,9 +176,10 @@ export class ChatController {
     @CurrentUser() user: AuthedRequestUser | null,
     @CurrentGuestId() guestId: string | null,
     @CurrentSiteId() siteId: string | null,
+    @Req() req: Request,
   ) {
     return this.svc.sendAsUser(
-      { userId: user?.id ?? null, guestId: user ? null : guestId, siteId },
+      { userId: user?.id ?? null, guestId: user ? null : guestId, siteId, experienceSlug: experienceSlugFromRequest(req) },
       body.body,
     );
   }

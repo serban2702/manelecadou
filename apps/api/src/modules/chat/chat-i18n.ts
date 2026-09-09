@@ -50,6 +50,16 @@ type Dict = {
   unsupportedLanguage: (email: string) => string;
   /** Varianta fără adresă de email configurată pe site. */
   unsupportedLanguageNoEmail: string;
+  /** Textul de sub player-ul unei mostre de stil / de voce din chat (Irina, `play_sample`). */
+  sampleStyleBody: (name: string) => string;
+  sampleVoiceBody: (name: string) => string;
+  /** Cardul trimis clientului când Irina escaladează la un om: îl anunță că îl preia un
+   *  operator (poate dura) și îi recomandă să scrie și pe emailul site-ului — butonul
+   *  „scrie-ne" e pe card (`contact_card`), textul doar explică. */
+  escalated: (email: string) => string;
+  escalatedNoEmail: string;
+  /** Subiectul pre-completat al emailului din butonul cardului. */
+  contactSubject: (siteName: string) => string;
 };
 
 const RO: Dict = {
@@ -75,6 +85,13 @@ const RO: Dict = {
     `Îți mulțumim pentru mesaj! 🙏 Chatul nostru nu este deocamdată disponibil în limba ta, așa că nu îți putem răspunde aici. Scrie-ne te rog pe email la ${email} — îți răspundem în 2–48 de ore.`,
   unsupportedLanguageNoEmail:
     'Îți mulțumim pentru mesaj! 🙏 Chatul nostru nu este deocamdată disponibil în limba ta, așa că nu îți putem răspunde aici. Scrie-ne te rog pe adresa de email din pagina de contact — îți răspundem în 2–48 de ore.',
+  sampleStyleBody: (name) => `🎵 Mostră de stil: ${name}`,
+  sampleVoiceBody: (name) => `🎤 Mostră de voce: ${name}`,
+  escalated: (email) =>
+    `Te va prelua un operator uman 🙏 S-ar putea să dureze puțin până îți răspunde, așa că îți recomand să ne scrii și pe email la ${email} — așa suntem siguri că nu se pierde nimic și revenim cât de repede putem.`,
+  escalatedNoEmail:
+    'Te va prelua un operator uman 🙏 S-ar putea să dureze puțin până îți răspunde. Dacă e urgent, scrie-ne și pe adresa de email din pagina de contact.',
+  contactSubject: (siteName) => `Ajutor comandă — ${siteName}`,
 };
 
 const BG: Dict = {
@@ -101,6 +118,13 @@ const BG: Dict = {
     `Благодарим ти за съобщението! 🙏 Чатът ни засега не е наличен на твоя език, затова не можем да ти отговорим тук. Моля, пиши ни на имейл ${email} — ще ти отговорим в рамките на 2–48 часа.`,
   unsupportedLanguageNoEmail:
     'Благодарим ти за съобщението! 🙏 Чатът ни засега не е наличен на твоя език, затова не можем да ти отговорим тук. Моля, пиши ни на имейл адреса от страницата за контакт — ще ти отговорим в рамките на 2–48 часа.',
+  sampleStyleBody: (name) => `🎵 Мостра от стил: ${name}`,
+  sampleVoiceBody: (name) => `🎤 Мостра от глас: ${name}`,
+  escalated: (email) =>
+    `Ще те поеме човек от екипа ни 🙏 Може да отнеме малко време, затова ти препоръчваме да ни пишеш и на имейл ${email} — така сме сигурни, че нищо няма да се изгуби, и ще ти отговорим възможно най-бързо.`,
+  escalatedNoEmail:
+    'Ще те поеме човек от екипа ни 🙏 Може да отнеме малко време. Ако е спешно, пиши ни и на имейл адреса от страницата за контакт.',
+  contactSubject: (siteName) => `Помощ за поръчка — ${siteName}`,
 };
 
 const EL: Dict = {
@@ -128,6 +152,13 @@ const EL: Dict = {
     `Σε ευχαριστούμε για το μήνυμα! 🙏 Το chat μας δεν είναι προς το παρόν διαθέσιμο στη γλώσσα σου, οπότε δεν μπορούμε να σου απαντήσουμε εδώ. Στείλε μας παρακαλώ email στο ${email} — θα σου απαντήσουμε εντός 2–48 ωρών.`,
   unsupportedLanguageNoEmail:
     'Σε ευχαριστούμε για το μήνυμα! 🙏 Το chat μας δεν είναι προς το παρόν διαθέσιμο στη γλώσσα σου, οπότε δεν μπορούμε να σου απαντήσουμε εδώ. Στείλε μας παρακαλώ email στη διεύθυνση από τη σελίδα επικοινωνίας — θα σου απαντήσουμε εντός 2–48 ωρών.',
+  sampleStyleBody: (name) => `🎵 Δείγμα στυλ: ${name}`,
+  sampleVoiceBody: (name) => `🎤 Δείγμα φωνής: ${name}`,
+  escalated: (email) =>
+    `Θα σε αναλάβει ένας συνεργάτης μας 🙏 Ίσως χρειαστεί λίγος χρόνος, γι' αυτό σου προτείνουμε να μας γράψεις και στο email ${email} — έτσι είμαστε σίγουροι ότι δεν θα χαθεί τίποτα και θα σου απαντήσουμε το συντομότερο.`,
+  escalatedNoEmail:
+    'Θα σε αναλάβει ένας συνεργάτης μας 🙏 Ίσως χρειαστεί λίγος χρόνος. Αν είναι επείγον, γράψε μας και στο email από τη σελίδα επικοινωνίας.',
+  contactSubject: (siteName) => `Βοήθεια για παραγγελία — ${siteName}`,
 };
 
 const EN: Dict = {
@@ -154,6 +185,13 @@ const EN: Dict = {
     `Thank you for your message! 🙏 Our chat is not available in your language yet, so we cannot reply here. Please email us at ${email} — we reply within 2–48 hours.`,
   unsupportedLanguageNoEmail:
     'Thank you for your message! 🙏 Our chat is not available in your language yet, so we cannot reply here. Please email us at the address on our contact page — we reply within 2–48 hours.',
+  sampleStyleBody: (name) => `🎵 Style sample: ${name}`,
+  sampleVoiceBody: (name) => `🎤 Voice sample: ${name}`,
+  escalated: (email) =>
+    `A human operator will take over 🙏 It may take a little while, so we recommend you also email us at ${email} — that way nothing gets lost and we'll get back to you as soon as we can.`,
+  escalatedNoEmail:
+    'A human operator will take over 🙏 It may take a little while. If it is urgent, please also email us at the address on the contact page.',
+  contactSubject: (siteName) => `Help with my order — ${siteName}`,
 };
 
 const DICTS: Record<ChatLocale, Dict> = { ro: RO, bg: BG, el: EL, en: EN };

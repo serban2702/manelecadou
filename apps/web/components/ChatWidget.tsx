@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations, useLocale } from 'next-intl';
-import { api } from '@/lib/api';
+import { api, resolveMediaUrl } from '@/lib/api';
+import { claimPlayback, releasePlayback } from '@/lib/audio-registry';
 import { useSession } from '@/lib/providers';
 import { useChatSocket, type MessageAckEvent, type TypingEvent } from '@/lib/chat-socket';
 import { useSite } from '@/lib/site-context';
@@ -604,7 +605,21 @@ export function ChatWidget() {
                 deliveredAt?: string | null;
                 readAt?: string | null;
                 messageType?: string;
-                payload?: { amount?: number; currency?: string; description?: string; checkoutUrl?: string; premium?: boolean; kind?: string; audioUrl?: string; sampleLabel?: string } | null;
+                payload?: {
+                  amount?: number;
+                  currency?: string;
+                  description?: string;
+                  checkoutUrl?: string;
+                  premium?: boolean;
+                  kind?: string;
+                  audioUrl?: string;
+                  sampleLabel?: string;
+                  title?: string;
+                  subtitle?: string;
+                  startSec?: number;
+                  email?: string;
+                  subject?: string;
+                } | null;
                 attachmentUrl?: string | null;
                 attachmentMime?: string | null;
                 attachmentName?: string | null;
@@ -795,6 +810,16 @@ export function ChatWidget() {
                     })()
                   )}
                   {mm.messageType === 'song_preview' && mm.payload?.kind === 'sample' && mm.payload?.audioUrl && (
+                    <ChatSamplePlayer
+                      src={resolveMediaUrl(String(mm.payload.audioUrl)) ?? String(mm.payload.audioUrl)}
+                      title={String(mm.payload.title ?? '').trim() || t('sampleTitle')}
+                      subtitle={String(mm.payload.subtitle ?? '').trim()}
+                      startSec={Number(mm.payload.startSec ?? 0) || 0}
+                      playLabel={t('play')}
+                      pauseLabel={t('pause')}
+                    />
+                  )}
+                  {mm.messageType === 'contact_card' && (
                     <div
                       style={{
                         padding: 12,
@@ -802,17 +827,32 @@ export function ChatWidget() {
                         borderRadius: 10,
                         background: 'linear-gradient(135deg, #2a1a04, #0a0606)',
                         border: '1px solid var(--gold)',
+                        color: '#fff5cc',
                       }}
                     >
-                      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 8 }}>
-                        {t('sampleOf', { label: String(mm.payload.sampleLabel ?? t('sampleFallback')) })}
+                      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: 6 }}>
+                        👤 {t('humanHandoff')}
                       </div>
-                      <audio
-                        controls
-                        preload="none"
-                        src={String(mm.payload.audioUrl)}
-                        style={{ width: '100%', height: 36 }}
-                      />
+                      <div style={{ fontSize: 13, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{m.body}</div>
+                      {mm.payload?.email && (
+                        <a
+                          href={`mailto:${mm.payload.email}${mm.payload.subject ? `?subject=${encodeURIComponent(String(mm.payload.subject))}` : ''}`}
+                          style={{
+                            display: 'block',
+                            marginTop: 10,
+                            background: 'linear-gradient(180deg,#ffe28a,#b07c1e)',
+                            color: '#2a1a04',
+                            padding: '9px 12px',
+                            borderRadius: 6,
+                            fontSize: 13,
+                            fontWeight: 800,
+                            textAlign: 'center',
+                            textDecoration: 'none',
+                          }}
+                        >
+                          ✉️ {t('emailUs')}
+                        </a>
+                      )}
                     </div>
                   )}
                   {mm.messageType === 'song_preview' && mm.payload && mm.payload?.kind !== 'sample' && (
@@ -863,8 +903,8 @@ export function ChatWidget() {
                       );
                     })()
                   )}
-                  {/* nu afișa "body" generic pentru payment_link / song_preview / image (ar fi redundant) */}
-                  {!(mm.messageType === 'payment_link' || mm.messageType === 'song_preview' || (mm.attachmentUrl && (!m.body || m.body === '📷 Imagine'))) && m.body
+                  {/* nu afișa "body" generic pentru payment_link / song_preview / contact_card / image (ar fi redundant) */}
+                  {!(mm.messageType === 'payment_link' || mm.messageType === 'song_preview' || mm.messageType === 'contact_card' || (mm.attachmentUrl && (!m.body || m.body === '📷 Imagine'))) && m.body
                     ? <LinkifiedText text={m.body} />
                     : null}
                   <div
@@ -991,5 +1031,231 @@ function ReceiptIcon({ delivered, read, dark }: { delivered: boolean; read: bool
       <path d="M1 5l3.5 3.5L13 1" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M6 5l3.5 3.5L18 1" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+function fmtTime(sec: number): string {
+  if (!isFinite(sec) || sec < 0) return '0:00';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s < 10 ? '0' : ''}${s}`;
+}
+
+/**
+ * Player-ul mostrelor de stil din chat (mesaj `song_preview` cu `payload.kind='sample'`).
+ *
+ * Înainte era un `<audio controls>` nativ — pe telefon arată ca un fișier atașat, nu ca
+ * ceva de ascultat, și nu spune ce stil e. Acum: cardul poartă numele stilului de pe site,
+ * un buton ▶/⏸ și o bară de progres pe care se poate derula. Redarea începe de la
+ * `startSec` (skip intro, exact ca pe cardurile de stil de pe site) și intră în registrul
+ * global de audio, ca un singur player să cânte pe pagină. `play()` se apelează sincron
+ * în gestul de click — altfel iOS Safari îl refuză.
+ */
+function ChatSamplePlayer({
+  src,
+  title,
+  subtitle,
+  startSec,
+  playLabel,
+  pauseLabel,
+}: {
+  src: string;
+  title: string;
+  subtitle?: string;
+  startSec: number;
+  playLabel: string;
+  pauseLabel: string;
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const stopRef = useRef<() => void>(() => {});
+  const seekedRef = useRef(false);
+  const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [cur, setCur] = useState(0);
+  const [dur, setDur] = useState(0);
+
+  stopRef.current = () => {
+    try {
+      audioRef.current?.pause();
+    } catch {
+      /* noop */
+    }
+  };
+
+  useEffect(
+    () => () => {
+      const a = audioRef.current;
+      if (a) {
+        try {
+          a.pause();
+        } catch {
+          /* noop */
+        }
+        releasePlayback(stopRef.current);
+      }
+    },
+    [],
+  );
+
+  const ensureAudio = (): HTMLAudioElement => {
+    if (audioRef.current) return audioRef.current;
+    const a = new Audio(src);
+    a.preload = 'metadata';
+    a.addEventListener('loadedmetadata', () => {
+      setDur(a.duration || 0);
+      if (!seekedRef.current && startSec > 0) {
+        seekedRef.current = true;
+        try {
+          a.currentTime = startSec;
+        } catch {
+          /* noop */
+        }
+      }
+    });
+    a.addEventListener('timeupdate', () => setCur(a.currentTime));
+    a.addEventListener('durationchange', () => setDur(a.duration || 0));
+    a.addEventListener('play', () => {
+      setPlaying(true);
+      setLoading(false);
+    });
+    a.addEventListener('playing', () => setLoading(false));
+    a.addEventListener('waiting', () => setLoading(true));
+    a.addEventListener('pause', () => {
+      setPlaying(false);
+      setLoading(false);
+    });
+    a.addEventListener('ended', () => {
+      setPlaying(false);
+      releasePlayback(stopRef.current);
+    });
+    a.addEventListener('error', () => {
+      setPlaying(false);
+      setLoading(false);
+    });
+    audioRef.current = a;
+    return a;
+  };
+
+  const toggle = () => {
+    const a = ensureAudio();
+    if (!a.paused) {
+      a.pause();
+      releasePlayback(stopRef.current);
+      return;
+    }
+    if (a.readyState >= 1 && !seekedRef.current && startSec > 0) {
+      seekedRef.current = true;
+      try {
+        a.currentTime = startSec;
+      } catch {
+        /* noop */
+      }
+    }
+    claimPlayback(stopRef.current, a);
+    setLoading(true);
+    a.play().catch(() => setLoading(false));
+  };
+
+  const seek = (e: MouseEvent<HTMLDivElement>) => {
+    const a = audioRef.current;
+    if (!a || !dur) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    try {
+      a.currentTime = ratio * dur;
+    } catch {
+      /* noop */
+    }
+  };
+
+  const pct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
+
+  return (
+    <div
+      style={{
+        padding: 12,
+        marginBottom: 6,
+        borderRadius: 10,
+        background: 'linear-gradient(135deg, #2a1a04, #0a0606)',
+        border: '1px solid var(--gold)',
+        color: '#fff5cc',
+        minWidth: 220,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label={playing ? pauseLabel : playLabel}
+          style={{
+            flex: '0 0 auto',
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            border: 'none',
+            cursor: 'pointer',
+            background: 'linear-gradient(180deg,#ffe28a,#b07c1e)',
+            color: '#2a1a04',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.35)',
+          }}
+        >
+          {loading ? (
+            <span style={{ fontSize: 14, fontWeight: 800, letterSpacing: 1 }}>…</span>
+          ) : playing ? (
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+              <rect x="2" y="1" width="3.5" height="12" rx="1" />
+              <rect x="8.5" y="1" width="3.5" height="12" rx="1" />
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+              <path d="M3 1.5v11l9-5.5z" />
+            </svg>
+          )}
+        </button>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)' }}>
+            🎵 {title}
+          </div>
+          {subtitle ? (
+            <div style={{ fontSize: 12, opacity: 0.75, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{subtitle}</div>
+          ) : null}
+        </div>
+      </div>
+      <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(pct)}
+        onClick={seek}
+        style={{
+          marginTop: 10,
+          height: 6,
+          borderRadius: 3,
+          background: 'rgba(255,245,220,0.15)',
+          cursor: dur ? 'pointer' : 'default',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: `${pct}%`,
+            background: 'linear-gradient(90deg,#ffe28a,#b07c1e)',
+            transition: 'width 0.2s linear',
+          }}
+        />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 10, opacity: 0.6 }}>
+        <span>{fmtTime(cur)}</span>
+        <span>{dur ? fmtTime(dur) : '--:--'}</span>
+      </div>
+    </div>
   );
 }

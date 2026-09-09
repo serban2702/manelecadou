@@ -188,6 +188,17 @@ export class Conversation {
   @Column({ type: 'varchar', length: 320, nullable: true })
   email!: string | null;
 
+  /**
+   * Interfața (experience: classic / cadou) pe care a fost văzut ULTIMA dată clientul
+   * când a scris în chat — din antetul `X-MC-Experience` pe care web-ul îl pune pe
+   * fiecare request. Irina o folosește ca să ofere EXACT stilurile (și mostrele)
+   * afișate pe interfața lui, iar prețul cotat în chat urmează aceeași interfață.
+   * Generarea în lucru (dacă există) rămâne sursa primară — vezi
+   * `ChatService.conversationExperienceSlug`. NULL = necunoscut → implicita site-ului.
+   */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  experienceSlug!: string | null;
+
   @Column({ type: 'varchar', length: 200, default: 'Conversație' })
   subject!: string;
 

@@ -1679,7 +1679,11 @@ function ChatBubble({
   // Edit/Delete: doar pe mesaje admin de tip text/payment_link/song_preview (nu ai_suggestion/system).
   const canEditDelete =
     fromAdmin &&
-    (!m.messageType || m.messageType === 'text' || m.messageType === 'payment_link' || m.messageType === 'song_preview');
+    (!m.messageType ||
+      m.messageType === 'text' ||
+      m.messageType === 'payment_link' ||
+      m.messageType === 'song_preview' ||
+      m.messageType === 'contact_card');
   // Spotlight: orice mesaj VIZIBIL clientului (system/ai_suggestion sunt deja filtrate
   // mai sus prin return-urile speciale) — îl putem derula în widget-ul lui.
   const canSpotlight = !!onSpotlight;
@@ -1760,6 +1764,12 @@ function ChatBubble({
           conversationId={m.conversationId}
           conversationEmail={conversationEmail ?? null}
         />
+      )}
+      {m.messageType === 'song_preview' && (m.payload as SamplePayload | null)?.kind === 'sample' && (m.payload as SamplePayload).audioUrl && (
+        <SampleCard payload={m.payload as SamplePayload} />
+      )}
+      {m.messageType === 'contact_card' && (
+        <ContactCardPreview payload={(m.payload ?? {}) as ContactPayload} />
       )}
       <LinkifiedText text={display} siteDomain={siteDomain ?? null} />
       {fromAdmin && (
@@ -2301,6 +2311,59 @@ function AiModeSwitcher({ mode, onChange }: { mode: AiChatMode; onChange: (m: Ai
             </button>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** Mostră de stil/voce trimisă de Irina (`song_preview` + `payload.kind='sample'`) —
+ *  clientul vede un card cu player; aici, un player nativ ca să auzim ce a primit. */
+interface SamplePayload {
+  kind?: string;
+  sampleKind?: 'style' | 'voice';
+  sampleId?: string;
+  title?: string;
+  subtitle?: string;
+  audioUrl?: string;
+  startSec?: number;
+  /** compat mesaje vechi */
+  sampleLabel?: string;
+}
+
+function SampleCard({ payload }: { payload: SamplePayload }) {
+  const title = payload.title || (payload.sampleLabel === 'voce' ? 'Mostră de voce' : 'Mostră de stil');
+  return (
+    <div className="mb-1.5 rounded-md border border-amber-500/30 bg-black/20 p-2">
+      <div className="text-[10px] uppercase tracking-wider text-amber-400 font-bold mb-1">
+        🎵 {title}
+        {payload.subtitle ? <span className="normal-case tracking-normal font-normal opacity-70"> · {payload.subtitle}</span> : null}
+      </div>
+      <audio controls preload="none" src={payload.audioUrl} className="w-full h-8" />
+    </div>
+  );
+}
+
+/** Cardul de contact trimis clientului la escaladarea către un om (`contact_card`):
+ *  textul e în body (afișat dedesubt), aici vedem butonul pe care l-a primit. */
+interface ContactPayload {
+  kind?: string;
+  email?: string;
+  subject?: string;
+}
+
+function ContactCardPreview({ payload }: { payload: ContactPayload }) {
+  return (
+    <div className="mb-1.5 rounded-md border border-sky-500/30 bg-sky-500/10 p-2 text-xs">
+      <div className="text-[10px] uppercase tracking-wider text-sky-400 font-bold mb-1 flex items-center gap-1">
+        <Mail className="h-3 w-3" /> Card de contact · escaladare la om
+      </div>
+      {payload.email ? (
+        <div>
+          Buton „Scrie-ne pe email" → <span className="font-mono">{payload.email}</span>
+          {payload.subject ? <span className="opacity-70"> (subiect: {payload.subject})</span> : null}
+        </div>
+      ) : (
+        <div className="opacity-70">Fără adresă de email configurată pe site — cardul trimite la pagina de contact.</div>
       )}
     </div>
   );

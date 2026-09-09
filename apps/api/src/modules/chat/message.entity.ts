@@ -14,7 +14,9 @@ export type ChatMessageType =
   | 'song_form_step'
   | 'song_preview'
   | 'system'
-  | 'ai_suggestion';
+  | 'ai_suggestion'
+  /** Card cu buton de email către suportul site-ului — trimis la escaladarea către un om. */
+  | 'contact_card';
 
 export interface ChatMessagePayload {
   // payment_link
@@ -36,6 +38,15 @@ export interface ChatMessagePayload {
   // song_preview
   generationId?: string;
   audioUrl?: string;
+  // song_preview cu kind='sample' (mostră de stil/voce, randată ca PLAYER în chat)
+  sampleKind?: 'style' | 'voice';
+  sampleId?: string;
+  title?: string;
+  subtitle?: string;
+  startSec?: number;
+  // contact_card
+  email?: string;
+  subject?: string;
   // ai_suggestion
   suggestedText?: string;
   basedOnMemoryIds?: string[];

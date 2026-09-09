@@ -9,6 +9,25 @@ import {
 } from './chat-i18n';
 import { recoveryStrings, collageReadyStrings } from '../../mailer/templates/recovery-i18n';
 
+test('chat-i18n — cardul de escaladare și mostrele, per limbă', async (t) => {
+  await t.test('escaladarea numește emailul și e în limba site-ului', () => {
+    for (const loc of ['ro', 'bg', 'el', 'en', 'tr']) {
+      const d = chatStrings(loc);
+      assert.ok(d.escalated('help@x.ro').includes('help@x.ro'), `${loc}: lipsește emailul`);
+      assert.ok(d.contactSubject('Manele Cadou').includes('Manele Cadou'));
+      assert.ok(d.sampleStyleBody('De jale').includes('De jale'));
+    }
+    assert.match(chatStrings('bg').escalated('a@b.c'), /[Ѐ-ӿ]/);
+    assert.match(chatStrings('el').escalated('a@b.c'), /[Ͱ-Ͽ]/);
+    for (const loc of ['bg', 'el', 'en']) {
+      const d = chatStrings(loc);
+      for (const body of [d.escalated('a@b.c'), d.escalatedNoEmail, d.sampleStyleBody('x'), d.contactSubject('x')]) {
+        assert.doesNotMatch(body, /[ăâîșțĂÂÎȘȚ]/, `${loc}: text românesc scăpat: ${body}`);
+      }
+    }
+  });
+});
+
 test('chat-i18n — limba site-ului decide textele automate', async (t) => {
   await t.test('bg și el au texte proprii, nu românești', () => {
     const bg = chatStrings('bg');

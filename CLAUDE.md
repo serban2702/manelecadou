@@ -1022,6 +1022,10 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
     cu un search-and-replace.** Determinanții cer acord („сватбено манеле" →
     „сватбена чалга песен") și articolul hotărât se schimbă („манелето" → „чалга
     песента", NU „песенто"). La fel pentru orice limbă cu gen gramatical (§16.13).
+44. **Un tool care returnează un URL modelului îl va vedea lipit în chat.** `play_sample`
+    întorcea `audioUrl` „pentru context", iar Irina îl trimitea ca text în loc de player
+    — clientul deschidea fișierul mp3. Rezultatele tool-urilor sunt material de răspuns:
+    nu pune în ele nimic ce n-ar trebui să ajungă la client cuvânt cu cuvânt (§15.10).
 
 ---
 
@@ -1325,6 +1329,49 @@ separate. De-aia există `IosInstallHint`: Safari nu emite `beforeinstallprompt`
 deci nu poate exista buton de instalare. Android și desktop primesc push direct
 din browser, fără instalare.
 
+
+### 15.10 Mostrele din chat, „întreabă stilul întâi" și cardul de escaladare
+
+Schimbat pe 10 septembrie 2026 (cerere owner), toate în cod, nu doar în prompt:
+
+| Ce | Unde |
+|---|---|
+| Mostrele = EXACT stilurile de pe interfața clientului | `apps/api/src/modules/ai-chat/chat-samples.ts` (pur, testat) |
+| Interfața pe care scrie clientul | `conversations.experienceSlug` (din antetul `X-MC-Experience`, scris la fiecare mesaj) |
+| Player în chat, nu link mp3 | `song_preview` + `payload.kind='sample'` → `ChatSamplePlayer` din `apps/web/components/ChatWidget.tsx` |
+| „Ce stil vrei să auzi?" înainte de mostră | `decideStyleSample` → `play_sample` refuză cu `ASK_STYLE_FIRST` |
+| Cardul de escaladare cu buton de email | `contact_card` (`handleEscalate` → `sendContactCard`), text în `chat-i18n.ts` |
+
+1. **`play_sample` NU mai returnează URL-ul audio modelului.** Îl copia în text
+   („Uite o mostră mai potrivită: https://…/style-clasic.mp3") și clientul primea
+   un link care deschidea fișierul — 20 de cazuri în 60 de zile. Garda
+   `RAW_AUDIO_LINK_BLOCKED` din `send_message` respinge orice link audio în text.
+2. **Lista de mostre vine din `resolveChatStyleSamples(site, slug)`**, oglinda lui
+   `useExperienceCatalog` + `cadou/styles.ts` din web: `catalog.styles[].sampleUrl`
+   → `suno.styleSamples[id]`, doar stilurile afișate pe interfața aia. Cheile brute
+   din `suno.styleSamples` conțin stiluri scoase de pe site (`kuchek`, `tallava`) și
+   mostre de voce pe nume de artiști fictivi — nu se mai oferă. Dacă schimbi regula
+   de catalog în web, schimb-o și aici.
+3. **Cererea generică de demo → întrebare + enumerare.** Mostra pleacă direct doar
+   când stilul e ales de client: l-a numit el (potrivire pe rădăcini, „ceva de jale"),
+   l-a ales deja în comandă, a răspuns la enumerarea Irinei (cu numele, cu numărul,
+   „primul") sau a spus „da" la o ofertă concretă. Regula 2 din prompt („nu întreba
+   stilul") are acum excepția explicită pentru mostre.
+4. **Demo din melodia lui = nu, refacere după achiziție = da.** Promptul spune
+   clar că audio-ul personalizat vine după plată, că după livrare melodia se poate
+   reface, și oferă versurile gratuit + o mostră de stil.
+5. **La escaladare clientul primește `contact_card`**: „te va prelua un operator
+   uman, s-ar putea să dureze, scrie-ne și pe email la X" + buton `mailto:` (email =
+   `supportEmail` → `mailConfig.replyTo` → `fromEmail`, subiect pre-completat). Cel
+   mult unul la 24h per conversație; doar în mod `auto`. Adminul vede cardul în
+   `/chat` cu adresa pe care a primit-o clientul.
+6. **`conversationExperienceSlug` (chat) și `convExperienceSlug` (agent)** au aceeași
+   ordine: generarea în lucru → `conversations.experienceSlug` → `null` (implicita
+   site-ului). Prețul cotat în chat și mostrele oferite urmează aceeași interfață.
+
+Teste: `chat-samples.spec.ts` (rezolvarea catalogului per interfață, potrivirea
+textului, decizia „întreabă întâi") și `chat-i18n.spec.ts` (textele cardului în
+bg/el/en fără română).
 
 ---
 

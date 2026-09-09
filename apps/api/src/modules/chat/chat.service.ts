@@ -48,6 +48,8 @@ interface OwnerCtx {
   userId: string | null;
   guestId: string | null;
   siteId: string | null;
+  /** Interfața (classic/cadou) din antetul `X-MC-Experience`, deja validată ca slug cunoscut. */
+  experienceSlug?: string | null;
 }
 
 @Injectable()
@@ -324,6 +326,7 @@ export class ChatService implements OnModuleInit {
         email: u?.email ?? null,
         subject: 'Conversație',
         aiMode: defaultMode,
+        experienceSlug: ctx.experienceSlug ?? null,
       });
       return this.conv.save(created);
     }
@@ -353,6 +356,7 @@ export class ChatService implements OnModuleInit {
       email: g?.email ?? null,
       subject: 'Conversație guest',
       aiMode: defaultMode,
+      experienceSlug: ctx.experienceSlug ?? null,
     });
     return this.conv.save(created);
   }
@@ -384,6 +388,18 @@ export class ChatService implements OnModuleInit {
 
   async sendAsUser(ctx: OwnerCtx, body: string): Promise<ChatMessage> {
     const conversation = await this.getOrCreateMine(ctx);
+    // Interfața pe care scrie ACUM (poate trece de pe cadou pe classic între două
+    // mesaje). Update parțial, nu `save(conversation)` — vezi nota de mai jos.
+    if (ctx.experienceSlug && ctx.experienceSlug !== conversation.experienceSlug) {
+      conversation.experienceSlug = ctx.experienceSlug;
+      await this.conv
+        .createQueryBuilder()
+        .update(Conversation)
+        .set({ experienceSlug: ctx.experienceSlug })
+        .where('id = :id', { id: conversation.id })
+        .execute()
+        .catch(() => undefined);
+    }
     // Blacklist per-site: blochează după IP (din WS sau lastIp persistat) sau email.
     const ip =
       this.gateway.getKnownIp({ userId: ctx.userId, guestId: ctx.guestId }) ??
@@ -2401,22 +2417,27 @@ export class ChatService implements OnModuleInit {
   }
 
   /**
-   * Interfața (experience) pe care s-a făcut comanda din conversație. Conversația nu are
-   * coloană proprie, deci sursa de adevăr e generarea în lucru; fără ea, `null` → apelantul
-   * cade pe `defaultSlug`-ul site-ului (exact regula din `PaymentsService.quote`).
+   * Interfața (experience) pe care s-a făcut comanda din conversație. Sursa primară e
+   * generarea în lucru; fără ea, interfața pe care a scris ultima dată clientul
+   * (`conversations.experienceSlug`, din antetul `X-MC-Experience`); fără niciuna, `null`
+   * → apelantul cade pe `defaultSlug`-ul site-ului (exact regula din `PaymentsService.quote`).
+   * Aceeași ordine e în `AIChatAgentService.convExperienceSlug` — ține-le sincronizate:
+   * prețul din promptul Irinei trebuie să fie EXACT cel de pe linkul de plată.
    */
   private async conversationExperienceSlug(conv: Conversation): Promise<string | null> {
     const genId = conv.wizardState?.generationId;
-    if (!genId) return null;
-    try {
-      const rows: Array<{ experienceSlug: string | null }> = await this.conv.manager.query(
-        `SELECT "experienceSlug" FROM generations WHERE id = $1 LIMIT 1`,
-        [genId],
-      );
-      return rows?.[0]?.experienceSlug || null;
-    } catch {
-      return null;
+    if (genId) {
+      try {
+        const rows: Array<{ experienceSlug: string | null }> = await this.conv.manager.query(
+          `SELECT "experienceSlug" FROM generations WHERE id = $1 LIMIT 1`,
+          [genId],
+        );
+        if (rows?.[0]?.experienceSlug) return rows[0].experienceSlug;
+      } catch {
+        /* cădem pe interfața conversației */
+      }
     }
+    return conv.experienceSlug || null;
   }
 
   /** Admin trimite un link de plată — generează Stripe Checkout pentru ownerul conversației. */
