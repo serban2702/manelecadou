@@ -1949,10 +1949,51 @@ singur offset per site**, schimbabil fără deploy.
 n-a răspuns sau când cifra nu există, iar componenta ascunde elementul. Un
 fallback hardcodat ar fi exact cifra inventată pe care am scos-o.
 
+⚠️ **Aceeași cifră trăiește în mai multe chei.** Badge-urile de pe homepage
+există în DOUĂ locuri (`hero.trust*` ȘI `home.trust.*`), iar interfața `cadou`
+are al treilea set, cu valori diferite (100.000+ melodii, 10.000 recenzii). Prima
+trecere a reparat doar primul set — cifrele vechi au rămas live până la a doua
+verificare pe producție. **Caută valoarea, nu cheia**, în toate cele opt fișiere:
+
+```bash
+cd apps/web && python3 -c "
+import json,glob,re
+PAT=re.compile(r'[0-9]{1,3}[ .,][0-9]{3}')
+for f in glob.glob('messages/*.json'):
+    d=json.load(open(f))
+    def w(n,p=''):
+        if isinstance(n,dict):
+            for k,v in n.items(): yield from w(v,f'{p}.{k}' if p else k)
+        elif isinstance(n,list):
+            for i,v in enumerate(n): yield from w(v,f'{p}[{i}]')
+        elif isinstance(n,str): yield p,n
+    for k,v in w(d):
+        if PAT.search(v): print(f, k, v[:70])
+"
+```
+
+Verificarea care contează e pe producție, nu în cod (§12 pct. 27bis): `curl` pe
+pagină, apoi caută cifra în HTML-ul SERVIT.
+
 Același mecanism umple `{promo}` din banda derulantă, din
 `sites.tickerPromoCode`: gol ⇒ linia dispare. Înainte, codul era scris în
 traduceri și nu exista în bază — o ofertă pe care niciun client n-o putea folosi,
 promovată pe prima pagină în opt limbi.
+
+Ce e configurat în producție (10 septembrie 2026):
+
+| Site | `statsSongsOffset` | Cod din bandă |
+|---|---|---|
+| `manelecadou.ro` | 1431 | `FRATE10` — 10%, nelimitat, fără expirare |
+| `chalgapodarok.bg` | 1431 | `BRATKO10` — 10%, nelimitat, fără expirare |
+
+Codurile sunt reale în `promo_codes` (`maxUses=0`, `validUntil=NULL`). Dacă
+schimbi `tickerPromoCode`, creează întâi codul — altfel promovezi din nou o
+ofertă inexistentă.
+
+⚠️ **Cifrele se propagă în 5 minute**, nu instant: `statsFor` cache-uiește
+rezultatul (un COUNT pe `generations` la fiecare vizitator ar fi prea scump).
+După ce schimbi offsetul, așteaptă sau repornește API-ul.
 
 ### Reguli pentru texte de marketing
 
