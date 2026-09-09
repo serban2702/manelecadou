@@ -21,6 +21,7 @@ import { GeoIpService } from './geoip.service';
 import { AdminGuard } from '../../common/admin.guard';
 import { AuthModule } from '../auth/auth.module';
 import { SitesModule } from '../sites/sites.module';
+import { AdminIpsModule } from '../admin-ips/admin-ips.module';
 import { FxModule } from '../fx/fx.module';
 
 @Module({
@@ -30,6 +31,7 @@ import { FxModule } from '../fx/fx.module';
     AuthModule,
     SitesModule,
     FxModule,
+    AdminIpsModule,
   ],
   providers: [
     AnalyticsService,

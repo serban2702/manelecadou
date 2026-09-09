@@ -1,5 +1,5 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
 import { RequestLoggerMiddleware } from './common/request-logger.middleware';
 import { OpenReplayMiddleware } from './common/openreplay.middleware';
 import { OpenReplaySubscriber } from './common/openreplay.subscriber';
@@ -38,6 +38,9 @@ import { AiAssistantModule } from './modules/ai-assistant/ai-assistant.module';
 import { TiktokModule } from './modules/tiktok/tiktok.module';
 import { SeoPagesModule } from './modules/seo-pages/seo-pages.module';
 import { WebPushModule } from './modules/web-push/web-push.module';
+import { NotificationPrefsModule } from './modules/notification-prefs/notification-prefs.module';
+import { AdminIpsModule } from './modules/admin-ips/admin-ips.module';
+import { AdminIpTrackerInterceptor } from './modules/admin-ips/admin-ip-tracker.interceptor';
 import { AiChatModule } from './modules/ai-chat/ai-chat.module';
 import { OutboundEmailModule } from './modules/outbound-email/outbound-email.module';
 import { EmailTrackingModule } from './modules/email-tracking/email-tracking.module';
@@ -104,6 +107,8 @@ import { StorageModule } from './storage/storage.module';
     MailModule,
     AiAssistantModule,
     WebPushModule,
+    NotificationPrefsModule,
+    AdminIpsModule,
     AiChatModule,
     SiteDemosModule,
     InvoicesModule,
@@ -117,6 +122,9 @@ import { StorageModule } from './storage/storage.module';
   ],
   providers: [
     { provide: APP_GUARD, useClass: CustomThrottlerGuard },
+    // Învață IP-urile de admin. Interceptor, nu middleware: rulează DUPĂ guards,
+    // adică singurul moment în care `req.user` există.
+    { provide: APP_INTERCEPTOR, useClass: AdminIpTrackerInterceptor },
     OpenReplaySubscriber,
   ],
 })

@@ -896,12 +896,104 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     };
     this.enriched.set(key, next);
     this.persistPresenceSnapshot(key, ident, { formState, path: next.currentPath });
+    this.maybeNotifyFinalStep(key, ident, prev?.formState ?? null, formState);
     this.broadcastPresence({
       userId: ident.userId,
       guestId: ident.guestId,
       online: true,
       enriched: next,
     });
+  }
+
+  /**
+   * Ultima notificare de „pas final" per vizitator, ca telefonul să nu sune de
+   * zece ori pentru aceeași comandă.
+   */
+  private lastFinalStepNotify = new Map<string, number>();
+
+  /** Cât timp tăcem după o notificare de pas final pentru același vizitator. */
+  private static readonly FINAL_STEP_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
+  /**
+   * Notifică adminii când un vizitator ajunge pe ULTIMUL pas al formularului —
+   * ecranul de plată. E cel mai apropiat semnal de conversie pe care îl avem
+   * înainte ca omul să dea banii, deci momentul în care merită să intervii pe
+   * chat.
+   *
+   * „Ultimul pas" se calculează din `totalSteps`, nu dintr-un număr fix:
+   * formularul are 6 pași când review-ul de versuri e pornit și 5 când nu, deci
+   * un prag hardcodat ar fi însemnat „Pachet" pe unele site-uri și „Plată" pe
+   * altele.
+   *
+   * Se trimite doar la TRECEREA pe ultimul pas (înainte era mai jos), și cel
+   * mult o dată la șase ore per vizitator: altfel un om care se plimbă înainte
+   * și înapoi între Pachet și Plată ar declanșa o notificare la fiecare click.
+   */
+  private maybeNotifyFinalStep(
+    key: string,
+    ident: SocketIdentity,
+    prev: GeneratorFormState | null,
+    next: GeneratorFormState,
+  ): void {
+    const total = next.totalSteps;
+    if (!total || total < 2) return; // fără totalSteps nu știm care e ultimul
+    const lastIndex = total - 1;
+    if (next.step !== lastIndex) return;
+    if (prev && prev.step >= lastIndex) return; // era deja acolo — nu e o trecere
+
+    const now = Date.now();
+    if (now - (this.lastFinalStepNotify.get(key) ?? 0) < ChatGateway.FINAL_STEP_COOLDOWN_MS) return;
+    this.lastFinalStepNotify.set(key, now);
+    this.pruneFinalStepNotify(now);
+
+    void (async () => {
+      try {
+        const whereClause = ident.userId
+          ? { userId: ident.userId }
+          : ident.guestId
+            ? { guestId: ident.guestId }
+            : null;
+        if (!whereClause) return;
+        const conv = await this.convRepo.findOne({
+          where: whereClause,
+          order: { createdAt: 'DESC' },
+          select: ['id', 'email'],
+        });
+
+        const who =
+          conv?.email ??
+          (ident.userId
+            ? `user:${ident.userId.slice(0, 8)}`
+            : `guest:${ident.guestId?.slice(0, 8) ?? '?'}`);
+        const chosen = [next.data?.style, next.data?.occ, next.data?.packageTier]
+          .filter((v): v is string => typeof v === 'string' && v.length > 0)
+          .join(' · ');
+
+        const pushMod = await import('../web-push/web-push.service');
+        const webPush = this.moduleRef.get(pushMod.WebPushService, { strict: false });
+        await webPush.sendToAdmins('final_step', {
+          title: `🛒 ${who} e pe pasul de plată`,
+          body: chosen
+            ? `A completat formularul: ${chosen}. Încă n-a plătit.`
+            : 'A ajuns pe ultimul pas al formularului. Încă n-a plătit.',
+          tag: `finalstep-${key}`,
+          url: conv ? `/chat?c=${conv.id}` : '/chat',
+          icon: '/icon-512.png',
+          badge: '/icon-512.png',
+          data: { conversationId: conv?.id ?? null, step: next.step, totalSteps: total },
+        });
+      } catch (e) {
+        this.logger.warn(`final-step push failed: ${(e as Error).message}`);
+      }
+    })();
+  }
+
+  /** Ține harta de cooldown mărginită — altfel crește cu fiecare vizitator. */
+  private pruneFinalStepNotify(now: number): void {
+    if (this.lastFinalStepNotify.size < 5000) return;
+    for (const [k, at] of this.lastFinalStepNotify) {
+      if (now - at >= ChatGateway.FINAL_STEP_COOLDOWN_MS) this.lastFinalStepNotify.delete(k);
+    }
   }
 
   /** Validează + limitează payload-ul de form state venit de pe client. */

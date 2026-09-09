@@ -12,6 +12,7 @@ import { TrackEventDto } from './dto';
 import { AnalyticsForwarders } from './forwarders';
 import { SettingsService } from '../settings/settings.service';
 import { GeoIpService } from './geoip.service';
+import { AdminIpsService } from '../admin-ips/admin-ips.service';
 import { parseUserAgent } from './ua-parser';
 import { evaluateBot } from './bot-detection';
 import { inferGenderFromName, inferGenderFromEmail } from './gender-infer';
@@ -54,6 +55,19 @@ export interface MarketingBreakdownRow {
   checkoutConv: number | null;
 }
 
+/**
+ * Filtrul de zgomot aplicat sesiunilor în rapoarte.
+ *
+ * Traficul intern (IP de pe care s-a intrat în admin — vezi tabelul `admin_ips`)
+ * se exclude ÎNTOTDEAUNA: nu e o categorie de analizat, ci traficul nostru, care
+ * altfel umflă sesiunile și strică rata de conversie. Boții rămân opționali,
+ * fiindcă uneori chiar vrei să-i vezi.
+ */
+function sessionNoiseFilter(excludeBots: boolean): string {
+  const internal = `AND s."isInternal" = false`;
+  return excludeBots ? `${internal} AND s."isBot" = false` : internal;
+}
+
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger('AnalyticsService');
@@ -72,6 +86,7 @@ export class AnalyticsService {
     private readonly settings: SettingsService,
     private readonly geoip: GeoIpService,
     private readonly fx: FxRateService,
+    private readonly adminIps: AdminIpsService,
   ) {}
 
   private async getStripe(): Promise<Stripe | null> {
@@ -387,6 +402,9 @@ export class AnalyticsService {
       osVersion: ua.osVersion,
       engineName: ua.engineName,
       isBot: ua.isBot || bot.score >= 70,
+      // Trafic al nostru — citit din cache-ul de IP-uri de admin, ca să nu
+      // adăugăm o interogare pe calea cea mai caldă din aplicație.
+      isInternal: this.adminIps.isAdminIpCached(ctx.ip),
       botScore: bot.score,
       botCategory: bot.category,
       botReasons: bot.reasons.length ? bot.reasons : null,
@@ -1031,7 +1049,7 @@ export class AnalyticsService {
       params.push(siteId);
       site = `AND s."siteId" = $${params.length}::uuid`;
     }
-    const bot = excludeBots ? `AND s."isBot" = false` : '';
+    const noise = sessionNoiseFilter(excludeBots);
     const row = (
       await this.sessions.query(
         `SELECT
@@ -1042,7 +1060,7 @@ export class AnalyticsService {
            COALESCE(AVG(CASE WHEN s.bounced THEN 1 ELSE 0 END)*100,0)::float AS bounce,
            COUNT(*) FILTER (WHERE s."isBot" = true)::int AS bots
          FROM analytics_sessions s
-         WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${bot}`,
+         WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${noise}`,
         params,
       )
     )[0] as {
@@ -1294,14 +1312,14 @@ export class AnalyticsService {
       sParams.push(siteId);
       sSite = `AND s."siteId" = $${sParams.length}::uuid`;
     }
-    const bot = excludeBots ? `AND s."isBot" = false` : '';
+    const noise = sessionNoiseFilter(excludeBots);
     const sessRows = (await this.sessions.query(
       `SELECT ${cfg.sess} AS key,
               COUNT(*)::int AS sessions,
               COUNT(DISTINCT s."visitorId")::int AS visitors,
               COALESCE(SUM(s."pageViews"),0)::int AS page_views
        FROM analytics_sessions s
-       WHERE s."startedAt" BETWEEN $1 AND $2 ${sSite} ${bot}
+       WHERE s."startedAt" BETWEEN $1 AND $2 ${sSite} ${noise}
        GROUP BY key`,
       sParams,
     )) as Array<{ key: string; sessions: number; visitors: number; page_views: number }>;
@@ -1370,7 +1388,7 @@ export class AnalyticsService {
       params.push(siteId);
       site = `AND s."siteId" = $${params.length}::uuid`;
     }
-    const bot = excludeBots ? `AND s."isBot" = false` : '';
+    const noise = sessionNoiseFilter(excludeBots);
     const known = STANDARD_MEDIUMS.map((m) => `'${m}'`).join(',');
 
     const [totals] = (await this.sessions.query(
@@ -1384,26 +1402,26 @@ export class AnalyticsService {
          COUNT(*) FILTER (WHERE COALESCE(s.medium,'') <> '' AND lower(s.medium) NOT IN (${known}))::int AS non_standard_medium,
          COUNT(*) FILTER (WHERE COALESCE(s.campaign,'') <> '' AND COALESCE(s."utmId",'') = '')::int AS campaigns_without_id
        FROM analytics_sessions s
-       WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${bot}`,
+       WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${noise}`,
       params,
     )) as Array<Record<string, number>>;
 
     const samples = (await this.sessions.query(
       `SELECT 'untagged_ads' AS code, s."clickIdSource" AS sample, COUNT(*)::int AS count
          FROM analytics_sessions s
-        WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${bot}
+        WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${noise}
           AND s."clickId" IS NOT NULL AND COALESCE(s.campaign,'') = ''
         GROUP BY 2
        UNION ALL
        SELECT 'macro_campaign', s.campaign, COUNT(*)::int
          FROM analytics_sessions s
-        WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${bot}
+        WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${noise}
           AND s.campaign ~ '^(\\{\\{.*\\}\\}|__[A-Z_]+__|\\{[a-z_]+\\})$'
         GROUP BY 2
        UNION ALL
        SELECT 'non_standard_medium', s.medium, COUNT(*)::int
          FROM analytics_sessions s
-        WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${bot}
+        WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${noise}
           AND COALESCE(s.medium,'') <> '' AND lower(s.medium) NOT IN (${known})
         GROUP BY 2
        ORDER BY 3 DESC
@@ -1419,7 +1437,7 @@ export class AnalyticsService {
               COUNT(*)::int AS sessions,
               COUNT(*) FILTER (WHERE COALESCE(s.campaign,'') <> '')::int AS tagged
          FROM analytics_sessions s
-        WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${bot}
+        WHERE s."startedAt" BETWEEN $1 AND $2 ${site} ${noise}
         GROUP BY 1
         ORDER BY 2 DESC
         LIMIT 20`,
@@ -1480,13 +1498,13 @@ export class AnalyticsService {
       sParams.push(siteId);
       sSite = `AND s."siteId" = $${sParams.length}::uuid`;
     }
-    const bot = excludeBots ? `AND s."isBot" = false` : '';
+    const noise = sessionNoiseFilter(excludeBots);
     const sessRows = (await this.sessions.query(
       `SELECT ${keyExpr('s."startedAt"')} AS key,
               COUNT(*)::int AS sessions, COUNT(DISTINCT s."visitorId")::int AS visitors,
               COALESCE(SUM(s."pageViews"),0)::int AS page_views
        FROM analytics_sessions s
-       WHERE s."startedAt" BETWEEN $1 AND $2 ${sSite} ${bot}
+       WHERE s."startedAt" BETWEEN $1 AND $2 ${sSite} ${noise}
        GROUP BY key`,
       sParams,
     )) as Array<{ key: string; sessions: number; visitors: number; page_views: number }>;
@@ -1570,14 +1588,14 @@ export class AnalyticsService {
       sParams.push(siteId);
       sSite = `AND s."siteId" = $${sParams.length}::uuid`;
     }
-    const bot = excludeBots ? `AND s."isBot" = false` : '';
+    const noise = sessionNoiseFilter(excludeBots);
     const sessRows = (await this.sessions.query(
       `SELECT ${experienceKeySql('s."experienceSlug"')} AS key,
               COUNT(*)::int AS sessions,
               COUNT(DISTINCT s."visitorId")::int AS visitors,
               COALESCE(SUM(s."pageViews"),0)::int AS page_views
        FROM analytics_sessions s
-       WHERE s."startedAt" BETWEEN $1 AND $2 ${sSite} ${bot}
+       WHERE s."startedAt" BETWEEN $1 AND $2 ${sSite} ${noise}
        GROUP BY key`,
       sParams,
     )) as Array<{ key: string; sessions: number; visitors: number; page_views: number }>;

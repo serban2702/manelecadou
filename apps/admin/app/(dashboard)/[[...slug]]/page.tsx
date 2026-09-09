@@ -34,6 +34,7 @@ const Inbox           = dynamic(() => import('../inbox/_content'),           { s
 const InboxAccounts   = dynamic(() => import('../inbox/accounts/_content'),  { ssr: false, loading: Loading });
 const InboxKnowledge  = dynamic(() => import('../inbox/knowledge/_content'), { ssr: false, loading: Loading });
 const Settings        = dynamic(() => import('../settings/_content'),        { ssr: false, loading: Loading });
+const Notificari      = dynamic(() => import('../notificari/_content'),      { ssr: false, loading: Loading });
 const Promo           = dynamic(() => import('../promo/_content'),           { ssr: false, loading: Loading });
 const Errors          = dynamic(() => import('../errors/_content'),          { ssr: false, loading: Loading });
 const Generations     = dynamic(() => import('../generations/_content'),     { ssr: false, loading: Loading });
@@ -66,6 +67,7 @@ const ROUTES: Record<string, ComponentType> = {
   '/inbox/accounts':     InboxAccounts,
   '/inbox/knowledge':    InboxKnowledge,
   '/settings':           Settings,
+  '/notificari':         Notificari,
   '/promo':              Promo,
   '/errors':             Errors,
   '/generations':        Generations,

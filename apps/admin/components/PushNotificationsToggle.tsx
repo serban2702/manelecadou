@@ -60,19 +60,10 @@ export function PushNotificationsToggle({ compact = false }: { compact?: boolean
   }, []);
 
   useEffect(() => {
-    // Înregistrează SW (idempotent — Chrome cache-uiește dacă e același)
-    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
-      // Ascultă mesaje din SW (push-click → navighează în SPA)
-      const onMsg = (ev: MessageEvent) => {
-        if (ev.data?.type === 'push-click' && typeof ev.data.url === 'string') {
-          window.location.href = ev.data.url;
-        }
-      };
-      navigator.serviceWorker.addEventListener('message', onMsg);
-      refresh();
-      return () => navigator.serviceWorker.removeEventListener('message', onMsg);
-    }
+    // Înregistrarea SW-ului și click-ul pe notificare sunt tratate global, în
+    // <ServiceWorkerRegister /> din root layout — altfel push-ul ar exista doar
+    // pe ecranele care montează butonul ăsta.
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) refresh();
   }, [refresh]);
 
   const enable = async () => {

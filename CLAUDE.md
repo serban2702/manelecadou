@@ -72,7 +72,8 @@ manelecadou/
 │   │   │                     promo, roulette, kb, errors, ai-assistant,
 │   │   │                     guest-sessions, users, settings, suggestions,
 │   │   │                     experiences, identity, collage, invoices,
-│   │   │                     recovery, media, database-admin, admin, health
+│   │   │                     recovery, media, database-admin, admin, health,
+│   │   │                     notification-prefs, admin-ips
 │   │   ├── src/storage/      disc local sau Cloudflare R2 (§5.3)
 │   │   ├── scripts/          migrare R2 + date prod + domenii Coolify (§5.5)
 │   │   ├── src/database/     TypeORM datasource + migrations runtime
@@ -986,6 +987,41 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
     iar limbile vin și în forme regionale (`navigator.language`, valori scrise de
     mână în admin). Fără normalizare, un site configurat corect cade tăcut pe
     fallback — adică pe română. `normalizeLocale` există în ambele apps.
+36. **Next 15 NU emite `apple-mobile-web-app-capable`.** Din `appleWebApp.capable`
+    scrie doar `mobile-web-app-capable`, varianta standardizată, pe care iOS o
+    citește abia în versiuni recente. Dacă aplicația pornește în modul obișnuit de
+    browser în loc de standalone, `Notification` nici nu există — adică push zero,
+    fără nicio eroare. Meta-ul Apple se scrie explicit, prin `metadata.other`
+    (§15.9).
+37. **Un service worker înregistrat dintr-o componentă există doar pe ecranele
+    care o montează.** Înregistrarea stătea în butonul de notificări, montat numai
+    pe `/chat`: un admin care intra direct pe `/payments` n-avea SW, deci n-avea
+    push, și nici butonul pe ecran ca să-i spună ceva. Înregistrarea aparține
+    layoutului rădăcină (§15.9).
+38. **Un `sendToAll` uitat ocolește toate preferințele de notificare.** După
+    §15.9, singurul apelant legitim e butonul de test. O sursă nouă trimisă cu el
+    ajunge la toți adminii indiferent de comutatoarele lor, iar cel care a oprit-o
+    n-are cum să afle de ce mai sună telefonul. Folosește `sendToAdmins(kind, …)`.
+39. **Filtrul de trafic intern NU se pune în JOIN-urile de atribuire.** Ele spun
+    „de unde a venit ACEASTĂ plată", nu „câte sesiuni am avut". Un client real de
+    pe aceeași rețea mobilă ca un admin ar rămâne fără sursă, adică „direct" —
+    exact datele pe care voiam să le curățăm (§16.12).
+40. **O cifră de marketing scrisă în `messages/` nu crește niciodată și nu se
+    poate verifica.** `50 000+` melodii și `12 483` recenzii erau text fix în opt
+    limbi, pe site-uri cu 850 și 13 comenzi reale — iar numărul de recenzii era
+    EGAL cu cel de melodii, adică rată de recenzare 100%. Cifrele se pun ca
+    `{count}` / `{reviews}` și se umplu din date (§16.13).
+41. **Meta și TikTok verifică LANDING PAGE-ul, nu doar reclama.** Un „#1
+    GENERATOR" sau un „doar azi" care nu expiră pot duce la respingerea campaniei
+    cu creative perfect curate — și au dus deja, pe contul de RO („deceptive
+    pricing strategies"). Vezi §16.13.
+42. **O promisiune de timp se măsoară înainte de a fi scrisă.** Site-ul promitea
+    livrare în 90 de secunde; median-ul real era 5,5 minute și P90 13 minute.
+    Interogarea e în §16.13 — rulează-o înainte să scrii o cifră.
+43. **În bulgară, „манеле" (neutru) și „песен" (feminin) nu se schimbă între ele
+    cu un search-and-replace.** Determinanții cer acord („сватбено манеле" →
+    „сватбена чалга песен") și articolul hotărât se schimbă („манелето" → „чалга
+    песента", NU „песенто"). La fel pentru orice limbă cu gen gramatical (§16.13).
 
 ---
 
@@ -1004,6 +1040,9 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
 | `https://manelecadou.ro/api/e/o/<token>`      | pixel de deschidere email (GIF 1×1)      |
 | `POST /api/admin/openai-ads/test`             | validează pixelul + cheia ChatGPT Ads (§16.11) |
 | `GET /api/generations/<id>/locale`            | limba paginii de livrare (site proprietar → comandă) |
+| `GET/PUT /api/admin/notification-prefs`       | ce notificări push vrea adminul curent (§15.9) |
+| `GET /api/admin/admin-ips`                    | IP-urile excluse din rapoarte (§16.12)   |
+| `POST /api/admin/admin-ips/backfill`          | marchează retroactiv sesiunile interne   |
 | `https://manelecadou.ro/uploads/<cale>`       | fișiere: disc → 302 spre R2 → proxy (§5.3)|
 | `https://files.manelecadou.ro/<cale>`         | R2 public, servit direct                 |
 | `https://openreplay.manelecadou.ro`           | session replay (alt server — §16)        |
@@ -1230,6 +1269,62 @@ Server → Admin:
   chat:ai_suggestion    { conversationId, message }  ← nu emis la user
   chat:message:ack      (idem)
 ```
+
+### 15.9 Notificări push per-admin + adminul ca PWA
+
+Fiecare admin alege singur ce-i ajunge pe telefon, din **`/notificari`**.
+Preferințele sunt pe cont, nu pe device: iPhone-ul și Mac-ul aceluiași om
+urmează aceleași reguli.
+
+| Sursă (`NotificationKind`) | Când |
+|---|---|
+| `payment` | plată primită sau eșuată |
+| `final_step` | vizitatorul a ajuns pe **ultimul** pas al formularului, sau a apăsat „Plătește" în chat |
+| `chat_message` | mesaj nou de la client — filtrat suplimentar prin `chatMode` |
+| `generation` | comandă finalizată sau generare eșuată |
+| `stalled_delivery` | a plătit dar nu primește nimic: generare nepornită, modificare blocată |
+| `ai_alert` | escaladări de la Irina, cap de mesaje, buclă |
+
+`chatMode` are trei poziții — `all` / `paid_only` / `off` — și **înlocuiește** un
+comutator simplu pentru chat, ca să nu existe starea contradictorie „mesaje
+pornite, dar chat deloc". „A plătit" se caută pe user, guest **și** email, nu
+doar pe firul de chat: omul poate să fi cumpărat din formularul de pe site și
+abia apoi să scrie.
+
+Regulile stau într-un singur loc, `apps/api/src/modules/notification-prefs/notification-kind.ts`
+(fără NestJS, ca să fie testabil), iar trimiterea trece prin
+`WebPushService.sendToAdmins(kind, payload)`. **`sendToAll` a rămas doar pentru
+butonul de test** — o notificare nouă trimisă cu el ignoră tăcut toate
+comutatoarele.
+
+Lucruri decise conștient:
+
+1. **Lipsa unui rând înseamnă „tot pornit"** (`DEFAULT_NOTIFICATION_PREFS`), nu
+   „nu vrea nimic". Un default pe oprit ar fi tăiat notificările tuturor exact
+   în ziua în care funcționalitatea a ajuns pe producție.
+2. **Un `kind` necunoscut trece.** O notificare nedorită se observă și se
+   repară; una lipsă nu se observă niciodată.
+3. **`final_step` se calculează din `totalSteps`**, nu dintr-un prag fix:
+   formularul are 6 pași cu review de versuri și 5 fără, deci „pasul 5" ar fi
+   însemnat „Pachet" pe unele site-uri și „Plată" pe altele. Se trimite doar la
+   TRECEREA pe ultimul pas și cel mult o dată la 6 ore per vizitator — altfel un
+   om care se plimbă între Pachet și Plată sună telefonul la fiecare click.
+4. **`paid_only` trimite când statusul de plată e necunoscut.** Un client
+   plătitor ratat costă mai mult decât o notificare în plus.
+
+**PWA.** `apps/admin/public/manifest.webmanifest` + iconițele + înregistrarea
+service worker-ului în `<ServiceWorkerRegister />` din root layout. Înainte,
+SW-ul se înregistra doar când se monta butonul de notificări, adică **numai pe
+`/chat`** — un admin care intra direct pe `/payments` rămânea fără push, tăcut.
+
+⚠️ **Pe iOS, push-ul merge EXCLUSIV din aplicația adăugată pe ecranul
+principal.** În Safari, `Notification` nici nu există. Fiecare admin trebuie să
+facă o dată Share → Add to Home Screen și să apese „Activează notificări" **din
+aplicația instalată** — abonarea din Safari nu se transferă, sunt contexte
+separate. De-aia există `IosInstallHint`: Safari nu emite `beforeinstallprompt`,
+deci nu poate exista buton de instalare. Android și desktop primesc push direct
+din browser, fără instalare.
+
 
 ---
 
@@ -1775,6 +1870,141 @@ https://bzrcdn.openai.com`, `img-src https://bzr.openai.com`.
 
 ---
 
+## 16.12 Trafic intern exclus din rapoarte
+
+Sesiunile venite de pe IP-urile de pe care s-a intrat în admin nu mai apar în
+analytics, în marketing sau în statisticile de email. Lista se vede și se editează
+în **`/notificari`** → *Trafic intern*.
+
+| | |
+|---|---|
+| Tabel | `admin_ips` (ip unic, `enabled`, `lastSeenAt`, `label`) |
+| Marcaj | `analytics_sessions.isInternal`, scris la crearea sesiunii |
+| Învățare | `AdminIpTrackerInterceptor` — orice request autentificat de admin |
+| Filtru | `sessionNoiseFilter()` în `analytics.service.ts` + `CLICK_NOT_INTERNAL` în `email-tracking-stats.service.ts` |
+
+**Interceptor, nu middleware**: middleware-ul rulează înaintea guards, unde
+`req.user` încă nu există — n-ai ști dacă requestul e de la un admin sau de la un
+vizitator. Scrierea are debounce de 5 minute per (admin, IP), iar citirea la
+crearea sesiunii vine dintr-un cache in-memory: e cea mai caldă cale din
+aplicație și n-are ce căuta un SELECT în plus la fiecare vizitator.
+
+Trei decizii:
+
+1. **Traficul intern se exclude ÎNTOTDEAUNA**, chiar și când boții sunt incluși.
+   Nu e o categorie de analizat, e traficul nostru.
+2. **Atribuirea plăților NU filtrează internul.** JOIN-urile din
+   `payment-attribution.service.ts` și `admin.controller.ts` răspund la „de unde
+   a venit ACEASTĂ plată", nu la „câte sesiuni am avut". Un client real de pe
+   aceeași rețea mobilă ca un admin are sesiunea marcată internă; exclusă și din
+   atribuire, plata lui ar deveni „direct" — adică am strica exact datele pe care
+   încercăm să le curățăm.
+3. **Istoricul se marchează doar la cerere**, din butonul „Recalculează
+   istoricul", care arată întâi câte sesiuni ar atinge. Rapoartele istorice se
+   schimbă după ce apeși.
+
+⚠️ **Un admin care intră de pe date mobile aduce în listă IP-ul operatorului**,
+partajat cu mii de clienți reali — de la momentul ăla, comenzile lor dispar din
+rapoarte. Riscul e asumat conștient (varianta „auto, orice IP" a fost aleasă în
+locul filtrării rețelelor mobile), iar plasa de siguranță e lista din admin:
+`enabled = false` scoate un IP din calcul fără să-l șteargă. **Dacă vezi o
+scădere neexplicată de sesiuni, acolo te uiți întâi.**
+
+Teste: `internal-traffic.spec.ts` verifică sursa, nu comportamentul — filtrele
+sunt SQL scris ca text, deci TypeScript nu poate prinde o interogare uitată, iar
+una scăpată dă un raport care arată perfect și numără greșit.
+
+---
+
+## 16.13 Cifrele de pe site (dovada socială) și promisiunile de marketing
+
+Auditul din 9 septembrie 2026 pe `chalgapodarok.bg`, înaintea unei campanii Meta,
+a găsit un tipar care se repeta în **toate cele opt limbi**: texte de marketing
+scrise o dată, în română, și traduse mecanic — cu cifre care nu corespundeau cu
+nimic.
+
+| Ce afișa site-ul | Realitatea din bază |
+|---|---|
+| `50 000+` melodii | 850 pe `manelecadou.ro`, 13 pe `chalgapodarok.bg` |
+| `12 483` recenzii | tabelul de recenzii nu există; erau inventate în `seed-data.ts` |
+| `4.9 / 12 483 истински ревюта` | număr EGAL cu cel de melodii ⇒ rată de recenzare 100% |
+| `Доставка ~90 сек` | median real **5,5 min**, P90 **13 min** (378 comenzi/90 zile) |
+| `Промо код FRATE10` | nu există în `promo_codes` (există `FRATE90`, inactiv) |
+| `4 500 подаръчни кода` | funcționalitatea de coduri cadou a fost SCOASĂ (§12 pct. 31) |
+
+### Cum se calculează acum
+
+Partea reală vine din baza de date și crește singură; partea inventată e **un
+singur offset per site**, schimbabil fără deploy.
+
+| | |
+|---|---|
+| Regula | `apps/api/src/modules/sites/site-stats.ts` (fișier pur, testat) |
+| Offset | `sites.statsSongsOffset` — cât se adaugă la numărul real |
+| Recenzii | derivate: 8% din total, ascunse sub 25 |
+| Expunere | `GET /api/public/site` → `stats`, cache 5 minute |
+| Randare | `apps/web/lib/site-stats.ts` → `fillStats()` |
+
+**Un badge fără date nu se afișează.** `fillStats` întoarce `null` când API-ul
+n-a răspuns sau când cifra nu există, iar componenta ascunde elementul. Un
+fallback hardcodat ar fi exact cifra inventată pe care am scos-o.
+
+Același mecanism umple `{promo}` din banda derulantă, din
+`sites.tickerPromoCode`: gol ⇒ linia dispare. Înainte, codul era scris în
+traduceri și nu exista în bază — o ofertă pe care niciun client n-o putea folosi,
+promovată pe prima pagină în opt limbi.
+
+### Reguli pentru texte de marketing
+
+1. **Nicio cifră de dovadă socială scrisă în `messages/`.** Se pune `{count}` /
+   `{reviews}` și se umple din date. O cifră în traduceri nu crește niciodată,
+   trebuie nimerită identic în opt fișiere, și nimeni nu poate spune de unde vine.
+2. **Numărul de recenzii NU e egal cu numărul de comenzi.** Pare mărunt; e
+   semnalul cel mai vizibil că cifrele sunt fabricate.
+3. **Fără superlative pe landing page.** `#1 GENERATOR` a fost scos din toate
+   limbile: Meta și TikTok verifică pagina de destinație, nu doar textul reclamei,
+   iar campania poate fi respinsă cu creative perfect curate.
+4. **Fără urgență care nu expiră.** „Doar azi" permanent și cronometrul care se
+   reseta la fiecare vizită au dispărut. E exact tiparul pentru care contul de RO
+   a primit deja respingere pe TikTok („deceptive pricing strategies"). Reducerea
+   reală rămâne — vine din `packageCompareAtCents`, deci e verificabilă.
+5. **Promisiunile de timp se verifică în date, nu se aleg din burtă.**
+   ```bash
+   deploy/prod.sh psql "SELECT round(percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (\"completedAt\" - \"createdAt\"))))::int AS median_sec, round(percentile_cont(0.9) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (\"completedAt\" - \"createdAt\"))))::int AS p90_sec FROM generations WHERE \"completedAt\" IS NOT NULL AND \"createdAt\" > now() - interval '90 days'"
+   ```
+   Peste tot scrie acum „în câteva minute", care acoperă și median-ul, și P90.
+
+### Terminologie per piață
+
+`chalgapodarok.bg` numea produsul „манеле" — termenul ROMÂNESC — sub un brand
+numit ЧалгаПодарък. 53 de texte au trecut pe „чалга песен".
+
+⚠️ **Bulgara are gen gramatical**, iar „песен" e feminin, spre deosebire de
+„манеле" (neutru): înlocuirea cere acordul determinanților („сватбено манеле" →
+„сватбена чалга песен") și forma articulată corectă („манелето" → „чалга
+песента", nu „песенто"). O căutare-și-înlocuire simplă produce bulgară stricată.
+
+Numele de artiști fictivi se localizează și ele: „Топ на седмицата" de pe BG
+afișa Gigi, Nicu, Mariana, Florinel, Adi — din `sites.topTemplate[].artist`, nu
+din cod. Site-ul grecesc era deja corect.
+
+⚠️ **`Adi Șampanie` NU e nume de artist real** — legalele declară explicit că
+toate numele sunt fictive și parodice. Pe site-urile non-RO problema era că
+suna românesc, nu că ar fi fost real.
+
+### Bulgaria și euro
+
+Afișarea duală лева/euro a fost obligatorie **8 august 2025 – 8 august 2026**.
+Din 9 august 2026 prețul se anunță **doar în euro**, iar echivalentul în leva e
+opțional și informativ. Deci `currency='EUR'` pe `chalgapodarok.bg` e corect și
+nu mai are nevoie de afișare duală.
+
+Formatarea prețului: banda de preț compunea suma din bucăți și lipea codul
+valutar — ieșea `7,99EUR`. Se folosește `currencySymbol()` din `site-shared.ts`,
+care ia simbolul din `Intl` (`€`, `RON`, `лв.`).
+
+---
+
 ## 17. Stripe
 
 Un singur cont Stripe pentru toate site-urile; site-ul curent se ia din
@@ -1828,6 +2058,9 @@ mai jos.
 | să testez prompturi (versuri / Suno / Lyria) | admin `/site/playground` — trei laboratoare separate |
 | standardul UTM (parametri, vocabular, șabloane) | `apps/api/src/modules/analytics/utm-standard.ts` + oglinda `apps/web/lib/utm.ts` (§16.10) |
 | ceva ce scrie fișiere | `StorageService` — niciodată `fs` direct (§19.5) |
+| o sursă nouă de notificare push | `notification-kind.ts` + `sendToAdmins` + comutator în `/notificari` (§15.9) |
+| să exclud trafic din rapoarte | `sessionNoiseFilter()` — nu în JOIN-urile de atribuire (§16.12) |
+| o cifră de dovadă socială pe site | `site-stats.ts` + `{count}`/`{reviews}` în `messages/` — niciodată o cifră fixă (§16.13) |
 
 ### 19.1 Modul nou de API
 

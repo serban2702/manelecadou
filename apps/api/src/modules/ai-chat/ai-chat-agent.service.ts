@@ -1005,13 +1005,16 @@ export class AIChatAgentService {
     })();
   }
 
-  /** Web push către toți adminii — rezolvat lazy (serviciul e în alt modul). */
+  /**
+   * Web push către adminii care au cerut alertele de la Irina — rezolvat lazy
+   * (serviciul e în alt modul).
+   */
   private notifyAdminsPush(conv: Conversation, title: string, body: string): void {
     void (async () => {
       try {
         const pushMod = await import('../web-push/web-push.service');
         const webPush = this.moduleRef.get(pushMod.WebPushService, { strict: false });
-        await webPush.sendToAll({
+        await webPush.sendToAdmins('ai_alert', {
           title,
           body,
           tag: `chat-${conv.id}`,

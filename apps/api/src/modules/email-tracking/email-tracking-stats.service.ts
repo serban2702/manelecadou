@@ -63,6 +63,17 @@ function rate(num: number, den: number): number | null {
  * mesaj de recuperare la 24h își vede venitul separat de cel de la 72h, iar o
  * campanie își vede venitul separat de restul traficului din email.
  */
+/**
+ * Exclude clicurile și deschiderile venite de pe IP-urile noastre de admin
+ * (tabelul `admin_ips`) — un test intern pe un email umflă rata de click a
+ * campaniei exact ca un robot de scanare.
+ *
+ * `NOT EXISTS`, nu `NOT IN`: cu `NOT IN`, un `c.ip` NULL ar da NULL, iar rândul
+ * ar dispărea din raport în loc să fie păstrat.
+ */
+const CLICK_NOT_INTERNAL =
+  'AND NOT EXISTS (SELECT 1 FROM admin_ips ai WHERE ai.enabled = true AND ai.ip = c.ip)';
+
 @Injectable()
 export class EmailTrackingStatsService {
   constructor(
@@ -104,7 +115,7 @@ export class EmailTrackingStatsService {
       params,
     )) as Array<{ key: string; sent: number; recipients: number }>;
 
-    const noBots = q.includeBots ? '' : `AND c."isBot" = false`;
+    const noBots = `${CLICK_NOT_INTERNAL}${q.includeBots ? '' : ` AND c."isBot" = false`}`;
     const clickRows = (await this.clickRepo.query(
       `SELECT ${keyExpr} AS key,
               COUNT(*) FILTER (WHERE c."eventType"='click' ${noBots})::int AS clicks,
@@ -187,7 +198,7 @@ export class EmailTrackingStatsService {
     if (q.email) { params.push(`%${q.email.toLowerCase()}%`); where.push(`l."recipientEmail" ILIKE $${params.length}`); }
     params.push(q.limit);
     const limitIdx = params.length;
-    const noBots = q.includeBots ? '' : `AND c."isBot" = false`;
+    const noBots = `${CLICK_NOT_INTERNAL}${q.includeBots ? '' : ` AND c."isBot" = false`}`;
 
     // Trei agregări separate, unite la final pe email. Un singur JOIN între
     // linkuri, clicuri și plăți ar fi înmulțit venitul cu numărul de clicuri:

@@ -24,6 +24,7 @@ import { WebPushService } from '../web-push/web-push.service';
 import { ChatAttachmentsService } from './chat-attachments.service';
 import { ChatBlacklistService } from './chat-blacklist.service';
 import { PaymentsService } from '../payments/payments.service';
+import { Payment } from '../payments/payment.entity';
 import { PaymentAttributionService } from '../analytics/payment-attribution.service';
 import { normalizeTier, packageLabel, type PackageTier } from '../payments/packages';
 import { effectiveExperienceSlug, resolveSitePackage } from '../experiences/package-resolve';
@@ -60,6 +61,7 @@ export class ChatService implements OnModuleInit {
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(AnalyticsSession) private readonly analyticsSessions: Repository<AnalyticsSession>,
     @InjectRepository(QuickReply) private readonly quickReplies: Repository<QuickReply>,
+    @InjectRepository(Payment) private readonly paymentsRepo: Repository<Payment>,
     @Inject(forwardRef(() => ChatGateway))
     private readonly gateway: ChatGateway,
     private readonly translation: TranslationService,
@@ -434,18 +436,57 @@ export class ChatService implements OnModuleInit {
     const senderLabel = conversation.email
       ?? (ctx.userId ? `user:${ctx.userId.slice(0, 8)}` : `guest:${ctx.guestId?.slice(0, 8) ?? '?'}`);
     const preview = body.trim().slice(0, 140);
-    void this.webPush.sendToAll({
-      title: `💬 ${senderLabel}`,
-      body: preview + (body.length > 140 ? '…' : ''),
-      tag: `chat-${conversation.id}`, // mesajele din aceeași conversație se înlocuiesc
-      url: `/chat?c=${conversation.id}`,
-      icon: '/icon-512.png',
-      badge: '/icon-512.png',
-      data: { conversationId: conversation.id, messageId: saved.id },
-    }).catch(() => {
+    void (async () => {
+      // Statusul de plată se citește o singură dată, aici, și doar pentru adminii
+      // care au ales „doar clienți plătitori". Vezi `senderHasPaid`.
+      const senderHasPaid = await this.senderHasPaid(conversation);
+      await this.webPush.sendToAdmins(
+        'chat_message',
+        {
+          title: `💬 ${senderLabel}`,
+          body: preview + (body.length > 140 ? '…' : ''),
+          tag: `chat-${conversation.id}`, // mesajele din aceeași conversație se înlocuiesc
+          url: `/chat?c=${conversation.id}`,
+          icon: '/icon-512.png',
+          badge: '/icon-512.png',
+          data: { conversationId: conversation.id, messageId: saved.id },
+        },
+        { senderHasPaid },
+      );
+    })().catch(() => {
       /* silent — push e best-effort */
     });
     return saved;
+  }
+
+  /**
+   * Are clientul din conversația asta cel puțin o plată reușită?
+   *
+   * Se uită la user, guest ȘI email, nu doar la firul de chat: un om poate să fi
+   * cumpărat din formularul de pe site și abia apoi să scrie pe chat — pentru
+   * adminii cu modul „doar clienți plătitori", exact ăla e mesajul care nu
+   * trebuie ratat.
+   *
+   * Întoarce `undefined` când nu există niciun identificator după care să caute.
+   * Nedefinit înseamnă „nu știu", iar filtrul lasă atunci mesajul să treacă.
+   */
+  private async senderHasPaid(conv: Conversation): Promise<boolean | undefined> {
+    const conditions: Array<Record<string, string>> = [];
+    if (conv.userId) conditions.push({ userId: conv.userId });
+    if (conv.guestId) conditions.push({ guestId: conv.guestId });
+    if (conv.email) conditions.push({ customerEmail: conv.email });
+    if (conditions.length === 0) return undefined;
+    try {
+      const found = await this.paymentsRepo.findOne({
+        where: conditions.map((c) => ({ ...c, status: 'paid' as const })),
+        select: { id: true },
+      });
+      return !!found;
+    } catch (e) {
+      // O eroare de DB nu trebuie să însemne notificare pierdută.
+      this.logger.warn(`senderHasPaid failed for conv ${conv.id}: ${(e as Error).message}`);
+      return undefined;
+    }
   }
 
   /**
@@ -523,7 +564,7 @@ export class ChatService implements OnModuleInit {
             ? `user:${conversation.userId.slice(0, 8)}`
             : `guest:${conversation.guestId?.slice(0, 8) ?? '?'}`);
         void this.webPush
-          .sendToAll({
+          .sendToAdmins('final_step', {
             title: `💳 ${who} a apăsat pe Plătește`,
             body: `${p.description ?? 'Manea'} — ${(((p.amount as number) ?? 0) / 100).toFixed(2)} ${p.currency ?? 'RON'}. E pe pagina Stripe chiar acum.`,
             tag: `paylink-${conversation.id}`,
@@ -1275,7 +1316,7 @@ export class ChatService implements OnModuleInit {
       // lanseze manual RAPID. Alertă urgentă (nu lăsăm clientul plătit fără melodie).
       if (status === 'paid' && !willGenerate) {
         void this.webPush
-          .sendToAll({
+          .sendToAdmins('stalled_delivery', {
             title: `⚠️ Plată FĂRĂ melodie pornită — ${conv.email ?? 'guest'}`,
             body: 'Client plătit dar nu s-a pornit nicio generare (link ad-hoc/date incomplete). Pornește-o manual.',
             tag: `chat-${convId}`,
@@ -1366,7 +1407,7 @@ export class ChatService implements OnModuleInit {
             this.gateway.emitMessage({ message: savedMod, conversation: conv });
           } catch (e) {
             // Refacerea automată a eșuat — adminii trebuie să intervină manual.
-            void this.webPush.sendToAll({
+            void this.webPush.sendToAdmins('stalled_delivery', {
               title: `⚠️ Modificare plătită NEPORNITĂ — ${conv.email ?? 'guest'}`,
               body: 'Clientul a plătit modificarea dar regenerarea a eșuat. Intervino manual.',
               tag: `chat-${convId}`,
@@ -1380,7 +1421,7 @@ export class ChatService implements OnModuleInit {
       }
 
       // Push notification admin (best-effort)
-      void this.webPush.sendToAll({
+      void this.webPush.sendToAdmins('payment', {
         title: status === 'paid' ? `💰 Plată primită — ${conv.email ?? 'guest'}` : `⚠️ Plată eșuată — ${conv.email ?? 'guest'}`,
         body: status === 'paid' ? 'Verifică conversația.' : 'Userul a eșuat plata, ia legătura cu el.',
         tag: `chat-${convId}`,
@@ -1965,7 +2006,7 @@ export class ChatService implements OnModuleInit {
     }
 
     // Push notification către admins (best-effort)
-    void this.webPush.sendToAll({
+    void this.webPush.sendToAdmins('generation', {
       title: isOk ? `🎵 Comandă finalizată — ${conv.email ?? 'guest'}` : `⚠️ Generare eșuată — ${conv.email ?? 'guest'}`,
       body: isOk ? 'Melodia s-a generat cu succes.' : 'Verifică conversația și ia legătura cu clientul.',
       tag: `chat-${conv.id}`,

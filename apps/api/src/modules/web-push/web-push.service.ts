@@ -4,6 +4,12 @@ import { Repository, In } from 'typeorm';
 import webpush from 'web-push';
 import { WebPushSubscription } from './web-push-subscription.entity';
 import { SettingsService } from '../settings/settings.service';
+import { NotificationPrefsService } from '../notification-prefs/notification-prefs.service';
+import {
+  DEFAULT_NOTIFICATION_PREFS,
+  wantsNotification,
+  type NotificationKind,
+} from '../notification-prefs/notification-kind';
 
 /** Payload trimis prin push (decodat de SW în notification). */
 export interface PushPayload {
@@ -26,6 +32,7 @@ export class WebPushService implements OnModuleInit {
     @InjectRepository(WebPushSubscription)
     private readonly subs: Repository<WebPushSubscription>,
     private readonly settings: SettingsService,
+    private readonly prefs: NotificationPrefsService,
   ) {}
 
   async onModuleInit() {
@@ -110,11 +117,44 @@ export class WebPushService implements OnModuleInit {
     return this.sendBatch(subs, payload);
   }
 
-  /** Trimite la TOATE subscription-urile (un singur admin user pe acest sistem de obicei). */
+  /**
+   * Trimite la TOATE subscription-urile, fără să întrebe de preferințe.
+   *
+   * Rezervat notificării de test din ecranul de setări, unde adminul chiar cere
+   * să vadă că merge. Pentru orice notificare declanșată de platformă folosește
+   * `sendToAdmins`, altfel comutatoarele din `/notificari` nu înseamnă nimic.
+   */
   async sendToAll(payload: PushPayload): Promise<{ sent: number; pruned: number }> {
     if (!this.configured) return { sent: 0, pruned: 0 };
     const subs = await this.subs.find();
     return this.sendBatch(subs, payload);
+  }
+
+  /**
+   * Trimite o notificare doar adminilor care au cerut sursa asta.
+   *
+   * Un admin fără rând de preferințe primește tot — vezi
+   * DEFAULT_NOTIFICATION_PREFS. `senderHasPaid` contează numai pentru
+   * `chat_message` cu modul `paid_only`; lăsat nedefinit, mesajul trece.
+   */
+  async sendToAdmins(
+    kind: NotificationKind,
+    payload: PushPayload,
+    opts?: { senderHasPaid?: boolean },
+  ): Promise<{ sent: number; pruned: number; skipped: number }> {
+    if (!this.configured) return { sent: 0, pruned: 0, skipped: 0 };
+    const subs = await this.subs.find();
+    if (subs.length === 0) return { sent: 0, pruned: 0, skipped: 0 };
+
+    const prefsByUser = await this.prefs.getMany(subs.map((s) => s.userId));
+    const wanted = subs.filter((s) =>
+      wantsNotification(prefsByUser.get(s.userId) ?? DEFAULT_NOTIFICATION_PREFS, kind, opts),
+    );
+    const skipped = subs.length - wanted.length;
+    if (wanted.length === 0) return { sent: 0, pruned: 0, skipped };
+
+    const res = await this.sendBatch(wanted, payload);
+    return { ...res, skipped };
   }
 
   private async sendBatch(

@@ -6,12 +6,14 @@ import { WebPushService } from './web-push.service';
 import { WebPushController } from './web-push.controller';
 import { WebPushSubscription } from './web-push-subscription.entity';
 import { SettingsModule } from '../settings/settings.module';
+import { NotificationPrefsModule } from '../notification-prefs/notification-prefs.module';
 import { AdminGuard } from '../../common/admin.guard';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([WebPushSubscription]),
     SettingsModule,
+    NotificationPrefsModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({

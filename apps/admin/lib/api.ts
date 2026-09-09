@@ -18,5 +18,7 @@ export * from './api/suno.api';
 export * from './api/database.api';
 export * from './api/sites.api';
 export * from './api/web-push.api';
+export * from './api/notification-prefs.api';
+export * from './api/admin-ips.api';
 export * from './api/ai-chat.api';
 export * from './api/marketing.api';

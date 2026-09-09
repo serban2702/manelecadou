@@ -211,6 +211,17 @@ export class AnalyticsSession {
   @Column({ type: 'boolean', default: false })
   isBot!: boolean;
 
+  /**
+   * Trafic al nostru: sesiune venită de pe un IP de pe care s-a intrat în admin
+   * (vezi tabelul `admin_ips`). Exclusă din rapoarte oriunde se exclud și boții.
+   *
+   * Se scrie la crearea sesiunii, iar istoricul se poate marca retroactiv din
+   * admin. Indexat fiindcă intră în WHERE-ul fiecărei interogări de analytics.
+   */
+  @Index()
+  @Column({ type: 'boolean', default: false })
+  isInternal!: boolean;
+
   // ============ BOT DETECTION ============
 
   /** Scor de bot 0-100. >=70 considerat bot, 40-69 suspicious, <40 uman. */

@@ -23,6 +23,24 @@ const Ctx = createContext<SpaRouterCtx>({ pathname: '/', navigate: () => {} });
 
 const SPA_NAV_EVENT = 'spa:navigate';
 
+/** True cât timp un SpaRouter e montat. Vezi `requestSpaNavigation`. */
+let spaRouterMounted = false;
+
+/**
+ * Navigare cerută din AFARA arborelui React — click pe o notificare push, care
+ * ajunge aici prin `postMessage` din service worker, deci fără acces la context.
+ *
+ * Întoarce false când SpaRouter nu e montat (ex. ești pe /login): apelantul face
+ * atunci navigare clasică. Fără verificarea asta, pushState ar schimba bara de
+ * adrese fără să miște view-ul, iar notificarea ar părea că nu face nimic.
+ */
+export function requestSpaNavigation(to: string): boolean {
+  if (typeof window === 'undefined' || !spaRouterMounted) return false;
+  window.history.pushState({}, '', to);
+  window.dispatchEvent(new Event(SPA_NAV_EVENT));
+  return true;
+}
+
 type SpaNavGuard = (to: string, from: string) => boolean | Promise<boolean>;
 const spaNavGuards: SpaNavGuard[] = [];
 
@@ -82,9 +100,11 @@ export function SpaRouter({ children }: { children: ReactNode }) {
     };
     window.addEventListener('popstate', onPop);
     window.addEventListener(SPA_NAV_EVENT, sync as EventListener);
+    spaRouterMounted = true;
     return () => {
       window.removeEventListener('popstate', onPop);
       window.removeEventListener(SPA_NAV_EVENT, sync as EventListener);
+      spaRouterMounted = false;
     };
   }, []);
 

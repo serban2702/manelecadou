@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Conversation } from './conversation.entity';
 import { ChatMessage } from './message.entity';
 import { QuickReply } from './quick-reply.entity';
+import { Payment } from '../payments/payment.entity';
 import { ChatBlacklist } from './chat-blacklist.entity';
 import { ChatBlacklistService } from './chat-blacklist.service';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
@@ -26,7 +27,7 @@ import { MetaCapiModule } from '../meta-capi/meta-capi.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Conversation, ChatMessage, GuestSession, User, AnalyticsSession, QuickReply, ChatBlacklist]),
+    TypeOrmModule.forFeature([Conversation, ChatMessage, GuestSession, User, AnalyticsSession, QuickReply, ChatBlacklist, Payment]),
     AuthModule,
     OpenAiModule,
     KbModule,
