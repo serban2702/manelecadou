@@ -322,9 +322,9 @@
     "pay": "🛡️ Jednokratno plaćanje, bez pretplate",
     "warranty": "Garancija 30 dana.",
     "trust": {
-      "reviews": "<b>4.9/5</b> · 12.483 recenzija",
-      "count": "<b>50.000+</b> napravljenih pesama",
-      "speed": "Isporuka <b>~90 sek</b>",
+      "reviews": "<b>4.9/5</b> · {reviews} recenzija",
+      "count": "<b>{count}</b> pesama",
+      "speed": "Isporuka za <b>nekoliko minuta</b>",
       "versions": "<b>2 verzije</b> uključene"
     },
     "side": {
@@ -1529,13 +1529,13 @@
       "heroCta": "Napravi pesmu!",
       "heroSocial": "🔥 {count} pesama napravljeno danas",
       "statSongs": "Napravljenih pesama",
-      "statSongsValue": "100.000+",
+      "statSongsValue": "{count}",
       "statRating": "Ocena korisnika",
       "statRatingValue": "4,9/5",
       "statTime": "Vreme izrade",
       "statTimeValue": "2–5 min",
       "statUsers": "Aktivnih korisnika",
-      "statUsersValue": "2.000+",
+      "statUsersValue": "",
       "recentLabel": "Nedavno napravljeno:",
       "recentChip": "▶ {name} · {style}",
       "recent": [
@@ -1639,7 +1639,7 @@
       "lead": "Izaberi stil, dodaj detalje i mi pravimo muziku.",
       "offerBadge": "🎁 1+1 GRATIS",
       "offerBadgeDiscount": "🎁 1+1 GRATIS · {pct}% POPUSTA",
-      "offerTrust": "★ 4,9/5 iz preko 10.000 recenzija · ♪ 100.000+ napravljenih pesama",
+      "offerTrust": "★ 4,9/5 iz {reviews} recenzija · ♪ {count} napravljenih pesama",
       "styleKicker": "Izaberi muzički stil",
       "errStyle": "Izaberi muzički stil da nastaviš.",
       "storyLabel": "Izaberi priču",

@@ -322,9 +322,9 @@
     "pay": "🛡️ Tek seferlik ödeme, abonelik yok",
     "warranty": "30 gün garanti.",
     "trust": {
-      "reviews": "<b>4.9/5</b> · 12.483 yorum",
-      "count": "<b>50.000+</b> şarkı üretildi",
-      "speed": "Teslim <b>~90 sn</b>",
+      "reviews": "<b>4.9/5</b> · {reviews} yorum",
+      "count": "<b>{count}</b> şarkı",
+      "speed": "<b>Birkaç dakikada</b> teslim",
       "versions": "<b>2 versiyon</b> dahil"
     },
     "side": {
@@ -1529,13 +1529,13 @@
       "heroCta": "Şarkı yap!",
       "heroSocial": "🔥 Bugün {count} şarkı üretildi",
       "statSongs": "Üretilen şarkı",
-      "statSongsValue": "100.000+",
+      "statSongsValue": "{count}",
       "statRating": "Kullanıcı puanı",
       "statRatingValue": "4,9/5",
       "statTime": "Üretim süresi",
       "statTimeValue": "2–5 dk",
       "statUsers": "Aktif kullanıcı",
-      "statUsersValue": "2.000+",
+      "statUsersValue": "",
       "recentLabel": "Az önce üretilenler:",
       "recentChip": "▶ {name} · {style}",
       "recent": [
@@ -1639,7 +1639,7 @@
       "lead": "Stili seç, detayları ekle; müziği biz yapalım.",
       "offerBadge": "🎁 1+1 BEDAVA",
       "offerBadgeDiscount": "🎁 1+1 BEDAVA · %{pct} İNDİRİM",
-      "offerTrust": "★ 10.000'den fazla yorumla 4,9/5 · ♪ 100.000+ şarkı üretildi",
+      "offerTrust": "★ {reviews} yorumla 4,9/5 · ♪ {count} şarkı üretildi",
       "styleKicker": "Müzik stilini seç",
       "errStyle": "Devam etmek için bir müzik stili seç.",
       "storyLabel": "Bir hikâye seç",

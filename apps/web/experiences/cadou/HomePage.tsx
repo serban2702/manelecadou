@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useSite } from '@/lib/site-context';
+import { fillStats } from '@/lib/site-stats';
 import { formatPrice } from '@/lib/site-shared';
 import { getPagePath } from '@/lib/page-slugs';
 import { CadouShell } from './Shell';
@@ -36,6 +37,8 @@ function CadouStripeCancelBounce() {
 export default function CadouHomePage() {
   const site = useSite();
   const t = useTranslations('cadou.home');
+  // Cifra vine din comenzile reale (vezi `site-stats.ts`); fără date, blocul dispare.
+  const statSongs = fillStats(t('statSongsValue'), site);
   const { styles, testimonials } = useExperienceCatalog();
   const seedTesti = useCadouTestimonials();
   const stylePreview = useCadouStylePreview();
@@ -138,10 +141,10 @@ export default function CadouHomePage() {
         </section>
 
         <div className="cadou-stats">
-          <div><b>{t('statSongsValue')}</b><span>{t('statSongs')}</span></div>
+          {statSongs && <div><b>{statSongs}</b><span>{t('statSongs')}</span></div>}
           <div><b>{t('statRatingValue')}</b><span>{t('statRating')}</span></div>
           <div><b>{t('statTimeValue')}</b><span>{t('statTime')}</span></div>
-          <div><b>{t('statUsersValue')}</b><span>{t('statUsers')}</span></div>
+          {t('statUsersValue') && <div><b>{t('statUsersValue')}</b><span>{t('statUsers')}</span></div>}
         </div>
 
         <div className="cadou-recent" aria-hidden>

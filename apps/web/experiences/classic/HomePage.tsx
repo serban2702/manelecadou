@@ -32,6 +32,8 @@ export default function HomePage() {
   // Numărul de recenzii vine din cifrele reale; prea puține = badge-ul dispare,
   // în loc să afișeze o cifră inventată (vezi `site-stats.ts`).
   const testiBadge = fillStats(tHome('testi.badge'), site);
+  const trustReviews = fillStats(tHome.raw('trust.reviews') as string, site);
+  const trustCount = fillStats(tHome.raw('trust.count') as string, site);
   // „de la X" din cel mai ieftin pachet ACTIV — aceeași cifră ca în grila de
   // tarife și ca la checkout (`basePriceCents` e legacy și diverge).
   const fromCents = useFromPriceCents();
@@ -88,8 +90,8 @@ export default function HomePage() {
             </button>
           </div>
           <div className="trust-row">
-            <span>⭐ <span dangerouslySetInnerHTML={{ __html: tHome.raw('trust.reviews') as string }} /></span>
-            <span>🎤 <span dangerouslySetInnerHTML={{ __html: tHome.raw('trust.count') as string }} /></span>
+            {trustReviews && <span>⭐ <span dangerouslySetInnerHTML={{ __html: trustReviews }} /></span>}
+            {trustCount && <span>🎤 <span dangerouslySetInnerHTML={{ __html: trustCount }} /></span>}
             <span>⚡ <span dangerouslySetInnerHTML={{ __html: tHome.raw('trust.speed') as string }} /></span>
             <span>🎁 <span dangerouslySetInnerHTML={{ __html: tHome.raw('trust.versions') as string }} /></span>
           </div>

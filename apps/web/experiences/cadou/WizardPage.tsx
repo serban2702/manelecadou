@@ -8,6 +8,7 @@ import { readFollowPromo } from '@/lib/follow-promo';
 import { track } from '@/lib/tracking';
 import { useSession } from '@/lib/providers';
 import { useSite } from '@/lib/site-context';
+import { fillStats } from '@/lib/site-stats';
 import { formatPrice } from '@/lib/site-shared';
 import { OCC, VOICES } from '@/lib/seed-data';
 import { useExperienceCatalog } from '../use-experience-catalog';
@@ -88,6 +89,7 @@ function CadouTapHand() {
 function WizardInner() {
   const site = useSite();
   const t = useTranslations('cadou.wizard');
+  const offerTrust = fillStats(t('offerTrust'), site);
   const fromLabel = useCadouFromName().label;
   const session = useSession();
   const search = useSearchParams();
@@ -530,7 +532,7 @@ function WizardInner() {
                 {compareAt > 0 && <s>{formatPrice(site, compareAt)}</s>}
                 {fromPrice !== null && <strong>{formatPrice(site, fromPrice)}</strong>}
               </div>
-              <div className="cadou-offer-trust">{t('offerTrust')}</div>
+              {offerTrust && <div className="cadou-offer-trust">{offerTrust}</div>}
             </div>
           </div>
           <div className="cadou-stepper">

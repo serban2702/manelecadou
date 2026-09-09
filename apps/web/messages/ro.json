@@ -322,9 +322,9 @@
     "pay": "🛡️ Plată unică, fără abonament",
     "warranty": "Garanție 30 zile.",
     "trust": {
-      "reviews": "<b>4.9/5</b> · 12.483 review-uri",
-      "count": "<b>50.000+</b> manele generate",
-      "speed": "Livrare în <b>3 minute</b>",
+      "reviews": "<b>4.9/5</b> · {reviews} review-uri",
+      "count": "<b>{count}</b> manele generate",
+      "speed": "Livrare în <b>câteva minute</b>",
       "versions": "<b>2 versiuni</b> incluse"
     },
     "side": {
@@ -1529,13 +1529,13 @@
       "heroCta": "Fă o manea!",
       "heroSocial": "🔥 {count} manele create azi",
       "statSongs": "Manele generate",
-      "statSongsValue": "100.000+",
+      "statSongsValue": "{count}",
       "statRating": "Rating utilizatori",
       "statRatingValue": "4,9/5",
       "statTime": "Timp de generare",
       "statTimeValue": "2–5 min",
       "statUsers": "Utilizatori activi",
-      "statUsersValue": "2.000+",
+      "statUsersValue": "",
       "recentLabel": "Recent generate:",
       "recentChip": "▶ {name} · {style}",
       "recent": [
@@ -1639,7 +1639,7 @@
       "lead": "Alege stilul, adaugă detaliile și noi creăm muzica.",
       "offerBadge": "🎁 1+1 GRATIS",
       "offerBadgeDiscount": "🎁 1+1 GRATIS · {pct}% REDUCERE",
-      "offerTrust": "★ 4,9/5 din peste 10.000 recenzii · ♪ 100.000+ melodii create",
+      "offerTrust": "★ 4,9/5 din {reviews} recenzii · ♪ {count} melodii create",
       "styleKicker": "Alege stilul muzical",
       "errStyle": "Alege un stil muzical ca să continui.",
       "storyLabel": "Alege o poveste",

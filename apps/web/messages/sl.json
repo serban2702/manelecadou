@@ -322,9 +322,9 @@
     "pay": "🛡️ Enkratno plačilo, brez naročnine",
     "warranty": "30-dnevna garancija.",
     "trust": {
-      "reviews": "<b>4.9/5</b> · 12.483 ocen",
-      "count": "<b>50.000+</b> ustvarjenih pesmi",
-      "speed": "Dostava <b>~90 sek</b>",
+      "reviews": "<b>4.9/5</b> · {reviews} ocen",
+      "count": "<b>{count}</b> pesmi",
+      "speed": "Dostava v <b>nekaj minutah</b>",
       "versions": "<b>2 verziji</b> vključeni"
     },
     "side": {
@@ -1529,13 +1529,13 @@
       "heroCta": "Naredi pesem!",
       "heroSocial": "🔥 Danes ustvarjenih pesmi: {count}",
       "statSongs": "Ustvarjenih pesmi",
-      "statSongsValue": "100.000+",
+      "statSongsValue": "{count}",
       "statRating": "Ocena uporabnikov",
       "statRatingValue": "4,9/5",
       "statTime": "Čas ustvarjanja",
       "statTimeValue": "2–5 min",
       "statUsers": "Aktivnih uporabnikov",
-      "statUsersValue": "2.000+",
+      "statUsersValue": "",
       "recentLabel": "Nedavno ustvarjeno:",
       "recentChip": "▶ {name} · {style}",
       "recent": [
@@ -1639,7 +1639,7 @@
       "lead": "Izberi slog, dodaj podrobnosti in glasbo ustvarimo mi.",
       "offerBadge": "🎁 1+1 BREZPLAČNO",
       "offerBadgeDiscount": "🎁 1+1 BREZPLAČNO · {pct}% POPUSTA",
-      "offerTrust": "★ 4,9/5 iz več kot 10.000 ocen · ♪ 100.000+ ustvarjenih pesmi",
+      "offerTrust": "★ 4,9/5 iz {reviews} ocen · ♪ {count} ustvarjenih pesmi",
       "styleKicker": "Izberi glasbeni slog",
       "errStyle": "Za nadaljevanje izberi glasbeni slog.",
       "storyLabel": "Izberi zgodbo",
