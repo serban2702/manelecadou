@@ -213,6 +213,11 @@ export interface ProfitExpenseItem {
   currency: 'RON' | 'EUR' | 'USD';
   amounts: Record<string, number>;
   defaultAmount?: number | null;
+  /** Prima/ultima zi în care cheltuiala e activă (`YYYY-MM-DD`, inclusiv). Gol = nelimitat. */
+  startDay?: string | null;
+  endDay?: string | null;
+  /** `true` = suma e fără TVA și intră în baza de TVA; `false` = TVA deja inclus. */
+  vatApplies?: boolean;
   builtin?: string | null;
 }
 
@@ -238,6 +243,9 @@ export interface ProfitRecurringLine {
   cadence: 'monthly' | 'yearly';
   currency: 'RON' | 'EUR' | 'USD';
   builtin?: string | null;
+  startDay?: string | null;
+  endDay?: string | null;
+  vatApplies: boolean;
   amountCents: number;
   ronCents: number;
 }
@@ -251,7 +259,10 @@ export interface ProfitReport {
   suno: { ronCents: number; requests: number; usdPerRequest: number };
   recurring: ProfitRecurringLine[];
   recurringTotalRonCents: number;
+  /** Total cheltuieli înainte de TVA (Meta + Suno + toate recurentele). */
   preVatTotalRonCents: number;
+  /** Baza impozabilă: Meta + Suno + recurentele marcate `vatApplies`. */
+  vatBaseRonCents: number;
   vatRatePct: number;
   vatRonCents: number;
   microTaxRatePct: number;

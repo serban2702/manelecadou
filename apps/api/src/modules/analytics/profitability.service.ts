@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import Stripe from 'stripe';
 
 import { ProfitConfig, ProfitConfigData, ProfitExpenseItem } from './profit-config.entity';
+import { expenseValueForDay } from './profit-math';
 import { AdSpend } from './ad-spend.entity';
 import { Payment } from '../payments/payment.entity';
 import { SunoLog } from '../suno/suno-log.entity';
@@ -33,9 +34,12 @@ export const DEFAULT_PROFIT_CONFIG: ProfitConfigData = {
   microTaxRatePct: 1,
   items: [
     { id: 'chatgpt', builtin: 'chatgpt', label: 'ChatGPT API', cadence: 'monthly', currency: 'USD', amounts: {}, defaultAmount: null },
-    { id: 'grok', builtin: 'grok', label: 'Grok', cadence: 'monthly', currency: 'USD', amounts: {}, defaultAmount: 30 },
-    { id: 'capcut', builtin: 'capcut', label: 'CapCut', cadence: 'monthly', currency: 'USD', amounts: {}, defaultAmount: 20 },
-    { id: 'hetzner', builtin: 'hetzner', label: 'Server Hetzner', cadence: 'monthly', currency: 'EUR', amounts: {}, defaultAmount: 45 },
+    // Grok: abonament ținut 3 luni (18.05 → 18.08.2026), 135 lei/lună cu TVA inclus.
+    { id: 'grok', builtin: 'grok', label: 'Grok', cadence: 'monthly', currency: 'RON', amounts: {}, defaultAmount: 135, startDay: '2026-05-18', endDay: '2026-08-18' },
+    // CapCut: 2 luni (13.07 → 13.09.2026), 150 lei/lună cu TVA inclus.
+    { id: 'capcut', builtin: 'capcut', label: 'CapCut', cadence: 'monthly', currency: 'RON', amounts: {}, defaultAmount: 150, startDay: '2026-07-13', endDay: '2026-09-13' },
+    // Agenție externă de campanii, o singură lună (22.07 → 22.08.2026), 1270 lei cu TVA inclus.
+    { id: 'puggy', builtin: 'puggy', label: 'Campanii Puggy Agency', cadence: 'monthly', currency: 'RON', amounts: {}, defaultAmount: 1270, startDay: '2026-07-22', endDay: '2026-08-22' },
     { id: 'tiktok_ads', builtin: 'tiktok_ads', label: 'TikTok Ads', cadence: 'monthly', currency: 'RON', amounts: {}, defaultAmount: null },
     { id: 'domains', builtin: 'domains', label: 'Domenii internet', cadence: 'yearly', currency: 'RON', amounts: {}, defaultAmount: null },
   ],
@@ -47,6 +51,11 @@ export interface ProfitRecurringLine {
   cadence: 'monthly' | 'yearly';
   currency: 'RON' | 'EUR' | 'USD';
   builtin?: string | null;
+  /** Intervalul de activitate al cheltuielii (gol = nelimitat). */
+  startDay?: string | null;
+  endDay?: string | null;
+  /** `true` = suma intră în baza de TVA; `false` = TVA deja inclus în ea. */
+  vatApplies: boolean;
   /** Suma în moneda proprie, pro-rata pe interval (pentru transparență). */
   amountCents: number;
   /** Aceeași sumă convertită în bani RON. */
@@ -62,8 +71,13 @@ export interface ProfitReport {
   suno: { ronCents: number; requests: number; usdPerRequest: number };
   recurring: ProfitRecurringLine[];
   recurringTotalRonCents: number;
-  /** Subtotal cheltuieli cărora li se aplică TVA (Meta + Suno + recurente). */
+  /** Subtotal cheltuieli înainte de TVA (Meta + Suno + TOATE recurentele). */
   preVatTotalRonCents: number;
+  /**
+   * Baza pe care se calculează TVA: Meta + Suno + doar recurentele marcate
+   * `vatApplies`. Restul au TVA-ul deja inclus în sumă și nu se mai taxează.
+   */
+  vatBaseRonCents: number;
   vatRatePct: number;
   vatRonCents: number;
   microTaxRatePct: number;
@@ -75,8 +89,9 @@ export interface ProfitReport {
   marginPct: number;
   /**
    * Serie zilnică venituri vs cheltuieli (graficul din dashboard). Cheltuielile
-   * zilei = Meta + Suno + recurente pro-rata + TVA-ul lor + impozitul micro pe
-   * venitul zilei + comisionul Stripe al plăților zilei (zile Europe/Bucharest).
+   * zilei = Meta + Suno + recurente pro-rata + TVA-ul bazei impozabile a zilei +
+   * impozitul micro pe venitul zilei + comisionul Stripe al plăților zilei
+   * (zile Europe/Bucharest).
    */
   daily: Array<{
     day: string;
@@ -182,6 +197,12 @@ export class ProfitabilityService {
           const da = it?.defaultAmount;
           const defaultAmount =
             da == null || da === ('' as unknown) ? null : num(da, 0);
+          const day = (v: unknown): string | null =>
+            typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+          let startDay = day(it?.startDay);
+          let endDay = day(it?.endDay);
+          // Interval inversat = intenție imposibilă; îl ignorăm în loc să tăcem la zero.
+          if (startDay && endDay && endDay < startDay) { startDay = null; endDay = null; }
           return {
             id: String(it?.id ?? Math.random().toString(36).slice(2)),
             label: String(it?.label ?? 'Cheltuială').slice(0, 80),
@@ -189,6 +210,9 @@ export class ProfitabilityService {
             currency: cur,
             amounts,
             defaultAmount,
+            startDay,
+            endDay,
+            vatApplies: it?.vatApplies === true,
             builtin: it?.builtin ?? null,
           };
         })
@@ -241,11 +265,13 @@ export class ProfitabilityService {
       return currency === 'EUR' ? wk.eurToRon : wk.usdToRon;
     };
 
-    // Acumulatoare pe zi pentru seria `daily` (venituri + cheltuieli pre-TVA).
-    // Bump doar pe zilele intervalului — conversiile de fus orar de la margini
-    // pot produce zile vecine; le ignorăm în serie (totalurile rămân exacte).
+    // Acumulatoare pe zi pentru seria `daily`. Cheltuielile se țin în DOUĂ hărți:
+    // `dailyVatBase` (peste care se aplică TVA) și `dailyNoVat` (sume cu TVA deja
+    // inclus). Bump doar pe zilele intervalului — conversiile de fus orar de la
+    // margini pot produce zile vecine; le ignorăm în serie (totalurile rămân exacte).
     const dailyRevenue = new Map<string, number>(allDays.map((d) => [d, 0]));
-    const dailyPreVat = new Map<string, number>(allDays.map((d) => [d, 0]));
+    const dailyVatBase = new Map<string, number>(allDays.map((d) => [d, 0]));
+    const dailyNoVat = new Map<string, number>(allDays.map((d) => [d, 0]));
     const bumpDay = (map: Map<string, number>, day: string, cents: number) => {
       if (map.has(day)) map.set(day, (map.get(day) ?? 0) + cents);
     };
@@ -264,7 +290,7 @@ export class ProfitabilityService {
       if (d.currency) metaCurrency = d.currency;
       const ron = d.cents * rateFor(d.date, (d.currency as 'RON' | 'EUR' | 'USD') ?? 'RON');
       metaRonAcc += ron;
-      bumpDay(dailyPreVat, d.date, Math.round(ron));
+      bumpDay(dailyVatBase, d.date, Math.round(ron));
     }
     const metaRonCents = Math.round(metaRonAcc);
 
@@ -276,13 +302,15 @@ export class ProfitabilityService {
       sunoRequests += d.n;
       const ron = d.n * cfg.sunoUsdPerRequest * rateFor(d.day, 'USD');
       sunoRonAcc += ron;
-      bumpDay(dailyPreVat, d.day, Math.round(ron * 100));
+      bumpDay(dailyVatBase, d.day, Math.round(ron * 100));
     }
     const sunoRonCents = Math.round(sunoRonAcc * 100);
 
     // --- 4) Cheltuieli recurente, pro-rata pe zile, cu cursul săptămânii fiecărei zile ---
     const recurring: ProfitRecurringLine[] = cfg.items.map((it) => {
       const divisor = it.cadence === 'monthly' ? DAYS_PER_MONTH : DAYS_PER_YEAR;
+      const vatApplies = it.vatApplies === true;
+      const target = vatApplies ? dailyVatBase : dailyNoVat;
       let unit = 0; // sumă în moneda proprie (pentru transparență)
       let ron = 0;
       for (const day of allDays) {
@@ -291,7 +319,7 @@ export class ProfitabilityService {
         unit += daily;
         const dayRon = daily * rateFor(day, it.currency);
         ron += dayRon;
-        bumpDay(dailyPreVat, day, Math.round(dayRon * 100));
+        bumpDay(target, day, Math.round(dayRon * 100));
       }
       return {
         id: it.id,
@@ -299,15 +327,24 @@ export class ProfitabilityService {
         cadence: it.cadence,
         currency: it.currency,
         builtin: it.builtin ?? null,
+        startDay: it.startDay ?? null,
+        endDay: it.endDay ?? null,
+        vatApplies,
         amountCents: Math.round(unit * 100),
         ronCents: Math.round(ron * 100),
       };
     });
     const recurringTotalRonCents = recurring.reduce((a, r) => a + r.ronCents, 0);
 
-    // --- 5) TVA peste TOATE cheltuielile de mai sus (Meta + Suno + recurente) ---
+    // --- 5) TVA doar peste baza impozabilă: Meta + Suno + recurentele marcate
+    //        `vatApplies`. Restul vin cu TVA-ul deja în sumă (facturi RO), deci
+    //        taxate încă o dată ar fi dublă impozitare. ---
+    const recurringVatBaseRonCents = recurring
+      .filter((r) => r.vatApplies)
+      .reduce((a, r) => a + r.ronCents, 0);
     const preVatTotalRonCents = metaRonCents + sunoRonCents + recurringTotalRonCents;
-    const vatRonCents = Math.round((preVatTotalRonCents * cfg.vatRatePct) / 100);
+    const vatBaseRonCents = metaRonCents + sunoRonCents + recurringVatBaseRonCents;
+    const vatRonCents = Math.round((vatBaseRonCents * cfg.vatRatePct) / 100);
 
     // --- 6) Impozit microîntreprindere (% din venituri, fără TVA peste el) ---
     const microTaxRonCents = Math.round((revenueRonCents * cfg.microTaxRatePct) / 100);
@@ -324,10 +361,12 @@ export class ProfitabilityService {
     // --- 8) Seria zilnică venituri vs cheltuieli (aceeași formulă, pe zi) ---
     const daily = allDays.map((day) => {
       const rev = dailyRevenue.get(day) ?? 0;
-      const preVat = dailyPreVat.get(day) ?? 0;
+      const vatBase = dailyVatBase.get(day) ?? 0;
+      const noVat = dailyNoVat.get(day) ?? 0;
       const expenses =
-        preVat +
-        Math.round((preVat * cfg.vatRatePct) / 100) +
+        vatBase +
+        noVat +
+        Math.round((vatBase * cfg.vatRatePct) / 100) +
         Math.round((rev * cfg.microTaxRatePct) / 100) +
         (stripeFee.byDay.get(day) ?? 0);
       return { day, revenueRonCents: rev, expensesRonCents: expenses, profitRonCents: rev - expenses };
@@ -343,6 +382,7 @@ export class ProfitabilityService {
       recurring,
       recurringTotalRonCents,
       preVatTotalRonCents,
+      vatBaseRonCents,
       vatRatePct: cfg.vatRatePct,
       vatRonCents,
       microTaxRatePct: cfg.microTaxRatePct,
@@ -441,19 +481,9 @@ export class ProfitabilityService {
 
   // ============== HELPERS — PRO-RATA ==============
 
-  /** Valoarea (în moneda item) aplicabilă zilei `day`: override-ul perioadei sau defaultAmount. */
+  /** Vezi `profit-math.ts` — regula stă acolo ca să fie testabilă fără NestJS. */
   private valueForPeriod(item: ProfitExpenseItem, day: string): number {
-    let key: string;
-    if (item.cadence === 'monthly') {
-      key = day.slice(0, 7); // YYYY-MM
-    } else {
-      const yy = +day.slice(0, 4);
-      const mm = +day.slice(5, 7);
-      key = String(mm >= 5 ? yy : yy - 1); // an fiscal mai→apr
-    }
-    const override = item.amounts[key];
-    if (override != null && Number.isFinite(override)) return override;
-    return item.defaultAmount != null && Number.isFinite(item.defaultAmount) ? item.defaultAmount : 0;
+    return expenseValueForDay(item, day);
   }
 
   // ============== HELPERS — STRIPE FEES ==============

@@ -1627,6 +1627,13 @@ const PROFIT_START_YEAR = 2026;
 const PROFIT_START_MONTH = 5; // mai
 
 /** Lunile calendaristice din 05.2026 până în luna curentă (inclusiv). */
+/** `2026-05-18` → `18 mai`. Gol/invalid → null (rândul afișează „…"). */
+function shortDay(day?: string | null): string | null {
+  if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const d = new Date(`${day}T12:00:00Z`);
+  return d.toLocaleDateString('ro-RO', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+}
+
 function profitMonths(): Array<{ key: string; label: string }> {
   const now = new Date();
   const res: Array<{ key: string; label: string }> = [];
@@ -1774,7 +1781,8 @@ function ProfitStats({ report, loading }: { report: ProfitReport | null; loading
             <Receipt className="h-4 w-4 text-primary" /> Defalcare cheltuieli
           </CardTitle>
           <CardDescription>
-            Toate sumele în lei. Meta + Suno + recurentele intră în baza de TVA ({r?.vatRatePct ?? 21}%).
+            Toate sumele în lei. TVA ({r?.vatRatePct ?? 21}%) se aplică doar peste Meta, Suno și
+            cheltuielile bifate „TVA se adaugă" în Setări — restul vin cu TVA-ul deja în sumă.
             Impozitul și comisionul Stripe nu au TVA. Conversiile valutare folosesc cursul fiecărei
             săptămâni (setabil în „Setări"; implicit {r ? `1€=${r.fx.eurToRon} · 1$=${r.fx.usdToRon}` : '—'} lei).
           </CardDescription>
@@ -1807,8 +1815,16 @@ function ProfitStats({ report, loading }: { report: ProfitReport | null; loading
                     key={line.id}
                     label={line.label}
                     detail={
-                      <span className="inline-flex items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1.5 flex-wrap">
                         <Badge variant="muted" className="text-[10px]">{line.cadence === 'monthly' ? 'lunar' : 'anual'}</Badge>
+                        {line.vatApplies ? null : (
+                          <Badge variant="muted" className="text-[10px]">TVA inclus</Badge>
+                        )}
+                        {line.startDay || line.endDay ? (
+                          <span className="text-[11px]">
+                            {shortDay(line.startDay) || '…'} → {shortDay(line.endDay) || '…'}
+                          </span>
+                        ) : null}
                         {line.currency !== 'RON' ? <span className="text-[11px]">convertit din {line.currency}</span> : null}
                       </span>
                     }
@@ -1817,11 +1833,15 @@ function ProfitStats({ report, loading }: { report: ProfitReport | null; loading
                   />
                 ))}
                 <TableRow className="border-t border-border font-medium">
-                  <TableCell>Subtotal (bază TVA)</TableCell>
+                  <TableCell>Subtotal cheltuieli (fără TVA)</TableCell>
                   <TableCell className="text-muted-foreground text-xs">Meta + Suno + recurente</TableCell>
                   <TableCell className="text-right tabular-nums">{RON(r.preVatTotalRonCents)}</TableCell>
                 </TableRow>
-                <ProfitRow label={`TVA ${r.vatRatePct}%`} detail="peste cheltuielile de mai sus" cents={r.vatRonCents} />
+                <ProfitRow
+                  label={`TVA ${r.vatRatePct}%`}
+                  detail={`bază impozabilă ${RON(r.vatBaseRonCents)}`}
+                  cents={r.vatRonCents}
+                />
                 <ProfitRow
                   label={`Impozit ${r.microTaxRatePct}%`}
                   detail="microîntreprindere (din venituri)"
@@ -1953,6 +1973,9 @@ function ProfitSettings({ onSaved }: { onSaved: () => void }) {
                 currency: 'RON',
                 amounts: {},
                 defaultAmount: null,
+                startDay: null,
+                endDay: null,
+                vatApplies: false,
               },
             ],
           }
@@ -2054,7 +2077,8 @@ function ProfitSettings({ onSaved }: { onSaved: () => void }) {
               <CardTitle className="flex items-center gap-2"><Wallet className="h-4 w-4 text-primary" /> Cheltuieli recurente</CardTitle>
               <CardDescription>
                 Câte un input pe lună (sau pe an fiscal mai→apr). Suma se împarte la 30,5 (lunar) / 365 (anual) și se
-                înmulțește cu zilele din intervalul selectat. „Implicit" se aplică perioadelor lăsate goale.
+                înmulțește cu zilele din intervalul selectat. „Implicit" se aplică perioadelor lăsate goale, dar
+                numai între „Activă de la" și „Până la" — în afara lor cheltuiala valorează zero.
               </CardDescription>
             </div>
             <Button size="sm" variant="outline" onClick={addItem}><Plus className="mr-2 h-4 w-4" /> Adaugă</Button>
@@ -2162,6 +2186,39 @@ function ProfitItemEditor({
         <Button variant="ghost" size="icon-sm" className="text-destructive mb-0.5" onClick={onRemove} title="Șterge cheltuiala">
           <Trash2 />
         </Button>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="space-y-1 w-40">
+          <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">Activă de la</Label>
+          <Input
+            type="date"
+            value={item.startDay ?? ''}
+            onChange={(e) => onPatch({ startDay: e.target.value || null })}
+          />
+        </div>
+        <div className="space-y-1 w-40">
+          <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">Până la (inclusiv)</Label>
+          <Input
+            type="date"
+            value={item.endDay ?? ''}
+            onChange={(e) => onPatch({ endDay: e.target.value || null })}
+          />
+        </div>
+        <label className="mb-2 flex items-center gap-2 text-xs cursor-pointer select-none">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-primary"
+            checked={item.vatApplies === true}
+            onChange={(e) => onPatch({ vatApplies: e.target.checked })}
+          />
+          <span>
+            Se adaugă TVA peste sumă
+            <span className="block text-[11px] text-muted-foreground">
+              Lasă nebifat dacă factura are deja TVA-ul inclus.
+            </span>
+          </span>
+        </label>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">

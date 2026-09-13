@@ -27,7 +27,22 @@ export interface ProfitExpenseItem {
   amounts: Record<string, number>;
   /** Valoare implicită aplicată perioadelor fără override (unitatea monedei). */
   defaultAmount?: number | null;
-  /** Cheie pentru cheltuielile predefinite (chatgpt/grok/capcut/hetzner/tiktok_ads/domains). */
+  /**
+   * Prima zi în care cheltuiala e activă (`YYYY-MM-DD`, INCLUSIV). Gol = dintotdeauna.
+   * Există pentru abonamente ținute doar câteva luni (ex. Grok 18.05→18.08): fără
+   * interval, `defaultAmount` s-ar aplica la nesfârșit, iar pe un raport pe tot
+   * istoricul ar factura luni în care serviciul nici nu era plătit.
+   */
+  startDay?: string | null;
+  /** Ultima zi în care cheltuiala e activă (`YYYY-MM-DD`, INCLUSIV). Gol = până azi. */
+  endDay?: string | null;
+  /**
+   * `true` = suma e FĂRĂ TVA, deci intră în baza pe care se calculează TVA-ul.
+   * `false` (implicit) = TVA-ul e deja în sumă — cazul obișnuit al facturilor
+   * de la furnizori români. Aplicat greșit, TVA-ul s-ar număra de două ori.
+   */
+  vatApplies?: boolean;
+  /** Cheie pentru cheltuielile predefinite (chatgpt/grok/capcut/tiktok_ads/domains). */
   builtin?: string | null;
 }
 
