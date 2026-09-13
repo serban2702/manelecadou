@@ -1844,9 +1844,20 @@ formular mascat și nu a avansat deloc. NU repeta.`;
     return out;
   }
 
-  /** Blocul de prompt cu discuțiile anterioare (vezi `loadPriorConversations`). */
+  /** Blocul de prompt cu discuțiile anterioare (vezi `loadPriorConversations`).
+   *
+   * Nu aruncă NICIODATĂ: e un plus de context, nu o dependență. O eroare aici
+   * (SQL, timeout) ar fi urcat până în `runAgent` și l-ar fi oprit înainte de
+   * orice `send_message` — adică clientul ar fi rămas fără răspuns exact la
+   * mesajul „unde e comanda mea?". Mai bine fără istoric decât fără răspuns. */
   private async buildPriorConversationsBlock(conv: Conversation): Promise<string> {
-    const prior = await this.loadPriorConversations(conv);
+    let prior: PriorConversation[] = [];
+    try {
+      prior = await this.loadPriorConversations(conv);
+    } catch (e) {
+      this.logger.warn(`loadPriorConversations failed conv=${conv.id.slice(0, 8)}: ${(e as Error).message}`);
+      return '';
+    }
     if (prior.length === 0) return '';
     const onlyIp = prior.every((p) => p.matchedBy === 'ip');
 
