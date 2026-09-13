@@ -13,6 +13,12 @@ import {
  * - `cadence='yearly'` → `amounts` e cheiat pe AN FISCAL care începe în mai,
  *   eticheta = anul de start `YYYY` (ex. "2026" = 05.2026 → 04.2027);
  *   pro-rata = sumă / 365 × zile_din_anul-fiscal_în_interval.
+ * - `cadence='once'` → o PLATĂ UNICĂ: `defaultAmount` e suma totală, distribuită
+ *   uniform pe zilele dintre `startDay` și `endDay`. Totalul pe tot intervalul e
+ *   exact suma introdusă — spre deosebire de `monthly`, unde divizorul fix de
+ *   30.5 zile face ca o lună calendaristică de 31-32 de zile să iasă mai scumpă
+ *   decât factura. Fără ambele date, cheltuiala valorează zero (n-ar avea pe ce
+ *   să se împartă).
  *
  * `defaultAmount` (opțional) se aplică oricărei perioade fără override în `amounts`
  * — util pentru abonamente fixe (Grok 30$, Capcut 20$, Hetzner 45€). Valorile sunt
@@ -21,11 +27,14 @@ import {
 export interface ProfitExpenseItem {
   id: string;
   label: string;
-  cadence: 'monthly' | 'yearly';
+  cadence: 'monthly' | 'yearly' | 'once';
   currency: 'RON' | 'EUR' | 'USD';
-  /** Override per perioadă (cheie `YYYY-MM` sau `YYYY`), în unitatea monedei. */
+  /** Override per perioadă (cheie `YYYY-MM` sau `YYYY`), în unitatea monedei. Ignorat pentru `once`. */
   amounts: Record<string, number>;
-  /** Valoare implicită aplicată perioadelor fără override (unitatea monedei). */
+  /**
+   * Valoare implicită aplicată perioadelor fără override (unitatea monedei).
+   * Pentru `cadence='once'` e chiar suma totală a plății.
+   */
   defaultAmount?: number | null;
   /**
    * Prima zi în care cheltuiala e activă (`YYYY-MM-DD`, INCLUSIV). Gol = dintotdeauna.
@@ -36,6 +45,7 @@ export interface ProfitExpenseItem {
   startDay?: string | null;
   /** Ultima zi în care cheltuiala e activă (`YYYY-MM-DD`, INCLUSIV). Gol = până azi. */
   endDay?: string | null;
+  /** Ambele date sunt OBLIGATORII pentru `cadence='once'`. */
   /**
    * `true` = suma e FĂRĂ TVA, deci intră în baza pe care se calculează TVA-ul.
    * `false` (implicit) = TVA-ul e deja în sumă — cazul obișnuit al facturilor

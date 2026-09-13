@@ -209,7 +209,7 @@ export class AnalyticsApi {
 export interface ProfitExpenseItem {
   id: string;
   label: string;
-  cadence: 'monthly' | 'yearly';
+  cadence: 'monthly' | 'yearly' | 'once';
   currency: 'RON' | 'EUR' | 'USD';
   amounts: Record<string, number>;
   defaultAmount?: number | null;
@@ -240,14 +240,24 @@ export interface ProfitConfigData {
 export interface ProfitRecurringLine {
   id: string;
   label: string;
-  cadence: 'monthly' | 'yearly';
+  cadence: 'monthly' | 'yearly' | 'once';
   currency: 'RON' | 'EUR' | 'USD';
   builtin?: string | null;
   startDay?: string | null;
   endDay?: string | null;
   vatApplies: boolean;
+  // (ProfitRecurringLine)
   amountCents: number;
   ronCents: number;
+}
+
+export interface ProfitAdLine {
+  platform: string;
+  label: string;
+  rawCents: number;
+  currency: string | null;
+  ronCents: number;
+  vatApplies: boolean;
 }
 
 export interface ProfitReport {
@@ -255,7 +265,9 @@ export interface ProfitReport {
   fx: { eurToRon: number; usdToRon: number };
   stripeConfigured: boolean;
   revenueRonCents: number;
-  meta: { ronCents: number; rawCents: number; currency: string | null };
+  /** Cheltuiala de reclame, o linie per platformă (Meta, ChatGPT Ads …). */
+  ads: ProfitAdLine[];
+  adsTotalRonCents: number;
   suno: { ronCents: number; requests: number; usdPerRequest: number };
   recurring: ProfitRecurringLine[];
   recurringTotalRonCents: number;

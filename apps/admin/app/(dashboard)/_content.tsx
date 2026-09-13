@@ -366,7 +366,15 @@ function ProfitCard({
   if (!profit) return null;
 
   const expenseLines: Array<{ label: string; cents: number; icon: React.ReactNode; hint?: string }> = [
-    { label: 'Meta Ads', cents: profit.meta.ronCents, icon: <Megaphone className="h-3.5 w-3.5" /> },
+    ...profit.ads
+      // Pe cardul de dashboard nu are rost un rând gol pentru o platformă pe care
+      // n-am cheltuit nimic în intervalul ales.
+      .filter((ad) => ad.ronCents > 0)
+      .map((ad) => ({
+        label: ad.label,
+        cents: ad.ronCents,
+        icon: <Megaphone className="h-3.5 w-3.5" />,
+      })),
     {
       label: 'Suno API',
       cents: profit.suno.ronCents,

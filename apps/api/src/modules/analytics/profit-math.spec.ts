@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { expenseValueForDay, periodKey } from './profit-math';
-import { DEFAULT_PROFIT_CONFIG } from './profitability.service';
+import { dailyExpenseValue, expenseValueForDay, inclusiveDayCount, periodKey } from './profit-math';
+import { AD_PLATFORMS, DEFAULT_PROFIT_CONFIG } from './profitability.service';
 import type { ProfitExpenseItem } from './profit-config.entity';
 
 const item = (p: Partial<ProfitExpenseItem>): ProfitExpenseItem => ({
@@ -83,4 +83,59 @@ test('configul implicit: intervalele abonamentelor oprite', () => {
     [byId.puggy.startDay, byId.puggy.endDay, byId.puggy.defaultAmount, byId.puggy.currency],
     ['2026-07-22', '2026-08-22', 1270, 'RON'],
   );
+});
+
+// ============== CADENȚA „PLATĂ UNICĂ" ==============
+
+test('inclusiveDayCount numără ambele capete', () => {
+  assert.equal(inclusiveDayCount('2026-07-22', '2026-08-22'), 32);
+  assert.equal(inclusiveDayCount('2026-06-01', '2026-06-01'), 1);
+  assert.equal(inclusiveDayCount('2026-06-02', '2026-06-01'), 0);
+});
+
+test('once: totalul pe interval e EXACT suma introdusă', () => {
+  const it = item({
+    cadence: 'once',
+    defaultAmount: 1270,
+    startDay: '2026-07-22',
+    endDay: '2026-08-22',
+  });
+  let total = 0;
+  for (let d = new Date(Date.UTC(2026, 6, 22)); d <= new Date(Date.UTC(2026, 7, 22)); d.setUTCDate(d.getUTCDate() + 1)) {
+    total += dailyExpenseValue(it, d.toISOString().slice(0, 10));
+  }
+  assert.ok(Math.abs(total - 1270) < 1e-9, `total ${total}`);
+  // Zilele din afara intervalului nu costă nimic.
+  assert.equal(dailyExpenseValue(it, '2026-07-21'), 0);
+  assert.equal(dailyExpenseValue(it, '2026-08-23'), 0);
+});
+
+test('once fără ambele date valorează zero — n-are pe ce împărți suma', () => {
+  const base = { cadence: 'once' as const, defaultAmount: 1270 };
+  assert.equal(dailyExpenseValue(item({ ...base }), '2026-08-01'), 0);
+  assert.equal(dailyExpenseValue(item({ ...base, startDay: '2026-07-22' }), '2026-08-01'), 0);
+  assert.equal(dailyExpenseValue(item({ ...base, endDay: '2026-08-22' }), '2026-08-01'), 0);
+});
+
+test('monthly/yearly păstrează divizorul convențional', () => {
+  assert.ok(Math.abs(dailyExpenseValue(item({ defaultAmount: 305 }), '2026-06-10') - 10) < 1e-9);
+  assert.ok(
+    Math.abs(dailyExpenseValue(item({ cadence: 'yearly', defaultAmount: 365 }), '2026-06-10') - 1) < 1e-9,
+  );
+});
+
+test('Puggy e plată unică în configul implicit, restul rămân lunare', () => {
+  const byId = Object.fromEntries(DEFAULT_PROFIT_CONFIG.items.map((i) => [i.id, i]));
+  assert.equal(byId.puggy.cadence, 'once');
+  assert.equal(byId.grok.cadence, 'monthly');
+  assert.equal(byId.capcut.cadence, 'monthly');
+});
+
+test('platformele de ads: Meta + ChatGPT, ambele în baza de TVA, TikTok exclus', () => {
+  const keys = AD_PLATFORMS.map((p) => p.platform);
+  assert.deepEqual(keys, ['meta', 'chatgpt']);
+  assert.ok(AD_PLATFORMS.every((p) => p.vatApplies));
+  // TikTok e ținut ca item recurent manual — inclus și aici, ar fi numărat de două ori.
+  assert.ok(!keys.includes('tiktok'));
+  assert.ok(DEFAULT_PROFIT_CONFIG.items.some((i) => i.id === 'tiktok_ads'));
 });

@@ -1781,7 +1781,7 @@ function ProfitStats({ report, loading }: { report: ProfitReport | null; loading
             <Receipt className="h-4 w-4 text-primary" /> Defalcare cheltuieli
           </CardTitle>
           <CardDescription>
-            Toate sumele în lei. TVA ({r?.vatRatePct ?? 21}%) se aplică doar peste Meta, Suno și
+            Toate sumele în lei. TVA ({r?.vatRatePct ?? 21}%) se aplică doar peste reclame, Suno și
             cheltuielile bifate „TVA se adaugă" în Setări — restul vin cu TVA-ul deja în sumă.
             Impozitul și comisionul Stripe nu au TVA. Conversiile valutare folosesc cursul fiecărei
             săptămâni (setabil în „Setări"; implicit {r ? `1€=${r.fx.eurToRon} · 1$=${r.fx.usdToRon}` : '—'} lei).
@@ -1800,11 +1800,19 @@ function ProfitStats({ report, loading }: { report: ProfitReport | null; loading
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <ProfitRow
-                  label="Meta Ads"
-                  detail={r.meta.currency && r.meta.currency !== 'RON' ? `convertit din ${r.meta.currency} (curs săptămânal)` : 'din tab Ads & ROAS'}
-                  cents={r.meta.ronCents}
-                />
+                {r.ads.map((ad) => (
+                  <ProfitRow
+                    key={ad.platform}
+                    label={ad.label}
+                    detail={
+                      ad.currency && ad.currency !== 'RON'
+                        ? `convertit din ${ad.currency} (curs săptămânal)`
+                        : 'din tab Ads & ROAS'
+                    }
+                    cents={ad.ronCents}
+                    muted={ad.ronCents === 0}
+                  />
+                ))}
                 <ProfitRow
                   label="Suno"
                   detail={`${r.suno.requests.toLocaleString('ro-RO')} requesturi × ${r.suno.usdPerRequest}$ (curs săptămânal)`}
@@ -1816,7 +1824,7 @@ function ProfitStats({ report, loading }: { report: ProfitReport | null; loading
                     label={line.label}
                     detail={
                       <span className="inline-flex items-center gap-1.5 flex-wrap">
-                        <Badge variant="muted" className="text-[10px]">{line.cadence === 'monthly' ? 'lunar' : 'anual'}</Badge>
+                        <Badge variant="muted" className="text-[10px]">{CADENCE_LABEL[line.cadence]}</Badge>
                         {line.vatApplies ? null : (
                           <Badge variant="muted" className="text-[10px]">TVA inclus</Badge>
                         )}
@@ -2155,11 +2163,12 @@ function ProfitItemEditor({
         </div>
         <div className="space-y-1 w-28">
           <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">Cadență</Label>
-          <Select value={item.cadence} onValueChange={(v) => onPatch({ cadence: v as 'monthly' | 'yearly' })}>
+          <Select value={item.cadence} onValueChange={(v) => onPatch({ cadence: v as 'monthly' | 'yearly' | 'once' })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="monthly">Lunar</SelectItem>
               <SelectItem value="yearly">Anual</SelectItem>
+              <SelectItem value="once">Plată unică</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -2175,7 +2184,9 @@ function ProfitItemEditor({
           </Select>
         </div>
         <div className="space-y-1 w-28">
-          <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">Implicit</Label>
+          <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">
+            {item.cadence === 'once' ? 'Sumă totală' : 'Implicit'}
+          </Label>
           <Input
             inputMode="decimal"
             placeholder="—"
@@ -2221,6 +2232,15 @@ function ProfitItemEditor({
         </label>
       </div>
 
+      {item.cadence === 'once' ? (
+        <p className="text-xs text-muted-foreground">
+          Suma totală se împarte uniform pe zilele dintre cele două date, deci raportul care acoperă
+          tot intervalul arată exact suma introdusă.{' '}
+          {!item.startDay || !item.endDay ? (
+            <span className="text-destructive">Completează ambele date, altfel cheltuiala e zero.</span>
+          ) : null}
+        </p>
+      ) : (
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
         {periods.length === 0 ? (
           <span className="text-xs text-muted-foreground col-span-full">Nicio perioadă încă (din mai 2026).</span>
@@ -2245,9 +2265,16 @@ function ProfitItemEditor({
           })
         )}
       </div>
+      )}
     </div>
   );
 }
+
+const CADENCE_LABEL: Record<'monthly' | 'yearly' | 'once', string> = {
+  monthly: 'lunar',
+  yearly: 'anual',
+  once: 'plată unică',
+};
 
 // ============== Reusable bits ==============
 

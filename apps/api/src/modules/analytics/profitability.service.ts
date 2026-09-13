@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import Stripe from 'stripe';
 
 import { ProfitConfig, ProfitConfigData, ProfitExpenseItem } from './profit-config.entity';
-import { expenseValueForDay } from './profit-math';
+import { dailyExpenseValue } from './profit-math';
 import { AdSpend } from './ad-spend.entity';
 import { Payment } from '../payments/payment.entity';
 import { SunoLog } from '../suno/suno-log.entity';
@@ -22,9 +22,19 @@ export const TEAM_TEST_EMAILS = [
   'office@freevox.ro',
 ];
 
-/** Pro-rata: o lună standard are 30.5 zile, un an 365 (cerința owner-ului). */
-const DAYS_PER_MONTH = 30.5;
-const DAYS_PER_YEAR = 365;
+/**
+ * Platformele de reclame ale căror cheltuieli vin din tabelul `ad_spend`
+ * (sincronizate din API-urile lor). Lista e EXPLICITĂ, nu „tot ce e în tabel":
+ * TikTok lipsește intenționat, fiindcă e ținut ca item recurent manual — luat
+ * din ambele locuri, ar fi numărat de două ori.
+ *
+ * `vatApplies: true` — reclamele vin de la furnizori externi, facturate fără TVA
+ * în factură, deci TVA-ul se adaugă (la fel ca la Meta).
+ */
+export const AD_PLATFORMS: Array<{ platform: string; label: string; vatApplies: boolean }> = [
+  { platform: 'meta', label: 'Meta Ads', vatApplies: true },
+  { platform: 'chatgpt', label: 'ChatGPT Ads', vatApplies: true },
+];
 
 export const DEFAULT_PROFIT_CONFIG: ProfitConfigData = {
   fx: { eurToRon: 4.97, usdToRon: 4.6 },
@@ -39,16 +49,28 @@ export const DEFAULT_PROFIT_CONFIG: ProfitConfigData = {
     // CapCut: 2 luni (13.07 → 13.09.2026), 150 lei/lună cu TVA inclus.
     { id: 'capcut', builtin: 'capcut', label: 'CapCut', cadence: 'monthly', currency: 'RON', amounts: {}, defaultAmount: 150, startDay: '2026-07-13', endDay: '2026-09-13' },
     // Agenție externă de campanii, o singură lună (22.07 → 22.08.2026), 1270 lei cu TVA inclus.
-    { id: 'puggy', builtin: 'puggy', label: 'Campanii Puggy Agency', cadence: 'monthly', currency: 'RON', amounts: {}, defaultAmount: 1270, startDay: '2026-07-22', endDay: '2026-08-22' },
+    { id: 'puggy', builtin: 'puggy', label: 'Campanii Puggy Agency', cadence: 'once', currency: 'RON', amounts: {}, defaultAmount: 1270, startDay: '2026-07-22', endDay: '2026-08-22' },
     { id: 'tiktok_ads', builtin: 'tiktok_ads', label: 'TikTok Ads', cadence: 'monthly', currency: 'RON', amounts: {}, defaultAmount: null },
     { id: 'domains', builtin: 'domains', label: 'Domenii internet', cadence: 'yearly', currency: 'RON', amounts: {}, defaultAmount: null },
   ],
 };
 
+/** O platformă de reclame, cu cheltuiala ei pe interval. */
+export interface ProfitAdLine {
+  platform: string;
+  label: string;
+  /** Suma brută, în moneda contului de ads. */
+  rawCents: number;
+  currency: string | null;
+  /** Aceeași sumă convertită în bani RON, cu cursul fiecărei zile. */
+  ronCents: number;
+  vatApplies: boolean;
+}
+
 export interface ProfitRecurringLine {
   id: string;
   label: string;
-  cadence: 'monthly' | 'yearly';
+  cadence: 'monthly' | 'yearly' | 'once';
   currency: 'RON' | 'EUR' | 'USD';
   builtin?: string | null;
   /** Intervalul de activitate al cheltuielii (gol = nelimitat). */
@@ -67,7 +89,9 @@ export interface ProfitReport {
   fx: { eurToRon: number; usdToRon: number };
   stripeConfigured: boolean;
   revenueRonCents: number;
-  meta: { ronCents: number; rawCents: number; currency: string | null };
+  /** Cheltuiala de reclame, o linie per platformă din `AD_PLATFORMS`. */
+  ads: ProfitAdLine[];
+  adsTotalRonCents: number;
   suno: { ronCents: number; requests: number; usdPerRequest: number };
   recurring: ProfitRecurringLine[];
   recurringTotalRonCents: number;
@@ -206,7 +230,8 @@ export class ProfitabilityService {
           return {
             id: String(it?.id ?? Math.random().toString(36).slice(2)),
             label: String(it?.label ?? 'Cheltuială').slice(0, 80),
-            cadence: it?.cadence === 'yearly' ? 'yearly' : 'monthly',
+            cadence:
+              it?.cadence === 'yearly' ? 'yearly' : it?.cadence === 'once' ? 'once' : 'monthly',
             currency: cur,
             amounts,
             defaultAmount,
@@ -280,19 +305,31 @@ export class ProfitabilityService {
     const revenueRonCents = await this.revenueRonCents(range);
     for (const r of await this.revenueByDay(range)) bumpDay(dailyRevenue, r.day, r.cents);
 
-    // --- 2) Meta spend pe interval, convertit RON cu cursul fiecărei zile ---
-    const metaDaily = await this.metaSpendByDay(fromDay, toDayStr);
-    let metaRawCents = 0;
-    let metaRonAcc = 0;
-    let metaCurrency: string | null = null;
-    for (const d of metaDaily) {
-      metaRawCents += d.cents;
-      if (d.currency) metaCurrency = d.currency;
-      const ron = d.cents * rateFor(d.date, (d.currency as 'RON' | 'EUR' | 'USD') ?? 'RON');
-      metaRonAcc += ron;
-      bumpDay(dailyVatBase, d.date, Math.round(ron));
+    // --- 2) Cheltuiala de reclame, per platformă, convertită RON cu cursul fiecărei zile ---
+    const ads: ProfitAdLine[] = [];
+    for (const p of AD_PLATFORMS) {
+      const rows = await this.adSpendByDay(p.platform, fromDay, toDayStr);
+      let rawCents = 0;
+      let ronAcc = 0;
+      let currency: string | null = null;
+      for (const d of rows) {
+        rawCents += d.cents;
+        if (d.currency) currency = d.currency;
+        const ron = d.cents * rateFor(d.date, (d.currency as 'RON' | 'EUR' | 'USD') ?? 'RON');
+        ronAcc += ron;
+        bumpDay(p.vatApplies ? dailyVatBase : dailyNoVat, d.date, Math.round(ron));
+      }
+      ads.push({
+        platform: p.platform,
+        label: p.label,
+        rawCents,
+        currency,
+        ronCents: Math.round(ronAcc),
+        vatApplies: p.vatApplies,
+      });
     }
-    const metaRonCents = Math.round(metaRonAcc);
+    const adsTotalRonCents = ads.reduce((a, x) => a + x.ronCents, 0);
+    const adsVatBaseRonCents = ads.filter((x) => x.vatApplies).reduce((a, x) => a + x.ronCents, 0);
 
     // --- 3) Suno: 0.06$ × requesturi (per zi, cu cursul USD al săptămânii) ---
     const sunoDaily = await this.sunoRequestsByDay(range);
@@ -308,13 +345,12 @@ export class ProfitabilityService {
 
     // --- 4) Cheltuieli recurente, pro-rata pe zile, cu cursul săptămânii fiecărei zile ---
     const recurring: ProfitRecurringLine[] = cfg.items.map((it) => {
-      const divisor = it.cadence === 'monthly' ? DAYS_PER_MONTH : DAYS_PER_YEAR;
       const vatApplies = it.vatApplies === true;
       const target = vatApplies ? dailyVatBase : dailyNoVat;
       let unit = 0; // sumă în moneda proprie (pentru transparență)
       let ron = 0;
       for (const day of allDays) {
-        const daily = this.valueForPeriod(it, day) / divisor;
+        const daily = dailyExpenseValue(it, day);
         if (daily === 0) continue;
         unit += daily;
         const dayRon = daily * rateFor(day, it.currency);
@@ -342,8 +378,8 @@ export class ProfitabilityService {
     const recurringVatBaseRonCents = recurring
       .filter((r) => r.vatApplies)
       .reduce((a, r) => a + r.ronCents, 0);
-    const preVatTotalRonCents = metaRonCents + sunoRonCents + recurringTotalRonCents;
-    const vatBaseRonCents = metaRonCents + sunoRonCents + recurringVatBaseRonCents;
+    const preVatTotalRonCents = adsTotalRonCents + sunoRonCents + recurringTotalRonCents;
+    const vatBaseRonCents = adsVatBaseRonCents + sunoRonCents + recurringVatBaseRonCents;
     const vatRonCents = Math.round((vatBaseRonCents * cfg.vatRatePct) / 100);
 
     // --- 6) Impozit microîntreprindere (% din venituri, fără TVA peste el) ---
@@ -377,7 +413,8 @@ export class ProfitabilityService {
       fx: cfg.fx,
       stripeConfigured: stripeFee.configured,
       revenueRonCents,
-      meta: { ronCents: metaRonCents, rawCents: metaRawCents, currency: metaCurrency },
+      ads,
+      adsTotalRonCents,
       suno: { ronCents: sunoRonCents, requests: sunoRequests, usdPerRequest: cfg.sunoUsdPerRequest },
       recurring,
       recurringTotalRonCents,
@@ -447,7 +484,8 @@ export class ProfitabilityService {
     return rows.map((r) => ({ day: r.day, cents: parseInt(r.revenue ?? '0', 10) || 0 }));
   }
 
-  private async metaSpendByDay(
+  private async adSpendByDay(
+    platform: string,
     fromDay: string,
     toDay: string,
   ): Promise<Array<{ date: string; cents: number; currency: string | null }>> {
@@ -456,7 +494,7 @@ export class ProfitabilityService {
       .select('a.date', 'date')
       .addSelect('COALESCE(SUM(a.spendCents),0)::bigint', 'cents')
       .addSelect('MAX(a.currency)', 'currency')
-      .where('a.platform = :p', { p: 'meta' })
+      .where('a.platform = :p', { p: platform })
       .andWhere('a.date BETWEEN :from AND :to', { from: fromDay, to: toDay })
       .groupBy('a.date')
       .getRawMany<{ date: string | Date; cents: string; currency: string | null }>();
@@ -480,11 +518,6 @@ export class ProfitabilityService {
   }
 
   // ============== HELPERS — PRO-RATA ==============
-
-  /** Vezi `profit-math.ts` — regula stă acolo ca să fie testabilă fără NestJS. */
-  private valueForPeriod(item: ProfitExpenseItem, day: string): number {
-    return expenseValueForDay(item, day);
-  }
 
   // ============== HELPERS — STRIPE FEES ==============
 
