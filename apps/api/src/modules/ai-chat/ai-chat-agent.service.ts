@@ -2,7 +2,9 @@ import { Injectable, Logger, forwardRef, Inject } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, IsNull, MoreThan } from 'typeorm';
-import { OpenAiClient, type ChatMessage as OAIMsg, type ToolDef, type ToolHandler } from '../../openai/openai.client';
+import { WingoNotifyService } from '../suno/wingo-notify.service';
+import { normLoose, referencesPastConversation } from './past-reference';
+import { OpenAiClient, type ChatMessage as OAIMsg, type ToolDef, type ToolHandler, type ReasoningEffort } from '../../openai/openai.client';
 import { SettingsService } from '../settings/settings.service';
 import { KbService } from '../kb/kb.service';
 import { SitesService } from '../sites/sites.service';
@@ -94,6 +96,14 @@ const MAX_USER_MSGS_BEFORE_DEFAULT_GENDER = 8;
  *  fidel care cumpără a 2-a oară nu trebuie amuțit. */
 const MAX_MESSAGES_BEFORE_HUMAN = 120;
 
+/**
+ * Câte mesaje trimise de Irina într-o conversație dusă INTEGRAL de ea (mod `auto`)
+ * declanșează o notificare Wingo către owner. Nu e o alarmă — e „uite, aici se
+ * poartă o discuție lungă fără niciun om în ea, arunc-o un ochi". O singură dată
+ * per conversație (`conversations.aiWingoNoticeAt`).
+ */
+const WINGO_AI_CONV_THRESHOLD = 6;
+
 /** Câte drafturi de versuri poate genera AI-ul per conversație (control cost). */
 const MAX_LYRICS_DRAFTS = 3;
 
@@ -160,16 +170,6 @@ function songWord(...hints: (string | null | undefined)[]): string {
   if (/\broman[tz]\w*\b/.test(t)) return 'Romanță';
   if (/\bbalad\w*\b/.test(t)) return 'Baladă';
   return 'Manea';
-}
-
-function normLoose(s: string): string {
-  return (s ?? '')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9@.]+/g, ' ')
-    .trim()
-    .replace(/\s+/g, ' ');
 }
 
 /** Cuvinte care, singure sau combinate, nu aduc informație nouă — userul doar validează. */
@@ -563,6 +563,17 @@ function autoCorrectEmail(raw: string): { email: string; corrected: boolean; ori
 }
 
 /** True dacă textul e o întrebare de confirmare a prețului („… 29.99 … de acord?"). */
+/** Un fir de chat anterior al aceluiași client, pregătit pentru prompt. */
+interface PriorConversation {
+  id: string;
+  createdAt: Date;
+  lastMessageAt: Date | null;
+  email: string | null;
+  /** Cum a fost legat de clientul curent: identificator propriu vs. doar rețea. */
+  matchedBy: 'identity' | 'ip';
+  lines: string[];
+}
+
 function looksLikePriceConfirmation(text: string): boolean {
   const t = text.toLowerCase();
   const hasAgree = /(esti|ești|sunteti|sunteți|e[sș]ti)\s+de\s+acord|de\s+acord\s*\?/.test(t);
@@ -596,6 +607,7 @@ export class AIChatAgentService {
     @Inject(forwardRef(() => ChatGateway))
     private readonly gateway: ChatGateway,
     private readonly metaCapi: MetaCapiService,
+    private readonly wingo: WingoNotifyService,
     private readonly moduleRef: ModuleRef,
   ) {}
 
@@ -1016,8 +1028,102 @@ export class AIChatAgentService {
             .catch((e: Error) => this.logger.warn(`alert email to ${to} failed: ${e.message}`));
         }
         this.logger.warn(`admin alert sent (${recipients.length} dest): ${args.reason}`);
+
+        // Același caz, și pe telefon (Wingo — canalul notificărilor de plată).
+        // Emailul se citește când se citește; alerta de chat are sens doar dacă
+        // ajunge acum. Best-effort: `send` nu aruncă niciodată.
+        await this.wingo.send({
+          title: `🚨 ${site?.domain ?? site?.name ?? 'Manele Cadou'} — Irina cere ajutor`,
+          body: [
+            args.reason,
+            args.details ?? null,
+            `Client: ${conv.email ?? 'fără email'}`,
+            `Conversație ${conv.id.slice(0, 8)}`,
+          ]
+            .filter(Boolean)
+            .join('\n'),
+          priority: 'high',
+          data: {
+            kind: 'ai_chat_alert',
+            conversationId: conv.id,
+            siteId: conv.siteId,
+            siteDomain: site?.domain ?? null,
+            email: conv.email ?? null,
+            url: `https://admin.manelecadou.ro/chat?c=${conv.id}`,
+          },
+        });
       } catch (e) {
         this.logger.warn(`notifyAdminsUrgent failed: ${(e as Error).message}`);
+      }
+    })();
+  }
+
+  /**
+   * Notificare Wingo la conversațiile purtate integral de Irina, peste pragul de
+   * `WINGO_AI_CONV_THRESHOLD` mesaje ale ei. Cerere owner (13 sept 2026): o discuție
+   * lungă fără niciun om în ea merită o privire, chiar dacă nimic nu a eșuat.
+   *
+   * O SINGURĂ notificare per conversație — claim atomic pe `aiWingoNoticeAt`, ca
+   * două rulări paralele (sau mesajul 7, 8, 9…) să nu sune telefonul din nou.
+   * Best-effort și non-blocantă: o notificare pierdută nu are voie să întrerupă
+   * răspunsul către client.
+   */
+  private maybeNotifyWingoAiConversation(conv: Conversation): void {
+    if (conv.aiMode !== 'auto') return;
+    if (conv.aiWingoNoticeAt) return;
+    void (async () => {
+      try {
+        // Numărăm doar mesajele TEXT scrise de AI — nu linkuri de plată, nu
+        // livrări de melodie, nu sugestii nevalidate.
+        const aiMsgs = await this.msg.count({
+          where: {
+            conversationId: conv.id,
+            authorRole: 'admin',
+            aiGenerated: true,
+            messageType: 'text' as ChatMessage['messageType'],
+            deletedAt: IsNull(),
+          },
+        });
+        if (aiMsgs < WINGO_AI_CONV_THRESHOLD) return;
+
+        const claim = await this.conv
+          .createQueryBuilder()
+          .update(Conversation)
+          .set({ aiWingoNoticeAt: () => 'NOW()' })
+          .where('id = :id AND "aiWingoNoticeAt" IS NULL', { id: conv.id })
+          .execute();
+        if (!claim.affected) return;
+        conv.aiWingoNoticeAt = new Date();
+
+        const site = conv.siteId ? await this.sites.findById(conv.siteId).catch(() => null) : null;
+        const lastUser = await this.msg.findOne({
+          where: { conversationId: conv.id, authorRole: 'user', deletedAt: IsNull() },
+          order: { createdAt: 'DESC' },
+        });
+        await this.wingo.send({
+          title: `🤖 ${site?.domain ?? site?.name ?? 'Manele Cadou'} — ${aiMsgs} mesaje de la Irina`,
+          body: [
+            'Conversație dusă integral de AI, fără intervenție umană.',
+            `Client: ${conv.email ?? 'fără email'}`,
+            lastUser ? `Ultimul mesaj: ${lastUser.body.slice(0, 160)}` : null,
+            `Conversație ${conv.id.slice(0, 8)}`,
+          ]
+            .filter(Boolean)
+            .join('\n'),
+          priority: 'normal',
+          data: {
+            kind: 'ai_chat_autopilot',
+            conversationId: conv.id,
+            siteId: conv.siteId,
+            siteDomain: site?.domain ?? null,
+            aiMessages: aiMsgs,
+            email: conv.email ?? null,
+            url: `https://admin.manelecadou.ro/chat?c=${conv.id}`,
+          },
+        });
+        this.logger.log(`Wingo: conv=${conv.id.slice(0, 8)} dusă de AI (${aiMsgs} mesaje)`);
+      } catch (e) {
+        this.logger.warn(`maybeNotifyWingoAiConversation failed: ${(e as Error).message}`);
       }
     })();
   }
@@ -1217,6 +1323,17 @@ export class AIChatAgentService {
     // în loc să tragă comanda în wizard-ul de chat.
     sysPrompt += this.buildSitePositionPrompt(conv);
 
+    // ── DISCUȚII ANTERIOARE (alt fir) — doar când clientul chiar face referire la
+    // ele. Un chat nou nu știe nimic despre comanda de acum trei zile (alt device,
+    // cookie pierdut — §10.3.2), iar „unde e comanda mea?" primea „pentru cine vrei
+    // maneaua?". Interogarea e scumpă și aduce date personale în context, deci NU
+    // rulează la fiecare mesaj: doar pe referire explicită și doar cât timp firul
+    // curent n-are deja o comandă a lui (aia se rezolvă cu check_order_status).
+    const lastUserText = [...last20].reverse().find((m) => m.authorRole !== 'admin' && m.messageType !== 'system')?.body ?? '';
+    if (!conv.wizardState?.generationId && referencesPastConversation(lastUserText)) {
+      sysPrompt += await this.buildPriorConversationsBlock(conv);
+    }
+
     if (opts.followUp) {
       sysPrompt += `
 
@@ -1302,10 +1419,13 @@ zero răspunsuri de la user între ele.`;
 
     // Cât „gândește" modelul înainte de a alege tool / a răspunde. Ignorat de
     // modelele non-reasoning (gpt-4o). Default medium — echilibru calitate/latență.
+    // Pe gpt-5.4/5.5 valoarea nu ajunge la API (chat/completions refuză efortul
+    // explicit împreună cu tool-uri); de la gpt-5.6, unde bucla merge pe
+    // /v1/responses, se aplică — vezi `requiresResponsesApiForTools`.
     const effortRaw = (await this.settings.get('AI_CHAT_REASONING_EFFORT')).trim().toLowerCase();
-    const reasoningEffort = (['minimal', 'low', 'medium', 'high'].includes(effortRaw)
+    const reasoningEffort = (['none', 'minimal', 'low', 'medium', 'high', 'xhigh'].includes(effortRaw)
       ? effortRaw
-      : 'medium') as 'minimal' | 'low' | 'medium' | 'high';
+      : 'medium') as ReasoningEffort;
 
     const startedAt = Date.now();
     const result = await this.openai.chatWithTools({
@@ -1617,6 +1737,151 @@ formular mascat și nu a avansat deloc. NU repeta.`;
       out += `
 - Formular de comandă de pe site: începuse unul (ultima activitate acum ~${ageMin} min, la ${stepHuman}${filled ? `; completase: ${filled}` : ''}) dar pare abandonat — poți să-l întrebi natural dacă mai vrea să-l termine sau preferi să-l ajuți direct în chat.`;
     }
+    return out;
+  }
+
+  /**
+   * Conversații ANTERIOARE ale aceluiași om, aduse în context când el se referă
+   * la ceva ce nu e în firul curent (vezi `referencesPastConversation`).
+   *
+   * Legătura, în ordinea încrederii:
+   *  1. `userId` / `guestId` / email — identificatori proprii, de încredere;
+   *  2. `lastIp` — DOAR dacă IP-ul nu pare partajat.
+   *
+   * ⚠️ Garda de IP nu e opțională. Pe rețelele mobile un singur IP de operator
+   * acoperă mii de clienți reali (același risc documentat la §16.12 pentru
+   * excluderea traficului intern): fără ea, un om ar fi primit în chat numele
+   * destinatarului, emailul și comanda ALTUIA. Deci dacă pe acel IP au fost mai
+   * mulți vizitatori distincți decât `MAX_VISITORS_PER_SHARED_IP`, îl tratăm ca
+   * NAT de operator și îl ignorăm complet.
+   *
+   * Conversațiile aduse pe IP rămân marcate ca nesigure în prompt — Irina le
+   * poate folosi ca să întrebe („te referi la maneaua pentru Maria?"), nu ca să
+   * confirme date personale nesolicitate.
+   */
+  private async loadPriorConversations(conv: Conversation): Promise<PriorConversation[]> {
+    const MAX_VISITORS_PER_SHARED_IP = 4;
+    const email = (conv.email ?? '').trim().toLowerCase() || null;
+    const ip = (conv.lastIp ?? '').trim() || null;
+
+    let ipUsable = false;
+    if (ip) {
+      const shared: Array<{ n: string }> = await this.conv.manager.query(
+        `SELECT COUNT(DISTINCT COALESCE("guestId"::text, "userId"::text, id::text)) AS n
+           FROM conversations
+          WHERE "lastIp" = $1 AND "createdAt" > now() - interval '90 days'`,
+        [ip],
+      );
+      const distinct = parseInt(shared[0]?.n ?? '0', 10);
+      ipUsable = distinct > 0 && distinct <= MAX_VISITORS_PER_SHARED_IP;
+      if (!ipUsable) {
+        this.logger.log(`prior-conv: IP ${ip} pare partajat (${distinct} vizitatori) — ignorat`);
+      }
+    }
+
+    const rows: Array<{
+      id: string;
+      createdAt: Date;
+      lastMessageAt: Date | null;
+      email: string | null;
+      matched_by: string;
+    }> = await this.conv.manager.query(
+      `SELECT c.id, c."createdAt", c."lastMessageAt", c.email,
+              CASE WHEN ($2::uuid IS NOT NULL AND c."userId" = $2::uuid)
+                     OR ($3::text IS NOT NULL AND c."guestId"::text = $3::text)
+                     OR ($4::text IS NOT NULL AND lower(c.email) = $4::text)
+                   THEN 'identity' ELSE 'ip' END AS matched_by
+         FROM conversations c
+        WHERE c.id <> $1::uuid
+          AND c."siteId" = $5::uuid
+          AND c."createdAt" > now() - interval '90 days'
+          AND (
+                ($2::uuid IS NOT NULL AND c."userId" = $2::uuid)
+             OR ($3::text IS NOT NULL AND c."guestId"::text = $3::text)
+             OR ($4::text IS NOT NULL AND lower(c.email) = $4::text)
+             OR ($6::text IS NOT NULL AND c."lastIp" = $6::text)
+          )
+        ORDER BY c."lastMessageAt" DESC NULLS LAST
+        LIMIT 3`,
+      [conv.id, conv.userId, conv.guestId, email, conv.siteId, ipUsable ? ip : null],
+    );
+    if (rows.length === 0) return [];
+
+    const out: PriorConversation[] = [];
+    for (const r of rows) {
+      const msgs = await this.msg.find({
+        where: {
+          conversationId: r.id,
+          messageType: In(['text', 'payment_link', 'song_preview'] as Array<ChatMessage['messageType']>),
+          deletedAt: IsNull(),
+        },
+        order: { createdAt: 'DESC' },
+        take: 10,
+      });
+      if (msgs.length === 0) continue;
+      const lines = msgs
+        .reverse()
+        .map((m) => {
+          const who = m.authorRole === 'admin' ? (m.aiGenerated ? 'Irina' : 'operator') : 'client';
+          const when = m.createdAt.toISOString().slice(0, 16).replace('T', ' ');
+          const body =
+            m.messageType === 'payment_link'
+              ? '[link de plată trimis]'
+              : m.messageType === 'song_preview'
+                ? '[melodia livrată în chat]'
+                : m.body.replace(/\s+/g, ' ').slice(0, 220);
+          return `  [${when}] ${who}: ${body}`;
+        });
+      out.push({
+        id: r.id,
+        createdAt: r.createdAt,
+        lastMessageAt: r.lastMessageAt,
+        email: r.email,
+        matchedBy: r.matched_by === 'identity' ? ('identity' as const) : ('ip' as const),
+        lines,
+      });
+    }
+    return out;
+  }
+
+  /** Blocul de prompt cu discuțiile anterioare (vezi `loadPriorConversations`). */
+  private async buildPriorConversationsBlock(conv: Conversation): Promise<string> {
+    const prior = await this.loadPriorConversations(conv);
+    if (prior.length === 0) return '';
+    const onlyIp = prior.every((p) => p.matchedBy === 'ip');
+
+    let out = `
+
+═══════════════════════════════════════════════════════════════════════
+DISCUȚII ANTERIOARE ALE ACESTUI CLIENT (alt fir de chat)
+═══════════════════════════════════════════════════════════════════════
+Clientul a făcut referire la ceva ce NU e în conversația de față. Mai jos sunt
+ultimele lui discuții de pe acest site. Folosește-le ca să NU-i ceri din nou
+date pe care ți le-a dat deja și ca să răspunzi concret la „unde e comanda mea".
+⛔ NU spune niciodată „văd că ai mai vorbit de pe același IP" și nici altceva
+despre cum le-ai găsit — sună a supraveghere. Vorbește ca un om care își
+amintește.`;
+
+    if (onlyIp) {
+      out += `
+⚠️ IDENTIFICARE SLABĂ: firele de mai jos s-au potrivit doar după dispozitiv/rețea,
+NU după cont sau email. S-ar putea să fie ALTCINEVA. Deci NU confirma și NU
+dezvălui date personale din ele (email, nume de destinatar, sume) ca și cum ar fi
+sigur ale lui — ÎNTREABĂ întâi, deschis: „Te referi la comanda pentru [prenume]?".
+Abia după ce confirmă el, tratează-le ca ale lui.`;
+    }
+
+    for (const p of prior) {
+      const when = (p.lastMessageAt ?? p.createdAt).toISOString().slice(0, 10);
+      out += `
+
+▸ Conversație din ${when}${p.email ? ` (email: ${p.email})` : ''}${p.matchedBy === 'ip' ? ' — potrivire slabă (dispozitiv/rețea)' : ''}:
+${p.lines.join('\n')}`;
+    }
+    out += `
+
+Pentru starea REALĂ a unei comenzi (plătită? generată? livrată?) NU te lua după
+textul de mai sus — e doar ce s-a vorbit atunci. Apelează check_order_status.`;
     return out;
   }
 
@@ -6593,6 +6858,7 @@ NU promite mai puțin. ⛔ NU pronunța numele providerului de generare (Suno et
     this.gateway.emitMessage({ message: saved, conversation: ctx.conv });
     ctx.sentRealMessages++;
     ctx.sentTexts.push(normalized);
+    this.maybeNotifyWingoAiConversation(ctx.conv);
     return {
       sent: isFirst,
       messageType: 'text',

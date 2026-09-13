@@ -31,8 +31,11 @@ export interface SettingCategory {
 }
 
 const AI_CHAT_MODEL_LABELS: Record<string, string> = {
+  'gpt-5.6-luna': 'GPT-5.6 luna (recomandat)',
+  'gpt-5.6-sol': 'GPT-5.6 sol',
+  'gpt-5.5': 'GPT-5.5',
   'gpt-5.4': 'GPT-5.4',
-  'gpt-5.4-mini': 'GPT-5.4 mini (recomandat)',
+  'gpt-5.4-mini': 'GPT-5.4 mini',
   'gpt-5': 'GPT-5',
   'gpt-5-mini': 'GPT-5 mini',
   'gpt-4.1': 'GPT-4.1',
@@ -469,9 +472,9 @@ export const SETTINGS_SCHEMA: SettingCategory[] = [
         key: 'AI_CHAT_MODEL',
         label: 'Model chat',
         description:
-          'Recomandat: gpt-5.4-mini. gpt-4o-mini e vechi și se încurcă pe conversații non-liniare.',
+          'Recomandat: gpt-5.6-luna. gpt-4o-mini e vechi și se încurcă pe conversații non-liniare.',
         kind: 'select',
-        options: ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5', 'gpt-5-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini'],
+        options: ['gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5', 'gpt-5-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini'],
         optionLabels: AI_CHAT_MODEL_LABELS,
         hotReload: true,
         placeholder: 'gpt-5.4-mini',
@@ -511,17 +514,18 @@ export const SETTINGS_SCHEMA: SettingCategory[] = [
         description:
           'Cât „gândește" modelul înainte să aleagă un tool sau să răspundă. Ignorat de modelele non-reasoning (gpt-4o).',
         kind: 'select',
-        options: ['minimal', 'low', 'medium', 'high'],
+        options: ['minimal', 'low', 'medium', 'high', 'xhigh'],
         optionLabels: {
-          minimal: 'Minimal — cel mai rapid',
+          minimal: 'Minimal — cel mai rapid (pe gpt-5.6+ înseamnă „fără gândire")',
           low: 'Low',
           medium: 'Medium (default)',
           high: 'High — cel mai atent, cel mai lent',
+          xhigh: 'Extra high (doar gpt-5.6+; pe modelele vechi cade pe High)',
         },
         hotReload: true,
         placeholder: 'medium',
         helpWhat:
-          'Default medium (și pentru orice valoare nerecunoscută). Mai mult efort = răspunsuri mai bune, latență și cost mai mari.',
+          'Default medium (și pentru orice valoare nerecunoscută). Mai mult efort = răspunsuri mai bune, latență și cost mai mari. Pe gpt-5.4/5.5 setarea NU se aplică în chat: API-ul refuză efortul explicit împreună cu tool-uri. De la gpt-5.6 chatul merge pe /v1/responses, unde se aplică.',
       },
       {
         key: 'AI_FOLLOWUP_ENABLED',

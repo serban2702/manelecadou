@@ -22,6 +22,7 @@ import { GenerationsModule } from '../generations/generations.module';
 import { GuestSessionsModule } from '../guest-sessions/guest-sessions.module';
 import { MetaCapiModule } from '../meta-capi/meta-capi.module';
 import { AdminGuard } from '../../common/admin.guard';
+import { WingoNotifyService } from '../suno/wingo-notify.service';
 
 @Module({
   imports: [
@@ -43,7 +44,7 @@ import { AdminGuard } from '../../common/admin.guard';
       }),
     }),
   ],
-  providers: [AIChatAgentService, AILearnerService, AiFollowupService, AdminGuard],
+  providers: [AIChatAgentService, AILearnerService, AiFollowupService, AdminGuard, WingoNotifyService],
   controllers: [AiChatAdminController],
   exports: [AIChatAgentService],
 })

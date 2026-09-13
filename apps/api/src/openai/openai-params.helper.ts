@@ -11,6 +11,36 @@ export function isReasoningModel(model: string): boolean {
   return /^o[1-9]/.test(m) || m.startsWith('gpt-5');
 }
 
+/**
+ * Versiunea minoră a unui model `gpt-5.X…` (`gpt-5.6-luna` → 6). `gpt-5` fără
+ * minor → 0. Orice altceva → null.
+ */
+function gpt5Minor(model: string): number | null {
+  const m = /^gpt-5(?:\.(\d+))?\b/.exec(model.trim().toLowerCase());
+  if (!m) return null;
+  return m[1] ? parseInt(m[1], 10) : 0;
+}
+
+/**
+ * `true` pentru modelele care REFUZĂ function tools pe `/v1/chat/completions`.
+ *
+ * De la `gpt-5.6` (luna / sol / terra) încolo, orice cerere cu `tools` pe
+ * chat/completions întoarce 400: „Function tools with reasoning_effort are not
+ * supported … use /v1/responses or set reasoning_effort to 'none'". Verificat
+ * empiric pe 13 septembrie 2026, pe toate valorile de effort: singura variantă
+ * care trece pe chat/completions e `reasoning_effort: 'none'` — adică ZERO
+ * reasoning, exact ce cumperi când iei un model de reasoning.
+ *
+ * Deci pentru ele mutăm bucla de tool calling pe `/v1/responses`, unde effort-ul
+ * real (low/medium/high/xhigh) funcționează cu tools. `gpt-5.5` și mai vechi
+ * rămân pe chat/completions — merg acolo fără probleme și nu are rost să le
+ * schimbăm calea testată.
+ */
+export function requiresResponsesApiForTools(model: string): boolean {
+  const minor = gpt5Minor(model);
+  return minor !== null && minor >= 6;
+}
+
 interface ChatParamsInput {
   model: string;
   temperature?: number;

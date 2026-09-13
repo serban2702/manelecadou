@@ -365,4 +365,12 @@ export class Conversation {
   /** Momentul pauzei automate de mai sus (referință pentru „a intervenit un om?"). */
   @Column({ type: 'timestamptz', nullable: true })
   aiAutoPausedAt!: Date | null;
+
+  /**
+   * Momentul în care s-a trimis notificarea Wingo „conversație dusă integral de AI"
+   * (peste pragul de mesaje din `WINGO_AI_CONV_THRESHOLD`). Marker de unicitate:
+   * o conversație lungă ar suna telefonul la fiecare mesaj fără el.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  aiWingoNoticeAt!: Date | null;
 }

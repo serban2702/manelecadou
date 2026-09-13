@@ -1,9 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 import { SettingsService } from '../modules/settings/settings.service';
-import { buildChatParams, isReasoningModel } from './openai-params.helper';
+import { buildChatParams, isReasoningModel, requiresResponsesApiForTools } from './openai-params.helper';
 
-export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
+/**
+ * Valorile acceptate de API. `minimal` există doar pe modelele vechi (o-series,
+ * gpt-5.0-5.5); de la `gpt-5.6` echivalentul se numește `none`, iar în plus
+ * apare `xhigh`. Normalizarea per model se face în `normalizeEffort`.
+ */
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 
 export type ChatMessage =
   | { role: 'system'; content: string }
@@ -119,6 +124,14 @@ export class OpenAiClient {
     const aiChatModel = await this.settings.get('AI_CHAT_MODEL');
     const defaultModel = await this.settings.get('OPENAI_MODEL');
     const model = opts.model ?? (aiChatModel || defaultModel || 'gpt-4o-mini');
+
+    // gpt-5.6+ refuză function tools pe /v1/chat/completions (vezi
+    // `requiresResponsesApiForTools`). Pentru ele bucla merge pe /v1/responses,
+    // unde reasoning-ul real funcționează împreună cu tool-urile.
+    if (opts.tools.length > 0 && requiresResponsesApiForTools(model)) {
+      return this.chatWithToolsViaResponses({ ...opts, model });
+    }
+
     const client = await this.ensure();
     const messages: ChatMessage[] = [...opts.messages];
     const toolCalls: ChatWithToolsResult['toolCalls'] = [];
@@ -252,6 +265,177 @@ export class OpenAiClient {
       usage: { prompt: totalPromptTok, completion: totalCompletionTok },
     };
   }
+
+  /**
+   * Aceeași buclă de tool calling, dar peste `/v1/responses`.
+   *
+   * Necesară pentru `gpt-5.6+`, care întoarce 400 la orice cerere cu `tools` pe
+   * `/v1/chat/completions`. Diferențe față de calea clasică, toate obligatorii:
+   *  - mesajele devin `input items`; rezultatul unui tool e un item separat
+   *    `function_call_output` legat prin `call_id` (nu `role: 'tool'`);
+   *  - itemele de `reasoning` întoarse de model trebuie trimise ÎNAPOI la runda
+   *    următoare, altfel modelul pierde firul între tool call și răspuns;
+   *  - `max_output_tokens` în loc de `max_completion_tokens`;
+   *  - `temperature` nu e acceptată deloc (modelele astea rulează pe default).
+   *
+   * `store: false` — păstrăm comportamentul de pe chat/completions: conversațiile
+   * clienților nu rămân stocate la OpenAI.
+   */
+  private async chatWithToolsViaResponses(opts: {
+    messages: ChatMessage[];
+    tools: ToolDef[];
+    toolHandlers: Record<string, ToolHandler>;
+    model: string;
+    maxIterations?: number;
+    maxTokens?: number;
+    reasoningEffort?: ReasoningEffort;
+  }): Promise<ChatWithToolsResult> {
+    const client = await this.ensure();
+    const model = opts.model;
+    const maxIter = opts.maxIterations ?? 6;
+    const toolCalls: ChatWithToolsResult['toolCalls'] = [];
+    let totalIn = 0;
+    let totalOut = 0;
+    let lastModel = model;
+
+    // La intrare mesajele sunt doar system/user/assistant text (bucla își
+    // construiește singură itemele de tool), deci conversia e directă.
+    const input: Array<Record<string, unknown>> = opts.messages.map((m) => ({
+      role: m.role === 'tool' ? 'user' : m.role,
+      content: typeof m.content === 'string' ? m.content : '',
+    }));
+
+    const tools = opts.tools.map((t) => ({
+      type: 'function' as const,
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters,
+    }));
+
+    const effort = normalizeEffort(opts.reasoningEffort ?? 'medium', model);
+
+    for (let i = 0; i < maxIter; i++) {
+      const params: Record<string, unknown> = {
+        model,
+        input,
+        tools,
+        tool_choice: 'auto',
+        reasoning: { effort },
+        store: false,
+      };
+      if (opts.maxTokens !== undefined) params.max_output_tokens = opts.maxTokens;
+
+      const res = (await (client as unknown as {
+        responses: { create: (p: unknown) => Promise<ResponsesResult> };
+      }).responses.create(params)) as ResponsesResult;
+
+      if (res.usage) {
+        totalIn += res.usage.input_tokens ?? 0;
+        totalOut += res.usage.output_tokens ?? 0;
+      }
+      lastModel = res.model ?? model;
+
+      const output = res.output ?? [];
+      // Tot ce a produs modelul (inclusiv reasoning) se întoarce în input.
+      for (const item of output) input.push(item as unknown as Record<string, unknown>);
+
+      const calls = output.filter((o) => o.type === 'function_call');
+      if (calls.length === 0) {
+        return {
+          finalContent: extractOutputText(res),
+          toolCalls,
+          iterations: i + 1,
+          model: lastModel,
+          usage: { prompt: totalIn, completion: totalOut },
+        };
+      }
+
+      // SECVENȚIAL, din același motiv ca pe calea clasică: al doilea handler
+      // trebuie să vadă state-ul scris de primul.
+      for (const call of calls) {
+        const name = call.name ?? '';
+        const rawArgs = call.arguments ?? '';
+        const handler = opts.toolHandlers[name];
+        let output_: unknown = null;
+        let error: string | undefined;
+        let parsedArgs: Record<string, unknown> = {};
+        try {
+          parsedArgs = rawArgs ? (JSON.parse(rawArgs) as Record<string, unknown>) : {};
+        } catch {
+          error = `invalid args JSON: ${rawArgs}`;
+        }
+        if (!error && !handler) error = `unknown tool: ${name}`;
+        if (!error && handler) {
+          try {
+            output_ = await handler(parsedArgs);
+          } catch (e) {
+            error = (e as Error).message;
+          }
+        }
+        input.push({
+          type: 'function_call_output',
+          call_id: call.call_id,
+          output: error ? JSON.stringify({ error }) : JSON.stringify(output_ ?? null),
+        });
+        toolCalls.push({
+          request: { id: call.call_id ?? '', name, args: safeParse(rawArgs) },
+          result: output_,
+          error,
+        });
+      }
+    }
+
+    return {
+      finalContent: null,
+      toolCalls,
+      iterations: maxIter,
+      model: lastModel,
+      usage: { prompt: totalIn, completion: totalOut },
+    };
+  }
+}
+
+/** Forma (parțială) a răspunsului `/v1/responses` de care avem nevoie. */
+interface ResponsesResult {
+  model?: string;
+  status?: string;
+  output?: Array<{
+    type: string;
+    name?: string;
+    arguments?: string;
+    call_id?: string;
+    content?: Array<{ type: string; text?: string }>;
+  }>;
+  output_text?: string;
+  usage?: { input_tokens?: number; output_tokens?: number };
+}
+
+/** Textul final al unui răspuns `/v1/responses` (itemele `message`). */
+function extractOutputText(res: ResponsesResult): string | null {
+  if (typeof res.output_text === 'string' && res.output_text.trim()) return res.output_text;
+  const parts: string[] = [];
+  for (const item of res.output ?? []) {
+    if (item.type !== 'message') continue;
+    for (const c of item.content ?? []) {
+      if (c.type === 'output_text' && c.text) parts.push(c.text);
+    }
+  }
+  const joined = parts.join('\n').trim();
+  return joined || null;
+}
+
+/**
+ * Aceeași intenție, alt vocabular per generație de model: „cât mai puțin
+ * reasoning" e `minimal` pe o-series/gpt-5.0-5.5 și `none` de la gpt-5.6, iar
+ * `xhigh` există doar pe cele noi. O valoare inexistentă pe modelul apelat
+ * întoarce 400 și pică tot chatul, deci traducem în loc să presupunem.
+ */
+function normalizeEffort(effort: ReasoningEffort, model: string): string {
+  const modern = requiresResponsesApiForTools(model);
+  if (modern) return effort === 'minimal' ? 'none' : effort;
+  if (effort === 'none') return 'minimal';
+  if (effort === 'xhigh') return 'high';
+  return effort;
 }
 
 function safeParse(s: string): Record<string, unknown> {

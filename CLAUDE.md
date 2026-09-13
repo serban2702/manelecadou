@@ -1026,6 +1026,29 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
     întorcea `audioUrl` „pentru context", iar Irina îl trimitea ca text în loc de player
     — clientul deschidea fișierul mp3. Rezultatele tool-urilor sunt material de răspuns:
     nu pune în ele nimic ce n-ar trebui să ajungă la client cuvânt cu cuvânt (§15.10).
+45. **De la `gpt-5.6`, function tools NU mai merg pe `/v1/chat/completions`.** Orice cerere
+    cu `tools` întoarce 400: „Function tools with reasoning_effort are not supported … use
+    /v1/responses or set reasoning_effort to 'none'". Verificat pe toate valorile de effort
+    (13 sept 2026): singura care trece pe chat/completions e `none` — adică exact
+    reasoning-ul pentru care iei modelul. Deci bucla de tool calling merge pe
+    `/v1/responses` (`requiresResponsesApiForTools` → `chatWithToolsViaResponses`), unde
+    effort-ul real funcționează cu tools. Acolo se schimbă tot vocabularul: `input` în loc
+    de `messages`, `function_call_output` cu `call_id` în loc de `role:'tool'`,
+    `max_output_tokens` în loc de `max_completion_tokens`, `temperature` respinsă complet,
+    iar itemele de `reasoning` întoarse de model TREBUIE trimise înapoi la runda următoare.
+    `minimal` s-a redenumit `none`, a apărut `xhigh` — o valoare inexistentă pe modelul
+    apelat e tot un 400, deci se traduce (`normalizeEffort`), nu se presupune. `gpt-5.5` și
+    mai vechi rămân pe calea clasică, testată.
+46. **Notificările Wingo de la chat NU trec prin preferințele de push.** `sendToAdmins`
+    (§15.9) respectă comutatoarele fiecărui admin; Wingo e canalul owner-ului, același cu
+    plățile. Alertele urgente ale Irinei pleacă acum pe AMBELE, plus email — dacă tai una,
+    celelalte rămân pe loc și invers.
+47. **Istoricul altor conversații se aduce în context DOAR pe potrivire sigură sau pe IP
+    ne-partajat.** Un IP de operator mobil acoperă mii de clienți (același risc ca la
+    §16.12): fără gardă, Irina i-ar spune unui om numele destinatarului și emailul altuia.
+    Peste 4 vizitatori distincți pe același IP în 90 de zile ⇒ IP-ul se ignoră complet, iar
+    firele aduse doar pe rețea sunt marcate în prompt ca nesigure — se pot folosi ca
+    întrebare („te referi la comanda pentru Maria?"), nu ca afirmație (§15.11).
 
 ---
 
@@ -1165,7 +1188,7 @@ Refactor masiv al chat-ului live (decizie 2026-05-25). Înlocuiește chat-ul sim
 | Setting | Default | Necesar pentru | Note |
 |---|---|---|---|
 | `OPENAI_API_KEY` | env | AI chat + lyrics + translation | sk-… (existing) |
-| `AI_CHAT_MODEL` | `gpt-4o-mini` | AI chat agent | Pick: `gpt-5-mini` (~$0.001/conv), `gpt-4o-mini` (~$0.0005), `gpt-4o` (~$0.005) |
+| `AI_CHAT_MODEL` | `gpt-4o-mini` | AI chat agent | În producție: **`gpt-5.6-luna`** (din 13 sept 2026). Atenție: de la 5.6 tool calling-ul merge pe `/v1/responses` — §12 pct. 45 |
 | `AI_CHAT_TEMPERATURE` | `0.4` | Tonul răspunsurilor | 0=factual, 1=creativ |
 | `AI_CHAT_SYSTEM_PROMPT` | (gol) | Override prompt | Lasă gol pentru default brand-aware |
 | `AI_CHAT_MODE_DEFAULT` | `manual` | Mode pentru conversații noi | `manual` (safe) / `suggest` / `auto` |
@@ -1372,6 +1395,33 @@ Schimbat pe 10 septembrie 2026 (cerere owner), toate în cod, nu doar în prompt
 Teste: `chat-samples.spec.ts` (rezolvarea catalogului per interfață, potrivirea
 textului, decizia „întreabă întâi") și `chat-i18n.spec.ts` (textele cardului în
 bg/el/en fără română).
+
+### 15.11 Memoria între conversații + notificările Wingo
+
+**Discuții anterioare (13 sept 2026).** O conversație nouă pornea goală, deși
+clientul continua ceva început acum trei zile (alt device, cookie pierdut —
+§10.3.2): la „unde e comanda mea?" Irina răspundea „pentru cine vrei maneaua?".
+
+Acum, când clientul face referire explicită la trecut
+(`referencesPastConversation`, în `past-reference.ts` — fișier pur, testat) și
+firul curent nu are deja o comandă proprie, se injectează în prompt ultimele 3
+conversații ale lui de pe același site, cu câte 10 mesaje fiecare.
+
+Legătura se face în ordinea încrederii: `userId` / `guestId` / email
+(identificatori proprii) și abia apoi `lastIp` — vezi garda din §12 pct. 47.
+Declanșarea e deliberat conservatoare: interogarea aduce date personale în
+context, deci nu rulează la fiecare mesaj.
+
+**Wingo.** Alertele urgente ale Irinei (escaladare, cap de mesaje, buclă) plecau
+doar pe email (`AI_ALERT_EMAILS`) și pe web push. Acum pleacă și pe Wingo
+Notifications — același canal și aceeași cheie ca notificările de plată
+(`WINGO_API_KEY`), fiindcă un email se citește când se citește.
+
+Tot pe Wingo pleacă și o notificare informativă când o conversație în mod `auto`
+trece de **6 mesaje** ale Irinei, fără niciun om în ea (`WINGO_AI_CONV_THRESHOLD`).
+Nu e o alarmă — e „aici se poartă o discuție lungă pe pilot automat". O singură
+dată per conversație, cu claim atomic pe `conversations.aiWingoNoticeAt`: fără
+el, mesajele 7, 8, 9… ar suna telefonul la fiecare.
 
 ---
 
