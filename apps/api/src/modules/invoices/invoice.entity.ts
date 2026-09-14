@@ -94,6 +94,17 @@ export class Invoice {
   @Column({ type: 'text', nullable: true })
   errorText!: string | null;
 
+  /**
+   * Data de pe factură (cea trimisă la SmartBill, `YYYY-MM-DD`) — poate să difere
+   * de `issuedAt`, care e momentul în care am apăsat butonul la noi în aplicație.
+   * Adminul poate emite azi o factură datată acum două luni; în listă contează
+   * data facturii. `date`, nu `timestamptz`, ca să nu apară derive de fus orar.
+   * Null pe facturile emise înainte de introducerea coloanei (acolo data facturii
+   * era chiar ziua emiterii, deci se citește `issuedAt`).
+   */
+  @Column({ type: 'date', nullable: true })
+  issueDate!: string | null;
+
   @Column({ type: 'timestamptz', nullable: true })
   issuedAt!: Date | null;
 

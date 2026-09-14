@@ -85,8 +85,8 @@ export interface BillableRow {
 /** Denumirea liniei de produs pe factură (neplătitor TVA, cotă 0%). */
 export const DEFAULT_PRODUCT_NAME = 'Melodie personalizată generată cu AI';
 
-/** Tipul de plată implicit trimis la SmartBill (plățile vin din Stripe/card online). */
-export const DEFAULT_PAYMENT_TYPE = 'Card online';
+/** Tipul de plată implicit trimis la SmartBill (plățile vin din Stripe, prin card). */
+export const DEFAULT_PAYMENT_TYPE = 'Card';
 
 @Injectable()
 export class InvoicesService {
@@ -259,9 +259,13 @@ export class InvoicesService {
     siteId: string | null,
   ): Promise<Array<Invoice & { buyerEmail: string | null }>> {
     const where = siteId ? { siteId } : {};
+    // Ordonare după data DE PE factură (cu `createdAt` ca departajare și ca
+    // fallback pentru facturile fără `issueDate`), ca lista să apară sortată
+    // după coloana „Data" pe care o vede adminul — altfel o factură emisă azi,
+    // dar datată acum două luni, ar sta prima într-o listă care pare cronologică.
     const invoices = await this.invoices.find({
       where,
-      order: { createdAt: 'DESC' },
+      order: { issueDate: { direction: 'DESC', nulls: 'LAST' }, createdAt: 'DESC' },
       take: 500,
     });
     if (invoices.length === 0) return [];
@@ -510,6 +514,7 @@ export class InvoicesService {
     inv.amountCents = Math.round(price * 100);
     inv.currency = money.currency;
     inv.paymentType = paymentType;
+    inv.issueDate = issueDate;
 
     try {
       const result = await this.smartbill.createInvoice(creds, input);
@@ -591,6 +596,7 @@ export class InvoicesService {
     inv.pdfPath = null;
     inv.smartbillResponse = null;
     inv.errorText = null;
+    inv.issueDate = this.todayIso();
     inv.issuedAt = new Date();
     inv = await this.invoices.save(inv);
     this.logger.log(`Plata ${paymentId} marcată ca facturată manual (fără emitere reală).`);

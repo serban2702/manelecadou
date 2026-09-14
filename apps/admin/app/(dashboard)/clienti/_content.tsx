@@ -327,7 +327,10 @@ export default function ClientiPage() {
                       <CountySelect
                         value={r.county ?? ''}
                         showLabel={false}
-                        className="h-8 border-transparent bg-transparent text-xs hover:border-border data-[state=open]:border-border"
+                        className="h-8 border-transparent bg-transparent text-xs hover:border-border"
+                        city={r.city}
+                        address={r.address}
+                        clientName={r.name}
                         onChange={(v) => commit(r, { county: v })}
                       />
                     </TableCell>

@@ -58,13 +58,29 @@ import { toCsv, downloadCsv, csvMoney } from '@/lib/csv';
 
 const BILL_PAGE_SIZE = 50;
 
-/** Tipuri de plată uzuale acceptate de SmartBill pe încasare. „Card online" e default-ul
- *  (plățile vin din Stripe). */
-const PAYMENT_TYPES = ['Card online', 'Card', 'Ordin de plata', 'Transfer bancar', 'Chitanta', 'Numerar', 'Mandat postal'];
-const DEFAULT_PAYMENT_TYPE = 'Card online';
+/** Tipuri de plată uzuale acceptate de SmartBill pe încasare. „Card" e default-ul. */
+const PAYMENT_TYPES = ['Card', 'Card online', 'Ordin de plata', 'Transfer bancar', 'Chitanta', 'Numerar', 'Mandat postal'];
+const DEFAULT_PAYMENT_TYPE = 'Card';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * Data care se afișează în lista de facturi: cea DE PE factură (`issueDate`),
+ * nu momentul în care am apăsat butonul la noi (`issuedAt`) — adminul poate emite
+ * azi o factură datată în urmă. Pe facturile emise înainte de coloana `issueDate`
+ * cele două coincid, deci `issuedAt` e fallback-ul corect.
+ * `issueDate` e `YYYY-MM-DD` — îl parsăm ca dată locală, nu prin `new Date(...)`,
+ * care l-ar citi ca UTC și l-ar da cu o zi înapoi în fusurile de vest.
+ */
+function invoiceDateLabel(inv: InvoiceDto): string {
+  const d = inv.issueDate?.slice(0, 10);
+  if (d) {
+    const [y, m, day] = d.split('-').map(Number);
+    if (y && m && day) return format(new Date(y, m - 1, day), 'd MMM yyyy', { locale: ro });
+  }
+  return inv.issuedAt ? format(new Date(inv.issuedAt), 'd MMM yyyy', { locale: ro }) : '—';
 }
 
 function money(cents: number, currency: string): string {
@@ -298,9 +314,8 @@ export default function FacturarePage() {
       inv.clientSnapshot?.name ?? '',
       csvMoney(inv.amountCents),
       inv.currency,
-      inv.issuedAt
-        ? format(new Date(inv.issuedAt), 'yyyy-MM-dd')
-        : format(new Date(inv.createdAt), 'yyyy-MM-dd'),
+      inv.issueDate?.slice(0, 10) ??
+        format(new Date(inv.issuedAt ?? inv.createdAt), 'yyyy-MM-dd'),
       statusLabel(inv.status),
       siteName(inv.siteId),
     ]);
@@ -472,7 +487,10 @@ export default function FacturarePage() {
                             <CountySelect
                               value={c.county ?? ''}
                               showLabel={false}
-                              className="h-8 border-transparent bg-transparent text-xs hover:border-border data-[state=open]:border-border"
+                              className="h-8 border-transparent bg-transparent text-xs hover:border-border"
+                              city={c.city}
+                              address={c.address}
+                              clientName={c.name ?? r.buyerName}
                               onChange={(v) => commitClient(r, { county: v })}
                             />
                           </TableCell>
@@ -893,7 +911,13 @@ function BulkEmitDialog({
                           onChange={(e) => patch(r.paymentId, { city: e.target.value })}
                         />
                       </div>
-                      <CountySelect value={c.county} onChange={(v) => patch(r.paymentId, { county: v })} />
+                      <CountySelect
+                        value={c.county}
+                        city={c.city}
+                        address={c.address}
+                        clientName={c.name}
+                        onChange={(v) => patch(r.paymentId, { county: v })}
+                      />
                       <div className="space-y-1">
                         <Label className="text-xs">Țară</Label>
                         <Input
@@ -1054,7 +1078,7 @@ function IssuedRow({
       </TableCell>
       <TableCell className="tabular-nums">{money(inv.amountCents, inv.currency)}</TableCell>
       <TableCell className="text-xs text-muted-foreground">
-        {inv.issuedAt ? format(new Date(inv.issuedAt), 'd MMM yyyy', { locale: ro }) : '—'}
+        {invoiceDateLabel(inv)}
       </TableCell>
       <TableCell>
         {inv.status === 'issued' ? (
@@ -1203,7 +1227,13 @@ function PreviewDialog({
               <LabeledInput label="Nume / Denumire client *" value={client.name ?? ''} onChange={(v) => patch({ name: v })} />
               <LabeledInput label="Adresă" value={client.address ?? ''} onChange={(v) => patch({ address: v })} />
               <LabeledInput label="Oraș" value={client.city ?? ''} onChange={(v) => patch({ city: v })} />
-              <CountySelect value={client.county} onChange={(v) => patch({ county: v })} />
+              <CountySelect
+                value={client.county}
+                city={client.city}
+                address={client.address}
+                clientName={client.name}
+                onChange={(v) => patch({ county: v })}
+              />
               <LabeledInput label="Țară" value={client.country ?? ''} onChange={(v) => patch({ country: v })} />
             </div>
 

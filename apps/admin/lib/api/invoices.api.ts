@@ -65,6 +65,9 @@ export interface InvoiceDto {
   paymentType: string | null;
   pdfPath: string | null;
   errorText: string | null;
+  /** Data DE PE factură (`YYYY-MM-DD`). Null pe facturile vechi → cade pe `issuedAt`. */
+  issueDate: string | null;
+  /** Momentul emiterii din aplicația noastră (nu neapărat data facturii). */
   issuedAt: string | null;
   createdAt: string;
   updatedAt: string;
