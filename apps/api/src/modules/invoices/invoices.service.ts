@@ -21,6 +21,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { StorageService } from '../../storage/storage.service';
 import { decryptSecret } from '../../common/crypto.util';
 import { normalizeCounty, resolveLocalityForSmartbill } from '../../common/ro-locality.util';
+import { invoiceToday } from '../../common/invoice-date';
 import {
   SmartbillClient,
   SmartbillCredentials,
@@ -143,8 +144,9 @@ export class InvoicesService {
     return this.storage.localRoot;
   }
 
+  /** Data de azi în România (vezi `invoiceToday` — serverul rulează pe UTC). */
   private todayIso(): string {
-    return new Date().toISOString().slice(0, 10);
+    return invoiceToday();
   }
 
   /**

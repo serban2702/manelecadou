@@ -62,8 +62,20 @@ const BILL_PAGE_SIZE = 50;
 const PAYMENT_TYPES = ['Card', 'Card online', 'Ordin de plata', 'Transfer bancar', 'Chitanta', 'Numerar', 'Mandat postal'];
 const DEFAULT_PAYMENT_TYPE = 'Card';
 
+/**
+ * Data de azi în România, `YYYY-MM-DD`. Nu `toISOString()`: acela dă data UTC,
+ * deci între 00:00 și 03:00 ora României propunea ziua precedentă ca dată a
+ * facturii. Fusul e fix „Europe/Bucharest", nu al browserului — data de pe un
+ * document fiscal e a firmei emitente, nu a locului din care te uiți la ecran.
+ * Oglindește `invoiceToday` din API (`apps/api/src/common/invoice-date.ts`).
+ */
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Bucharest',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }
 
 /**
