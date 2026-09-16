@@ -611,7 +611,10 @@
     "typing": "Operater piše...",
     "viewSong": "🎵 Vidi pesmu →",
     "paySecure": "💳 Sigurno plaćanje",
-    "payNow": "Plati sada →"
+    "payNow": "Plati sada →",
+    "sendError": "Poruka nije poslata. Proveri vezu i pokušaj ponovo.",
+    "sendErrorRate": "Previše poruka. Sačekaj nekoliko sekundi.",
+    "sendRetry": "Pokušaj ponovo"
   },
   "topPage": {
     "flag": "Top Srbija",

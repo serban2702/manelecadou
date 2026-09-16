@@ -611,7 +611,10 @@
     "typing": "Operater piše...",
     "viewSong": "🎵 Poglej pesem →",
     "paySecure": "💳 Varno plačilo",
-    "payNow": "Plačaj zdaj →"
+    "payNow": "Plačaj zdaj →",
+    "sendError": "Sporočilo ni bilo poslano. Preveri povezavo in poskusi znova.",
+    "sendErrorRate": "Preveč sporočil. Počakaj nekaj sekund.",
+    "sendRetry": "Poskusi znova"
   },
   "topPage": {
     "flag": "Top Slovenija",

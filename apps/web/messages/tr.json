@@ -611,7 +611,10 @@
     "typing": "Operatör yazıyor...",
     "viewSong": "🎵 Şarkıyı gör →",
     "paySecure": "💳 Güvenli ödeme",
-    "payNow": "Şimdi öde →"
+    "payNow": "Şimdi öde →",
+    "sendError": "Mesaj gönderilemedi. Bağlantını kontrol edip tekrar dene.",
+    "sendErrorRate": "Çok fazla mesaj gönderildi. Birkaç saniye bekle.",
+    "sendRetry": "Tekrar dene"
   },
   "topPage": {
     "flag": "Top Türkiye",

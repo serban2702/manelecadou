@@ -611,7 +611,10 @@
     "typing": "Operatorul scrie...",
     "viewSong": "🎵 Vezi melodia →",
     "paySecure": "💳 Plată sigură",
-    "payNow": "Plătește acum →"
+    "payNow": "Plătește acum →",
+    "sendError": "Mesajul nu a plecat. Verifică conexiunea și încearcă din nou.",
+    "sendErrorRate": "Prea multe mesaje trimise. Așteaptă câteva secunde.",
+    "sendRetry": "Încearcă din nou"
   },
   "topPage": {
     "flag": "Top România",

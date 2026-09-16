@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations, useLocale } from 'next-intl';
-import { api, resolveMediaUrl } from '@/lib/api';
+import { api, ApiError, resolveMediaUrl } from '@/lib/api';
 import { claimPlayback, releasePlayback } from '@/lib/audio-registry';
 import { useSession } from '@/lib/providers';
 import { useChatSocket, type MessageAckEvent, type TypingEvent } from '@/lib/chat-socket';
@@ -178,6 +178,7 @@ export function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [pulsing, setPulsing] = useState(false);
   const [lastMsgId, setLastMsgId] = useState<string | null>(null);
   const [adminTyping, setAdminTyping] = useState(false);
@@ -420,16 +421,31 @@ export function ChatWidget() {
     }
   }, [messages]);
 
+  /**
+   * Trimite mesajul, iar dacă nu reușește O SPUNE.
+   *
+   * Varianta veche înghițea orice eroare, tăcut: clientul
+   * apăsa „trimite", nu se întâmpla absolut nimic, textul rămânea în casetă și
+   * nicio explicație nu apărea nicăieri. Pe producție (16 sept 2026,
+   * chalgapodarok.bg) un client a apăsat de cinci ori în șapte secunde, cu cinci
+   * răspunsuri 403 în spate, fără să afle vreodată de ce. Cauza aia se repară
+   * în `lib/api.ts` (sesiunea guest se reface singură), dar restul — rețea
+   * căzută, 429, API repornit în timpul unui deploy — rămân posibile, iar
+   * tăcerea e cel mai prost mod de a le comunica.
+   */
   async function send() {
     const text = draft.trim();
     if (!text || sending) return;
     setSending(true);
+    setSendError(null);
     try {
       await api.chatSend(text);
       setDraft('');
       qc.invalidateQueries({ queryKey: ['chat-me'] });
-    } catch {
-      // noop
+    } catch (e) {
+      // Textul NU se șterge — clientul îl poate retrimite fără să-l rescrie.
+      const status = e instanceof ApiError ? e.status : 0;
+      setSendError(status === 429 ? t('sendErrorRate') : t('sendError'));
     } finally {
       setSending(false);
     }
@@ -959,6 +975,43 @@ export function ChatWidget() {
             )}
           </div>
 
+          {/* Mesajul n-a plecat — spune-o, cu buton de reîncercare. Textul a
+              rămas în casetă, deci „Încearcă din nou" chiar retrimite. */}
+          {sendError && (
+            <div
+              role="alert"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 12px',
+                borderTop: '1px solid rgba(255,120,110,0.35)',
+                background: 'rgba(255,90,80,0.12)',
+                color: '#ffb4ad',
+                fontSize: 12.5,
+                lineHeight: 1.35,
+              }}
+            >
+              <span style={{ flex: 1 }}>{sendError}</span>
+              <button
+                type="button"
+                onClick={send}
+                disabled={sending || !draft.trim()}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid rgba(255,180,173,0.5)',
+                  borderRadius: 6,
+                  color: '#ffb4ad',
+                  padding: '4px 9px',
+                  fontSize: 12,
+                  fontFamily: 'inherit',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {t('sendRetry')}
+              </button>
+            </div>
+          )}
+
           {/* Input */}
           <div
             style={{
@@ -972,6 +1025,7 @@ export function ChatWidget() {
               value={draft}
               onChange={(e) => {
                 setDraft(e.target.value);
+                if (sendError) setSendError(null);
                 emitUserTyping(e.target.value);
               }}
               onKeyDown={(e) => {

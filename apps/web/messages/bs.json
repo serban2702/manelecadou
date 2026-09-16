@@ -611,7 +611,10 @@
     "typing": "Operater piše...",
     "viewSong": "🎵 Vidi pjesmu →",
     "paySecure": "💳 Sigurno plaćanje",
-    "payNow": "Plati sada →"
+    "payNow": "Plati sada →",
+    "sendError": "Poruka nije poslana. Provjeri vezu i pokušaj ponovo.",
+    "sendErrorRate": "Previše poruka. Sačekaj nekoliko sekundi.",
+    "sendRetry": "Pokušaj ponovo"
   },
   "topPage": {
     "flag": "Top BiH",

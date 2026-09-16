@@ -26,7 +26,21 @@ class FollowDto {
 export class GuestSessionsController {
   constructor(private readonly svc: GuestSessionsService) {}
 
-  @Throttle({ short: { limit: 3, ttl: 60_000 }, medium: { limit: 10, ttl: 3_600_000 } })
+  /**
+   * Limite pe IP — larg, intenționat.
+   *
+   * Un IP nu e un vizitator: în spatele unui CGNAT de operator mobil stau mii
+   * de oameni, iar browserele in-app (Facebook, Instagram, Google App) nu
+   * păstrează storage-ul între deschideri, deci fiecare intrare cere o sesiune
+   * NOUĂ. Cu 3/min și 10/oră, al patrulea vizitator al minutului primea 429,
+   * rămânea fără `X-Guest-Id` și tot ce cere identitate îi răspundea 403 —
+   * inclusiv chatul, care se afișa perfect și înghițea fiecare mesaj trimis
+   * (prod, 16 sept 2026, chalgapodarok.bg: cinci încercări, cinci 403).
+   *
+   * Rândul creat e mic și fără efecte secundare, deci costul unui abuz e
+   * neglijabil pe lângă costul unui client real care nu ne poate scrie.
+   */
+  @Throttle({ short: { limit: 15, ttl: 60_000 }, medium: { limit: 150, ttl: 3_600_000 } })
   @Post()
   async create(
     @Body() body: { locale?: string; ua?: string } = {},

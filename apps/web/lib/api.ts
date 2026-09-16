@@ -157,10 +157,18 @@ function getCurrentLocale(): string {
   return normalizeLocale(process.env.NEXT_PUBLIC_DEFAULT_LOCALE) ?? 'ro';
 }
 
+/**
+ * Rutele care fabrică ÎNSĂȘI sesiunea guest. Un 403 pe ele nu se poate repara
+ * refăcând sesiunea — ar fi recursiune infinită.
+ */
+const GUEST_BOOTSTRAP_PATHS = ['/guest-sessions', '/guest-sessions/me'];
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
   extraHeaders?: Record<string, string>,
+  /** Intern: a doua trecere, după refacerea sesiunii guest. Oprește recursia. */
+  retriedGuest = false,
 ): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
@@ -208,10 +216,40 @@ async function request<T>(
   const res = await fetch(url, { ...init, headers });
 
   if (!res.ok) {
-    throw new ApiError(res.status, await readErrorBody(res));
+    const body = await readErrorBody(res);
+    // ── Sesiune guest pierdută: repar-o și reia cererea, O SINGURĂ dată. ──
+    // Când `POST /guest-sessions` a picat pe 429 (throttle pe IP — NAT de
+    // operator, in-app browser care nu persistă storage-ul), pageload-ul
+    // rămâne fără `X-Guest-Id` și API-ul răspunde 403 „Need guest or user" la
+    // tot ce cere identitate. `refresh()` din SessionProvider rulează o
+    // singură dată, la montare, deci nimic nu mai repara starea asta: chatul
+    // se afișa normal, iar fiecare apăsare pe „trimite" pica tăcut. Confirmat
+    // pe prod (16 sept 2026, chalgapodarok.bg): cinci POST-uri consecutive pe
+    // /api/chat/me/messages, toate 403, în șapte secunde.
+    if (
+      res.status === 403 &&
+      !retriedGuest &&
+      !GUEST_BOOTSTRAP_PATHS.includes(path) &&
+      isMissingGuestError(body)
+    ) {
+      try {
+        await ensureGuestSession();
+      } catch {
+        throw new ApiError(res.status, body);
+      }
+      return request<T>(path, init, extraHeaders, true);
+    }
+    throw new ApiError(res.status, body);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+/** `ForbiddenException('Need guest or user')`, indiferent cum e împachetat. */
+function isMissingGuestError(body: unknown): boolean {
+  const msg =
+    typeof body === 'string' ? body : (body as { message?: unknown } | null)?.message;
+  return typeof msg === 'string' && msg.toLowerCase().includes('need guest or user');
 }
 
 /**
@@ -237,8 +275,16 @@ async function readErrorBody(res: Response): Promise<unknown> {
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, public body: unknown) {
+  // Câmpuri declarate explicit, nu parameter properties: `node --test` rulează
+  // TypeScript în mod strip-only, care nu le suportă, iar fără asta `lib/api.ts`
+  // n-ar putea fi importat de niciun test.
+  readonly status: number;
+  readonly body: unknown;
+
+  constructor(status: number, body: unknown) {
     super(typeof body === 'string' ? body : (body as { message?: string })?.message ?? `HTTP ${status}`);
+    this.status = status;
+    this.body = body;
   }
 }
 
@@ -254,7 +300,35 @@ export function identifyVisitor(input: {
   return request('/identity/identify', { method: 'POST', body: JSON.stringify(input) });
 }
 
-export async function ensureGuestSession(): Promise<string> {
+/** Cererea de creare aflată în zbor, partajată de toți apelanții concurenți. */
+let guestSessionInFlight: Promise<string> | null = null;
+
+/** Pauză scurtă, folosită la retry-ul pe 429. */
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Creează sesiunea guest o SINGURĂ dată, oricâți apelanți concurenți ar fi.
+ *
+ * E chemată din patru locuri (SessionProvider, wizardul cadou, promoul de
+ * follow), fără ca vreunul să știe de celelalte. Toate pornesc la montare,
+ * toate văd `getGuestId() === null` în aceeași bifă de event loop și fiecare
+ * face propriul `POST /guest-sessions` — două-trei cereri pentru o singură
+ * nevoie, dintr-o cotă mică pe IP. Un al doilea pageload în același minut
+ * lovea atunci 429 garantat (observat pe prod: perechi de 429 în aceeași
+ * secundă, 16 sept 2026, pe chalgapodarok.bg).
+ */
+export function ensureGuestSession(): Promise<string> {
+  if (guestSessionInFlight) return guestSessionInFlight;
+  const p = doEnsureGuestSession().finally(() => {
+    if (guestSessionInFlight === p) guestSessionInFlight = null;
+  });
+  guestSessionInFlight = p;
+  return p;
+}
+
+async function doEnsureGuestSession(): Promise<string> {
   const existing = getGuestId();
   if (existing) {
     try {
@@ -268,7 +342,7 @@ export async function ensureGuestSession(): Promise<string> {
       // Varianta veche arunca guest-ul la orice excepție: 502 în fereastra de
       // deploy, timeout, 429 — și clientul cu o comandă în curs își pierdea
       // istoricul și conversația de chat exact atunci. Mai rău, `POST
-      // /guest-sessions` e limitat la 3/min pe IP, deci în spatele unui NAT de
+      // /guest-sessions` e limitat pe IP, deci în spatele unui NAT de
       // operator o parte dintre ei rămâneau fără sesiune deloc.
       // Aruncăm doar la 401/403/404 — singurele care chiar spun „nu ești tu".
       const status = e instanceof ApiError ? e.status : 0;
@@ -276,15 +350,28 @@ export async function ensureGuestSession(): Promise<string> {
       clearGuestId();
     }
   }
-  const created = await request<{ id: string }>('/guest-sessions', {
-    method: 'POST',
-    body: JSON.stringify({
-      locale: typeof navigator !== 'undefined' ? navigator.language : undefined,
-      ua: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
-    }),
-  });
-  setGuestId(created.id);
-  return created.id;
+  // 429 pe creare = fereastra de throttle, nu un refuz definitiv. Fără retry,
+  // pageload-ul rămâne DEFINITIV fără guest: `refresh()` rulează o singură
+  // dată, deci sesiunea nu se mai repară niciodată singură, iar tot ce cere
+  // identitate (chat inclusiv) răspunde 403 până la următoarea navigare.
+  const backoff = [1200, 3500, 8000];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const created = await request<{ id: string }>('/guest-sessions', {
+        method: 'POST',
+        body: JSON.stringify({
+          locale: typeof navigator !== 'undefined' ? navigator.language : undefined,
+          ua: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+        }),
+      });
+      setGuestId(created.id);
+      return created.id;
+    } catch (e) {
+      const status = e instanceof ApiError ? e.status : 0;
+      if (status !== 429 || attempt >= backoff.length) throw e;
+      await delay(backoff[attempt]);
+    }
+  }
 }
 
 export interface FollowStatusDto {

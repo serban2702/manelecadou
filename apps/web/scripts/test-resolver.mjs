@@ -32,19 +32,27 @@ function withExtension(filePath) {
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
+    // `./api?t=1` — trucul standard pentru a importa un modul PROASPĂT, când un
+    // test trebuie să repornească starea de nivel de modul. Query-ul face parte
+    // din cheia de cache a lui Node, nu din calea de pe disc, deci se desparte
+    // înainte de rezolvare și se lipește la loc pe URL.
+    const q = specifier.indexOf('?');
+    const bare = q === -1 ? specifier : specifier.slice(0, q);
+    const suffix = q === -1 ? '' : specifier.slice(q);
+
     let target = null;
 
-    if (specifier.startsWith('@/')) {
-      target = path.join(ROOT, specifier.slice(2));
-    } else if (specifier.startsWith('.') && context.parentURL?.startsWith('file:')) {
+    if (bare.startsWith('@/')) {
+      target = path.join(ROOT, bare.slice(2));
+    } else if (bare.startsWith('.') && context.parentURL?.startsWith('file:')) {
       // `fileURLToPath`, nu `.pathname`: calea proiectului conține un spațiu,
       // iar `.pathname` îl dă percent-encodat (`%20`) — o cale care nu există.
-      target = path.resolve(path.dirname(fileURLToPath(context.parentURL)), specifier);
+      target = path.resolve(path.dirname(fileURLToPath(context.parentURL)), bare);
     }
 
     if (target) {
       const resolved = withExtension(target);
-      if (resolved) return { url: pathToFileURL(resolved).href, shortCircuit: true };
+      if (resolved) return { url: pathToFileURL(resolved).href + suffix, shortCircuit: true };
     }
 
     return nextResolve(specifier, context);
