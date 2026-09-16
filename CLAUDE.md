@@ -1049,6 +1049,25 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
     Peste 4 vizitatori distincți pe același IP în 90 de zile ⇒ IP-ul se ignoră complet, iar
     firele aduse doar pe rețea sunt marcate în prompt ca nesigure — se pot folosi ca
     întrebare („te referi la comanda pentru Maria?"), nu ca afirmație (§15.11).
+48. **O limită pe IP taxează mii de oameni deodată, iar refuzul nu se repară singur.**
+    `POST /api/guest-sessions` era limitat la 3/min și 10/oră pe IP. În spatele unui
+    CGNAT de operator mobil — adică exact traficul din reclame — cota se epuiza între
+    vizitatori diferiți, iar browserele in-app (Facebook, Instagram, Google App) nu
+    păstrează storage-ul, deci fiecare deschidere cerea o sesiune NOUĂ. Rezultatul, pe
+    `chalgapodarok.bg`: 429 la creare ⇒ pageload fără `X-Guest-Id` ⇒ `403 Need guest or
+    user` la tot ce cere identitate. Chatul se afișa perfect și înghițea fiecare mesaj
+    (`send()` avea `catch` gol): un client a apăsat de cinci ori în șapte secunde.
+    Agravantele merită reținute separat, fiindcă se repetă ușor: `ensureGuestSession` era
+    chemată din **patru locuri** care nu se știu între ele (2-3 cereri concurente pentru
+    o singură nevoie), iar `refresh()` din `SessionProvider` rulează **o singură dată**,
+    la montare — deci starea nu se mai repara niciodată. Acum: dedup in-flight, retry pe
+    429, iar `request()` reface sesiunea și reia cererea când vede „Need guest or user"
+    (`apps/web/lib/api.ts`, teste în `lib/guest-session.spec.ts`).
+49. **Un `catch` gol pe o acțiune a clientului e un bug, nu o precauție.** Diferența
+    dintre „a picat" și „nu s-a întâmplat nimic" e tot ce are omul ca să știe dacă să mai
+    încerce. Textul rămâne în casetă, eroarea se spune în limba lui, butonul de
+    reîncercare există. Pe căile de tracking (`fireMetaChatEvents`, pixelii) tăcerea e
+    corectă — acolo clientul n-a cerut nimic.
 
 ---
 
