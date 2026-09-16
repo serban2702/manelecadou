@@ -317,15 +317,18 @@ export class GenerationsController {
       // → expunem audioUrl complet. Eliminăm vechiul block care arunca „Not your
       // generation" pe demo neplătit — admin trimite linkul către cine vrea.
       const pub = await this.svc.findOnePublic(id);
-      // Vizibile public prin link direct:
-      //  • orice generare 'succeeded' (share link normal)
-      //  • comenzi 'full' neplătite rămase 'pending' (recovery / reluare plată
-      //    dintr-un alt device sau browser, fără sesiunea owner) → pagina arată
-      //    secțiunea de reluare a plății. Audio-ul nu există încă, deci payload-ul
-      //    public (nume + stil, fără mesaj/dedicație/owner ids) nu scurge nimic.
-      const awaitingPayment =
-        pub?.status === 'pending' && pub.type === 'full' && pub.paidUnlocked === false;
-      if (!pub || (pub.status !== 'succeeded' && !awaitingPayment)) {
+      // Vizibile public prin link direct, indiferent de stadiul generării:
+      //  • 'succeeded' → share link normal, cu audio.
+      //  • în curs (pending/queued/writing_lyrics/generating_audio/...) → un
+      //    vizitator fără sesiunea owner-ului (alt device/browser, sau link
+      //    trimis mai departe înainte de finalizare) vede EXACT același
+      //    loader ca proprietarul — status + versuri parțiale — nu o eroare.
+      //    Audio-ul pur și simplu nu există încă, deci nu scurge nimic.
+      //  • comenzi 'full' neplătite rămase 'pending' → pagina arată reluarea
+      //    plății, tot din același payload.
+      // Payload-ul public omite oricum mesajul/dedicația/id-urile de owner —
+      // filtrul de mai jos privește doar EXISTENȚA generării, nu stadiul ei.
+      if (!pub) {
         throw new NotFoundException('Generation indisponibilă');
       }
       // best-effort view tracking; ignorăm eșecul (nu blochează request-ul)
@@ -351,6 +354,9 @@ export class GenerationsController {
         variants: await this.svc.listPlayableVariants(pub, isPaid),
         coverUrl: pub.coverUrl,
         lyrics: pub.lyrics,
+        // Ciorna, cât timp versiunea finală nu există încă — la fel ca la
+        // owner, ca loader-ul să aibă ce arăta înainte de status 'succeeded'.
+        lyricsDraft: pub.lyricsDraft,
         paidUnlocked: pub.paidUnlocked,
         // Model PACHETE — livrabile extra (instrumental/video doar pentru plătiți).
         packageTier: pub.packageTier,
