@@ -116,6 +116,7 @@ export const STUDIO_SEARCH: StudioSearchItem[] = [
   { id: 'engine', label: 'Motor audio', href: '/site/generation', keywords: ['suno', 'lyria', 'google', 'musicEngine'], group: 'generation' },
   { id: 'generation.basePrompt', label: 'Prompt de bază Suno', href: '/site/generation', keywords: ['basePrompt', 'suno'], group: 'generation' },
   { id: 'generation.review', label: 'Review versuri', href: '/site/generation', keywords: ['lyricsReview', 'versuri', 'wizard'], group: 'generation' },
+  { id: 'generation.models', label: 'Model OpenAI versuri', href: '/site/generation', keywords: ['model', 'openai', 'gpt', 'effort', 'reasoning', 'verbosity', 'temperature', 'writerModel', 'criticModel'], group: 'generation' },
   { id: 'generation.lyricsLocale', label: 'Limbă versuri', href: '/site/generation', keywords: ['lyricsLocale', 'limba'], group: 'generation' },
   { id: 'generation.writer', label: 'Writer', href: '/site/generation', keywords: ['lyrics', 'openai', 'placeholder', 'writerSystemPrompt'], group: 'generation' },
   { id: 'generation.writerUser', label: 'Cererea către scriitorul de versuri', href: '/site/generation', keywords: ['writerUserTemplate', 'placeholder', 'writer'], group: 'generation' },

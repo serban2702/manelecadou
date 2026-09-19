@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SiteDto } from '@/lib/api/sites.api';
+import { PlaygroundApi, type PlaygroundMeta } from '@/lib/api/playground.api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/cn';
@@ -17,6 +18,7 @@ import { SpaLink } from '@/lib/spa-router';
 import { LOCALES, LOCALE_LABELS } from '../studio-constants';
 import { setStudioFocus } from '../studio-nav';
 import { Field, StudioSection, Toggle } from '../studio-primitives';
+import { ModelConfigEditor, RECOMMENDED_CRITIC, RECOMMENDED_WRITER } from '../fields/model-config-editor';
 
 function patchSuno(form: SiteDto, patch: Partial<SiteDto['suno']>): SiteDto {
   return { ...form, suno: { ...form.suno, ...patch } };
@@ -25,6 +27,13 @@ function patchSuno(form: SiteDto, patch: Partial<SiteDto['suno']>): SiteDto {
 export function GenerationScreen({ form, setForm }: { form: SiteDto; setForm: (f: SiteDto) => void }) {
   const engine = form.musicEngine === 'google' ? 'google' : 'suno';
   const previewVars = useMemo(() => samplePreviewVars(form), [form]);
+  // Lista de modele + ce acceptă fiecare vine din API (aceeași ca în playground).
+  const [meta, setMeta] = useState<PlaygroundMeta | null>(null);
+  useEffect(() => {
+    PlaygroundApi.meta().then(setMeta).catch(() => setMeta(null));
+  }, []);
+  const modelOptions = meta?.openaiModelOptions ?? [];
+  const criticSame = form.suno?.criticSameAsWriter ?? false;
 
   return (
     <div className="grid gap-6">
@@ -134,6 +143,49 @@ export function GenerationScreen({ form, setForm }: { form: SiteDto; setForm: (f
                 ))}
               </select>
             </Field>
+          </CardContent>
+        </Card>
+      </StudioSection>
+
+      <StudioSection
+        title="Model OpenAI pentru versuri"
+        help="Ce model scrie și ce model editează, cu reglajele lui. Gol = exact ca până acum: modelul global din Setări (OPENAI_MODEL), fără effort explicit. Câmpurile pe care modelul ales nu le acceptă nu apar."
+      >
+        <Card>
+          <CardContent className="p-4 space-y-5" data-field="generation.models">
+            <ModelConfigEditor
+              title="Scriitor"
+              value={form.suno?.writerModel}
+              onChange={(v) => setForm(patchSuno(form, { writerModel: v }))}
+              options={modelOptions}
+              globalModel={meta?.openaiModel}
+              preset={RECOMMENDED_WRITER}
+            />
+            <Toggle
+              label="Editorul folosește aceleași setări ca scriitorul"
+              fieldId="generation.criticSameAsWriter"
+              description="ON: un singur set de reglaje pentru ambii pași. OFF: editorul are propriul model / effort (verificarea suportă effort mai mare, output-ul e scurt)."
+              value={criticSame}
+              onChange={(v) => setForm(patchSuno(form, { criticSameAsWriter: v }))}
+            />
+            {!criticSame && (
+              <ModelConfigEditor
+                title="Editor (critic)"
+                value={form.suno?.criticModel}
+                onChange={(v) => setForm(patchSuno(form, { criticModel: v }))}
+                options={modelOptions}
+                globalModel={meta?.openaiModel}
+                preset={RECOMMENDED_CRITIC}
+              />
+            )}
+            <p className="text-[11px] text-muted-foreground leading-snug">
+              Cu orice reglaj (effort, verbosity, summary, store, temperatură) cererea pleacă pe
+              <code className="px-1">/v1/responses</code> — singurul loc unde există verbosity și summary.
+              Effort-ul se traduce automat în vocabularul modelului ales (ex. <code>minimal</code> devine
+              <code className="px-1">none</code> pe 5.6+, <code>xhigh</code> devine <code className="px-1">high</code> pe gpt-5).
+              Testează în <SpaLink href="/site/playground" className="text-primary hover:underline">Playground</SpaLink> —
+              pornește de la setările salvate aici.
+            </p>
           </CardContent>
         </Card>
       </StudioSection>

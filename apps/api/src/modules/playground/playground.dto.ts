@@ -8,11 +8,52 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import {
   PLAYGROUND_ENGINES,
   PLAYGROUND_LYRICS_MODES,
 } from './playground.constants';
+
+/** Oglinda lui `SiteLyricsModelConfig` (site.entity.ts), validată la intrare. */
+export class LyricsModelConfigDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  model?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  effort?: string;
+
+  @IsOptional()
+  @IsIn(['standard', 'pro'])
+  reasoningMode?: 'standard' | 'pro';
+
+  @IsOptional()
+  @IsIn(['low', 'medium', 'high'])
+  verbosity?: 'low' | 'medium' | 'high';
+
+  @IsOptional()
+  @IsIn(['text', 'json_object'])
+  textFormat?: 'text' | 'json_object';
+
+  @IsOptional()
+  @IsIn(['off', 'auto', 'concise', 'detailed'])
+  reasoningSummary?: 'off' | 'auto' | 'concise' | 'detailed';
+
+  @IsOptional()
+  @IsBoolean()
+  store?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(2)
+  temperature?: number;
+}
 
 export class PlaygroundRequestDto {
   @IsOptional()
@@ -89,6 +130,18 @@ export class PlaygroundRequestDto {
   @Min(0)
   @Max(2)
   openaiTemperature?: number;
+
+  /** Setările writerului pentru acest test. Lipsă = cele salvate pe site. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LyricsModelConfigDto)
+  writerModel?: LyricsModelConfigDto;
+
+  /** Setările criticului pentru acest test. Lipsă = cele salvate pe site. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LyricsModelConfigDto)
+  criticModel?: LyricsModelConfigDto;
 
   @IsOptional()
   @IsString()

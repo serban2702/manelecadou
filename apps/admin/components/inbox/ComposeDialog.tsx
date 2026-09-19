@@ -77,7 +77,7 @@ export function ComposeDialog({ open, onOpenChange, accounts, defaultAccountId, 
     content: '<p></p>',
     editorProps: {
       attributes: {
-        class: 'prose prose-sm dark:prose-invert max-w-none min-h-[200px] focus:outline-none px-3 py-2',
+        class: 'prose prose-sm dark:prose-invert max-w-none min-h-[140px] sm:min-h-[200px] focus:outline-none px-3 py-2',
       },
     },
   });
@@ -214,7 +214,7 @@ export function ComposeDialog({ open, onOpenChange, accounts, defaultAccountId, 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl w-[calc(100vw-1rem)] sm:w-full max-h-[calc(100dvh-1rem)] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>Scrie un email nou</DialogTitle>
           <DialogDescription>
@@ -261,7 +261,7 @@ export function ComposeDialog({ open, onOpenChange, accounts, defaultAccountId, 
           </div>
 
           {showCcBcc && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Cc</Label>
                 <Input value={cc} onChange={(e) => setCc(e.target.value)} placeholder="cc@exemplu.ro" className="h-9" />
@@ -319,7 +319,7 @@ export function ComposeDialog({ open, onOpenChange, accounts, defaultAccountId, 
           <AttachmentPicker attachments={attachments} onChange={setAttachments} disabled={sending} />
         </div>
 
-        <div className="flex items-center justify-between gap-2 pt-1">
+        <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             {draftSavedAt && (
               <>

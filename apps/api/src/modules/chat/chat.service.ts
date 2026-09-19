@@ -32,6 +32,9 @@ import { SitesService } from '../sites/sites.service';
 import { chatStrings, aiChatSupported, allThankYouBodies, allReturningBodies } from './chat-i18n';
 import { SettingsService } from '../settings/settings.service';
 import { LyricsService } from '../lyrics/lyrics.module';
+import { lyricsModelInputs } from '../lyrics/lyrics-model';
+import { buildGenerationPlan } from '../generations/generation-plan';
+import type { GenerationLyricsMode, GenerationPromptOverrides } from '../generations/generation.entity';
 import { MetaCapiService } from '../meta-capi/meta-capi.service';
 
 /** Pragul în secunde sub care o sesiune e considerată "online". */
@@ -110,6 +113,7 @@ export class ChatService implements OnModuleInit {
       siteId: args.siteId ?? undefined,
       writerSystemPrompt: site?.suno?.writerSystemPrompt,
       writerUserTemplate: site?.suno?.writerUserTemplate,
+      ...lyricsModelInputs(site?.suno),
     });
     const result: { draft: string; refined?: string; locale: string } = {
       draft,
@@ -130,6 +134,7 @@ export class ChatService implements OnModuleInit {
           siteId: args.siteId ?? undefined,
           criticSystemPrompt: site?.suno?.criticSystemPrompt,
           criticUserTemplate: site?.suno?.criticUserTemplate,
+          ...lyricsModelInputs(site?.suno),
         },
         draft,
       );
@@ -1657,12 +1662,40 @@ export class ChatService implements OnModuleInit {
       amount: number; // cents — preț custom setat de admin
       currency?: string;
       productName?: string;
+      /** Mod avansat: cum se obțin versurile + prompturi editate pentru această comandă. */
+      lyricsMode?: GenerationLyricsMode;
+      prompts?: {
+        sunoStylePrompt?: string;
+        lyriaStylePrompt?: string;
+        writerSystem?: string;
+        writerUser?: string;
+        criticSystem?: string;
+        criticUser?: string;
+      };
     },
   ): Promise<{ generationId: string; paymentMessageId: string }> {
     const conv = await this.getConversation(conversationId);
     if (!conv.siteId) throw new ForbiddenException('Conversație fără siteId');
     const site = await this.sites.findById(conv.siteId);
     if (!site) throw new NotFoundException('Site nu există');
+
+    // Stilul / ocazia pot veni ca NUME afișat (așa trimiteau modalele din chat);
+    // le mapăm la id-ul de catalog, altfel promptul de stil nu se potrivește.
+    const expSlug = await this.conversationExperienceSlug(conv);
+    const plan = buildGenerationPlan(site, {
+      style: dto.style,
+      occasion: dto.occasion,
+      recipientName: dto.recipientName,
+      message: dto.message,
+      voiceArtist: dto.voiceArtist,
+      dedication: dto.dedication,
+      experienceSlug: expSlug,
+    });
+    const styleKey = plan.styleId || dto.style;
+    const occasionKey = plan.occasionId || dto.occasion;
+
+    const ownLyrics = dto.customLyrics?.trim() || '';
+    const promptOverrides = this.promptOverridesFromDto(dto.lyricsMode, dto.prompts, !!ownLyrics);
 
     // Asigură-te că guest-ul are email (Suno necesită pentru livrare).
     if (dto.email && conv.guestId) {
@@ -1680,36 +1713,42 @@ export class ChatService implements OnModuleInit {
     const { GenerationsService } = await import('../generations/generations.service');
     const generations = this.moduleRef.get(GenerationsService, { strict: false });
 
-    // Creează generation type='demo' — Suno produce automat și full și demo (30s).
-    // Full rămâne ascuns până paidUnlocked=true.
+    const free = Math.round(dto.amount) <= 0;
+
+    // GRATIS (amount=0) → comandă `full`, deblocată de la creare (durata
+    // pachetului, nu 30 s de demo). E fluxul de refacere a melodiei unui
+    // client: înainte se crea tot `demo` și se debloca după, deci Suno
+    // producea o piesă de 30 de secunde deblocată „complet”.
+    // CU PLATĂ → `demo`: Suno produce full + demo (30 s), full rămâne ascuns
+    // până la `paidUnlocked=true`.
     const generation = await generations.create(
       {
-        type: 'demo',
-        style: dto.style,
-        occasion: dto.occasion,
+        type: free ? 'full' : 'demo',
+        style: styleKey,
+        occasion: occasionKey,
         recipientName: dto.recipientName,
         message: dto.message,
         voiceArtist: dto.voiceArtist,
         dedication: dto.dedication,
-        customLyrics: dto.customLyrics,
+        customLyrics: ownLyrics || undefined,
+        promptOverrides,
         packageTier: normalizeTier(dto.packageTier),
         locale: site.locale ?? 'ro',
       },
-      { userId: conv.userId, guestId: conv.guestId, siteId: conv.siteId },
+      {
+        userId: conv.userId,
+        guestId: conv.guestId,
+        siteId: conv.siteId,
+        experienceSlug: expSlug,
+        adminGrant: free,
+      },
     );
 
     // ============== Flux GRATIS (amount=0) ==============
-    // Skip Stripe + payment_link. Marchez direct paidUnlocked=true pe gen
-    // (când Suno termină, /m/<id> va expune varianta full). Trimit două
-    // mesaje în chat: unul informativ + unul card cu linkul către pagina manelei.
-    if (Math.round(dto.amount) <= 0) {
-      await this.msg.manager
-        .createQueryBuilder()
-        .update('generations')
-        .set({ paidUnlocked: true })
-        .where('id = :id', { id: generation.id })
-        .execute();
-
+    // Skip Stripe + payment_link. Comanda e deja `full` + `paidUnlocked` (când
+    // Suno termină, /m/<id> expune varianta completă). Trimit două mesaje în
+    // chat: unul informativ + unul card cu linkul către pagina manelei.
+    if (free) {
       const sysBody = `🎵 Generăm acum maneaua. Va fi gata în aproximativ 5 minute. Următorul mesaj conține linkul către pagina manelei unde se generează. Apasă pe el și când s-a generat îți apare acolo. Inițial se generează versurile și apoi muzica.`;
       const sysMsg = this.msg.create({
         conversationId: conv.id,
@@ -1800,6 +1839,109 @@ export class ChatService implements OnModuleInit {
     this.gateway.emitMessage({ message: persisted, conversation: conv });
 
     return { generationId: generation.id, paymentMessageId: persisted.id };
+  }
+
+  /**
+   * Overrides-urile de prompt pentru O comandă, din modul avansat al modalului.
+   * Se rețin doar câmpurile completate; fără versuri proprii, `custom` /
+   * `critic_only` n-au sens și cad pe `auto`. `null` = nimic editat.
+   */
+  private promptOverridesFromDto(
+    lyricsMode: GenerationLyricsMode | undefined,
+    prompts: NonNullable<Parameters<ChatService['sendDemoWithPaymentLink']>[2]['prompts']> | undefined,
+    hasOwnLyrics: boolean,
+  ): GenerationPromptOverrides | null {
+    const out: GenerationPromptOverrides = {};
+    const mode: GenerationLyricsMode | undefined =
+      lyricsMode === 'critic_only' && hasOwnLyrics
+        ? 'critic_only'
+        : lyricsMode === 'custom' && hasOwnLyrics
+          ? 'custom'
+          : lyricsMode === 'auto'
+            ? 'auto'
+            : undefined;
+    if (mode) out.lyricsMode = mode;
+    const keep = (v: string | undefined): string | undefined => {
+      const t = v?.trim();
+      return t ? t.slice(0, 20_000) : undefined;
+    };
+    if (prompts) {
+      const sunoStylePrompt = keep(prompts.sunoStylePrompt);
+      const lyriaStylePrompt = keep(prompts.lyriaStylePrompt);
+      const writerSystem = keep(prompts.writerSystem);
+      const writerUser = keep(prompts.writerUser);
+      const criticSystem = keep(prompts.criticSystem);
+      const criticUser = keep(prompts.criticUser);
+      if (sunoStylePrompt) out.sunoStylePrompt = sunoStylePrompt;
+      if (lyriaStylePrompt) out.lyriaStylePrompt = lyriaStylePrompt;
+      // Versuri literal → writer/critic nu rulează; prompturile lor n-au ce căuta pe comandă.
+      if (mode !== 'custom') {
+        if (mode !== 'critic_only') {
+          if (writerSystem) out.writerSystem = writerSystem;
+          if (writerUser) out.writerUser = writerUser;
+        }
+        if (criticSystem) out.criticSystem = criticSystem;
+        if (criticUser) out.criticUser = criticUser;
+      }
+    }
+    return Object.keys(out).length ? out : null;
+  }
+
+  /**
+   * Prompturile și tag-ul de stil EXACT așa cum ar pleca pentru datele din
+   * modalul „Demo + plată” (mod avansat). Nu salvează nimic, nu apelează OpenAI.
+   * `criticUser` păstrează `{{draft}}` — singurul loc viu la rulare.
+   */
+  async generationPlan(
+    conversationId: string,
+    dto: {
+      style: string;
+      occasion: string;
+      recipientName: string;
+      message: string;
+      voiceArtist: string;
+      dedication?: string;
+    },
+  ): Promise<{
+    engine: 'suno' | 'google';
+    styleId: string;
+    occasionId: string;
+    sunoStylePrompt: string;
+    lyriaStylePrompt: string | null;
+    writerSystem: string;
+    writerUser: string;
+    criticSystem: string;
+    criticUser: string;
+    models: { writer: string | null; critic: string | null };
+    locale: string;
+  }> {
+    const conv = await this.getConversation(conversationId);
+    if (!conv.siteId) throw new ForbiddenException('Conversație fără siteId');
+    const site = await this.sites.findById(conv.siteId);
+    if (!site) throw new NotFoundException('Site nu există');
+    const plan = buildGenerationPlan(site, {
+      style: dto.style,
+      occasion: dto.occasion,
+      recipientName: dto.recipientName?.trim() || 'Beneficiar',
+      message: dto.message?.trim() || '',
+      voiceArtist: dto.voiceArtist,
+      dedication: dto.dedication,
+      experienceSlug: await this.conversationExperienceSlug(conv),
+    });
+    const gpt = this.lyrics.previewPrompts(plan.lyricsInput, '{{draft}}');
+    return {
+      engine: plan.engine,
+      styleId: plan.styleId,
+      occasionId: plan.occasionId,
+      sunoStylePrompt: plan.sunoStylePrompt,
+      lyriaStylePrompt: plan.lyriaStylePrompt,
+      writerSystem: gpt.writerSystem,
+      writerUser: gpt.writerUser,
+      criticSystem: gpt.criticSystem,
+      criticUser: gpt.criticUser,
+      models: plan.models,
+      locale: plan.lyricsInput.locale ?? site.locale ?? 'ro',
+    };
   }
 
   /** sessionKey/visitorId de pe ultima sesiune a clientului — checkout-ul din chat n-are browser. */

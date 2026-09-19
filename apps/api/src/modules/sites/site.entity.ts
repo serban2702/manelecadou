@@ -245,10 +245,48 @@ export interface SiteSuno {
   // Limba lyricsului (default = locale-ul site-ului)
   lyricsLocale?: string;
 
+  // === Modelul OpenAI folosit la versuri (per site, separat writer / critic) ===
+  /**
+   * Configurarea completă a modelului pentru scriitorul de versuri. Lipsă /
+   * goală = exact comportamentul de dinainte: `OPENAI_MODEL` din `/settings`,
+   * pe `/v1/chat/completions`, fără effort explicit. Vezi `lyrics-model.ts`.
+   */
+  writerModel?: SiteLyricsModelConfig;
+  /** Idem pentru editorul (criticul) de versuri. Ignorat când `criticSameAsWriter`. */
+  criticModel?: SiteLyricsModelConfig;
+  /** Criticul folosește aceleași setări ca writerul. */
+  criticSameAsWriter?: boolean;
+
   /** Mostre audio per stil — URL public (S3, MinIO, sau uploads/). */
   styleSamples?: Record<string, SiteSampleEntry>;
   /** Mostre audio per voce. Aceeași structură. */
   voiceSamples?: Record<string, SiteSampleEntry>;
+}
+
+/**
+ * Setările modelului OpenAI pentru un pas al pipeline-ului de versuri.
+ * Toate câmpurile sunt opționale: ce lipsește cade pe comportamentul global.
+ * Câmpurile neaplicabile modelului ales (ex. `temperature` pe un model de
+ * raționament) sunt ignorate la trimitere — `modelCapabilities()` din
+ * `openai-params.helper.ts` spune UI-ului ce să ascundă.
+ */
+export interface SiteLyricsModelConfig {
+  /** Id-ul de API (`gpt-5.6-terra`). Gol = `OPENAI_MODEL` din setări. */
+  model?: string;
+  /** `none|minimal|low|medium|high|xhigh` — tradus per model prin `normalizeEffort`. */
+  effort?: string;
+  /** Doar pe modelele „pro”: `standard` | `pro`. */
+  reasoningMode?: 'standard' | 'pro';
+  /** `text.verbosity` (Responses API, gpt-5+). */
+  verbosity?: 'low' | 'medium' | 'high';
+  /** `text.format.type`. Pentru versuri are sens doar `text`. */
+  textFormat?: 'text' | 'json_object';
+  /** `reasoning.summary`: `off` (implicit) | `auto` | `concise` | `detailed`. */
+  reasoningSummary?: 'off' | 'auto' | 'concise' | 'detailed';
+  /** `store` la OpenAI (loguri în contul lor). Implicit OFF — payload-ul conține nume reale. */
+  store?: boolean;
+  /** Doar pe modelele care o mai acceptă (gpt-4o / 4.1). */
+  temperature?: number;
 }
 
 export interface SiteSampleEntry {

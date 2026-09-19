@@ -63,10 +63,10 @@ export function HtmlBody({ html, text }: Props) {
   return (
     <div className="space-y-2">
       {hasImages && !showImages && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300">
-          <ImageOff className="h-3.5 w-3.5" />
-          <span className="flex-1">Imaginile remote sunt blocate pentru protecție.</span>
-          <Button variant="outline" size="sm" onClick={() => setShowImages(true)}>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300 flex-wrap">
+          <ImageOff className="h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1 min-w-[140px]">Imaginile remote sunt blocate pentru protecție.</span>
+          <Button variant="outline" size="sm" onClick={() => setShowImages(true)} className="shrink-0">
             <Eye className="h-3.5 w-3.5" /> Afișează imaginile
           </Button>
         </div>

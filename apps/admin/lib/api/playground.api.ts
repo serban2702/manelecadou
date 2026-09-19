@@ -1,4 +1,23 @@
 import { http } from '../http/client';
+import type { LyricsModelConfig } from './sites.api';
+
+/** Ce acceptă un model OpenAI — vine din API (`modelCapabilities`), verificat empiric. */
+export interface OpenAiModelCaps {
+  reasoning: boolean;
+  efforts: string[];
+  temperature: boolean;
+  verbosity: boolean;
+  summary: boolean;
+  proMode: boolean;
+  responsesOnlyForTools: boolean;
+}
+
+export interface OpenAiModelOption {
+  id: string;
+  label: string;
+  group: string;
+  caps: OpenAiModelCaps;
+}
 
 export type PlaygroundEngine = 'suno' | 'google';
 export type PlaygroundLyricsMode = 'generate' | 'writer_only' | 'custom' | 'instrumental';
@@ -25,6 +44,10 @@ export interface PlaygroundRequest {
   phonetic?: boolean;
   openaiModel?: string;
   openaiTemperature?: number;
+  /** Setările writerului pentru acest test. Lipsă = cele salvate pe site. */
+  writerModel?: LyricsModelConfig;
+  /** Setările criticului pentru acest test. Lipsă = cele salvate pe site. */
+  criticModel?: LyricsModelConfig;
   writerSystemPrompt?: string;
   writerUserTemplate?: string;
   criticSystemPrompt?: string;
@@ -58,7 +81,7 @@ export interface PlaygroundMeta {
   sunoModel: string;
   lyriaModel: string;
   openaiModels: string[];
-  openaiModelOptions?: Array<{ id: string; label: string; group: string }>;
+  openaiModelOptions?: OpenAiModelOption[];
   sunoModels: string[];
   lyriaModels: string[];
   defaultTemplates: {

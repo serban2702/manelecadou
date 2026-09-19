@@ -142,6 +142,7 @@ const MOBILE_NAV: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, scope: 'both' },
   { href: '/analytics', label: 'Analytics', icon: BarChart3, scope: 'both' },
   { href: '/chat', label: 'Chat', icon: MessageSquare, scope: 'both' },
+  { href: '/inbox', label: 'Email', icon: Inbox, scope: 'both' },
   { href: '/generations', label: 'Generări', icon: Music2, scope: 'both' },
   { href: '/payments', label: 'Payments', icon: CreditCard, scope: 'both' },
   { href: '/promo', label: 'Promo', icon: Tag, scope: 'both' },

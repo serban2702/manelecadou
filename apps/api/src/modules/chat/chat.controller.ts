@@ -427,6 +427,15 @@ export class AdminChatController {
       amount: number;
       currency?: string;
       productName?: string;
+      lyricsMode?: 'auto' | 'custom' | 'critic_only';
+      prompts?: {
+        sunoStylePrompt?: string;
+        lyriaStylePrompt?: string;
+        writerSystem?: string;
+        writerUser?: string;
+        criticSystem?: string;
+        criticUser?: string;
+      };
     },
     @CurrentUser() user: AuthedRequestUser | null,
   ) {
@@ -435,6 +444,26 @@ export class AdminChatController {
       user?.id ?? '00000000-0000-0000-0000-000000000000',
       body,
     );
+  }
+
+  /**
+   * Prompturile și tag-ul de stil pentru datele din modalul „Demo + plată”
+   * (mod avansat) — exact ce ar pleca la GPT / Suno pe site-ul conversației.
+   */
+  @Post('conversations/:id/generation-plan')
+  generationPlan(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      style: string;
+      occasion: string;
+      recipientName: string;
+      message: string;
+      voiceArtist: string;
+      dedication?: string;
+    },
+  ) {
+    return this.svc.generationPlan(id, body);
   }
 
   /** Setează email pe sesiunea curentă (guest sau user). */

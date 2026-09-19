@@ -31,6 +31,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/cn';
 import { LOCALES, LOCALE_LABELS } from '../studio-constants';
 import { humanExperienceLabel } from '../interfaces/config';
+import { ModelConfigEditor, RECOMMENDED_CRITIC, RECOMMENDED_WRITER } from '../fields/model-config-editor';
+import type { LyricsModelConfig } from '@/lib/api/sites.api';
 
 /**
  * Playground — trei laboratoare independente, nu un singur formular care face tot.
@@ -102,10 +104,14 @@ function statusLabel(s: PlaygroundRun['status']): string {
   return 'Eșuat';
 }
 
-/** Modelele de raționament refuză `temperature` cu 400 — nu le arătăm câmpul. */
-function isReasoningModel(model: string): boolean {
-  const m = model.trim().toLowerCase();
-  return m.startsWith('gpt-5') || /^o[1-9]/.test(m);
+/** Un config fără nicio cheie completată = `undefined` (comportamentul global). */
+function cleanCfg(v: LyricsModelConfig | undefined | null): LyricsModelConfig | undefined {
+  if (!v) return undefined;
+  const out: LyricsModelConfig = {};
+  for (const [k, x] of Object.entries(v) as Array<[keyof LyricsModelConfig, unknown]>) {
+    if (x !== undefined && x !== null && x !== '') (out as Record<string, unknown>)[k] = x;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 export function PlaygroundScreen({ form }: { form: SiteDto }) {
@@ -128,8 +134,13 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
   const [contextOpen, setContextOpen] = useState(true);
 
   // --- GPT ------------------------------------------------------------------
-  const [openaiModel, setOpenaiModel] = useState('');
-  const [temperature, setTemperature] = useState('0.85');
+  // Pornim de la setările salvate ale site-ului (`/site` → Generare) și le
+  // putem suprascrie DOAR pentru testul curent — nimic nu se salvează de aici.
+  const [writerCfg, setWriterCfg] = useState<LyricsModelConfig | undefined>(() => cleanCfg(form.suno?.writerModel));
+  const [criticSame, setCriticSame] = useState<boolean>(!!form.suno?.criticSameAsWriter);
+  const [criticCfg, setCriticCfg] = useState<LyricsModelConfig | undefined>(() =>
+    form.suno?.criticSameAsWriter ? cleanCfg(form.suno?.writerModel) : cleanCfg(form.suno?.criticModel),
+  );
   const [skipCritic, setSkipCritic] = useState(false);
   const [writerSystem, setWriterSystem] = useState('');
   const [writerUser, setWriterUser] = useState('');
@@ -205,7 +216,6 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
     PlaygroundApi.meta()
       .then((m) => {
         setMeta(m);
-        setOpenaiModel((p) => p || m.openaiModel);
         setSunoModel((p) => p || m.sunoModel);
         setLyriaModel((p) => p || m.lyriaModel);
         setWriterSystem((p) => p || form.suno?.writerSystemPrompt || m.defaultTemplates.writerSystem);
@@ -253,8 +263,10 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
       engine: 'suno',
       lyricsMode: skipCritic ? 'writer_only' : 'generate',
       skipCritic,
-      openaiModel: openaiModel || undefined,
-      openaiTemperature: isReasoningModel(openaiModel) ? undefined : num(temperature),
+      // Un obiect (chiar gol) înlocuiește configul salvat pe site pentru acest
+      // test; `{}` = „global, fără reglaje” — nu „ia ce e pe site”.
+      writerModel: writerCfg ?? {},
+      criticModel: (criticSame ? writerCfg : criticCfg) ?? {},
       writerSystemPrompt: writerSystem,
       writerUserTemplate: writerUser,
       criticSystemPrompt: criticSystem,
@@ -419,10 +431,7 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
   const pending =
     active?.status === 'queued' || active?.status === 'writing_lyrics' || active?.status === 'generating_audio';
 
-  const modelOptions = meta?.openaiModelOptions?.length
-    ? meta.openaiModelOptions
-    : (meta?.openaiModels ?? []).map((id) => ({ id, label: id, group: 'Modele' }));
-  const modelGroups = [...new Set(modelOptions.map((m) => m.group))];
+  const modelOptions = meta?.openaiModelOptions ?? [];
 
   return (
     <div className="grid gap-5" data-field="playground">
@@ -565,42 +574,49 @@ export function PlaygroundScreen({ form }: { form: SiteDto }) {
       {tab === 'lyrics' && (
         <div className="grid gap-4 lg:grid-cols-5 items-start">
           <div className="lg:col-span-3 grid gap-4">
-            <Panel title="Model" subtitle="Ce model scrie și cât de liber e.">
-              <div className="grid gap-3 md:grid-cols-3">
-                <Field label="Model OpenAI" className="md:col-span-2">
-                  <Select value={openaiModel} onChange={setOpenaiModel}>
-                    {modelGroups.map((g) => (
-                      <optgroup key={g} label={g}>
-                        {modelOptions
-                          .filter((m) => m.group === g)
-                          .map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.label}
-                            </option>
-                          ))}
-                      </optgroup>
-                    ))}
-                  </Select>
-                </Field>
-                {isReasoningModel(openaiModel) ? (
-                  <Field label="Temperatură" hint="Modelele de raționament o refuză">
-                    <div className="h-9 flex items-center text-sm text-muted-foreground">
-                      nu se aplică
-                    </div>
-                  </Field>
-                ) : (
-                  <Field label={`Temperatură · ${temperature}`} hint="0 = factual, 1 = creativ">
-                    <input
-                      type="range"
-                      min={0}
-                      max={1.4}
-                      step={0.05}
-                      value={temperature}
-                      onChange={(e) => setTemperature(e.target.value)}
-                      className="w-full accent-[hsl(var(--primary))]"
-                    />
-                  </Field>
-                )}
+            <Panel
+              title="Model"
+              subtitle="Pornește de la setările salvate pe site (Generare → Model OpenAI). Ce schimbi aici e doar pentru testul curent."
+              badge={writerCfg?.model || criticCfg?.model ? undefined : `global: ${meta?.openaiModel ?? '…'}`}
+            >
+              <ModelConfigEditor
+                title="Scriitor"
+                value={writerCfg}
+                onChange={setWriterCfg}
+                options={modelOptions}
+                globalModel={meta?.openaiModel}
+                preset={RECOMMENDED_WRITER}
+                compact
+              />
+              <Toggle
+                checked={criticSame}
+                onChange={setCriticSame}
+                label="Editorul folosește aceleași setări ca scriitorul"
+              />
+              {!criticSame && (
+                <ModelConfigEditor
+                  title="Editor (critic)"
+                  value={criticCfg}
+                  onChange={setCriticCfg}
+                  options={modelOptions}
+                  globalModel={meta?.openaiModel}
+                  preset={RECOMMENDED_CRITIC}
+                  disabled={skipCritic}
+                  compact
+                />
+              )}
+              <div className="flex flex-wrap gap-2 text-[11px]">
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    setWriterCfg(cleanCfg(form.suno?.writerModel));
+                    setCriticSame(!!form.suno?.criticSameAsWriter);
+                    setCriticCfg(form.suno?.criticSameAsWriter ? cleanCfg(form.suno?.writerModel) : cleanCfg(form.suno?.criticModel));
+                  }}
+                >
+                  ↺ Reia setările salvate pe site
+                </button>
               </div>
               <Toggle
                 checked={skipCritic}

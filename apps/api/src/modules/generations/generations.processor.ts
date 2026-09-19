@@ -6,13 +6,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Job, Queue } from 'bullmq';
 
-import { Generation } from './generation.entity';
+import { Generation, type GenerationLyricsMode } from './generation.entity';
 import { GENERATIONS_QUEUE } from './generations.constants';
 import type { MediaOpJob } from './generations.service';
 import { voiceArtistToGender } from '../../common/voice';
 import { SunoProvider, findChorusSegment, type SunoGenerateResult } from '../suno/suno.types';
 import { LyriaService, isNonRetryableError } from '../lyria/lyria.service';
 import { LyricsService } from '../lyrics/lyrics.module';
+import { lyricsModelInputs } from '../lyrics/lyrics-model';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
 import { User } from '../users/user.entity';
 import { MailerService } from '../../mailer/mailer.module';
@@ -87,6 +88,10 @@ export class GenerationsProcessor extends WorkerHost {
     instrumental: boolean;
     /** Limba versurilor (site.suno.lyricsLocale → site.locale → gen.locale → ro). */
     lyricsLocale: string;
+    /** Tag de stil Suno editat de operator pentru această comandă (fără prefixul de gen). */
+    styleOverride?: string;
+    /** Prompt de stil Lyria editat de operator pentru această comandă. */
+    lyriaStylePrompt?: string;
   }): Promise<SunoGenerateResult & { demos?: Array<string | null> }> {
     const {
       gen, site, sunoSite, sunoLyrics, targetDuration, vocalGender,
@@ -109,6 +114,7 @@ export class GenerationsProcessor extends WorkerHost {
           ? 'Authentic Romanian manele song with oriental Hijaz scale, darbuka, accordion and violin.'
           : 'Authentic Balkan manele/chalga song with oriental Hijaz scale, darbuka, accordion and violin.';
       const stylePrompt =
+        args.lyriaStylePrompt?.trim() ||
         resolveExperienceGoogleStylePrompt(site, gen.experienceSlug, gen.style) ||
         styleEntry?.googlePrompt?.trim() ||
         resolveExperienceStylePrompt(site, gen.experienceSlug, gen.style) ||
@@ -176,6 +182,7 @@ export class GenerationsProcessor extends WorkerHost {
       weirdnessConstraint: styleEntry?.weirdnessConstraint,
       negativeTags: styleEntry?.negativeTags,
       instrumental,
+      styleOverride: args.styleOverride?.trim() || undefined,
     });
   }
 
@@ -293,6 +300,25 @@ export class GenerationsProcessor extends WorkerHost {
         ?? site?.styles?.find((s) => s.id === gen.style);
       const senderName = gen.dedicatorName?.trim() || gen.dedication?.trim() || undefined;
 
+      // Prompturi / mod de versuri editate de operator pentru ACEASTĂ comandă
+      // (modalul „Demo + plată” din chat, mod avansat). Lipsă = fluxul obișnuit.
+      const overrides = gen.promptOverrides ?? null;
+      const finalPrompts = overrides
+        ? {
+            writerSystem: overrides.writerSystem?.trim() || undefined,
+            writerUser: overrides.writerUser?.trim() || undefined,
+            criticSystem: overrides.criticSystem?.trim() || undefined,
+            criticUser: overrides.criticUser?.trim() || undefined,
+          }
+        : undefined;
+      const ownLyrics = gen.customLyrics?.trim() || '';
+      const lyricsMode: GenerationLyricsMode =
+        ownLyrics && overrides?.lyricsMode === 'critic_only'
+          ? 'critic_only'
+          : ownLyrics
+            ? 'custom'
+            : 'auto';
+
       const lyricsBase = {
         style: gen.style,
         occasion: gen.occasion,
@@ -311,16 +337,38 @@ export class GenerationsProcessor extends WorkerHost {
         currency: site?.currency,
         siteId: gen.siteId ?? null,
         generationId: gen.id,
+        finalPrompts,
+        ...lyricsModelInputs(site?.suno),
       };
 
       // Writer + critic o singură dată. La auto-retry Suno NU rescriem versurile.
-      let refined = (gen.customLyrics?.trim() || gen.lyrics?.trim() || '');
-      if (refined && !gen.customLyrics?.trim()) {
-        this.logger.log(`generation ${gen.id} reuses existing lyrics (${refined.length} chars)`);
-      } else if (gen.customLyrics?.trim()) {
+      let refined = '';
+      if (lyricsMode === 'custom') {
+        // Versurile clientului / operatorului, literal — nu trec prin GPT.
+        refined = ownLyrics;
         gen.lyricsDraft = gen.lyricsDraft || refined;
         gen.lyrics = refined;
         await this.repo.save(gen);
+      } else if (lyricsMode === 'critic_only') {
+        // Operatorul a lipit versuri, dar vrea editorul (criticul) peste ele.
+        // Ciorna = versurile lui; dacă s-a rulat deja pe exact ciorna asta
+        // (auto-retry Suno), refolosim rezultatul.
+        if (gen.lyrics?.trim() && gen.lyricsDraft?.trim() === ownLyrics) {
+          refined = gen.lyrics.trim();
+          this.logger.log(`generation ${gen.id} reuses critic-refined lyrics (${refined.length} chars)`);
+        } else {
+          gen.lyricsDraft = ownLyrics;
+          gen.status = 'checking_lyrics';
+          await this.repo.save(gen);
+          // `customLyrics` ar sări peste critic („versurile userului sunt sacre”),
+          // deci îl scoatem din input: aici rafinarea e chiar ce s-a cerut.
+          refined = await this.lyricsSvc.refineDraft({ ...lyricsBase, customLyrics: undefined }, ownLyrics);
+          gen.lyrics = refined;
+          await this.repo.save(gen);
+        }
+      } else if (gen.lyrics?.trim()) {
+        refined = gen.lyrics.trim();
+        this.logger.log(`generation ${gen.id} reuses existing lyrics (${refined.length} chars)`);
       } else {
         gen.status = 'writing_lyrics';
         await this.repo.save(gen);
@@ -388,6 +436,8 @@ export class GenerationsProcessor extends WorkerHost {
         occasionEntry,
         instrumental: false,
         lyricsLocale,
+        styleOverride: overrides?.sunoStylePrompt,
+        lyriaStylePrompt: overrides?.lyriaStylePrompt,
       });
 
       gen.tracks = result.tracks;
@@ -463,6 +513,8 @@ export class GenerationsProcessor extends WorkerHost {
               occasionEntry,
               instrumental: true,
               lyricsLocale,
+              styleOverride: overrides?.sunoStylePrompt,
+              lyriaStylePrompt: overrides?.lyriaStylePrompt,
             });
             const instrSource = instr.tracks[0]?.audioUrl;
             if (instrSource) {

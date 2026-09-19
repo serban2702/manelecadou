@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatDistanceToNowStrict, format } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import DOMPurify from 'dompurify';
-import { Archive, ArchiveRestore, Bot, FileEdit, Forward, Inbox as InboxIcon, Mail, MessagesSquare, Paperclip, PenSquare, Send, Settings2, ShieldAlert, Sparkles, Star, Trash2, Users, Wifi, WifiOff, X } from 'lucide-react';
+import { Archive, ArchiveRestore, Bot, ChevronLeft, FileEdit, Forward, Inbox as InboxIcon, Mail, MessagesSquare, Paperclip, PenSquare, Send, Settings2, ShieldAlert, Sparkles, Star, Trash2, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { MailApi, type MailMessageRow } from '@/lib/api';
 import type { MailFolderRole, MailThreadRow } from '@/lib/types';
 import { useAsync } from '@/lib/hooks/use-async';
@@ -53,8 +53,16 @@ export default function InboxPage() {
   const [forwardOpen, setForwardOpen] = useState(false);
   const [bodyMode, setBodyMode] = useState<'original' | 'ro'>('original');
   const [showAccounts, setShowAccounts] = useState(true);
-  const [showAssistant, setShowAssistant] = useState(true);
-  const [showReply, setShowReply] = useState(true);
+  // AI Assistant: coloană pe desktop (pornit), foaie peste tot ecranul pe telefon
+  // (pornit doar la cerere — altfel ar acoperi lista din prima secundă). Decizia
+  // se ia după mount, ca server-ul și clientul să randeze identic.
+  const [showAssistant, setShowAssistant] = useState(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth >= 768) setShowAssistant(true);
+  }, []);
+  // Composer-ul de răspuns pornește ÎNCHIS (cerere 19 sept 2026): ocupa
+  // jumătate din panoul de citire, iar pe telefon nu mai rămânea nimic din mail.
+  const [showReply, setShowReply] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
 
   const { data: accounts, refetch: refetchAccounts } = useAsync(
@@ -238,7 +246,7 @@ export default function InboxPage() {
   if (!accounts) {
     return (
       <div className="flex gap-4">
-        <Skeleton className="h-[60vh] w-56" />
+        <Skeleton className="h-[60vh] w-56 hidden md:block" />
         <Skeleton className="h-[60vh] flex-1" />
       </div>
     );
@@ -257,32 +265,59 @@ export default function InboxPage() {
     );
   }
 
+  // `useAsync` păstrează ultimul `data` și după ce cererea e dezactivată, deci
+  // la „înapoi la listă” (activeMessageId = null) `detail` ar rămâne vechiul
+  // mesaj și panoul de citire nu s-ar închide. Ne uităm la mesaj doar cât e
+  // chiar cel selectat; între două selecții arătăm „Se încarcă…”.
+  const opened = activeMessageId && detail?.message?.id === activeMessageId ? detail : null;
+  const messageOpen = !!activeMessageId;
+
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)] -my-2">
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <div className="flex items-center gap-2">
+    /*
+      Înălțimea: pe desktop 100vh − 3rem (ca înainte). Pe telefon folosim `dvh`
+      (bara browserului se strânge/întinde) și scădem bannerul de scope + padding-ul
+      paginii, altfel panourile ies sub marginea ecranului și lista nu se poate derula.
+    */
+    <div className="flex flex-col h-[calc(100dvh-4.5rem)] md:h-[calc(100vh-3rem)] -my-2 min-h-0">
+      <div className="flex items-center justify-between gap-2 md:gap-3 mb-2 md:mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          {/* Pe telefon, cu un mesaj deschis, titlul devine „înapoi la listă". */}
+          {messageOpen && (
+            <button
+              type="button"
+              onClick={() => setActiveMessageId(null)}
+              className="md:hidden -ml-1 h-8 w-8 shrink-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-secondary hover:text-foreground"
+              aria-label="Înapoi la listă"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+          )}
           <h1 className="text-xl font-semibold">Email</h1>
           {connected ? (
-            <Badge variant="secondary" className="gap-1 text-emerald-500"><Wifi className="h-3 w-3" /> live</Badge>
+            <Badge variant="secondary" className="gap-1 text-emerald-500"><Wifi className="h-3 w-3" /> <span className="hidden sm:inline">live</span></Badge>
           ) : (
-            <Badge variant="secondary" className="gap-1 text-muted-foreground"><WifiOff className="h-3 w-3" /> offline</Badge>
+            <Badge variant="secondary" className="gap-1 text-muted-foreground"><WifiOff className="h-3 w-3" /> <span className="hidden sm:inline">offline</span></Badge>
           )}
         </div>
-        <div className="flex items-center gap-1.5">
-          <Button size="sm" onClick={() => setComposeOpen(true)}>
-            <PenSquare className="h-4 w-4" /> Scrie email
+        <div className="flex items-center gap-1 md:gap-1.5 shrink-0">
+          <Button size="sm" onClick={() => setComposeOpen(true)} title="Scrie email">
+            <PenSquare className="h-4 w-4" /> <span className="hidden sm:inline">Scrie email</span>
           </Button>
-          <PanelToggle
-            active={showAccounts}
-            onClick={() => setShowAccounts((v) => !v)}
-            icon={<Users className="h-3.5 w-3.5" />}
-            label="Conturi"
-          />
+          {/* Panourile laterale au sens doar pe desktop; pe telefon conturile și folderele sunt în bara de sus. */}
+          <span className="hidden md:inline-flex">
+            <PanelToggle
+              active={showAccounts}
+              onClick={() => setShowAccounts((v) => !v)}
+              icon={<Users className="h-3.5 w-3.5" />}
+              label="Conturi"
+            />
+          </span>
           <PanelToggle
             active={showReply}
             onClick={() => setShowReply((v) => !v)}
             icon={<MessagesSquare className="h-3.5 w-3.5" />}
             label="Reply"
+            disabled={!messageOpen || opened?.message?.direction !== 'in'}
           />
           <PanelToggle
             active={showAssistant}
@@ -290,14 +325,57 @@ export default function InboxPage() {
             icon={<Bot className="h-3.5 w-3.5" />}
             label="AI"
           />
-          <Link href="/inbox/accounts"><Button variant="outline" size="sm"><Settings2 className="h-4 w-4" /> Conturi</Button></Link>
+          <Link href="/inbox/accounts" className="hidden md:inline-flex"><Button variant="outline" size="sm"><Settings2 className="h-4 w-4" /> Conturi</Button></Link>
+          <Link href="/inbox/accounts" className="md:hidden" aria-label="Conturi email"><Button variant="outline" size="sm"><Settings2 className="h-4 w-4" /></Button></Link>
         </div>
       </div>
 
+      {/* Telefon: cont + foldere într-o bară compactă deasupra listei (ascunsă cât citești un mesaj). */}
+      {!messageOpen && (
+        <div className="md:hidden mb-2 space-y-1.5">
+          <select
+            value={activeAccountId ?? 'all'}
+            onChange={(e) => { setActiveAccountId(e.target.value as string | 'all'); setActiveMessageId(null); }}
+            className="w-full h-9 px-3 text-sm rounded-md bg-card border border-border"
+            aria-label="Cont"
+          >
+            <option value="all">Toate conturile</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>{a.label} · {a.email}</option>
+            ))}
+          </select>
+          <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {FOLDER_TABS.map((f) => {
+              const stats = summary?.folders.find((st) => st.role === f.role);
+              if (!f.always && !stats?.total) return null;
+              return (
+                <FolderChip
+                  key={f.role}
+                  icon={<f.icon className="h-3.5 w-3.5" />}
+                  label={f.label}
+                  unread={stats?.unread ?? 0}
+                  active={view === f.role}
+                  onClick={() => { setView(f.role); setActiveMessageId(null); }}
+                />
+              );
+            })}
+            {!!summary?.archivedLocal && (
+              <FolderChip
+                icon={<ArchiveRestore className="h-3.5 w-3.5" />}
+                label="Arhivate local"
+                unread={0}
+                active={view === 'archived-local'}
+                onClick={() => { setView('archived-local'); setActiveMessageId(null); }}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-1 min-h-0 gap-3">
-        {/* Pane 1: accounts */}
+        {/* Pane 1: accounts — doar desktop */}
         {showAccounts && (
-        <aside className="w-56 shrink-0 flex flex-col border border-border rounded-lg overflow-hidden bg-card/40">
+        <aside className="hidden md:flex w-56 shrink-0 flex-col border border-border rounded-lg overflow-hidden bg-card/40">
           <div className="px-3 py-2 border-b border-border text-xs uppercase tracking-wider text-muted-foreground flex items-center justify-between gap-2">
             <span>Conturi</span>
             <button
@@ -338,7 +416,7 @@ export default function InboxPage() {
               Foldere
             </div>
             {FOLDER_TABS.map((f) => {
-              const stats = summary?.folders.find((s) => s.role === f.role);
+              const stats = summary?.folders.find((st) => st.role === f.role);
               if (!f.always && !stats?.total) return null;
               return (
                 <FolderButton
@@ -367,13 +445,18 @@ export default function InboxPage() {
         </aside>
         )}
 
-        {/* Pane 2: message list */}
-        <section className="w-[360px] shrink-0 flex flex-col border border-border rounded-lg overflow-hidden bg-card/40">
+        {/* Pane 2: message list — pe telefon ocupă tot ecranul și dispare când citești un mesaj */}
+        <section
+          className={cn(
+            'w-full md:w-[360px] shrink-0 flex-col border border-border rounded-lg overflow-hidden bg-card/40 min-h-0',
+            messageOpen ? 'hidden md:flex' : 'flex',
+          )}
+        >
           <div className="px-3 py-2 border-b border-border flex items-center gap-2">
             <span className="text-xs font-medium shrink-0">{viewLabel(view)}</span>
             <Input placeholder="Caută în mailuri..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-8 text-sm" />
           </div>
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto overscroll-contain">
             {loadingList ? (
               <div className="p-3 space-y-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
             ) : !threads || threads.length === 0 ? (
@@ -396,49 +479,57 @@ export default function InboxPage() {
           </div>
         </section>
 
-        {/* Pane 3: thread + reply */}
-        <section className="flex-1 min-w-0 flex flex-col border border-border rounded-lg overflow-hidden bg-card/40">
-          {!detail?.message ? (
-            <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">Selectează un mesaj.</div>
+        {/* Pane 3: thread + reply — pe telefon apare doar cu un mesaj deschis */}
+        <section
+          className={cn(
+            'flex-1 min-w-0 flex-col border border-border rounded-lg overflow-hidden bg-card/40 min-h-0',
+            messageOpen ? 'flex' : 'hidden md:flex',
+          )}
+        >
+          {!opened?.message ? (
+            <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+              {activeMessageId ? 'Se încarcă…' : 'Selectează un mesaj.'}
+            </div>
           ) : (
-            <div className="flex flex-col h-full">
-              <div className="px-4 py-3 border-b border-border flex items-start justify-between gap-3">
+            <div className="flex flex-col h-full min-h-0">
+              <div className="px-3 md:px-4 py-2.5 md:py-3 border-b border-border flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 md:gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="text-base font-semibold truncate flex items-center gap-2">
-                    {detail.message.subject || '(fără subiect)'}
-                    <SiteBadge siteId={detail.message.siteId} />
-                    {detail.message.archived && <Badge variant="outline" className="gap-1 text-xs"><Archive className="h-3 w-3" /> Arhivat</Badge>}
+                  <div className="text-sm md:text-base font-semibold flex items-center gap-2 min-w-0">
+                    <span className="truncate">{opened.message.subject || '(fără subiect)'}</span>
+                    <SiteBadge siteId={opened.message.siteId} />
+                    {opened.message.archived && <Badge variant="outline" className="gap-1 text-xs shrink-0"><Archive className="h-3 w-3" /> Arhivat</Badge>}
                   </div>
                   <div className="text-xs text-muted-foreground truncate">
-                    De la {detail.message.fromName ? `${detail.message.fromName} <${detail.message.fromAddr}>` : detail.message.fromAddr}
-                    {' · '}către {detail.message.toAddrs.map((t) => t.address).join(', ')}
+                    De la {opened.message.fromName ? `${opened.message.fromName} <${opened.message.fromAddr}>` : opened.message.fromAddr}
+                    {' · '}către {opened.message.toAddrs.map((t) => t.address).join(', ')}
                   </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
+                {/* Acțiunile: pe telefon doar iconițe, ca să încapă pe un rând. */}
+                <div className="flex items-center gap-1 shrink-0 flex-wrap">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={handleToggleFlag}
-                    title={detail.message.flagged ? 'Scoate steluța (și pe server)' : 'Marchează cu steluță (și pe server)'}
-                    className={detail.message.flagged ? 'text-amber-400' : undefined}
+                    title={opened.message.flagged ? 'Scoate steluța (și pe server)' : 'Marchează cu steluță (și pe server)'}
+                    className={opened.message.flagged ? 'text-amber-400' : undefined}
                   >
-                    <Star className={cn('h-3.5 w-3.5', detail.message.flagged && 'fill-current')} />
+                    <Star className={cn('h-3.5 w-3.5', opened.message.flagged && 'fill-current')} />
                   </Button>
-                  {detail.message.direction === 'in' && (
+                  {opened.message.direction === 'in' && (
                     <Button variant="outline" size="sm" onClick={handleMarkUnread} title="Marchează necitit (și pe server)">
                       <Mail className="h-3.5 w-3.5" />
                     </Button>
                   )}
                   <Button variant="outline" size="sm" onClick={() => setForwardOpen(true)} title="Redirecționează">
-                    <Forward className="h-3.5 w-3.5" /> Fwd
+                    <Forward className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Fwd</span>
                   </Button>
-                  {detail.message.archived ? (
+                  {opened.message.archived ? (
                     <Button variant="outline" size="sm" onClick={handleUnarchive} title="Dezarhivează">
-                      <ArchiveRestore className="h-3.5 w-3.5" /> Dezarhivează
+                      <ArchiveRestore className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Dezarhivează</span>
                     </Button>
                   ) : (
                     <Button variant="outline" size="sm" onClick={handleArchive} title="Arhivează local (șterge atașamentele, păstrează textul)">
-                      <Archive className="h-3.5 w-3.5" /> Arhivează
+                      <Archive className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Arhivează</span>
                     </Button>
                   )}
                   <Button
@@ -448,29 +539,29 @@ export default function InboxPage() {
                     title={view === 'trash' ? 'Șterge definitiv de pe server' : 'Mută în Coș pe server'}
                     className="text-destructive hover:text-destructive"
                   >
-                    <Trash2 className="h-3.5 w-3.5" /> {view === 'trash' ? 'Șterge' : 'Coș'}
+                    <Trash2 className="h-3.5 w-3.5" /> <span className="hidden sm:inline">{view === 'trash' ? 'Șterge' : 'Coș'}</span>
                   </Button>
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-                {detail.suggestion && (
+              <div className="flex-1 overflow-y-auto overscroll-contain px-3 md:px-4 py-3 md:py-4 space-y-3 md:space-y-4">
+                {opened.suggestion && (
                   <SuggestionBanner
-                    suggestion={detail.suggestion}
+                    suggestion={opened.suggestion}
                     onAfterSend={() => { refetchThread(); refetchDetail(); }}
                     onAfterDismiss={() => refetchDetail()}
-                    onApplyToComposer={(html) => setComposerHtml(html)}
+                    onApplyToComposer={(html) => { setComposerHtml(html); setShowReply(true); }}
                   />
                 )}
 
-                {(thread ?? [detail.message]).map((m) => (
+                {(thread ?? [opened.message]).map((m) => (
                   <article key={m.id} className={cn('rounded-lg border border-border overflow-hidden', m.direction === 'out' ? 'bg-primary/5' : 'bg-background')}>
-                    <header className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border bg-muted/20">
-                      <div className="text-xs">
+                    <header className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border bg-muted/20 flex-wrap">
+                      <div className="text-xs min-w-0">
                         <span className="font-medium">{m.fromName ?? m.fromAddr}</span>
                         <span className="text-muted-foreground"> · {m.sentAt ? formatDistanceToNowStrict(new Date(m.sentAt), { locale: ro, addSuffix: true }) : ''}</span>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 flex-wrap">
                         <TranslationToggle
                           detectedLang={m.detectedLang}
                           hasRoTranslation={!!m.bodyTextRo || !!m.bodyHtmlRo}
@@ -487,22 +578,22 @@ export default function InboxPage() {
                         )}
                       </div>
                     </header>
-                    <div className="px-3 py-2">
+                    <div className="px-2 md:px-3 py-2">
                       {bodyMode === 'ro' && (m.bodyTextRo || m.bodyHtmlRo) ? (
                         <HtmlBody html={m.bodyHtmlRo} text={m.bodyTextRo} />
                       ) : (
                         <HtmlBody html={m.bodyHtml} text={m.bodyText} />
                       )}
                     </div>
-                    {m.id === detail.message.id && m.attachmentsPurged && (
+                    {m.id === opened.message.id && m.attachmentsPurged && (
                       <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
                         <Archive className="h-3.5 w-3.5" />
                         Atașamentele acestui mesaj au fost șterse local (la arhivare).
                       </div>
                     )}
-                    {m.id === detail.message.id && detail.attachments.length > 0 && (
+                    {m.id === opened.message.id && opened.attachments.length > 0 && (
                       <div className="border-t border-border px-3 py-2 flex flex-wrap gap-2">
-                        {detail.attachments.map((a) => (
+                        {opened.attachments.map((a) => (
                           <button
                             key={a.id}
                             type="button"
@@ -515,12 +606,12 @@ export default function InboxPage() {
                                 }),
                               );
                             }}
-                            className="text-xs px-2 py-1 rounded-md border border-border hover:bg-secondary/50 inline-flex items-center gap-1.5"
+                            className="text-xs px-2 py-1 rounded-md border border-border hover:bg-secondary/50 inline-flex items-center gap-1.5 max-w-full"
                             title="Descarcă (atașamentul nu se randează în browser)"
                           >
-                            <Paperclip className="h-3 w-3" />
-                            {a.filename}
-                            <span className="text-muted-foreground">({prettySize(a.size)})</span>
+                            <Paperclip className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{a.filename}</span>
+                            <span className="text-muted-foreground shrink-0">({prettySize(a.size)})</span>
                           </button>
                         ))}
                       </div>
@@ -529,43 +620,68 @@ export default function InboxPage() {
                 ))}
               </div>
 
-              {detail.message.direction === 'in' && showReply && (
-                <div className="border-t border-border p-3">
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <div className="text-xs uppercase tracking-wider text-muted-foreground">Răspunde</div>
+              {/* Telefon: bară de acțiuni jos, lângă degetul mare — răspunsul și AI-ul se deschid ca foi peste ecran. */}
+              {opened.message.direction === 'in' && !showReply && (
+                <div className="md:hidden border-t border-border p-2 flex gap-2 bg-card/60">
+                  <Button size="sm" className="flex-1" onClick={() => setShowReply(true)}>
+                    <MessagesSquare className="h-4 w-4" /> Răspunde
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setShowAssistant(true)} aria-label="AI Assistant">
+                    <Bot className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+
+              {opened.message.direction === 'in' && showReply && (
+                /*
+                  Pe telefon composer-ul e o FOAIE peste tot ecranul (fixed): editorul
+                  are nevoie de loc, iar tastatura ar fi acoperit un composer inline.
+                  Pe desktop rămâne inline, sub fir, ca înainte.
+                */
+                <div className="fixed inset-0 z-50 bg-card flex flex-col md:static md:z-auto md:bg-transparent md:border-t md:border-border">
+                  <div className="px-3 py-2 md:pt-3 md:pb-0 flex items-center justify-between gap-2 border-b border-border md:border-0">
+                    <div className="text-xs uppercase tracking-wider text-muted-foreground truncate">
+                      Răspunde <span className="md:hidden normal-case tracking-normal">· {opened.message.subject || '(fără subiect)'}</span>
+                    </div>
                     <button
                       onClick={() => setShowReply(false)}
-                      className="rounded-md p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-                      title="Ascunde composer-ul de reply"
-                      aria-label="Ascunde composer-ul de reply"
+                      className="rounded-md p-1 md:p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                      title="Închide composer-ul de reply"
+                      aria-label="Închide composer-ul de reply"
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <X className="h-4 w-4 md:h-3.5 md:w-3.5" />
                     </button>
                   </div>
-                  <ReplyComposer
-                    key={detail.message.id}
-                    to={[detail.message.fromAddr ?? '']}
-                    replyAllCandidates={replyAllCandidates(detail.message, accountMap[detail.message.accountId]?.email)}
-                    subject={replySubject(detail.message.subject)}
-                    initialHtml={composerHtml || undefined}
-                    quotedHtml={buildQuotedReply(detail.message)}
-                    aiSuggestionHtml={detail.suggestion?.htmlReply ?? null}
-                    onSend={handleSend}
-                  />
+                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3">
+                    <ReplyComposer
+                      key={opened.message.id}
+                      to={[opened.message.fromAddr ?? '']}
+                      replyAllCandidates={replyAllCandidates(opened.message, accountMap[opened.message.accountId]?.email)}
+                      subject={replySubject(opened.message.subject)}
+                      initialHtml={composerHtml || undefined}
+                      quotedHtml={buildQuotedReply(opened.message)}
+                      aiSuggestionHtml={opened.suggestion?.htmlReply ?? null}
+                      onSend={async (html, opts) => {
+                        await handleSend(html, opts);
+                        setShowReply(false);
+                      }}
+                    />
+                  </div>
                 </div>
               )}
             </div>
           )}
         </section>
 
-        {/* Pane 4: AI Assistant — vizibil mereu, contextual pe mesajul activ */}
+        {/* Pane 4: AI Assistant — coloană pe desktop, foaie peste ecran pe telefon */}
         {showAssistant && (
           <AssistantPanel
             contextKind="mail"
-            refId={detail?.message?.id ?? null}
-            detectedLang={detail?.message?.detectedLang}
-            onInsertDraft={(text) => setComposerHtml(toHtmlIfPlain(text))}
+            refId={opened?.message?.id ?? null}
+            detectedLang={opened?.message?.detectedLang}
+            onInsertDraft={(text) => { setComposerHtml(toHtmlIfPlain(text)); setShowReply(true); setShowAssistant(false); }}
             onClose={() => setShowAssistant(false)}
+            className="fixed inset-0 z-50 w-full rounded-none bg-card md:static md:inset-auto md:z-auto md:w-[340px] md:rounded-lg md:bg-card/40"
           />
         )}
       </div>
@@ -578,12 +694,12 @@ export default function InboxPage() {
         onSent={() => { refetchMessages(); refetchSummary(); }}
       />
 
-      {detail?.message && (
+      {opened?.message && (
         <ForwardDialog
           open={forwardOpen}
           onOpenChange={setForwardOpen}
-          message={detail.message}
-          attachmentCount={detail.attachments.length}
+          message={opened.message}
+          attachmentCount={opened.attachments.length}
           onSent={() => { refetchMessages(); refetchSummary(); }}
         />
       )}
@@ -649,23 +765,57 @@ function FolderButton({
   );
 }
 
-function PanelToggle({
-  active,
-  onClick,
+/** Folder ca „chip" în bara orizontală de pe telefon. */
+function FolderChip({
   icon,
   label,
+  unread,
+  active,
+  onClick,
 }: {
-  active: boolean;
-  onClick: () => void;
   icon: React.ReactNode;
   label: string;
+  unread: number;
+  active: boolean;
+  onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors',
+        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs whitespace-nowrap shrink-0 transition-colors',
+        active ? 'border-primary/40 bg-primary/10 text-primary font-medium' : 'border-border bg-card text-muted-foreground',
+      )}
+      aria-pressed={active}
+    >
+      {icon}
+      {label}
+      {unread > 0 && <span className="rounded-full bg-primary/15 px-1.5 text-[10px] text-primary">{unread}</span>}
+    </button>
+  );
+}
+
+function PanelToggle({
+  active,
+  onClick,
+  icon,
+  label,
+  disabled,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-md border px-2 py-1.5 sm:py-1 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
         active
           ? 'border-primary/30 bg-primary/10 text-primary'
           : 'border-border text-muted-foreground hover:bg-secondary',
@@ -673,7 +823,7 @@ function PanelToggle({
       title={`${active ? 'Ascunde' : 'Afișează'} panoul ${label}`}
       aria-pressed={active}
     >
-      {icon} {label}
+      {icon} <span className="hidden sm:inline">{label}</span>
     </button>
   );
 }

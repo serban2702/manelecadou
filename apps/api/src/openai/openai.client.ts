@@ -1,14 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 import { SettingsService } from '../modules/settings/settings.service';
-import { buildChatParams, isReasoningModel, requiresResponsesApiForTools } from './openai-params.helper';
+import {
+  buildChatParams,
+  isReasoningModel,
+  normalizeEffort,
+  requiresResponsesApiForTools,
+  type ReasoningEffort,
+} from './openai-params.helper';
 
-/**
- * Valorile acceptate de API. `minimal` există doar pe modelele vechi (o-series,
- * gpt-5.0-5.5); de la `gpt-5.6` echivalentul se numește `none`, iar în plus
- * apare `xhigh`. Normalizarea per model se face în `normalizeEffort`.
- */
-export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+export type { ReasoningEffort } from './openai-params.helper';
 
 export type ChatMessage =
   | { role: 'system'; content: string }
@@ -422,20 +423,6 @@ function extractOutputText(res: ResponsesResult): string | null {
   }
   const joined = parts.join('\n').trim();
   return joined || null;
-}
-
-/**
- * Aceeași intenție, alt vocabular per generație de model: „cât mai puțin
- * reasoning" e `minimal` pe o-series/gpt-5.0-5.5 și `none` de la gpt-5.6, iar
- * `xhigh` există doar pe cele noi. O valoare inexistentă pe modelul apelat
- * întoarce 400 și pică tot chatul, deci traducem în loc să presupunem.
- */
-function normalizeEffort(effort: ReasoningEffort, model: string): string {
-  const modern = requiresResponsesApiForTools(model);
-  if (modern) return effort === 'minimal' ? 'none' : effort;
-  if (effort === 'none') return 'minimal';
-  if (effort === 'xhigh') return 'high';
-  return effort;
 }
 
 function safeParse(s: string): Record<string, unknown> {

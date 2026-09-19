@@ -5,6 +5,7 @@ import { join } from 'path';
 import { SunoProvider, SunoGenerateInput } from '../suno/suno.types';
 import { SunoLogService } from '../suno/suno-log.service';
 import { LyricsService } from '../lyrics/lyrics.module';
+import { lyricsModelInputs } from '../lyrics/lyrics-model';
 import { SettingsService } from '../settings/settings.service';
 import { SitesService } from './sites.service';
 import { Site, SiteSampleEntry, SiteSuno, SiteVoiceEntry } from './site.entity';
@@ -525,6 +526,7 @@ export class SiteSamplesService {
       currency: site.currency,
       siteId: site.id,
       generationId: null,
+      ...lyricsModelInputs(site.suno),
     };
     const draft = await this.lyrics.writeDraft(baseInput);
     const refined = await this.lyrics.refineDraft(baseInput, draft);

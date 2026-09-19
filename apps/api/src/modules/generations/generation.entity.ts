@@ -9,6 +9,28 @@ import type { PackageSnapshot } from '../experiences/types';
 
 export type GenerationType = 'demo' | 'full';
 
+/** Cum se obțin versurile unei comenzi lansate din admin (modalul „Demo + plată”). */
+export type GenerationLyricsMode = 'auto' | 'custom' | 'critic_only';
+
+/**
+ * Prompturi editate de operator pentru O SINGURĂ comandă (modalul „Demo + plată”
+ * din chat, mod avansat). Toate câmpurile sunt opționale: ce lipsește se
+ * construiește ca de obicei, din configul site-ului. Vezi `generations.processor.ts`.
+ */
+export interface GenerationPromptOverrides {
+  /** `auto` = writer + critic; `custom` = versurile mele, literal; `critic_only` = criticul rafinează versurile mele. */
+  lyricsMode?: GenerationLyricsMode;
+  /** Corpul tag-ului de stil Suno (fără prefixul de gen vocal — se pune la trimitere). */
+  sunoStylePrompt?: string;
+  /** Promptul de stil pentru Lyria (motorul google). */
+  lyriaStylePrompt?: string;
+  /** Prompturi FINALE (deja interpolate) pentru writer / critic. */
+  writerSystem?: string;
+  writerUser?: string;
+  criticSystem?: string;
+  criticUser?: string;
+}
+
 /** Fișiere derivate atașate unei generări (din uneltele Suno admin). Stocate
  *  în coloana `mediaExtras` (jsonb). Toate URL-urile sunt găzduite local
  *  (`/uploads/audio/<id>/...`) sau, ca fallback, URL-uri Suno temporare. */
@@ -82,6 +104,10 @@ export class Generation {
   // Custom lyrics provided by user (overrides AI-written lyrics)
   @Column({ type: 'text', nullable: true })
   customLyrics!: string | null;
+
+  /** Prompturi/mod de versuri editate de operator pentru această comandă. NULL = implicit. Synchronize-safe. */
+  @Column({ type: 'jsonb', nullable: true })
+  promptOverrides!: GenerationPromptOverrides | null;
 
   // Drafts produced by the lyrics pipeline
   @Column({ type: 'text', nullable: true })

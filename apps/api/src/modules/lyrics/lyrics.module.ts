@@ -3,8 +3,16 @@ import { ConfigService, ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SettingsService } from '../settings/settings.service';
 import { buildChatParams } from '../../openai/openai-params.helper';
+import type { SiteLyricsModelConfig, SiteSuno } from '../sites/site.entity';
 import { LyricsLog } from './lyrics-log.entity';
 import { LyricsLogService } from './lyrics-log.service';
+import {
+  buildLyricsRequest,
+  extractResponsesText,
+  lyricsModelInputs,
+  type LyricsRequest,
+  type ResponsesJson,
+} from './lyrics-model';
 
 export interface LyricsInput {
   /** Cheia stilului (clasic / modern / oriental / etc) — text liber. */
@@ -53,10 +61,34 @@ export interface LyricsInput {
   /** Context pentru logging — opțional, doar pentru audit. */
   siteId?: string | null;
   generationId?: string | null;
-  /** Override model OpenAI. Omis → OPENAI_MODEL din settings. */
+  /** Override model OpenAI. Omis → modelul din configul site-ului → OPENAI_MODEL din settings. */
   model?: string;
   /** Temperatura writer/critic. Ignorată pe modelele gpt-5 / o-series. */
   temperature?: number;
+  /**
+   * Configurarea modelului per pas, din `site.suno.writerModel` / `criticModel`
+   * (vezi `lyricsModelInputs`). Lipsă = comportamentul vechi (chat/completions,
+   * `OPENAI_MODEL`, fără effort explicit).
+   */
+  writerModel?: SiteLyricsModelConfig;
+  criticModel?: SiteLyricsModelConfig;
+  /**
+   * Prompturi FINALE, editate de operator (modalul „Demo + plată” din chat, mod
+   * avansat). Se trimit ca atare: fără langDirective prepend-at, fără
+   * interpolare de template — doar `{{draft}}` din `criticUser` se completează.
+   * Lipsă = prompturile se construiesc din template-uri, ca de obicei.
+   */
+  finalPrompts?: {
+    writerSystem?: string;
+    writerUser?: string;
+    criticSystem?: string;
+    criticUser?: string;
+  };
+}
+
+/** Pentru call-site-urile care importă modulul dinamic (agentul de chat). */
+export function lyricsModelInputsFor(site: { suno?: SiteSuno } | null | undefined) {
+  return lyricsModelInputs(site?.suno);
 }
 
 export interface LyricsOutput {
@@ -436,11 +468,6 @@ function phoneticSystem(locale?: string): string {
   ].join('\n');
 }
 
-function clampTemp(n: number | undefined): number {
-  if (typeof n !== 'number' || !Number.isFinite(n)) return 0.85;
-  return Math.min(2, Math.max(0, n));
-}
-
 @Injectable()
 export class LyricsService {
   private readonly logger = new Logger('LyricsService');
@@ -462,8 +489,16 @@ export class LyricsService {
       this.logger.log(`[DEV] writer locale=${input.locale ?? 'ro'} override=${!!input.writerSystemPrompt} sys_chars=${sys.length}`);
     }
     const apiKey = await this.settings.get('OPENAI_API_KEY');
-    const model = input.model?.trim() || (await this.settings.get('OPENAI_MODEL')) || 'gpt-4o-mini';
-    const temperature = clampTemp(input.temperature);
+    const request = buildLyricsRequest({
+      stage: 'writer',
+      config: input.writerModel,
+      modelOverride: input.model,
+      temperatureOverride: input.temperature,
+      globalModel: (await this.settings.get('OPENAI_MODEL')) || 'gpt-4o-mini',
+      system: sys,
+      user,
+    });
+    const model = request.model;
     const logId = (await this.logs.start({
       stage: 'writer',
       systemPrompt: sys,
@@ -484,7 +519,7 @@ export class LyricsService {
       return mock;
     }
     try {
-      const result = await this.openaiChat(apiKey, model, sys, user, { temperature });
+      const result = await this.openaiRequest(apiKey, request);
       // SAFETY: scrub sentinel ÎN WRITER. Critic-ul va mai face un scrub la final,
       // dar dacă writer-ul produce sentinel, critic-ul ar putea să-l propage.
       const scrubbed = scrubSentinel(result.content);
@@ -523,8 +558,16 @@ export class LyricsService {
     const sys = this.criticSystem(input);
     const user = this.criticUser(input, draft);
     const apiKey = await this.settings.get('OPENAI_API_KEY');
-    const model = input.model?.trim() || (await this.settings.get('OPENAI_MODEL')) || 'gpt-4o-mini';
-    const temperature = clampTemp(input.temperature);
+    const request = buildLyricsRequest({
+      stage: 'critic',
+      config: input.criticModel,
+      modelOverride: input.model,
+      temperatureOverride: input.temperature,
+      globalModel: (await this.settings.get('OPENAI_MODEL')) || 'gpt-4o-mini',
+      system: sys,
+      user,
+    });
+    const model = request.model;
     const logId = (await this.logs.start({
       stage: 'critic',
       systemPrompt: sys,
@@ -545,7 +588,7 @@ export class LyricsService {
       return mock;
     }
     try {
-      const result = await this.openaiChat(apiKey, model, sys, user, { temperature });
+      const result = await this.openaiRequest(apiKey, request);
       // SAFETY: scrub sentinel dacă scapă în output (observat în prod 2026-05-28:
       // 2 melodii livrate cu „De la Utilizatorul nu a completat pentru Mirela").
       // Dacă apare ORICE mențiune a sentinel-ului, ștergem rândul întreg și logăm.
@@ -751,12 +794,45 @@ export class LyricsService {
     }
   }
 
+  /** Calea veche (moderare, fonetizare): chat/completions cu parametrii de dinainte. */
   private async openaiChat(
     apiKey: string,
     model: string,
     system: string,
     user: string,
     opts: { temperature?: number } = {},
+  ): Promise<{
+    content: string;
+    raw: unknown;
+    status: number;
+    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+    durationMs: number;
+  }> {
+    const body = buildChatParams({
+      model,
+      temperature: opts.temperature ?? 0.85,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+    });
+    return this.openaiRequest(apiKey, {
+      endpoint: 'chat',
+      url: 'https://api.openai.com/v1/chat/completions',
+      model,
+      body: body as unknown as Record<string, unknown>,
+      reason: 'legacy',
+    });
+  }
+
+  /**
+   * Trimite o cerere gata construită (`buildLyricsRequest`) și întoarce textul,
+   * indiferent dacă a mers pe `/v1/chat/completions` sau pe `/v1/responses`.
+   * `usage` e normalizat la vocabularul chat (prompt/completion) pentru loguri.
+   */
+  private async openaiRequest(
+    apiKey: string,
+    request: LyricsRequest,
   ): Promise<{
     content: string;
     raw: unknown;
@@ -777,22 +853,13 @@ export class LyricsService {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       const attemptStartedAt = Date.now();
       try {
-        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        const res = await fetch(request.url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${apiKey}`,
           },
-          body: JSON.stringify(
-            buildChatParams({
-              model,
-              temperature: opts.temperature ?? 0.85,
-              messages: [
-                { role: 'system', content: system },
-                { role: 'user', content: user },
-              ],
-            }),
-          ),
+          body: JSON.stringify(request.body),
         });
         const durationMs = Date.now() - startedAt;
         if (!res.ok) {
@@ -809,6 +876,31 @@ export class LyricsService {
           }
           // Non-retryable (4xx other than 408/429) sau am epuizat tentativele
           throw new Error(`OpenAI ${res.status} (după ${attempt} tentative): ${text.slice(0, 500)}`);
+        }
+        if (request.endpoint === 'responses') {
+          const json = (await res.json()) as ResponsesJson;
+          // Un răspuns 200 cu `status: 'failed'` (ex. filtru de conținut) nu
+          // are text — tratăm ca eroare ne-retryabilă, nu ca versuri goale.
+          if (json.status === 'failed' || json.status === 'cancelled') {
+            throw new Error(`OpenAI responses ${json.status}: ${json.error?.message ?? 'fără detalii'}`);
+          }
+          const content = extractResponsesText(json);
+          if (attempt > 1) {
+            this.logger.log(`OpenAI recovered after ${attempt} tentative (took ${durationMs}ms total)`);
+          }
+          return {
+            content,
+            raw: json,
+            status: res.status,
+            usage: json.usage
+              ? {
+                  prompt_tokens: json.usage.input_tokens,
+                  completion_tokens: json.usage.output_tokens,
+                  total_tokens: json.usage.total_tokens,
+                }
+              : undefined,
+            durationMs,
+          };
         }
         const json = (await res.json()) as {
           choices: Array<{ message: { content: string } }>;
@@ -861,6 +953,8 @@ export class LyricsService {
   }
 
   private writerSystem(input: LyricsInput): string {
+    const final = input.finalPrompts?.writerSystem?.trim();
+    if (final) return final;
     const body = input.writerSystemPrompt?.trim() || DEFAULT_WRITER_SYSTEM;
     // Substituim {{variabile}} și în system body — utile pentru override-uri
     // per-site din admin care vor să folosească numele destinatarului direct
@@ -869,6 +963,8 @@ export class LyricsService {
   }
 
   private criticSystem(input: LyricsInput): string {
+    const final = input.finalPrompts?.criticSystem?.trim();
+    if (final) return final;
     const body = input.criticSystemPrompt?.trim() || DEFAULT_CRITIC_SYSTEM;
     return this.langDirective(input.locale, input.languageOverride) + fillTemplate(body, this.templateVars(input));
   }
@@ -888,6 +984,8 @@ export class LyricsService {
   }
 
   private writerUser(i: LyricsInput): string {
+    const final = i.finalPrompts?.writerUser?.trim();
+    if (final) return final;
     let template = i.writerUserTemplate?.trim() || WRITER_USER_TEMPLATE;
     // Regenerare în wizard: userul a cerut modificări pe o versiune anterioară.
     // Adăugăm un bloc de revizuire ca writer-ul să respecte feedback-ul, dar
@@ -903,6 +1001,14 @@ export class LyricsService {
   }
 
   private criticUser(i: LyricsInput, draft: string): string {
+    const final = i.finalPrompts?.criticUser?.trim();
+    if (final) {
+      // Promptul final e deja interpolat; singurul loc viu e ciorna. Dacă
+      // operatorul a șters `{{draft}}`, o lipim la final ca să nu rafinăm nimic.
+      return /{{\s*draft\s*}}/.test(final)
+        ? final.replace(/{{\s*draft\s*}}/g, draft)
+        : `${final}\n\nDraft:\n${draft}`;
+    }
     const template = i.criticUserTemplate?.trim() || CRITIC_USER_TEMPLATE;
     return fillTemplate(template, {
       ...this.templateVars(i),

@@ -66,12 +66,12 @@ export function SuggestionBanner({ suggestion, onAfterSend, onAfterDismiss, onAp
 
   return (
     <div className="rounded-lg border border-primary/30 bg-primary/5 overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border-b border-primary/20">
+      <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border-b border-primary/20 flex-wrap">
         <Sparkles className="h-4 w-4 text-primary" />
         <div className="text-sm font-medium">Sugestie AI</div>
-        <Badge variant="secondary" className={`gap-1 ${confColor}`}>{conf}% confidence</Badge>
+        <Badge variant="secondary" className={`gap-1 ${confColor}`}>{conf}%</Badge>
         {!suggestion.shouldReply && <Badge variant="outline">AI sugerează: nu răspunde</Badge>}
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-1 flex-wrap">
           <Button size="sm" variant="outline" onClick={() => onApplyToComposer(suggestion.htmlReply)} disabled={!suggestion.htmlReply}>
             Editează
           </Button>

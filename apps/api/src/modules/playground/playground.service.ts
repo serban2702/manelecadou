@@ -10,10 +10,10 @@ import { assemblePlayground } from './playground-assemble';
 import { PlaygroundRun } from './playground-run.entity';
 import {
   LYRIA_MODELS,
-  OPENAI_MODEL_OPTIONS,
   OPENAI_MODELS,
   PLAYGROUND_QUEUE,
   SUNO_MODELS,
+  openaiModelOptionsWithCaps,
 } from './playground.constants';
 import type { PlaygroundRequestDto } from './playground.dto';
 
@@ -47,7 +47,7 @@ export class PlaygroundService {
       sunoModel: sunoModel || 'V4_5',
       lyriaModel: lyriaModel || 'lyria-3-pro-preview',
       openaiModels: [...OPENAI_MODELS],
-      openaiModelOptions: OPENAI_MODEL_OPTIONS,
+      openaiModelOptions: openaiModelOptionsWithCaps(),
       sunoModels: [...SUNO_MODELS],
       lyriaModels: [...LYRIA_MODELS],
       defaultTemplates: this.lyrics.defaultTemplates(),
@@ -142,7 +142,7 @@ export class PlaygroundService {
       status: 'queued',
       input: dto as unknown as Record<string, unknown>,
       lyrics: assembled.lyrics || null,
-      openaiModel: assembled.lyricsInput.model ?? null,
+      openaiModel: assembled.lyricsInput.model ?? assembled.lyricsInput.writerModel?.model ?? null,
       audioModel: assembled.engine === 'google' ? assembled.lyria.model ?? null : assembled.suno.model ?? null,
     });
     const saved = await this.runs.save(run);

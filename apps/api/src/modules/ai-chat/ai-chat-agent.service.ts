@@ -9095,6 +9095,7 @@ ${transcript}`;
         siteId: site.id,
         writerSystemPrompt: site.suno?.writerSystemPrompt,
         writerUserTemplate: site.suno?.writerUserTemplate,
+        ...lyricsMod.lyricsModelInputsFor(site),
       });
     } catch (e) {
       this.logger.warn(`generate_lyrics failed: ${(e as Error).message}`);

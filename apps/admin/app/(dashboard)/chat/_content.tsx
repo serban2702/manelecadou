@@ -46,7 +46,14 @@ import {
   Zap,
 } from 'lucide-react';
 import { ChatApi, SitesApi, AuthApi, AiChatApi } from '@/lib/api';
-import type { QuickReply, ChatBlacklistEntry, PackageTier } from '@/lib/api/chat.api';
+import type {
+  QuickReply,
+  ChatBlacklistEntry,
+  PackageTier,
+  GenerationLyricsMode,
+  GenerationPlan,
+  GenerationPromptOverrides,
+} from '@/lib/api/chat.api';
 import type { ConversationReview, ReviewRating, ReviewCategory } from '@/lib/api/ai-chat.api';
 import { useAsync } from '@/lib/hooks/use-async';
 import {
@@ -2573,6 +2580,97 @@ function DemoPaymentModal({
   const [aiPrefilling, setAiPrefilling] = useState(false);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
 
+  // ---- Mod avansat: cum se obțin versurile + prompturile EXACTE, editabile ----
+  // Planul (prompturile calculate pe site-ul conversației) se cere de la API la
+  // fiecare schimbare a detaliilor; un prompt pe care l-ai editat rămâne al tău
+  // (`dirty`) până apeși ↺, ca o retușare a mesajului să nu-ți șteargă munca.
+  const [advanced, setAdvanced] = useState(false);
+  const [lyricsMode, setLyricsMode] = useState<GenerationLyricsMode>('auto');
+  const [plan, setPlan] = useState<GenerationPlan | null>(null);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [prompts, setPrompts] = useState<GenerationPromptOverrides>({});
+  const [dirty, setDirty] = useState<Set<keyof GenerationPromptOverrides>>(new Set());
+  const hasOwnLyrics = customLyrics.trim().length > 0;
+
+  // Versuri lipite → implicit se cântă exact; șterse → înapoi la automat.
+  useEffect(() => {
+    if (hasOwnLyrics && lyricsMode === 'auto') setLyricsMode('custom');
+    if (!hasOwnLyrics && lyricsMode !== 'auto') setLyricsMode('auto');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasOwnLyrics]);
+
+  const planDeps = [styleId, occasionId, recipientName, message, voiceId, dedication] as const;
+  useEffect(() => {
+    if (!advanced) return;
+    let cancelled = false;
+    setPlanLoading(true);
+    setPlanError(null);
+    const t = setTimeout(() => {
+      ChatApi.generationPlan(conversationId, {
+        style: styleId,
+        occasion: occasionId,
+        recipientName: recipientName.trim(),
+        message: message.trim(),
+        voiceArtist: voiceId,
+        dedication: dedication.trim() || undefined,
+      })
+        .then((p) => {
+          if (cancelled) return;
+          setPlan(p);
+          setPrompts((prev) => {
+            const next = { ...prev };
+            const fresh: GenerationPromptOverrides = {
+              sunoStylePrompt: p.sunoStylePrompt,
+              lyriaStylePrompt: p.lyriaStylePrompt ?? '',
+              writerSystem: p.writerSystem,
+              writerUser: p.writerUser,
+              criticSystem: p.criticSystem,
+              criticUser: p.criticUser,
+            };
+            for (const k of Object.keys(fresh) as Array<keyof GenerationPromptOverrides>) {
+              if (!dirty.has(k)) next[k] = fresh[k];
+            }
+            return next;
+          });
+        })
+        .catch((e) => {
+          if (!cancelled) setPlanError((e as Error).message);
+        })
+        .finally(() => {
+          if (!cancelled) setPlanLoading(false);
+        });
+    }, 450);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [advanced, ...planDeps]);
+
+  function editPrompt(key: keyof GenerationPromptOverrides, value: string) {
+    setPrompts((p) => ({ ...p, [key]: value }));
+    setDirty((d) => new Set(d).add(key));
+  }
+  function resetPrompt(key: keyof GenerationPromptOverrides) {
+    setDirty((d) => {
+      const n = new Set(d);
+      n.delete(key);
+      return n;
+    });
+    if (plan) {
+      const fresh: Record<string, string> = {
+        sunoStylePrompt: plan.sunoStylePrompt,
+        lyriaStylePrompt: plan.lyriaStylePrompt ?? '',
+        writerSystem: plan.writerSystem,
+        writerUser: plan.writerUser,
+        criticSystem: plan.criticSystem,
+        criticUser: plan.criticUser,
+      };
+      setPrompts((p) => ({ ...p, [key]: fresh[key] }));
+    }
+  }
+
   async function aiPrefill() {
     setAiPrefilling(true);
     setError(null);
@@ -2607,11 +2705,19 @@ function DemoPaymentModal({
     setBusy(true);
     setError(null);
     try {
-      const styleName = GEN_STYLES.find((s) => s.id === styleId)?.name ?? styleId;
-      const occasionName = GEN_OCCASIONS.find((o) => o.id === occasionId)?.name ?? occasionId;
+      // Doar prompturile pe care le-ai EDITAT pleacă pe comandă; restul se
+      // construiesc pe server ca de obicei (deci nu îngheață template-ul site-ului).
+      const edited: GenerationPromptOverrides = {};
+      if (advanced) {
+        for (const k of dirty) {
+          const v = prompts[k]?.trim();
+          if (v) edited[k] = v;
+        }
+      }
       await ChatApi.demoWithPayment(conversationId, {
-        style: styleName,
-        occasion: occasionName,
+        // Id-urile de catalog (nu numele afișate) — promptul de stil se caută după id.
+        style: styleId,
+        occasion: occasionId,
         recipientName: recipientName.trim(),
         message: message.trim(),
         voiceArtist: voiceId,
@@ -2621,9 +2727,11 @@ function DemoPaymentModal({
         amount,
         currency,
         productName: productName.trim() || undefined,
-        // Versuri custom — backend le forwardează la generation.customLyrics
-        // și writer-ul OpenAI/Suno le folosește exact, fără generare proprie.
+        // Versuri custom — backend le forwardează la generation.customLyrics;
+        // `lyricsMode` spune dacă se cântă exact sau trec întâi prin editor.
         customLyrics: customLyrics.trim() || undefined,
+        lyricsMode: hasOwnLyrics ? lyricsMode : 'auto',
+        prompts: Object.keys(edited).length ? edited : undefined,
       });
       onSent();
     } catch (e) {
@@ -2639,13 +2747,28 @@ function DemoPaymentModal({
         className="bg-card border border-border rounded-xl w-full max-w-2xl p-5 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
           <Sparkles className="h-5 w-5 text-primary" />
           <h3 className="text-base font-semibold">Generează demo + trimite link plată</h3>
+          <button
+            type="button"
+            onClick={() => setAdvanced((v) => !v)}
+            className={cn(
+              'ml-auto inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors',
+              advanced
+                ? 'border-primary/40 bg-primary/10 text-primary'
+                : 'border-border text-muted-foreground hover:bg-secondary',
+            )}
+            aria-pressed={advanced}
+            title="Vezi și editează prompturile exacte (stil Suno, scriitor, editor) înainte de lansare"
+          >
+            <Wand2 className="h-3.5 w-3.5" /> Mod avansat
+          </button>
         </div>
         <p className="text-xs text-muted-foreground mb-3">
-          Suno generează acum melodia. Userul primește 30 secunde demo în chat. La plata link-ului,
-          versiunea completă se deblochează automat și i se trimite linkul.
+          {amount === 0
+            ? 'Sumă 0: se generează direct versiunea COMPLETĂ, deblocată, fără demo și fără link de plată — fluxul de refacere a melodiei unui client.'
+            : 'Suno generează acum melodia. Userul primește 30 secunde demo în chat. La plata link-ului, versiunea completă se deblochează automat și i se trimite linkul.'}
         </p>
 
         <button
@@ -2709,16 +2832,67 @@ function DemoPaymentModal({
               placeholder="Dacă ai stabilit versurile cu userul în chat, lipește-le aici. Suno va folosi versurile astea EXACT, fără să mai genereze altele. Lasă gol pentru generare automată din mesaj/dedicație."
               className="font-mono text-[12px] leading-relaxed"
             />
-            {customLyrics.trim().length > 0 && (
-              <div className="mt-1.5 text-[11px] text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1.5 flex items-start gap-1.5">
-                <span>⚠️</span>
-                <span>
-                  Versurile vor fi folosite <strong>EXACT cum le-ai scris</strong>. AI-ul writer e bypass-uit complet.
-                  Verifică ortografia, refrenul, structura (couplet/refren) și că nu apar substituții ca „[nume]".
-                </span>
+            {hasOwnLyrics && (
+              <div className="mt-2 space-y-1.5">
+                <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block">Ce facem cu versurile</label>
+                <select
+                  value={lyricsMode}
+                  onChange={(e) => setLyricsMode(e.target.value as GenerationLyricsMode)}
+                  className="w-full h-9 px-3 text-sm rounded-md bg-secondary/40 border border-border focus:outline-none"
+                >
+                  <option value="custom">Versurile mele, exact — fără AI</option>
+                  <option value="critic_only">Editorul (criticul) rafinează versurile mele</option>
+                  <option value="auto">Ignoră-le: AI scrie versuri noi din detalii (scriitor + editor)</option>
+                </select>
+                {lyricsMode === 'custom' && (
+                  <div className="text-[11px] text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1.5 flex items-start gap-1.5">
+                    <span>⚠️</span>
+                    <span>
+                      Versurile vor fi folosite <strong>EXACT cum le-ai scris</strong>. AI-ul writer e bypass-uit complet.
+                      Verifică ortografia, refrenul, structura (couplet/refren) și că nu apar substituții ca „[nume]".
+                    </span>
+                  </div>
+                )}
+                {lyricsMode === 'critic_only' && (
+                  <div className="text-[11px] text-sky-500 bg-sky-500/10 border border-sky-500/30 rounded px-2 py-1.5">
+                    Versurile tale devin ciorna; editorul păstrează numele, mesajul și marcajele [Verse]/[Chorus] și
+                    rafinează rima / hook-ul. Promptul editorului e editabil în modul avansat.
+                  </div>
+                )}
+                {lyricsMode === 'auto' && (
+                  <div className="text-[11px] text-muted-foreground bg-secondary/30 border border-border rounded px-2 py-1.5">
+                    Versurile lipite NU se folosesc — AI-ul scrie altele din stil / ocazie / mesaj.
+                  </div>
+                )}
               </div>
             )}
           </div>
+
+          {advanced && (
+            <AdvancedPromptsPanel
+              plan={plan}
+              loading={planLoading}
+              error={planError}
+              prompts={prompts}
+              dirty={dirty}
+              lyricsMode={hasOwnLyrics ? lyricsMode : 'auto'}
+              onEdit={editPrompt}
+              onReset={resetPrompt}
+              onResetAll={() => {
+                setDirty(new Set());
+                if (plan) {
+                  setPrompts({
+                    sunoStylePrompt: plan.sunoStylePrompt,
+                    lyriaStylePrompt: plan.lyriaStylePrompt ?? '',
+                    writerSystem: plan.writerSystem,
+                    writerUser: plan.writerUser,
+                    criticSystem: plan.criticSystem,
+                    criticUser: plan.criticUser,
+                  });
+                }
+              }}
+            />
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">Voce / artist</label>
@@ -2761,7 +2935,8 @@ function DemoPaymentModal({
             </div>
             {amount === 0 && (
               <div className="text-[11px] text-emerald-500 bg-emerald-500/10 border border-emerald-500/30 rounded p-2 mb-2">
-                💡 Sumă = 0 → melodia se generează gratis. Nu se trimite link de plată. Varianta completă se deblochează automat.
+                💡 Sumă = 0 → se generează direct versiunea completă (durata pachetului), deblocată de la început.
+                Nu se face demo de 30 s și nu se trimite link de plată.
               </div>
             )}
             <div className="grid grid-cols-[1fr_120px] gap-3">
@@ -2797,11 +2972,105 @@ function DemoPaymentModal({
             {busy
               ? 'Lansez...'
               : amount === 0
-                ? 'Generează GRATIS'
+                ? 'Generează GRATIS (deblocată direct)'
                 : 'Lansează demo + trimite plată'}
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Panoul „Mod avansat” din DemoPaymentModal: prompturile EXACTE pe care le-ar
+ * primi Suno / GPT pentru detaliile completate, editabile. Ce nu e editat se
+ * reconstruiește pe server (deci urmează template-ul site-ului); ce e editat
+ * pleacă literal pe comandă (`promptOverrides`).
+ */
+function AdvancedPromptsPanel({
+  plan,
+  loading,
+  error,
+  prompts,
+  dirty,
+  lyricsMode,
+  onEdit,
+  onReset,
+  onResetAll,
+}: {
+  plan: GenerationPlan | null;
+  loading: boolean;
+  error: string | null;
+  prompts: GenerationPromptOverrides;
+  dirty: Set<keyof GenerationPromptOverrides>;
+  lyricsMode: GenerationLyricsMode;
+  onEdit: (key: keyof GenerationPromptOverrides, value: string) => void;
+  onReset: (key: keyof GenerationPromptOverrides) => void;
+  onResetAll: () => void;
+}) {
+  const engine = plan?.engine ?? 'suno';
+  const showWriter = lyricsMode === 'auto';
+  const showCritic = lyricsMode !== 'custom';
+  const field = (
+    key: keyof GenerationPromptOverrides,
+    label: string,
+    hint: string,
+    rows: number,
+  ) => (
+    <div key={key}>
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5">
+          {label}
+          {dirty.has(key) && (
+            <span className="normal-case tracking-normal font-medium text-[10px] px-1.5 rounded bg-primary/15 text-primary">editat</span>
+          )}
+        </label>
+        {dirty.has(key) && (
+          <button type="button" onClick={() => onReset(key)} className="text-[11px] text-muted-foreground hover:text-foreground">
+            ↺ din detalii
+          </button>
+        )}
+      </div>
+      <Textarea
+        value={prompts[key] ?? ''}
+        onChange={(e) => onEdit(key, e.target.value)}
+        rows={rows}
+        className="font-mono text-[11.5px] leading-relaxed"
+        placeholder={loading ? 'Se calculează…' : ''}
+      />
+      <div className="mt-0.5 text-[10px] text-muted-foreground">{hint}</div>
+    </div>
+  );
+
+  return (
+    <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Wand2 className="h-4 w-4 text-primary" />
+        <div className="text-sm font-medium">Prompturi (exact ce pleacă)</div>
+        {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+        {plan && (
+          <span className="text-[10px] text-muted-foreground">
+            model: {plan.models.writer ?? 'global'}{showCritic && plan.models.critic !== plan.models.writer ? ` / ${plan.models.critic ?? 'global'}` : ''} · {engine === 'google' ? 'Lyria' : 'Suno'} · {plan.locale}
+          </span>
+        )}
+        {dirty.size > 0 && (
+          <button type="button" onClick={onResetAll} className="ml-auto text-[11px] text-muted-foreground hover:text-foreground">
+            ↺ Reîncarcă toate din detalii
+          </button>
+        )}
+      </div>
+      {error && <div className="text-xs text-destructive bg-destructive/10 rounded p-2">Nu am putut calcula prompturile: {error}</div>}
+      <p className="text-[11px] text-muted-foreground">
+        Se recalculează când schimbi stilul, ocazia, numele, mesajul, vocea sau „de la”. Un câmp editat rămâne al tău
+        (nu se suprascrie) până apeși ↺. Doar câmpurile editate se salvează pe comandă.
+      </p>
+      {engine === 'google'
+        ? field('lyriaStylePrompt', 'Prompt stil (Lyria)', 'Descrierea muzicii pentru Lyria — limbaj natural (gen, instrumente, BPM, mood).', 3)
+        : field('sunoStylePrompt', 'Prompt stil (Suno)', 'Tag-urile de stil. Prefixul de voce (male/female vocals only) se adaugă automat la trimitere — nu-l scrie aici.', 3)}
+      {showWriter && field('writerSystem', 'Scriitor — instrucțiuni (system)', 'Rolul GPT + limba de output (directiva de limbă e deja inclusă).', 8)}
+      {showWriter && field('writerUser', 'Scriitor — cererea cu datele comenzii', 'Detaliile comenzii, deja completate. Editează liber (ex. „refren despre X”).', 8)}
+      {showCritic && field('criticSystem', 'Editor — instrucțiuni (system)', 'Ce păstrează / ce rafinează editorul.', 6)}
+      {showCritic && field('criticUser', 'Editor — cererea (cu ciorna)', 'Păstrează {{draft}} — acolo intră ciorna (a scriitorului sau versurile tale).', 6)}
     </div>
   );
 }
@@ -2873,7 +3142,7 @@ function ActionsMenu({
       </button>
       {open && (
         <div className="absolute bottom-12 left-0 z-40 w-72 rounded-md border border-border bg-card shadow-lg overflow-hidden">
-          {item(<Sparkles className="h-4 w-4" />, 'Demo + Plată', 'Generează demo 30s + link plată cu unlock automat', onDemo, true)}
+          {item(<Sparkles className="h-4 w-4" />, 'Demo + Plată', 'Demo 30s + link plată, sau sumă 0 = melodie completă gratis (refacere)', onDemo, true)}
           <div className="h-px bg-border" />
           {item(<Paperclip className="h-4 w-4" />, 'Atașament', 'Imagine / PDF (max 5MB)', onAttach)}
           {item(<CreditCard className="h-4 w-4" />, 'Link plată', 'Stripe Checkout cu preț custom', onPayment)}

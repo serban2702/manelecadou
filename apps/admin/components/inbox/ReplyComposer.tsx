@@ -47,7 +47,7 @@ export function ReplyComposer({
     content: composeInitial(initialHtml, quotedHtml),
     editorProps: {
       attributes: {
-        class: 'prose prose-sm dark:prose-invert max-w-none min-h-[220px] focus:outline-none px-3 py-2',
+        class: 'prose prose-sm dark:prose-invert max-w-none min-h-[160px] sm:min-h-[220px] focus:outline-none px-3 py-2',
       },
     },
   });
@@ -92,8 +92,8 @@ export function ReplyComposer({
   return (
     <div className="border border-border rounded-lg bg-card overflow-hidden">
       <div className="px-3 py-2 border-b border-border bg-muted/30 text-xs space-y-0.5">
-        <div className="flex items-center justify-between gap-2">
-          <div><span className="text-muted-foreground">Către:</span> {to.join(', ') || '—'}</div>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="min-w-0 truncate"><span className="text-muted-foreground">Către:</span> {to.join(', ') || '—'}</div>
           {replyAllCandidates.length > 0 && (
             <button
               type="button"
@@ -111,10 +111,10 @@ export function ReplyComposer({
         {replyAll && (
           <div><span className="text-muted-foreground">Cc:</span> {replyAllCandidates.join(', ')}</div>
         )}
-        <div><span className="text-muted-foreground">Subiect:</span> {subject}</div>
+        <div className="truncate"><span className="text-muted-foreground">Subiect:</span> {subject}</div>
       </div>
 
-      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border bg-muted/20">
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border bg-muted/20 flex-wrap">
         <ToolBtn active={editor?.isActive('bold')} onClick={() => editor?.chain().focus().toggleBold().run()}><Bold className="h-3.5 w-3.5" /></ToolBtn>
         <ToolBtn active={editor?.isActive('italic')} onClick={() => editor?.chain().focus().toggleItalic().run()}><Italic className="h-3.5 w-3.5" /></ToolBtn>
         <ToolBtn active={editor?.isActive('bulletList')} onClick={() => editor?.chain().focus().toggleBulletList().run()}><List className="h-3.5 w-3.5" /></ToolBtn>
@@ -139,8 +139,8 @@ export function ReplyComposer({
         </ToolBtn>
         <div className="ml-auto flex items-center gap-2">
           {aiSuggestionHtml ? (
-            <Button variant="outline" size="sm" onClick={applyAi}>
-              <Sparkles className="h-3.5 w-3.5" /> Folosește sugestia AI
+            <Button variant="outline" size="sm" onClick={applyAi} title="Folosește sugestia AI">
+              <Sparkles className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Folosește sugestia AI</span><span className="sm:hidden">Sugestia AI</span>
             </Button>
           ) : null}
           <Button size="sm" onClick={handleSend} disabled={sending || !editor}>

@@ -245,8 +245,54 @@ export class ChatApi {
       amount: number;
       currency?: string;
       productName?: string;
+      /** Mod avansat: cum se obțin versurile + prompturi editate pentru această comandă. */
+      lyricsMode?: GenerationLyricsMode;
+      prompts?: GenerationPromptOverrides;
     },
   ): Promise<{ generationId: string; paymentMessageId: string }> {
     return http.post(`/admin/chat/conversations/${conversationId}/demo-with-payment`, dto);
   }
+
+  /**
+   * Prompturile și tag-ul de stil EXACT așa cum ar pleca pentru datele din
+   * modalul „Demo + plată” (mod avansat). Nu salvează nimic, nu apelează OpenAI.
+   */
+  static generationPlan(
+    conversationId: string,
+    dto: {
+      style: string;
+      occasion: string;
+      recipientName: string;
+      message: string;
+      voiceArtist: string;
+      dedication?: string;
+    },
+  ): Promise<GenerationPlan> {
+    return http.post(`/admin/chat/conversations/${conversationId}/generation-plan`, dto);
+  }
+}
+
+export type GenerationLyricsMode = 'auto' | 'custom' | 'critic_only';
+
+export interface GenerationPromptOverrides {
+  sunoStylePrompt?: string;
+  lyriaStylePrompt?: string;
+  writerSystem?: string;
+  writerUser?: string;
+  criticSystem?: string;
+  criticUser?: string;
+}
+
+export interface GenerationPlan {
+  engine: 'suno' | 'google';
+  styleId: string;
+  occasionId: string;
+  sunoStylePrompt: string;
+  lyriaStylePrompt: string | null;
+  writerSystem: string;
+  writerUser: string;
+  criticSystem: string;
+  criticUser: string;
+  models: { writer: string | null; critic: string | null };
+  locale: string;
 }

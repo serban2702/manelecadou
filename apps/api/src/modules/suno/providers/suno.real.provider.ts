@@ -12,7 +12,8 @@ import {
   SunoSeparateResult,
   SunoTimestampedLyrics,
 } from '../suno.types';
-import { sunoTitle, occasionThemeEn, dedicationOpeningLines, introSkeletonTag } from '../suno-i18n';
+import { sunoTitle, dedicationOpeningLines, introSkeletonTag } from '../suno-i18n';
+import { alignVocalGender, buildSunoStyleTag, styleOverrideTag } from '../suno-style-tag';
 import { SunoLogService } from '../suno-log.service';
 
 /**
@@ -671,90 +672,12 @@ export class SunoRealProvider extends SunoProvider {
   }
 
   /**
-   * Construiește tag-ul de stil (genre + voice + occasion) pentru Suno.
-   * Tag-urile sunt separate prin virgulă, max ~1000 chars.
-   *
-   * Per-site overrides:
-   *   - site.suno.stylePromptMap[style] — override complet pentru un stil
-   *   - site.suno.basePrompt            — înlocuiește CORE-ul default
+   * Tag-ul de stil (gen vocal + genre + ocazie) pentru Suno. Logica e în
+   * `suno-style-tag.ts` (pur), ca adminul să poată arăta EXACT același tag în
+   * modalul „Demo + plată” înainte de lansare și să-l poată edita.
    */
   private buildStyleTag(i: SunoGenerateInput): string {
-    // Prefix explicit de gen la ÎNCEPUTUL tag-ului (nu la final, ca să nu cadă
-    // la truncate) + aliniem orice mențiune de gen din restul textului.
-    // Sursele (basePrompt per-site din DB, stylePromptMap, styleMap hardcodat)
-    // conțin istoric "male vocal" — nealiniate, contrazic parametrul vocalGender
-    // și Suno generează voce greșită la comenzile cu voce feminină.
-    const genderTag =
-      i.vocalGender === 'f'
-        ? 'female vocals only, woman singer, '
-        : i.vocalGender === 'm'
-          ? 'male vocals only, man singer, '
-          : '';
-    const siteSuno = i.site?.suno;
-    const styleOverride = siteSuno?.stylePromptMap?.[i.style];
-    if (styleOverride) {
-      const occasionHint = occasionStyleHint(i);
-      return genderTag + alignVocalGender(`${styleOverride}${occasionHint}`, i.vocalGender);
-    }
-    // Bază obligatorie: scări orientale + instrumentație + vocal style autentic manele.
-    // IMPORTANT: NU includem nume de artiști reali — Suno respinge tag-urile cu artist names
-    // (SENSITIVE_WORD_ERROR: "we don't reference specific artists"). Descriem doar
-    // caracteristici sonore.
-    //
-    // Când vocalGender e setat explicit (parametru direct Suno + genderTag), folosim
-    // descriptor neutru ca să nu intre în conflict cu cererea (ex. voce feminină).
-    const vocalDescriptor = i.vocalGender
-      ? 'ornamented melismatic vocal with heavy auto-tune, pitch slides and "of/aoleu" interjections'
-      : 'ornamented melismatic male vocal with heavy auto-tune, pitch slides and "of/aoleu" interjections';
-    const CORE = siteSuno?.basePrompt ??
-      'Romanian MANELE (NOT pop, NOT EDM, NOT generic dance, NOT trap-rap), authentic balkan gypsy pop, classic Romanian wedding-band manele tradition (Pitești / București scene, late 90s through 2010s era), ' +
-      `Hijaz Phrygian-dominant oriental scale, ${vocalDescriptor}, ` +
-      'darbuka derbeke percussion, finger cymbals, oriental synth lead (Korg Pa keyboard, taksim), ' +
-      'accordion runs, violin glissando, clarinet trills, deep dumbek kick, fast hi-hat triplets, Romanian language';
-
-    const styleMap: Record<string, string> = {
-      clasic:
-        'classic lăutărească manele, traditional gypsy wedding band, live accordion, violin lăutar, ' +
-        'cobză strumming, sweet melancholic male voice, 90s Romanian manele sound, mid tempo 95 BPM',
-      modern:
-        'modern manele 2020s, trap-manea production, oriental synth over 808 sub-bass, ' +
-        'auto-tune heavy male vocal, melismatic runs, hi-hat rolls, early-2010s Romanian commercial-manele production sound, 100 BPM',
-      oriental:
-        'heavy oriental manele, turkish arabic flavor, oud and saz, darbuka groove, ' +
-        'maqam Hijaz scale, melismatic crying vocal, ney flute fills, slow 85 BPM',
-      trompeta:
-        'manele cu trompetă, balkan brass band fanfare style, blasting trumpets and trombones, ' +
-        'gypsy fanfara ciocărlia energy, accordion lead, fast 120 BPM dance',
-      romantica:
-        'manea de dragoste romantica, heartbreak ballad, oriental sad scale, ' +
-        'crying male vocal with sobs and falsetto runs, soft accordion, weeping violin, slow 70 BPM',
-      comerciala:
-        'manele comerciale de club, oriental hook with club-energy chorus, manele DNA stays dominant, ' +
-        'auto-tune melismatic male vocal, oriental synth lead, darbuka groove with modern kick, party energy, 105 BPM',
-      opulenta:
-        'manele de bani, opulent luxury manele, șmecher boss vibe, brass stabs and oriental synth, ' +
-        'auto-tune male vocal bragging tone, big money references, 100 BPM',
-      iubire:
-        'manea de iubire romantica, warm tender male vocal, ornamented melisma, ' +
-        'soft accordion, violin counter-melody, oriental scale, mid tempo 90 BPM',
-      tallava:
-        'Balkan tallava, Albanian Macedonian roma manele fusion, frantic clarinet solos, ' +
-        'rapid accordion runs, darbuka and tapan drums, oriental scale, fast 130 BPM dance',
-      kuchek:
-        'Bulgarian Roma kuchek, 9/8 odd-meter dance, blasting brass band, ' +
-        'darbuka and tapan, accordion ornaments, fanfare energy, 130 BPM',
-      trapanele:
-        'romanian trap-manele where manele DNA dominates the trap beat, oriental Hijaz synth lead carries the melody, ' +
-        'darbuka layered over trap 808s, melismatic manele male vocal with auto-tune (sung manele, NOT rap), ' +
-        'hi-hat triplets stay subtle so accordion and oriental synth remain front, 130-140 BPM',
-      pahar:
-        'manea de pahar petrecere, festive drinking song, live wedding band feel, ' +
-        'accordion and violin trade solos, hand claps, glasses clinking, celebratory shouts, 100 BPM',
-    };
-
-    const styleText = styleMap[i.style] ?? `${i.style} manele subgenre`;
-    const occasionHint = occasionStyleHint(i);
-    return genderTag + alignVocalGender(`${CORE}, ${styleText}${occasionHint}`, i.vocalGender);
+    return buildSunoStyleTag(i);
   }
 
   private buildSimplePrompt(i: SunoGenerateInput): string {
@@ -873,43 +796,6 @@ function modelLimits(model: string): {
   // V4_5, V4_5PLUS, V5, V5_5 + default
   // Nota: documentatia spune 100 dar API-ul enforceaza 80 in practica → 75 cu marja.
   return { prompt: 4900, style: 950, title: 75, simplePrompt: 480 };
-}
-
-/**
- * Aliniază mențiunile de gen vocal dintr-un text de style/prompt cu genul
- * cerut explicit. `\bmale\b` NU se potrivește în "female" (și invers
- * `\bman\b` nu prinde "woman", nici "Romanian") — word boundary garantează asta.
- * Versurile (lyrics) NU trec niciodată prin această funcție — sunt cântate literal.
- */
-function occasionStyleHint(i: SunoGenerateInput): string {
-  const extra = i.occasionPrompt?.trim();
-  if (extra) return `, ${extra}`;
-  // Fără `sunoPrompt` configurat pe ocazie, aici ajungea IDENTIFICATORUL intern:
-  // „themed for zi" pe bulgară, „themed for genethlia" pe greacă — cuvinte fără
-  // sens pentru model, într-un tag altfel integral în engleză. Pe producție
-  // niciuna dintre cele 24 de ocazii bg/el nu are `sunoPrompt`, deci era cazul
-  // obișnuit, nu excepția. Traducem în engleză; ce nu putem traduce, omitem.
-  const theme = occasionThemeEn(i.occasion);
-  return theme ? `, themed for ${theme}` : '';
-}
-
-/** Style tag WYSIWYG (playground): păstrăm textul dat, doar aliniem genul vocal. */
-function styleOverrideTag(raw: string, gender?: 'm' | 'f'): string {
-  const genderTag =
-    gender === 'f'
-      ? 'female vocals only, woman singer, '
-      : gender === 'm'
-        ? 'male vocals only, man singer, '
-        : '';
-  return genderTag + alignVocalGender(raw.trim(), gender);
-}
-
-function alignVocalGender(text: string, gender?: 'm' | 'f'): string {
-  if (!text || (gender !== 'm' && gender !== 'f')) return text;
-  if (gender === 'f') {
-    return text.replace(/\bmale\b/gi, 'female').replace(/\bman\b/gi, 'woman');
-  }
-  return text.replace(/\bfemale\b/gi, 'male').replace(/\bwoman\b/gi, 'man');
 }
 
 function truncate(s: string, max: number): string {

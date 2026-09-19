@@ -1,5 +1,21 @@
 import { http } from '@/lib/http/client';
 
+/**
+ * Oglinda lui `SiteLyricsModelConfig` din API (site.entity.ts). Câmpurile
+ * neaplicabile modelului ales se ASCUND în UI după `caps` din
+ * `PlaygroundApi.meta()` — o singură sursă de adevăr.
+ */
+export interface LyricsModelConfig {
+  model?: string;
+  effort?: string;
+  reasoningMode?: 'standard' | 'pro';
+  verbosity?: 'low' | 'medium' | 'high';
+  textFormat?: 'text' | 'json_object';
+  reasoningSummary?: 'off' | 'auto' | 'concise' | 'detailed';
+  store?: boolean;
+  temperature?: number;
+}
+
 export interface SiteDto {
   id: string;
   slug: string;
@@ -67,6 +83,11 @@ export interface SiteDto {
     writerUserTemplate?: string;
     criticSystemPrompt?: string;
     criticUserTemplate?: string;
+    /** Modelul OpenAI pentru scriitorul de versuri. Lipsă = OPENAI_MODEL global, calea veche. */
+    writerModel?: LyricsModelConfig;
+    /** Idem pentru editorul (criticul) de versuri. Ignorat când `criticSameAsWriter`. */
+    criticModel?: LyricsModelConfig;
+    criticSameAsWriter?: boolean;
   };
   social?: {
     instagram?: string;

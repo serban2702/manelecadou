@@ -11,6 +11,8 @@ import {
   resolveStylePersonaId,
 } from '../experiences/catalog-resolve';
 import type { LyricsInput } from '../lyrics/lyrics.module';
+import { resolveSiteLyricsModels } from '../lyrics/lyrics-model';
+import type { SiteLyricsModelConfig } from '../sites/site.entity';
 import { buildLyriaPrompt } from '../lyria/lyria.service';
 import type { Site, SiteOccasionEntry, SiteStyleEntry, SiteVoiceEntry } from '../sites/site.entity';
 import type { PlaygroundEngine, PlaygroundLyricsMode } from './playground.constants';
@@ -31,6 +33,8 @@ export interface PlaygroundAssembleInput {
   phonetic?: boolean;
   openaiModel?: string;
   openaiTemperature?: number;
+  writerModel?: SiteLyricsModelConfig;
+  criticModel?: SiteLyricsModelConfig;
   writerSystemPrompt?: string;
   writerUserTemplate?: string;
   criticSystemPrompt?: string;
@@ -140,6 +144,7 @@ export function assemblePlayground(site: Site, dto: PlaygroundAssembleInput): Pl
       ? dto.vocalGender
       : voiceArtistToGender(voice?.id) ?? voice?.gender;
 
+  const siteModels = resolveSiteLyricsModels(site.suno);
   const lyricsInput: LyricsInput = {
     style: style?.id ?? dto.styleId ?? 'clasic',
     occasion: occasion?.id ?? dto.occasionId ?? '',
@@ -161,6 +166,10 @@ export function assemblePlayground(site: Site, dto: PlaygroundAssembleInput): Pl
     criticUserTemplate: pickOverride(dto.criticUserTemplate, site.suno?.criticUserTemplate),
     model: dto.openaiModel?.trim() || undefined,
     temperature: dto.openaiTemperature,
+    // Playground-ul pornește de la setările salvate ale site-ului și le poate
+    // suprascrie pentru un test (un obiect trimis înlocuiește configul pasului).
+    writerModel: dto.writerModel ?? siteModels.writerModel,
+    criticModel: dto.criticModel ?? siteModels.criticModel,
     siteId: site.id,
     customLyrics: lyricsMode === 'custom' ? dto.lyrics?.trim() || undefined : undefined,
   };

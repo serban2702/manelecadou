@@ -9,6 +9,7 @@ import {
   type LyricsInput,
   type LyricsModerationResult,
 } from '../lyrics/lyrics.module';
+import { lyricsModelInputs } from '../lyrics/lyrics-model';
 import type { Site } from '../sites/site.entity';
 import { resolveExperienceWriterPrompt } from '../experiences/catalog-resolve';
 
@@ -59,6 +60,7 @@ export class SuggestionsService {
       currency: site?.currency,
       siteId: site?.id ?? null,
       generationId: null,
+      ...lyricsModelInputs(site?.suno),
     };
     const draft = await this.lyrics.writeDraft(input);
     const refined = await this.lyrics.refineDraft(input, draft);

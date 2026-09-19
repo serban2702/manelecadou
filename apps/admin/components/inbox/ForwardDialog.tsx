@@ -84,7 +84,7 @@ export function ForwardDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg w-[calc(100vw-1rem)] sm:w-full max-h-[calc(100dvh-1rem)] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>Redirecționează mesajul</DialogTitle>
           <DialogDescription className="truncate">{message.subject || '(fără subiect)'}</DialogDescription>

@@ -13,7 +13,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ModuleRef } from '@nestjs/core';
 
-import { Generation } from './generation.entity';
+import { Generation, type GenerationPromptOverrides } from './generation.entity';
 import { AudioProcessorService } from './audio-processor.service';
 import { GenerationsProcessor } from './generations.processor';
 import { GuestSession } from '../guest-sessions/guest-session.entity';
@@ -139,8 +139,19 @@ export class GenerationsService {
   ) {}
 
   async create(
-    dto: CreateGenerationDto,
-    ctx: { userId: string | null; guestId: string | null; siteId?: string | null; experienceSlug?: string | null },
+    dto: CreateGenerationDto & { promptOverrides?: GenerationPromptOverrides | null },
+    ctx: {
+      userId: string | null;
+      guestId: string | null;
+      siteId?: string | null;
+      experienceSlug?: string | null;
+      /**
+       * Comandă acordată de un admin, fără plată (refacere / cadou din chat).
+       * Doar cod de server poate seta asta: creează o comandă `full`, deblocată,
+       * fără `paymentId`. Nu trece prin DTO-ul public.
+       */
+      adminGrant?: boolean;
+    },
   ): Promise<Generation> {
     if (!ctx.userId && !ctx.guestId) {
       throw new ForbiddenException('Missing guest session');
@@ -169,7 +180,7 @@ export class GenerationsService {
             await mgr.getRepository(GuestSession).save(guest);
           }
         }
-      } else {
+      } else if (!ctx.adminGrant) {
         if (!dto.paymentId) throw new ForbiddenException('paymentId required for full generation');
         const payment = await mgr.getRepository(Payment).findOne({ where: { id: dto.paymentId } });
         if (!payment || payment.status !== 'paid') {
@@ -203,10 +214,13 @@ export class GenerationsService {
         dedication: dto.dedication ?? null,
         voiceArtist: dto.voiceArtist,
         customLyrics: dto.customLyrics ?? null,
+        promptOverrides: dto.promptOverrides ?? null,
         tipAmount: dto.tipAmount ?? 0,
         premium: dto.premium ?? false,
         packageTier: tier,
         paymentId: dto.paymentId ?? null,
+        // Admin produce melodii cadou / refaceri → deblocate complet, fără plată.
+        paidUnlocked: !!ctx.adminGrant && dto.type === 'full',
         locale: resolveOrderLocale(dto.locale, site?.locale),
         siteId: ctx.siteId ?? null,
       });

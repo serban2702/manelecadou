@@ -635,6 +635,8 @@ middleware-ul).
 | Preț pachet | `items[slug].packages[tier].priceCents` → `site.packagePricesCents[tier]` → default din cod |
 | Motor audio | `items[slug].musicEngine` → `site.musicEngine` → `suno` |
 | Livrabile | `generation.packageSnapshot` (înghețat la cumpărare) → `PACKAGE_FEATURES[tier]` |
+| Model OpenAI la versuri | `LyricsInput.model` (playground) → `site.suno.writerModel` / `criticModel` → `OPENAI_MODEL` (§10.6) |
+| Prompturi GPT / tag Suno | `generation.promptOverrides` (o comandă, din chat) → template-urile site-ului (§10.6) |
 
 `packageSnapshot` e mecanismul care garantează că **ce s-a vândut rămâne
 livrat**: dacă schimbi definiția unui pachet, comenzile vechi păstrează ce li
@@ -751,6 +753,40 @@ Regula de atribuire e într-un singur loc:
 3. Admin `/rollout` → „Aplică lipsurile" umple doar câmpurile goale din seed.
    **Seed-ul e în română** — pe site-uri non-RO nu se aplică automat; acolo
    prompturile se scriu manual, în limba site-ului.
+
+### 10.6 Modelul OpenAI la versuri + prompturi per comandă (19 sept 2026)
+
+**Per site, separat writer / critic**: `sites.suno.writerModel`, `criticModel`,
+`criticSameAsWriter` (jsonb, aditiv). Ecranul: `/site` → Generare → „Model OpenAI
+pentru versuri"; același editor (`site/fields/model-config-editor.tsx`) e și în
+`/site/playground`, care pornește de la setările salvate și le suprascrie doar
+pentru testul curent.
+
+| | |
+|---|---|
+| Regula (pură, testată) | `apps/api/src/modules/lyrics/lyrics-model.ts` — `resolveSiteLyricsModels`, `buildLyricsRequest` |
+| Ce acceptă fiecare model | `openai-params.helper.ts` → `modelCapabilities` (verificat empiric, §12 pct. 50) |
+| Call-site-uri | processor, chat (preview + agent), suggestions, site-samples, playground — toate prin `lyricsModelInputs(site.suno)` |
+
+**Gol = comportamentul de dinainte**, bit cu bit: `OPENAI_MODEL` din `/settings`,
+`/v1/chat/completions`, fără effort explicit. Doar `model` setat = tot calea veche,
+cu modelul site-ului. Orice reglaj (effort, verbosity, summary, store, temperatură)
+mută cererea pe **`/v1/responses`** — singurul loc unde există `text.verbosity` și
+`reasoning.summary`. Effort-ul se traduce per model (`normalizeEffort`), `store` e
+OFF implicit (payload-ul are nume reale), temperatura pleacă doar unde e acceptată.
+
+Recomandarea (butonul „Aplică recomandarea"): writer `gpt-5.6-terra` · medium ·
+verbosity medium; critic la fel, effort high. Nu e aplicată automat pe niciun site.
+
+**Prompturi pentru O comandă** — modalul „Demo + plată" din chat, „Mod avansat":
+`POST /admin/chat/conversations/:id/generation-plan` întoarce EXACT ce ar pleca
+(tag de stil Suno fără prefixul de gen, prompturile writer/critic interpolate,
+`{{draft}}` păstrat), operatorul editează, iar DOAR câmpurile editate se salvează
+pe `generations.promptOverrides` (jsonb) și sunt folosite literal de processor.
+`lyricsMode`: `auto` (writer + critic) · `custom` (versurile mele, literal) ·
+`critic_only` (criticul rafinează versurile mele). Tot acolo: **sumă 0 = comandă
+`full`, deblocată de la creare** (`generations.create` cu `ctx.adminGrant`), nu un
+demo de 30 s deblocat după — fluxul de refacere a melodiei unui client.
 
 ---
 
@@ -1068,6 +1104,25 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
     încerce. Textul rămâne în casetă, eroarea se spune în limba lui, butonul de
     reîncercare există. Pe căile de tracking (`fireMetaChatEvents`, pixelii) tăcerea e
     corectă — acolo clientul n-a cerut nimic.
+50. **Ce acceptă un model OpenAI se VERIFICĂ cu un apel, nu se deduce.** Sondajul din
+    19 sept 2026 (un apel real per model × valoare, pe `/v1/responses`) a contrazis mai
+    multe presupuneri: `gpt-5.4` (și mini/nano) ACCEPTĂ `temperature`, deși e model de
+    raționament; `gpt-6-astra` n-are `none` (minimul e `low`), dar are `max`;
+    `reasoning.mode: 'pro'` e un parametru SEPARAT de effort (nu schimbă vocabularul
+    effort-ului — `standard`/`pro` sunt respinse ca valori de effort peste tot) și e
+    acceptat doar pe 5.6+/6; pe `gpt-4.1`/`4o` `text.verbosity` primește doar `medium`.
+    Tabelul complet e în `apps/api/src/openai/openai-params.helper.ts`
+    (`modelCapabilities`), acoperit de `openai-params.helper.spec.ts`; adminul îl
+    citește din `GET /admin/playground/meta` și ascunde câmpurile neaplicabile.
+    Mesajul de eroare al API-ului listează valorile suportate — asta e sursa.
+51. **`useAsync` păstrează `data` și după `enabled: false`.** La „înapoi la listă" în
+    Inbox (`activeMessageId = null`) detaliul mesajului rămânea cel vechi, deci panoul
+    de citire nu se închidea pe telefon. Când vizibilitatea depinde de o cerere
+    dezactivată, derivează starea din ID-ul selectat, nu din `data`.
+52. **Comenzile lansate din chat trimiteau NUMELE stilului, nu id-ul.** Pe producție
+    200+ rânduri au `style = 'Modernă'` / `'De iubire'`; `stylePromptMap['Modernă']` nu
+    există, deci Suno primea promptul generic + „Modernă manele subgenre". Serverul
+    acceptă acum ambele (`catalogKey` în `generation-plan.ts`), iar modalul trimite id-ul.
 
 ---
 
@@ -2213,6 +2268,7 @@ mai jos.
 | pagină pe site public | `apps/web/app/` |
 | design alternativ | `apps/web/experiences/` (§10) |
 | să testez prompturi (versuri / Suno / Lyria) | admin `/site/playground` — trei laboratoare separate |
+| modelul OpenAI la versuri (per site) | `/site` → Generare → „Model OpenAI pentru versuri"; regula în `lyrics/lyrics-model.ts` (§10.6) |
 | standardul UTM (parametri, vocabular, șabloane) | `apps/api/src/modules/analytics/utm-standard.ts` + oglinda `apps/web/lib/utm.ts` (§16.10) |
 | ceva ce scrie fișiere | `StorageService` — niciodată `fs` direct (§19.5) |
 | o sursă nouă de notificare push | `notification-kind.ts` + `sendToAdmins` + comutator în `/notificari` (§15.9) |
