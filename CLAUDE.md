@@ -1123,6 +1123,14 @@ rulare l-ar mai recomprima o dată și calitatea s-ar degrada în trepte.
     200+ rânduri au `style = 'Modernă'` / `'De iubire'`; `stylePromptMap['Modernă']` nu
     există, deci Suno primea promptul generic + „Modernă manele subgenre". Serverul
     acceptă acum ambele (`catalogKey` în `generation-plan.ts`), iar modalul trimite id-ul.
+53. **Imaginea adminului NU copia `public/`.** `apps/admin/Dockerfile` copia doar
+    `.next` + config, deci pe producție `/manifest.webmanifest`, `/sw.js` și
+    iconițele nu existau — iar catch-all-ul SPA răspundea **200 cu HTML** în locul
+    lor (nu 404, deci nimic nu părea rupt). Consecință: PWA neinstalabil, service
+    worker invalid, push mort, de la cutover până pe 19 sept 2026. Verificarea
+    corectă e pe producție, pe content-type, nu pe cod:
+    `curl -sI https://admin.manelecadou.ro/sw.js | grep -i content-type` trebuie să
+    dea `application/javascript`, nu `text/html`. `apps/web/Dockerfile` avea rândul.
 
 ---
 

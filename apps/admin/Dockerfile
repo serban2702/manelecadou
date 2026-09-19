@@ -32,6 +32,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
+# `public/` NU e în `.next`: fără rândul ăsta manifest.webmanifest, sw.js și
+# iconițele lipsesc din imagine, iar catch-all-ul SPA răspunde 200 cu HTML în
+# locul lor — PWA neinstalabil, service worker invalid, push mort (19 sept 2026).
+COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.ts ./next.config.ts
 COPY --from=builder /app/next-env.d.ts ./next-env.d.ts
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
